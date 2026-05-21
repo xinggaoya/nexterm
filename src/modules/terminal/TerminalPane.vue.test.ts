@@ -11,6 +11,7 @@ import {
 vi.mock("./lib/terminalSessionCore", () => ({
   mountTerminalSession: vi.fn(() => vi.fn()),
   updateTerminalSessionVisibility: vi.fn(),
+  applyTerminalSessionScrollback: vi.fn(),
   createTerminalSessionHandle: vi.fn(() => ({
     write: vi.fn(),
     focus: vi.fn(),

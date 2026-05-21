@@ -4,7 +4,6 @@ import { buildTerminalTheme } from "@/styles/terminalTheme";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
-import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
@@ -13,7 +12,6 @@ import { terminalWordNavigationSequence } from "./keymap";
 export const POOL_MAX_SIZE = 5;
 const FIT_DEBOUNCE_MS = 8;
 const PTY_RESIZE_DEBOUNCE_MS = 256;
-const SNAPSHOT_SCROLLBACK_CAP = 5_000;
 
 export type SlotAdapter = {
   resolveLeaf(leafId: number): LeafBridge | null;
@@ -36,7 +34,6 @@ export type Slot = {
   readonly term: Terminal;
   readonly fitAddon: FitAddon;
   readonly searchAddon: SearchAddon;
-  readonly serializeAddon: SerializeAddon;
   readonly host: HTMLDivElement;
   webglAddon: WebglAddon | null;
   webglCanvases: HTMLCanvasElement[];
@@ -80,7 +77,7 @@ function getRecycler(): HTMLDivElement {
   return el;
 }
 
-function termOptions() {
+export function createTerminalOptions() {
   const prefs = readPreferencesSnapshot();
   return {
     fontFamily: prefs.terminalFontFamily || detectMonoFontFamily(),
@@ -96,13 +93,11 @@ function termOptions() {
 }
 
 function createSlot(): Slot {
-  const term = new Terminal(termOptions());
+  const term = new Terminal(createTerminalOptions());
   const fitAddon = new FitAddon();
   const searchAddon = new SearchAddon();
-  const serializeAddon = new SerializeAddon();
   term.loadAddon(fitAddon);
   term.loadAddon(searchAddon);
-  term.loadAddon(serializeAddon);
   term.loadAddon(
     new WebLinksAddon((_e, uri) => openUrl(uri).catch(console.error)),
   );
@@ -118,7 +113,6 @@ function createSlot(): Slot {
     term,
     fitAddon,
     searchAddon,
-    serializeAddon,
     host,
     webglAddon: null,
     webglCanvases: [],
@@ -209,11 +203,10 @@ export type AcquireParams = {
   leafId: number;
   container: HTMLDivElement;
   snapshot: string | null;
-  // True if the slot was in alt-screen mode (TUI like vim, htop, dofek)
-  // at the time it was released. When set, bindSlot skips ring replay
-  // and kicks SIGWINCH so the TUI repaints from scratch.
+  // True if the model is in alt-screen mode (TUI like vim, htop, dofek).
+  // The view is rebuilt from the model snapshot and then nudged with SIGWINCH
+  // so TUIs can repaint any volatile screen state.
   altScreen: boolean;
-  drainRing: (write: (bytes: Uint8Array) => void) => void;
   shellExited: boolean;
   searchQuery: string | null;
   cols: number;
@@ -272,14 +265,6 @@ function bindSlot(slot: Slot, p: AcquireParams): void {
     } catch (e) {
       console.warn("[nexterm] snapshot replay failed:", e);
     }
-  }
-  if (p.altScreen) {
-    // Discard the dormant ring. TUI output is incremental cursor-positioned
-    // updates that can't be replayed coherently on top of a stale snapshot
-    // — see the SIGWINCH kick below, which makes the TUI redraw from scratch.
-    p.drainRing(() => {});
-  } else {
-    p.drainRing((bytes) => slot.term.write(bytes));
   }
   try {
     slot.term.write("\x1b[?25h");
@@ -403,28 +388,14 @@ export type SerializeOutput = {
 export function releaseSlot(leafId: number): SerializeOutput | null {
   const slot = slots.find((s) => s.currentLeafId === leafId);
   if (!slot) return null;
-  const out = serializeSlot(slot);
-  detachSlotFromLeaf(slot);
-  return out;
-}
-
-function serializeSlot(slot: Slot): SerializeOutput {
-  let snapshot: string | null = null;
-  try {
-    const cap = Math.min(
-      SNAPSHOT_SCROLLBACK_CAP,
-      readPreferencesSnapshot().terminalScrollback,
-    );
-    snapshot = slot.serializeAddon.serialize({ scrollback: cap });
-  } catch (e) {
-    console.warn("[nexterm] serialize failed:", e);
-  }
-  return {
-    snapshot,
+  const out: SerializeOutput = {
+    snapshot: null,
     cols: slot.term.cols,
     rows: slot.term.rows,
     altScreen: isAltScreen(slot),
   };
+  detachSlotFromLeaf(slot);
+  return out;
 }
 
 function detachSlotFromLeaf(slot: Slot): void {
