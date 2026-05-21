@@ -1,7 +1,6 @@
-export { TabBar } from "./TabBar";
+export { useTabsPiniaStore, type TabPatch } from "./tabsPinia";
 export {
   MAX_PANES_PER_TAB,
-  useTabs,
   type Tab,
   type TerminalTab,
   type EditorTab,
@@ -12,6 +11,4 @@ export {
   type GitHistoryTab,
   type GitCommitFileDiffTab,
   type AiDiffStatus,
-  type TabPatch,
-} from "./lib/useTabs";
-export { useWorkspaceCwd } from "./lib/useWorkspaceCwd";
+} from "./tabsTypes";

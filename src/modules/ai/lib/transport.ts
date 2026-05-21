@@ -1,4 +1,4 @@
-import type { UIMessage } from "@ai-sdk/react";
+import type { UIMessage } from "ai";
 import { type ModelId } from "../config";
 import { runAgentStream, type AgentUsageDelta } from "./agent";
 import type { ProviderKeys } from "./keyring";

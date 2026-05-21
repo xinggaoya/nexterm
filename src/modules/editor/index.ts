@@ -1,5 +1,3 @@
-export type { EditorPaneHandle } from "./EditorPane";
-export { EditorStack } from "./EditorStackLazy";
-export { AiDiffStack } from "./AiDiffStackLazy";
-export { GitDiffStack } from "./GitDiffStackLazy";
-export { NewEditorDialog } from "./NewEditorDialog";
+export type { EditorPaneHandle } from "./editorTypes";
+export { default as AiDiffStack } from "./AiDiffStack.vue";
+export { default as GitDiffStack } from "./GitDiffStack.vue";

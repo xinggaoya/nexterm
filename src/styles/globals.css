@@ -4,8 +4,6 @@
 @import "./fonts.css";
 @import "./code-highlight.css";
 
-@source "../../node_modules/streamdown/dist/index.js";
-
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -129,7 +127,7 @@
     margin: 0;
     overflow: hidden;
     }
-  html, body, #root {
+  html, body, #root, #settings-root {
     height: 100%;
     }
   html {

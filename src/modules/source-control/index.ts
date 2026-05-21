@@ -1,6 +1,8 @@
-export { SourceControlPanel } from "./SourceControlPanelLazy";
+export { default as SourceControlPanel } from "./SourceControlPanel.vue";
 export {
-  getSourceControlRemoteIndicator,
-  useSourceControl,
-  type SourceControlSummary,
-} from "./useSourceControl";
+  buildSourceControlEntries,
+  getPrimaryDiffMode,
+  type CheckState,
+  type DiffMode,
+  type SourceControlFileEntry,
+} from "./sourceControlModel";
