@@ -1,4 +1,4 @@
-import type { GitChangedFile } from "@/modules/ai/lib/native";
+import type { GitChangedFile } from "@/lib/native";
 
 export type DiffMode = "+" | "-";
 export type CheckState = "checked" | "indeterminate" | "unchecked";

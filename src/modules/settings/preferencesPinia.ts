@@ -3,22 +3,8 @@ import {
   DEFAULT_PREFERENCES,
   loadPreferences,
   onPreferencesChange,
-  setAutocompleteEnabled,
-  setAutocompleteModelId,
-  setAutocompleteProvider,
   setAutostart,
-  setCustomInstructions,
-  setDefaultModel,
   setEditorTheme,
-  setLmstudioBaseURL,
-  setLmstudioModelId,
-  setMlxBaseURL,
-  setMlxModelId,
-  setOllamaBaseURL,
-  setOllamaModelId,
-  setOpenaiCompatibleBaseURL,
-  setOpenaiCompatibleContextLimit,
-  setOpenaiCompatibleModelId,
   setRestoreWindowState,
   setShowHidden,
   setTerminalFontFamily,
@@ -32,10 +18,6 @@ import {
   type Preferences,
   type ThemePref,
 } from "./store";
-import type {
-  AutocompleteProviderId,
-  ModelId,
-} from "@/modules/ai/config";
 import {
   patchPreferencesSnapshot,
   replacePreferencesSnapshot,
@@ -80,20 +62,10 @@ export const usePreferencesPiniaStore = defineStore("preferences", {
       patchPreferencesSnapshot("theme", value);
       await setTheme(value);
     },
-    async updateDefaultModel(value: ModelId) {
-      this.defaultModelId = value;
-      patchPreferencesSnapshot("defaultModelId", value);
-      await setDefaultModel(value);
-    },
     async updateEditorTheme(value: EditorThemeId) {
       this.editorTheme = value;
       patchPreferencesSnapshot("editorTheme", value);
       await setEditorTheme(value);
-    },
-    async updateCustomInstructions(value: string) {
-      this.customInstructions = value;
-      patchPreferencesSnapshot("customInstructions", value);
-      await setCustomInstructions(value);
     },
     async updateAutostart(value: boolean) {
       this.autostart = value;
@@ -104,66 +76,6 @@ export const usePreferencesPiniaStore = defineStore("preferences", {
       this.restoreWindowState = value;
       patchPreferencesSnapshot("restoreWindowState", value);
       await setRestoreWindowState(value);
-    },
-    async updateAutocompleteEnabled(value: boolean) {
-      this.autocompleteEnabled = value;
-      patchPreferencesSnapshot("autocompleteEnabled", value);
-      await setAutocompleteEnabled(value);
-    },
-    async updateAutocompleteProvider(value: AutocompleteProviderId) {
-      this.autocompleteProvider = value;
-      patchPreferencesSnapshot("autocompleteProvider", value);
-      await setAutocompleteProvider(value);
-    },
-    async updateAutocompleteModelId(value: string) {
-      this.autocompleteModelId = value;
-      patchPreferencesSnapshot("autocompleteModelId", value);
-      await setAutocompleteModelId(value);
-    },
-    async updateLmstudioBaseURL(value: string) {
-      this.lmstudioBaseURL = value;
-      patchPreferencesSnapshot("lmstudioBaseURL", value);
-      await setLmstudioBaseURL(value);
-    },
-    async updateLmstudioModelId(value: string) {
-      this.lmstudioModelId = value;
-      patchPreferencesSnapshot("lmstudioModelId", value);
-      await setLmstudioModelId(value);
-    },
-    async updateMlxBaseURL(value: string) {
-      this.mlxBaseURL = value;
-      patchPreferencesSnapshot("mlxBaseURL", value);
-      await setMlxBaseURL(value);
-    },
-    async updateMlxModelId(value: string) {
-      this.mlxModelId = value;
-      patchPreferencesSnapshot("mlxModelId", value);
-      await setMlxModelId(value);
-    },
-    async updateOllamaBaseURL(value: string) {
-      this.ollamaBaseURL = value;
-      patchPreferencesSnapshot("ollamaBaseURL", value);
-      await setOllamaBaseURL(value);
-    },
-    async updateOllamaModelId(value: string) {
-      this.ollamaModelId = value;
-      patchPreferencesSnapshot("ollamaModelId", value);
-      await setOllamaModelId(value);
-    },
-    async updateOpenaiCompatibleBaseURL(value: string) {
-      this.openaiCompatibleBaseURL = value;
-      patchPreferencesSnapshot("openaiCompatibleBaseURL", value);
-      await setOpenaiCompatibleBaseURL(value);
-    },
-    async updateOpenaiCompatibleModelId(value: string) {
-      this.openaiCompatibleModelId = value;
-      patchPreferencesSnapshot("openaiCompatibleModelId", value);
-      await setOpenaiCompatibleModelId(value);
-    },
-    async updateOpenaiCompatibleContextLimit(value: number) {
-      this.openaiCompatibleContextLimit = value;
-      patchPreferencesSnapshot("openaiCompatibleContextLimit", value);
-      await setOpenaiCompatibleContextLimit(value);
     },
     async updateVimMode(value: boolean) {
       this.vimMode = value;

@@ -94,15 +94,6 @@ vi.mock("@/modules/editor/GitDiffStack.vue", () => ({
   },
 }));
 
-vi.mock("@/modules/editor/AiDiffStack.vue", () => ({
-  default: {
-    props: ["tabs", "activeId"],
-    emits: ["accept", "reject"],
-    template:
-      '<section data-ai-diff-stack>{{ activeId }}:{{ tabs.length }}<button data-ai-accept @click="$emit(\'accept\', \'approval-1\')">accept</button><button data-ai-reject @click="$emit(\'reject\', \'approval-1\')">reject</button></section>',
-  },
-}));
-
 vi.mock("@/modules/git-history/GitHistoryStack.vue", () => ({
   default: {
     props: ["tabs", "activeId"],
@@ -338,7 +329,7 @@ describe("MainApp.vue", () => {
     );
   });
 
-  it("renders migrated diff tabs", async () => {
+  it("renders migrated git diff tabs", async () => {
     const pinia = createPinia();
     const wrapper = mount(MainApp, {
       global: { plugins: [pinia] },
@@ -358,28 +349,6 @@ describe("MainApp.vue", () => {
     await nextTick();
 
     expect(wrapper.find("[data-git-diff-stack]").text()).toContain("3:2");
-
-    tabs.tabs.push({
-      id: 4,
-      kind: "ai-diff",
-      title: "AI diff",
-      path: "src/agent.ts",
-      originalContent: "old",
-      proposedContent: "new",
-      approvalId: "approval-1",
-      status: "pending",
-      isNewFile: false,
-    });
-    tabs.setActiveId(4);
-    await nextTick();
-
-    expect(wrapper.find("[data-ai-diff-stack]").text()).toContain("4:3");
-    await wrapper.find("[data-ai-accept]").trigger("click");
-
-    expect(tabs.tabs.find((tab) => tab.id === 4)).toMatchObject({
-      kind: "ai-diff",
-      status: "approved",
-    });
   });
 
   it("renders migrated git history tabs and opens commit file diffs", async () => {

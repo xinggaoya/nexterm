@@ -16,8 +16,6 @@ const legacyShellPaths = [
   "modules/sidebar/SidebarRail.tsx",
   "modules/sidebar/index.ts",
   "modules/sidebar/types.ts",
-  "modules/shortcuts/ShortcutsDialog.tsx",
-  "modules/shortcuts/lib/useGlobalShortcuts.ts",
   "modules/statusbar/AiTools.tsx",
   "modules/statusbar/CwdBreadcrumb.tsx",
   "modules/statusbar/StatusBar.tsx",

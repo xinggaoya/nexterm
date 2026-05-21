@@ -5,16 +5,10 @@ import {
   normalizeSettingsRoute,
 } from "./routing";
 import AboutSection from "./sections/AboutSection.vue";
-import AgentsSection from "./sections/AgentsSection.vue";
 import GeneralSection from "./sections/GeneralSection.vue";
-import ModelsSection from "./sections/ModelsSection.vue";
-import ShortcutsSection from "./sections/ShortcutsSection.vue";
 
 const componentByTab = {
   general: GeneralSection,
-  shortcuts: ShortcutsSection,
-  models: ModelsSection,
-  agents: AgentsSection,
   about: AboutSection,
 } as const;
 

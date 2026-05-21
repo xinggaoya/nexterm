@@ -65,7 +65,7 @@
       }
     },
     "category": "DeveloperTool",
-    "shortDescription": "AI-native terminal development environment",
-    "longDescription": "Nexterm is a private AI-native terminal development environment with multi-tab terminals, file explorer, code editor, web preview, voice input, and AI agents."
+    "shortDescription": "Terminal development environment",
+    "longDescription": "Nexterm is a private terminal development environment with multi-tab terminals, file explorer, code editor, web preview, and Git tools."
   }
 }

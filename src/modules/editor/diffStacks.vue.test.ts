@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
-import AiDiffStack from "./AiDiffStack.vue";
 import GitDiffStack from "./GitDiffStack.vue";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 
@@ -10,21 +9,6 @@ vi.mock("./GitDiffPane.vue", () => ({
     props: ["source", "chipLabel", "active"],
     template:
       '<section data-git-diff-pane>{{ source.kind }}:{{ source.path }}:{{ chipLabel ?? "" }}:{{ active }}</section>',
-  },
-}));
-
-vi.mock("./AiDiffPane.vue", () => ({
-  default: {
-    props: [
-      "path",
-      "originalContent",
-      "proposedContent",
-      "status",
-      "isNewFile",
-    ],
-    emits: ["accept", "reject"],
-    template:
-      '<section data-ai-diff-pane>{{ path }}:{{ status }}<button data-accept @click="$emit(\'accept\')">accept</button><button data-reject @click="$emit(\'reject\')">reject</button></section>',
   },
 }));
 
@@ -56,17 +40,6 @@ const tabs: Tab[] = [
     path: "src/main.ts",
     originalPath: null,
   },
-  {
-    id: 5,
-    kind: "ai-diff",
-    title: "AI diff",
-    path: "src/agent.ts",
-    originalContent: "old",
-    proposedContent: "new",
-    approvalId: "approval-1",
-    status: "pending",
-    isNewFile: false,
-  },
 ];
 
 describe("diff Vue stacks", () => {
@@ -78,21 +51,5 @@ describe("diff Vue stacks", () => {
     expect(wrapper.find("[data-git-diff-pane]").text()).toContain(
       "commit:src/main.ts:abc123:true",
     );
-  });
-
-  it("renders active AI diff tabs and forwards approval ids", async () => {
-    const wrapper = mount(AiDiffStack, {
-      props: { tabs, activeId: 5 },
-    });
-
-    expect(wrapper.find("[data-ai-diff-pane]").text()).toContain(
-      "src/agent.ts:pending",
-    );
-
-    await wrapper.find("[data-accept]").trigger("click");
-    await wrapper.find("[data-reject]").trigger("click");
-
-    expect(wrapper.emitted("accept")).toEqual([["approval-1"]]);
-    expect(wrapper.emitted("reject")).toEqual([["approval-1"]]);
   });
 });

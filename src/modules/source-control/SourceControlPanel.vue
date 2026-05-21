@@ -15,7 +15,7 @@ import {
   type GitCommitResult,
   type GitRepoInfo,
   type GitStatusSnapshot,
-} from "@/modules/ai/lib/native";
+} from "@/lib/native";
 import {
   buildSourceControlEntries,
   getPrimaryDiffMode,

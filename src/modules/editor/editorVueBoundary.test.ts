@@ -29,9 +29,6 @@ describe("standard editor Vue boundary", () => {
       "GitDiffPane.tsx",
       "GitDiffStack.tsx",
       "GitDiffStackLazy.tsx",
-      "AiDiffPane.tsx",
-      "AiDiffStack.tsx",
-      "AiDiffStackLazy.tsx",
     ];
 
     expect(

@@ -8,15 +8,13 @@ import {
 describe("settings routing", () => {
   it("maps known legacy tab query values to hash routes", () => {
     expect(settingsRouteFromLegacyTab("general")).toBe("/general");
-    expect(settingsRouteFromLegacyTab("shortcuts")).toBe("/shortcuts");
-    expect(settingsRouteFromLegacyTab("models")).toBe("/models");
-    expect(settingsRouteFromLegacyTab("agents")).toBe("/agents");
     expect(settingsRouteFromLegacyTab("about")).toBe("/about");
   });
 
-  it("keeps backward compatibility for legacy ai and connections tabs", () => {
-    expect(settingsRouteFromLegacyTab("ai")).toBe("/models");
-    expect(settingsRouteFromLegacyTab("connections")).toBe("/models");
+  it("falls back for removed AI and shortcut settings tabs", () => {
+    for (const tab of ["ai", "connections", "models", "agents", "shortcuts"]) {
+      expect(settingsRouteFromLegacyTab(tab)).toBe(SETTINGS_DEFAULT_ROUTE);
+    }
   });
 
   it("falls back to the default route for unknown or empty tab values", () => {
@@ -27,8 +25,10 @@ describe("settings routing", () => {
 
   it("normalizes router paths without allowing unknown settings pages", () => {
     expect(normalizeSettingsRoute("/")).toBe(SETTINGS_DEFAULT_ROUTE);
-    expect(normalizeSettingsRoute("/models")).toBe("/models");
-    expect(normalizeSettingsRoute("models")).toBe("/models");
+    expect(normalizeSettingsRoute("/models")).toBe(SETTINGS_DEFAULT_ROUTE);
+    expect(normalizeSettingsRoute("models")).toBe(SETTINGS_DEFAULT_ROUTE);
+    expect(normalizeSettingsRoute("/shortcuts")).toBe(SETTINGS_DEFAULT_ROUTE);
+    expect(normalizeSettingsRoute("/agents")).toBe(SETTINGS_DEFAULT_ROUTE);
     expect(normalizeSettingsRoute("/missing")).toBe(SETTINGS_DEFAULT_ROUTE);
   });
 });

@@ -10,7 +10,6 @@ const importFrom = (specifier: string) =>
 const forbiddenSourcePatterns = [
   importFrom("react"),
   importFrom(["react", "dom"].join("-")),
-  importFrom(["@ai-sdk", "react"].join("/")),
   importFrom(["@hugeicons", "react"].join("/")),
   importFrom(["motion", "react"].join("/")),
   importFrom(["react", "resizable", "panels"].join("-")),

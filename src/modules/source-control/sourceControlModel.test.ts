@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSourceControlEntries, getPrimaryDiffMode } from "./sourceControlModel";
-import type { GitChangedFile } from "@/modules/ai/lib/native";
+import type { GitChangedFile } from "@/lib/native";
 
 const files: GitChangedFile[] = [
   {

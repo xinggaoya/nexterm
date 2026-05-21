@@ -9,7 +9,6 @@ const SETTINGS_ROUTE_SET = new Set<string>(
 );
 
 export function settingsRouteFromLegacyTab(tab: string | null): string {
-  if (tab === "ai" || tab === "connections") return "/models";
   if (!tab) return SETTINGS_DEFAULT_ROUTE;
   return normalizeSettingsRoute(`/${tab}`);
 }

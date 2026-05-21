@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import {
   InformationCircleOutline,
-  KeypadOutline,
-  PeopleOutline,
   SettingsOutline,
-  SparklesOutline,
 } from "@vicons/ionicons5";
 import {
   NConfigProvider,
@@ -43,9 +40,6 @@ const tabs: {
   icon: typeof SettingsOutline;
 }[] = [
   { id: "general", label: "General", icon: SettingsOutline },
-  { id: "shortcuts", label: "Shortcuts", icon: KeypadOutline },
-  { id: "models", label: "Models", icon: SparklesOutline },
-  { id: "agents", label: "Agents", icon: PeopleOutline },
   { id: "about", label: "About", icon: InformationCircleOutline },
 ];
 

@@ -135,7 +135,6 @@ onBeforeUnmount(destroyEditor);
   <div :data-testid="props.testId" class="h-full min-h-0 w-full overflow-hidden">
     <div
       ref="host"
-      :data-ai-diff-host="props.testId === 'ai-diff-host' ? '' : undefined"
       :data-git-diff-host="props.testId === 'git-diff-host' ? '' : undefined"
       class="h-full min-h-0"
     />

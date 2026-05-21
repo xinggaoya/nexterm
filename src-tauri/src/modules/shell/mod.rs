@@ -36,7 +36,7 @@ pub struct CommandOutput {
 
 /// Runs a one-shot command via the user's login shell. Output is capped and
 /// the process is force-killed on timeout. We deliberately do NOT pipe into
-/// the user's interactive PTY — that would fight their input. AI tool calls
+/// the user's interactive PTY — that would fight their input. Tool calls
 /// are presented in chat as their own structured result.
 #[tauri::command]
 pub async fn shell_run_command(
@@ -146,7 +146,7 @@ fn run_blocking(
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Persistent agent shell state + background process state.
+// Persistent shell state + background process state.
 // ──────────────────────────────────────────────────────────────────────────
 
 pub struct ShellState {

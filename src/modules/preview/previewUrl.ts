@@ -20,7 +20,6 @@ export const PORT_PRESETS: readonly PortPreset[] = [
   { port: 8888, label: "Jupyter", hint: "jupyter notebook" },
   { port: 5000, label: "Flask", hint: "flask" },
   { port: 7860, label: "Gradio", hint: "gradio" },
-  { port: 11434, label: "Ollama", hint: "ollama api" },
 ];
 
 export function normalizePreviewUrl(raw: string): string | null {

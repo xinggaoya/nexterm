@@ -8,7 +8,6 @@ import {
   GlobeOutline,
   LockClosedOutline,
   SettingsOutline,
-  SparklesOutline,
   TerminalOutline,
   TimeOutline,
 } from "@vicons/ionicons5";
@@ -54,7 +53,6 @@ function tabKindLabel(tab: Tab): string {
   if (tab.kind === "terminal") return tab.private ? "Private terminal" : "Terminal";
   if (tab.kind === "git-history") return "Git history";
   if (tab.kind === "git-diff" || tab.kind === "git-commit-file") return "Git diff";
-  if (tab.kind === "ai-diff") return "AI diff";
   if (tab.kind === "markdown") return "Markdown";
   if (tab.kind === "preview") return "Preview";
   return "Editor";
@@ -88,9 +86,6 @@ function tabIcon(tab: Tab): TabIcon {
   }
   if (tab.kind === "git-history") {
     return { type: "component", name: "git-history", component: TimeOutline };
-  }
-  if (tab.kind === "ai-diff") {
-    return { type: "component", name: "ai-diff", component: SparklesOutline };
   }
   return { type: "component", name: "git-diff", component: GitCompareOutline };
 }

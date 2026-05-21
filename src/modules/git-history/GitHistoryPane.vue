@@ -7,7 +7,7 @@ import {
   native,
   type GitCommitFileChange,
   type GitLogEntry,
-} from "@/modules/ai/lib/native";
+} from "@/lib/native";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
 import GraphRail from "./GraphRail.vue";
 import { layoutGraph, type GraphRow } from "./lib/graph";

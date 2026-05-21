@@ -26,7 +26,6 @@ import {
 } from "@/modules/workspace";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
 import SourceControlPanel from "@/modules/source-control/SourceControlPanel.vue";
-import AiDiffStack from "@/modules/editor/AiDiffStack.vue";
 import EditorPane from "@/modules/editor/EditorPane.vue";
 import GitDiffStack from "@/modules/editor/GitDiffStack.vue";
 import GitHistoryStack from "@/modules/git-history/GitHistoryStack.vue";
@@ -95,7 +94,6 @@ const isTerminalTab = computed(() => activeTab.value?.kind === "terminal");
 const isEditorTab = computed(() => activeTab.value?.kind === "editor");
 const isPreviewTab = computed(() => activeTab.value?.kind === "preview");
 const isMarkdownTab = computed(() => activeTab.value?.kind === "markdown");
-const isAiDiffTab = computed(() => activeTab.value?.kind === "ai-diff");
 const isGitDiffTab = computed(
   () =>
     activeTab.value?.kind === "git-diff" ||
@@ -189,14 +187,6 @@ function openSourceDiff(input: {
 
 function openSourceHistory(input: { repoRoot: string; branch?: string | null }) {
   tabs.openCommitHistoryTab(input);
-}
-
-function setAiDiffStatus(approvalId: string, status: "approved" | "rejected") {
-  const tab = tabs.tabs.find(
-    (item) => item.kind === "ai-diff" && item.approvalId === approvalId,
-  );
-  if (!tab) return;
-  tabs.updateTab(tab.id, { status });
 }
 
 onMounted(() => {
@@ -336,21 +326,6 @@ watch(resolvedTheme, syncDocumentTheme, { immediate: true });
                   <GitDiffStack
                     :tabs="tabs.tabs"
                     :active-id="tabs.activeId"
-                  />
-                </div>
-
-                <div
-                  :class="[
-                    'absolute inset-0 px-3 pt-2 pb-2',
-                    isAiDiffTab ? '' : 'pointer-events-none invisible',
-                  ]"
-                  :aria-hidden="!isAiDiffTab"
-                >
-                  <AiDiffStack
-                    :tabs="tabs.tabs"
-                    :active-id="tabs.activeId"
-                    @accept="(approvalId) => setAiDiffStatus(approvalId, 'approved')"
-                    @reject="(approvalId) => setAiDiffStatus(approvalId, 'rejected')"
                   />
                 </div>
 

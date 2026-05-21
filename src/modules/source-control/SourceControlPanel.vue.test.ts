@@ -3,9 +3,9 @@ import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SourceControlPanel from "./SourceControlPanel.vue";
-import { native } from "@/modules/ai/lib/native";
+import { native } from "@/lib/native";
 
-vi.mock("@/modules/ai/lib/native", () => ({
+vi.mock("@/lib/native", () => ({
   native: {
     workspaceAuthorize: vi.fn(),
     gitPanelSnapshot: vi.fn(),

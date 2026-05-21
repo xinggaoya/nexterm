@@ -35,20 +35,6 @@ export type MarkdownTab = {
   path: string;
 };
 
-export type AiDiffStatus = "pending" | "approved" | "rejected";
-
-export type AiDiffTab = {
-  id: number;
-  kind: "ai-diff";
-  title: string;
-  path: string;
-  originalContent: string;
-  proposedContent: string;
-  approvalId: string;
-  status: AiDiffStatus;
-  isNewFile: boolean;
-};
-
 export type GitDiffTab = {
   id: number;
   kind: "git-diff";
@@ -83,7 +69,6 @@ export type Tab =
   | EditorTab
   | PreviewTab
   | MarkdownTab
-  | AiDiffTab
   | GitDiffTab
   | GitHistoryTab
   | GitCommitFileDiffTab;

@@ -8,7 +8,7 @@ describe("editor diff runtime boundary", () => {
       "utf8",
     );
     const native = readFileSync(
-      new URL("../ai/lib/native.ts", import.meta.url),
+      new URL("../../lib/native.ts", import.meta.url),
       "utf8",
     );
 

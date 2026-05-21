@@ -1,6 +1,6 @@
 # Nexterm
 
-Nexterm 是一个基于 Tauri 2、Rust、React 19 和 TypeScript 的 AI-native 终端开发环境二开项目。
+Nexterm 是一个基于 Tauri 2、Rust、Vue 3 和 TypeScript 的终端开发环境二开项目。
 
 ## 开发
 

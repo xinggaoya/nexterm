@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 const root = new URL("../../", import.meta.url);
 
 const forbiddenPackages = [
-  ["@ai-sdk", "react"].join("/"),
   ["@hugeicons", "react"].join("/"),
   ["@radix-ui", "react-use-controllable-state"].join("/"),
   ["@tanstack", "react-virtual"].join("/"),

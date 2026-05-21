@@ -63,14 +63,14 @@ const tabs: Tab[] = [
   },
   {
     id: 10,
-    kind: "ai-diff",
-    title: "AI diff",
-    path: "/repo/src/main.ts",
-    originalContent: "old",
-    proposedContent: "new",
-    approvalId: "approval-1",
-    status: "pending",
-    isNewFile: false,
+    kind: "git-commit-file",
+    title: "main.ts @ abc123",
+    repoRoot: "/repo",
+    sha: "abcdef",
+    shortSha: "abc123",
+    subject: "change",
+    path: "src/main.ts",
+    originalPath: null,
   },
 ];
 
@@ -123,7 +123,6 @@ describe("AppHeader.vue", () => {
     expect(wrapper.find("[data-tab-icon='preview']").exists()).toBe(true);
     expect(wrapper.find("[data-tab-icon='git-diff']").exists()).toBe(true);
     expect(wrapper.find("[data-tab-icon='git-history']").exists()).toBe(true);
-    expect(wrapper.find("[data-tab-icon='ai-diff']").exists()).toBe(true);
     expect(wrapper.find("[data-tab-dirty='5']").exists()).toBe(true);
   });
 

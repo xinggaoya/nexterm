@@ -12,7 +12,6 @@ import {
 import { disposeTerminalSession } from "./terminalDisposal";
 import {
   MAX_PANES_PER_TAB,
-  type AiDiffStatus,
   type EditorTab,
   type GitDiffTab,
   type GitCommitFileDiffTab,
@@ -27,7 +26,6 @@ export type TabPatch = Partial<{
   path: string;
   dirty: boolean;
   url: string;
-  status: AiDiffStatus;
 }>;
 
 type State = {
@@ -394,13 +392,6 @@ export const useTabsPiniaStore = defineStore("tabs", {
           return {
             ...tab,
             ...(patch.title !== undefined ? { title: patch.title } : {}),
-          };
-        }
-        if (tab.kind === "ai-diff") {
-          return {
-            ...tab,
-            ...(patch.title !== undefined ? { title: patch.title } : {}),
-            ...(patch.status !== undefined ? { status: patch.status } : {}),
           };
         }
         if (tab.kind === "editor") {
