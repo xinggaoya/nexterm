@@ -12,35 +12,40 @@ vi.mock("./WorkspaceEnvSelector.vue", () => ({
 }));
 
 describe("AppStatusBar.vue", () => {
-  it("renders cwd and private terminal state", () => {
+  it("renders workspace root, terminal cwd, and private terminal state", () => {
     const wrapper = mount(AppStatusBar, {
       props: {
-        cwd: "/repo",
+        workspaceRoot: "/repo",
+        terminalCwd: "/tmp",
         privateActive: true,
       },
     });
 
     expect(wrapper.text()).toContain("/repo");
+    expect(wrapper.text()).toContain("/tmp");
     expect(wrapper.text()).toContain("Private");
     expect(wrapper.find("[data-workspace-env]").exists()).toBe(true);
+    expect(wrapper.find("[data-open-workspace]").exists()).toBe(true);
   });
 
-  it("falls back to local workspace when cwd is unavailable", () => {
+  it("falls back to no workspace when a root is unavailable", () => {
     const wrapper = mount(AppStatusBar, {
       props: {
-        cwd: null,
+        workspaceRoot: null,
+        terminalCwd: null,
         privateActive: false,
       },
     });
 
-    expect(wrapper.text()).toContain("local workspace");
+    expect(wrapper.text()).toContain("No workspace");
     expect(wrapper.text()).not.toContain("Private");
   });
 
   it("forwards workspace environment selections", async () => {
     const wrapper = mount(AppStatusBar, {
       props: {
-        cwd: null,
+        workspaceRoot: null,
+        terminalCwd: null,
         privateActive: false,
       },
     });
@@ -50,5 +55,19 @@ describe("AppStatusBar.vue", () => {
     expect(wrapper.emitted("workspaceChange")).toEqual([
       [{ kind: "wsl", distro: "Ubuntu" }],
     ]);
+  });
+
+  it("emits workspace selection requests", async () => {
+    const wrapper = mount(AppStatusBar, {
+      props: {
+        workspaceRoot: null,
+        terminalCwd: null,
+        privateActive: false,
+      },
+    });
+
+    await wrapper.find("[data-open-workspace]").trigger("click");
+
+    expect(wrapper.emitted("chooseWorkspace")).toHaveLength(1);
   });
 });

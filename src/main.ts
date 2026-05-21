@@ -13,7 +13,7 @@ import { initLaunchDir, getLaunchDir } from "./lib/launchDir";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "./lib/platform";
 import { hasTauriInternals } from "./lib/tauriRuntime";
 import { usePreferencesPiniaStore } from "./modules/settings/preferencesPinia";
-import { useTabsPiniaStore } from "./modules/tabs/tabsPinia";
+import { useWorkspaceRootPiniaStore } from "./modules/workspace";
 
 if (USE_CUSTOM_WINDOW_CONTROLS) {
   document.documentElement.dataset.chrome = "borderless";
@@ -25,9 +25,8 @@ const pinia = createPinia();
 const app = createApp(MainApp);
 app.use(pinia);
 
-const tabs = useTabsPiniaStore(pinia);
-tabs.init(getLaunchDir() ?? undefined);
-if (hasTauriInternals()) void usePreferencesPiniaStore(pinia).hydrate();
+if (hasTauriInternals()) await usePreferencesPiniaStore(pinia).hydrate();
+await useWorkspaceRootPiniaStore(pinia).bootstrap(getLaunchDir());
 
 app.mount("#root");
 

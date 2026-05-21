@@ -6,7 +6,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import MainApp from "./MainApp.vue";
 import { applyTerminalSessionTheme } from "@/modules/terminal";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
-import { currentWorkspaceEnv } from "@/modules/workspace";
+import {
+  currentWorkspaceEnv,
+  LOCAL_WORKSPACE,
+  useWorkspaceRootPiniaStore,
+} from "@/modules/workspace";
 import { setCurrentWorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
 
 const invokeMock = vi.hoisted(() =>
@@ -36,7 +40,8 @@ vi.mock("@/modules/terminal/TerminalStack.vue", () => ({
   default: {
     props: ["tabs", "activeId"],
     emits: ["focusLeaf", "cwd", "exit", "searchReady"],
-    template: '<div data-terminal-stack>{{ tabs.length }}:{{ activeId }}</div>',
+    template:
+      '<div data-terminal-stack>{{ tabs.length }}:{{ activeId }}<button data-terminal-cd @click="$emit(\'cwd\', 2, \'/tmp\')">cd</button></div>',
   },
 }));
 
@@ -105,10 +110,19 @@ vi.mock("@/modules/git-history/GitHistoryStack.vue", () => ({
 
 vi.mock("./components/AppStatusBar.vue", () => ({
   default: {
-    props: ["cwd", "privateActive"],
-    emits: ["workspaceChange"],
+    props: ["workspaceRoot", "terminalCwd", "privateActive"],
+    emits: ["workspaceChange", "chooseWorkspace"],
     template:
-      '<footer data-status-bar><span>{{ cwd ?? "local workspace" }}:{{ privateActive }}</span><button data-switch-wsl @click="$emit(\'workspaceChange\', { kind: \'wsl\', distro: \'Ubuntu\' })"></button><button data-switch-local @click="$emit(\'workspaceChange\', { kind: \'local\' })"></button></footer>',
+      '<footer data-status-bar><span>{{ workspaceRoot ?? "No workspace" }}:{{ terminalCwd ?? "no-terminal" }}:{{ privateActive }}</span><button data-choose-workspace @click="$emit(\'chooseWorkspace\')"></button><button data-switch-wsl @click="$emit(\'workspaceChange\', { kind: \'wsl\', distro: \'Ubuntu\' })"></button><button data-switch-local @click="$emit(\'workspaceChange\', { kind: \'local\' })"></button></footer>',
+  },
+}));
+
+vi.mock("./components/WorkspaceWelcome.vue", () => ({
+  default: {
+    props: ["recentWorkspaces", "loading", "error"],
+    emits: ["chooseWorkspace", "openRecent", "workspaceEnvChange"],
+    template:
+      '<section data-workspace-welcome><span>{{ error ?? "welcome" }}</span><button data-welcome-open @click="$emit(\'chooseWorkspace\')">open</button><button v-if="recentWorkspaces.length" data-open-recent @click="$emit(\'openRecent\', recentWorkspaces[0])">recent</button><button data-welcome-wsl @click="$emit(\'workspaceEnvChange\', { kind: \'wsl\', distro: \'Ubuntu\' })">wsl</button></section>',
   },
 }));
 
@@ -118,14 +132,29 @@ describe("MainApp.vue", () => {
     setCurrentWorkspaceEnv({ kind: "local" });
   });
 
-  it("keeps preinitialized launch cwd available on first render", () => {
+  it("shows the workspace welcome screen before a workspace is opened", () => {
     const pinia = createPinia();
-    const tabs = useTabsPiniaStore(pinia);
-    tabs.init("/repo");
 
     const wrapper = mount(MainApp, {
       global: { plugins: [pinia] },
     });
+    const tabs = useTabsPiniaStore();
+
+    expect(wrapper.find("[data-workspace-welcome]").exists()).toBe(true);
+    expect(wrapper.find("[data-file-explorer]").exists()).toBe(false);
+    expect(tabs.tabs).toHaveLength(0);
+  });
+
+  it("keeps preinitialized workspace root available on first render", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia] },
+    });
+    const tabs = useTabsPiniaStore();
+    await nextTick();
 
     expect(wrapper.find("[data-file-explorer]").text()).toContain("/repo");
     expect(tabs.tabs[0]).toMatchObject({
@@ -154,20 +183,33 @@ describe("MainApp.vue", () => {
     }
   });
 
-  it("renders the Vue workbench shell and handles terminal tab actions", async () => {
+  it("opens a workspace from the welcome screen and handles terminal tab actions", async () => {
     const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.openWorkspace = vi.fn(async (path: string) => {
+      workspaceRoot.rootPath = path;
+      return { path, env: LOCAL_WORKSPACE, openedAt: 1 };
+    });
+    workspaceRoot.chooseWorkspace = vi.fn(async () => {
+      workspaceRoot.rootPath = "/repo";
+      return { path: "/repo", env: LOCAL_WORKSPACE, openedAt: 1 };
+    });
     const wrapper = mount(MainApp, {
       global: { plugins: [pinia] },
     });
     const tabs = useTabsPiniaStore();
 
+    await wrapper.find("[data-welcome-open]").trigger("click");
+    await flushPromises();
+    await nextTick();
+
     expect(wrapper.text()).toContain("Nexterm");
-    expect(wrapper.find("[data-terminal-stack]").text()).toBe("1:1");
+    expect(wrapper.find("[data-terminal-stack]").text()).toContain("1:1");
 
     await wrapper.find("[data-new-tab]").trigger("click");
 
     expect(tabs.tabs).toHaveLength(2);
-    expect(wrapper.find("[data-terminal-stack]").text()).toBe("2:3");
+    expect(wrapper.find("[data-terminal-stack]").text()).toContain("2:3");
 
     await wrapper.find("[data-new-private-tab]").trigger("click");
 
@@ -179,8 +221,9 @@ describe("MainApp.vue", () => {
       title: "private",
       private: true,
       activeLeafId: 6,
+      cwd: "/repo",
     });
-    expect(wrapper.find("[data-status-bar]").text()).toBe("local workspace:true");
+    expect(wrapper.find("[data-status-bar]").text()).toContain("/repo:/repo:true");
 
     await wrapper.find("[data-split-row]").trigger("click");
 
@@ -203,12 +246,13 @@ describe("MainApp.vue", () => {
 
   it("switches to a WSL workspace and resets terminal tabs to the WSL home", async () => {
     const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "D:/repo";
     const wrapper = mount(MainApp, {
       global: { plugins: [pinia] },
     });
     const tabs = useTabsPiniaStore();
 
-    tabs.setLeafCwd(2, "D:/repo");
     tabs.newTab("D:/other");
     await nextTick();
 
@@ -217,6 +261,7 @@ describe("MainApp.vue", () => {
     await nextTick();
 
     expect(currentWorkspaceEnv()).toEqual({ kind: "wsl", distro: "Ubuntu" });
+    expect(workspaceRoot.rootPath).toBe("/home/dev");
     expect(tabs.tabs).toEqual([
       {
         id: 5,
@@ -238,6 +283,8 @@ describe("MainApp.vue", () => {
   it("blocks workspace switching while editor tabs are dirty", async () => {
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
     const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
       global: { plugins: [pinia] },
     });
@@ -266,12 +313,13 @@ describe("MainApp.vue", () => {
 
   it("renders the Vue file explorer and opens files into editor tabs", async () => {
     const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
       global: { plugins: [pinia] },
     });
     const tabs = useTabsPiniaStore();
 
-    tabs.setLeafCwd(2, "/repo");
     await nextTick();
 
     expect(wrapper.find("[data-file-explorer]").text()).toContain("/repo");
@@ -299,6 +347,8 @@ describe("MainApp.vue", () => {
 
   it("renders migrated preview and markdown tabs", async () => {
     const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
       global: { plugins: [pinia] },
     });
@@ -331,6 +381,8 @@ describe("MainApp.vue", () => {
 
   it("renders migrated git diff tabs", async () => {
     const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
       global: { plugins: [pinia] },
     });
@@ -353,6 +405,8 @@ describe("MainApp.vue", () => {
 
   it("renders migrated git history tabs and opens commit file diffs", async () => {
     const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
       global: { plugins: [pinia] },
     });
@@ -378,12 +432,13 @@ describe("MainApp.vue", () => {
 
   it("switches the sidebar to source control and opens git tabs", async () => {
     const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
       global: { plugins: [pinia] },
     });
     const tabs = useTabsPiniaStore();
 
-    tabs.setLeafCwd(2, "/repo");
     await nextTick();
     await wrapper.find("[data-sidebar-source]").trigger("click");
 
@@ -402,5 +457,25 @@ describe("MainApp.vue", () => {
       kind: "git-history",
       repoRoot: "/repo",
     });
+  });
+
+  it("keeps explorer and source control rooted at the workspace when terminal cwd changes", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia] },
+    });
+    const tabs = useTabsPiniaStore();
+    await nextTick();
+
+    await wrapper.find("[data-terminal-cd]").trigger("click");
+    await nextTick();
+
+    expect(tabs.tabs[0]).toMatchObject({ kind: "terminal", cwd: "/tmp" });
+    expect(wrapper.find("[data-file-explorer]").text()).toContain("/repo");
+
+    await wrapper.find("[data-sidebar-source]").trigger("click");
+    expect(wrapper.find("[data-source-control]").text()).toContain("/repo");
   });
 });

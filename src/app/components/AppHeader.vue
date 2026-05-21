@@ -24,9 +24,11 @@ const props = withDefaults(
     tabs: Tab[];
     activeId: number;
     canSplit: boolean;
+    workspaceReady?: boolean;
     showWindowControls?: boolean;
   }>(),
   {
+    workspaceReady: true,
     showWindowControls: false,
   },
 );
@@ -184,6 +186,7 @@ function tabIcon(tab: Tab): TabIcon {
         data-new-tab
         size="tiny"
         quaternary
+        :disabled="!props.workspaceReady"
         title="New terminal"
         aria-label="New terminal"
         @click="emit('newTab')"
@@ -194,6 +197,7 @@ function tabIcon(tab: Tab): TabIcon {
         data-new-private-tab
         size="tiny"
         quaternary
+        :disabled="!props.workspaceReady"
         title="New private terminal"
         aria-label="New private terminal"
         @click="emit('newPrivateTab')"
@@ -204,7 +208,7 @@ function tabIcon(tab: Tab): TabIcon {
         data-split-row
         size="tiny"
         quaternary
-        :disabled="!canSplit"
+        :disabled="!props.workspaceReady || !canSplit"
         title="Split right"
         aria-label="Split right"
         @click="emit('splitPane', 'row')"
@@ -215,7 +219,7 @@ function tabIcon(tab: Tab): TabIcon {
         data-split-col
         size="tiny"
         quaternary
-        :disabled="!canSplit"
+        :disabled="!props.workspaceReady || !canSplit"
         title="Split down"
         aria-label="Split down"
         @click="emit('splitPane', 'col')"

@@ -13,17 +13,18 @@ import AppHeader from "./components/AppHeader.vue";
 import AppStatusBar from "./components/AppStatusBar.vue";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
+import type { StoredWorkspace } from "@/modules/settings/store";
 import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import { MAX_PANES_PER_TAB } from "@/modules/tabs/tabsTypes";
 import {
-  authorizeWorkspace,
   getWslHome,
-  LOCAL_WORKSPACE,
   useWorkspaceEnvPiniaStore,
+  useWorkspaceRootPiniaStore,
   type WorkspaceEnv,
 } from "@/modules/workspace";
+import WorkspaceWelcome from "./components/WorkspaceWelcome.vue";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
 import SourceControlPanel from "@/modules/source-control/SourceControlPanel.vue";
 import EditorPane from "@/modules/editor/EditorPane.vue";
@@ -39,8 +40,8 @@ import { readAppTokens, type AppTokens } from "@/styles/tokens";
 
 const prefs = usePreferencesPiniaStore();
 const tabs = useTabsPiniaStore();
-const workspace = useWorkspaceEnvPiniaStore();
-tabs.init();
+const workspaceEnv = useWorkspaceEnvPiniaStore();
+const workspaceRootStore = useWorkspaceRootPiniaStore();
 const sidebarView = ref<"explorer" | "source">("explorer");
 const colorSchemeQuery =
   typeof window.matchMedia === "function"
@@ -72,16 +73,11 @@ const resolvedTheme = computed(() => {
 });
 const naiveTheme = computed(() => getNaiveTheme(resolvedTheme.value));
 const activeTab = computed(() => tabs.tabs.find((tab) => tab.id === tabs.activeId));
+const hasWorkspace = computed(() => !!workspaceRootStore.rootPath);
 const activeCwd = computed(() =>
   activeTab.value?.kind === "terminal" ? activeTab.value.cwd ?? null : null,
 );
-const workspaceRoot = computed(() => {
-  if (activeCwd.value) return activeCwd.value;
-  const terminalTab = tabs.tabs.find(
-    (tab) => tab.kind === "terminal" && tab.cwd,
-  );
-  return terminalTab?.kind === "terminal" ? terminalTab.cwd ?? null : null;
-});
+const workspaceRoot = computed(() => workspaceRootStore.rootPath);
 const privateActive = computed(
   () => activeTab.value?.kind === "terminal" && activeTab.value.private === true,
 );
@@ -121,11 +117,13 @@ function syncDocumentTheme() {
 }
 
 function newTerminalTab() {
-  tabs.newTab(activeCwd.value ?? undefined);
+  if (!workspaceRoot.value) return;
+  tabs.newTab(workspaceRoot.value);
 }
 
 function newPrivateTerminalTab() {
-  tabs.newPrivateTab(activeCwd.value ?? undefined);
+  if (!workspaceRoot.value) return;
+  tabs.newPrivateTab(workspaceRoot.value);
 }
 
 function sameWorkspaceEnv(a: WorkspaceEnv, b: WorkspaceEnv): boolean {
@@ -134,12 +132,8 @@ function sameWorkspaceEnv(a: WorkspaceEnv, b: WorkspaceEnv): boolean {
 }
 
 async function switchWorkspace(env: WorkspaceEnv) {
-  if (sameWorkspaceEnv(env, workspace.env)) return;
-  const dirty = tabs.tabs.some((tab) => tab.kind === "editor" && tab.dirty);
-  if (dirty) {
-    window.alert("Save or close unsaved editor tabs before switching workspace.");
-    return;
-  }
+  if (sameWorkspaceEnv(env, workspaceEnv.env) && workspaceRoot.value) return;
+  if (hasDirtyEditors()) return;
 
   let nextHome: string;
   try {
@@ -152,13 +146,51 @@ async function switchWorkspace(env: WorkspaceEnv) {
     return;
   }
 
-  workspace.setEnv(env.kind === "local" ? LOCAL_WORKSPACE : env);
-  try {
-    await authorizeWorkspace(nextHome);
-  } catch {
-    // The active panel will surface authorization failures if needed.
+  await openWorkspacePath(nextHome, env);
+}
+
+function hasDirtyEditors(): boolean {
+  const dirty = tabs.tabs.some((tab) => tab.kind === "editor" && tab.dirty);
+  if (dirty) {
+    window.alert("Save or close unsaved editor tabs before switching workspace.");
+    return true;
   }
-  tabs.resetWorkspace(nextHome);
+  return false;
+}
+
+function syncTabsForWorkspace(path: string, resetExisting: boolean) {
+  if (!tabs.initialized || tabs.tabs.length === 0) {
+    tabs.init(path);
+    return;
+  }
+  if (!resetExisting) return;
+  tabs.resetWorkspace(path);
+}
+
+async function openWorkspacePath(path: string, env: WorkspaceEnv = workspaceEnv.env) {
+  const hadWorkspace = !!workspaceRoot.value;
+  if (hadWorkspace && hasDirtyEditors()) return;
+  try {
+    const record = await workspaceRootStore.openWorkspace(path, env);
+    syncTabsForWorkspace(record.path, hadWorkspace);
+  } catch (error) {
+    window.alert(String(error));
+  }
+}
+
+async function chooseWorkspace() {
+  const hadWorkspace = !!workspaceRoot.value;
+  if (hadWorkspace && hasDirtyEditors()) return;
+  try {
+    const record = await workspaceRootStore.chooseWorkspace();
+    if (record) syncTabsForWorkspace(record.path, hadWorkspace);
+  } catch (error) {
+    window.alert(String(error));
+  }
+}
+
+async function openRecentWorkspace(record: StoredWorkspace) {
+  await openWorkspacePath(record.path, record.env);
 }
 
 function splitActivePane(dir: SplitDir) {
@@ -199,6 +231,14 @@ onUnmounted(() => {
 });
 
 watch(resolvedTheme, syncDocumentTheme, { immediate: true });
+watch(
+  () => workspaceRootStore.rootPath,
+  (rootPath) => {
+    if (!rootPath) return;
+    if (!tabs.initialized || tabs.tabs.length === 0) tabs.init(rootPath);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -211,6 +251,7 @@ watch(resolvedTheme, syncDocumentTheme, { immediate: true });
               :tabs="tabs.tabs"
               :active-id="tabs.activeId"
               :can-split="canSplitActiveTab"
+              :workspace-ready="hasWorkspace"
               :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
               @select-tab="(id) => tabs.setActiveId(id)"
               @close-tab="(id) => tabs.closeTab(id)"
@@ -220,7 +261,7 @@ watch(resolvedTheme, syncDocumentTheme, { immediate: true });
               @open-settings="() => void openSettingsWindow()"
             />
 
-            <main class="flex min-h-0 flex-1">
+            <main v-if="hasWorkspace" class="flex min-h-0 flex-1">
               <aside class="hidden w-72 shrink-0 border-r border-border/60 bg-card md:block">
                 <div class="flex h-full min-h-0">
                   <nav
@@ -357,9 +398,22 @@ watch(resolvedTheme, syncDocumentTheme, { immediate: true });
               </section>
             </main>
 
+            <main v-else class="min-h-0 flex-1 bg-background">
+              <WorkspaceWelcome
+                :recent-workspaces="workspaceRootStore.recentWorkspaces"
+                :loading="workspaceRootStore.loading"
+                :error="workspaceRootStore.error"
+                @choose-workspace="chooseWorkspace"
+                @open-recent="openRecentWorkspace"
+                @workspace-env-change="switchWorkspace"
+              />
+            </main>
+
             <AppStatusBar
-              :cwd="activeCwd"
+              :workspace-root="workspaceRoot"
+              :terminal-cwd="activeCwd"
               :private-active="privateActive"
+              @choose-workspace="chooseWorkspace"
               @workspace-change="switchWorkspace"
             />
           </div>

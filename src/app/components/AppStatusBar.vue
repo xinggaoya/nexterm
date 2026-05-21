@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import { LockClosedOutline, TerminalOutline } from "@vicons/ionicons5";
-import { NIcon } from "naive-ui";
+import {
+  FolderOpenOutline,
+  LockClosedOutline,
+  TerminalOutline,
+} from "@vicons/ionicons5";
+import { NButton, NIcon } from "naive-ui";
 import WorkspaceEnvSelector from "./WorkspaceEnvSelector.vue";
 import type { WorkspaceEnv } from "@/modules/workspace";
 
 const props = defineProps<{
-  cwd: string | null;
+  workspaceRoot: string | null;
+  terminalCwd: string | null;
   privateActive: boolean;
 }>();
 
 const emit = defineEmits<{
   workspaceChange: [env: WorkspaceEnv];
+  chooseWorkspace: [];
 }>();
 </script>
 
@@ -20,8 +26,27 @@ const emit = defineEmits<{
   >
     <div class="flex min-w-0 items-center gap-1.5">
       <WorkspaceEnvSelector @select="(env) => emit('workspaceChange', env)" />
+      <NButton
+        size="tiny"
+        quaternary
+        title="Open folder"
+        aria-label="Open folder"
+        data-open-workspace
+        @click="emit('chooseWorkspace')"
+      >
+        <template #icon><NIcon :component="FolderOpenOutline" /></template>
+      </NButton>
       <NIcon :component="TerminalOutline" :size="12" class="shrink-0" />
-      <span class="truncate">{{ props.cwd ?? "local workspace" }}</span>
+      <span class="truncate" :title="props.workspaceRoot ?? undefined">
+        {{ props.workspaceRoot ?? "No workspace" }}
+      </span>
+      <span
+        v-if="props.terminalCwd && props.workspaceRoot && props.terminalCwd !== props.workspaceRoot"
+        class="hidden min-w-0 truncate text-muted-foreground/70 lg:inline"
+        :title="props.terminalCwd"
+      >
+        {{ props.terminalCwd }}
+      </span>
     </div>
     <div class="flex shrink-0 items-center gap-2">
       <span

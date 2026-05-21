@@ -1,5 +1,6 @@
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { LazyStore } from "@tauri-apps/plugin-store";
+import type { WorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
 
 export type ThemePref = "system" | "light" | "dark";
 
@@ -16,6 +17,12 @@ export const EDITOR_THEMES = [
 ] as const;
 
 export type EditorThemeId = (typeof EDITOR_THEMES)[number];
+
+export type StoredWorkspace = {
+  path: string;
+  env: WorkspaceEnv;
+  openedAt: number;
+};
 
 export const EDITOR_THEME_LABELS: Record<EditorThemeId, string> = {
   atomone: "Atom One",
@@ -42,6 +49,8 @@ export type Preferences = {
   terminalFontSize: number;
   terminalScrollback: number;
   lastWslDistro: string | null;
+  lastWorkspace: StoredWorkspace | null;
+  recentWorkspaces: StoredWorkspace[];
   zoomLevel: number;
 };
 
@@ -59,6 +68,8 @@ const KEY_TERMINAL_LETTER_SPACING = "terminalLetterSpacing";
 const KEY_TERMINAL_FONT_SIZE = "terminalFontSize";
 const KEY_TERMINAL_SCROLLBACK = "terminalScrollback";
 const KEY_LAST_WSL_DISTRO = "lastWslDistro";
+const KEY_LAST_WORKSPACE = "lastWorkspace";
+const KEY_RECENT_WORKSPACES = "recentWorkspaces";
 const KEY_ZOOM_LEVEL = "zoomLevel";
 
 export const TERMINAL_FONT_SIZE_DEFAULT = 14;
@@ -89,6 +100,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   terminalFontSize: TERMINAL_FONT_SIZE_DEFAULT,
   terminalScrollback: TERMINAL_SCROLLBACK_DEFAULT,
   lastWslDistro: null,
+  lastWorkspace: null,
+  recentWorkspaces: [],
   zoomLevel: 1.0,
 };
 
@@ -138,6 +151,12 @@ export async function loadPreferences(): Promise<Preferences> {
     lastWslDistro:
       get<string | null>(KEY_LAST_WSL_DISTRO) ??
       DEFAULT_PREFERENCES.lastWslDistro,
+    lastWorkspace:
+      get<StoredWorkspace | null>(KEY_LAST_WORKSPACE) ??
+      DEFAULT_PREFERENCES.lastWorkspace,
+    recentWorkspaces:
+      get<StoredWorkspace[]>(KEY_RECENT_WORKSPACES) ??
+      DEFAULT_PREFERENCES.recentWorkspaces,
     zoomLevel: get<number>(KEY_ZOOM_LEVEL) ?? DEFAULT_PREFERENCES.zoomLevel,
   };
 }
@@ -207,6 +226,18 @@ export async function setLastWslDistro(value: string | null): Promise<void> {
   await writePref(KEY_LAST_WSL_DISTRO, value);
 }
 
+export async function setLastWorkspace(
+  value: StoredWorkspace | null,
+): Promise<void> {
+  await writePref(KEY_LAST_WORKSPACE, value);
+}
+
+export async function setRecentWorkspaces(
+  value: StoredWorkspace[],
+): Promise<void> {
+  await writePref(KEY_RECENT_WORKSPACES, value);
+}
+
 export async function setZoomLevel(value: number): Promise<void> {
   await writePref(KEY_ZOOM_LEVEL, value);
 }
@@ -229,6 +260,8 @@ export async function onPreferencesChange(
     [KEY_TERMINAL_FONT_SIZE]: "terminalFontSize",
     [KEY_TERMINAL_SCROLLBACK]: "terminalScrollback",
     [KEY_LAST_WSL_DISTRO]: "lastWslDistro",
+    [KEY_LAST_WORKSPACE]: "lastWorkspace",
+    [KEY_RECENT_WORKSPACES]: "recentWorkspaces",
     [KEY_ZOOM_LEVEL]: "zoomLevel",
   };
   const unsubLocal = await store.onChange<unknown>((key, value) => {

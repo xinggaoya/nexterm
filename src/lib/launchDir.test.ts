@@ -26,7 +26,7 @@ describe("launchDir", () => {
     expect(invoke).toHaveBeenCalledWith("get_launch_dir");
   });
 
-  it("falls back to the current workspace directory without explicit launch args", async () => {
+  it("does not fall back to the process current directory without explicit launch args", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd) => {
       if (cmd === "get_launch_dir") return null;
       if (cmd === "workspace_current_dir") return "D:\\fallback";
@@ -36,9 +36,9 @@ describe("launchDir", () => {
 
     await initLaunchDir();
 
-    expect(getLaunchDir()).toBe("D:/fallback");
+    expect(getLaunchDir()).toBeUndefined();
     expect(invoke).toHaveBeenCalledWith("get_launch_dir");
-    expect(invoke).toHaveBeenCalledWith("workspace_current_dir");
+    expect(invoke).not.toHaveBeenCalledWith("workspace_current_dir");
   });
 
   it("keeps launch dir undefined when Tauri directory commands fail", async () => {
