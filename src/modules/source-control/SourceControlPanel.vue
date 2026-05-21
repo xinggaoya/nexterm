@@ -261,7 +261,7 @@ watch(
 </script>
 
 <template>
-  <aside class="flex h-full min-h-0 flex-col bg-card/55 text-foreground">
+  <aside class="flex h-full w-64 min-h-0 flex-col bg-card text-foreground">
     <div class="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2">
       <div class="flex min-w-0 flex-1 items-center gap-1.5">
         <NIcon :component="GitBranchOutline" :size="14" class="shrink-0 text-muted-foreground" />

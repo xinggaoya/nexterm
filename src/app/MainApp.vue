@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import { FolderOutline, GitBranchOutline } from "@vicons/ionicons5";
 import {
   NConfigProvider,
   NDialogProvider,
-  NIcon,
   NMessageProvider,
   NNotificationProvider,
 } from "naive-ui";
@@ -40,9 +38,11 @@ import { readAppTokens, type AppTokens } from "@/styles/tokens";
 
 const prefs = usePreferencesPiniaStore();
 const tabs = useTabsPiniaStore();
+tabs.init();
 const workspaceEnv = useWorkspaceEnvPiniaStore();
 const workspaceRootStore = useWorkspaceRootPiniaStore();
-const sidebarView = ref<"explorer" | "source">("explorer");
+const leftPanelOpen = ref(false);
+const rightPanelOpen = ref(true);
 const colorSchemeQuery =
   typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: dark)")
@@ -253,65 +253,30 @@ watch(
               :can-split="canSplitActiveTab"
               :workspace-ready="hasWorkspace"
               :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
+              :left-panel-open="leftPanelOpen"
+              :right-panel-open="rightPanelOpen"
               @select-tab="(id) => tabs.setActiveId(id)"
               @close-tab="(id) => tabs.closeTab(id)"
               @new-tab="newTerminalTab"
               @new-private-tab="newPrivateTerminalTab"
               @split-pane="splitActivePane"
               @open-settings="() => void openSettingsWindow()"
+              @toggle-left-panel="leftPanelOpen = !leftPanelOpen"
+              @toggle-right-panel="rightPanelOpen = !rightPanelOpen"
             />
 
             <main v-if="hasWorkspace" class="flex min-h-0 flex-1">
-              <aside class="hidden w-72 shrink-0 border-r border-border/60 bg-card md:block">
-                <div class="flex h-full min-h-0">
-                  <nav
-                    class="flex w-10 shrink-0 flex-col items-center gap-1 border-r border-border/60 bg-card py-2"
-                    aria-label="Sidebar"
-                  >
-                    <button
-                      type="button"
-                      data-sidebar-explorer
-                      title="Explorer"
-                      aria-label="Explorer"
-                      :aria-pressed="sidebarView === 'explorer'"
-                      :class="[
-                        'grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
-                        sidebarView === 'explorer' ? 'bg-muted text-foreground' : '',
-                      ]"
-                      @click="sidebarView = 'explorer'"
-                    >
-                      <NIcon :component="FolderOutline" :size="16" />
-                    </button>
-                    <button
-                      type="button"
-                      data-sidebar-source
-                      title="Source Control"
-                      aria-label="Source Control"
-                      :aria-pressed="sidebarView === 'source'"
-                      :class="[
-                        'grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
-                        sidebarView === 'source' ? 'bg-muted text-foreground' : '',
-                      ]"
-                      @click="sidebarView = 'source'"
-                    >
-                      <NIcon :component="GitBranchOutline" :size="16" />
-                    </button>
-                  </nav>
-                  <div class="min-w-0 flex-1">
-                    <FileExplorer
-                      v-if="sidebarView === 'explorer'"
-                      :root-path="workspaceRoot"
-                      @open-file="openFileTab"
-                      @open-markdown-preview="openMarkdownPreview"
-                    />
-                    <SourceControlPanel
-                      v-else
-                      :root-path="workspaceRoot"
-                      @open-diff="openSourceDiff"
-                      @open-history="openSourceHistory"
-                    />
-                  </div>
-                </div>
+              <aside
+                :class="[
+                  'shrink-0 overflow-hidden border-r border-border/40 bg-card transition-[width] duration-200 ease-in-out',
+                  leftPanelOpen ? 'w-64' : 'w-0',
+                ]"
+              >
+                <SourceControlPanel
+                  :root-path="workspaceRoot"
+                  @open-diff="openSourceDiff"
+                  @open-history="openSourceHistory"
+                />
               </aside>
 
               <section class="relative min-w-0 flex-1 bg-background">
@@ -396,6 +361,19 @@ watch(
                   />
                 </div>
               </section>
+
+              <aside
+                :class="[
+                  'shrink-0 overflow-hidden border-l border-border/40 bg-card transition-[width] duration-200 ease-in-out',
+                  rightPanelOpen ? 'w-64' : 'w-0',
+                ]"
+              >
+                <FileExplorer
+                  :root-path="workspaceRoot"
+                  @open-file="openFileTab"
+                  @open-markdown-preview="openMarkdownPreview"
+                />
+              </aside>
             </main>
 
             <main v-else class="min-h-0 flex-1 bg-background">

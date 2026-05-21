@@ -3,10 +3,12 @@ import {
   AddOutline,
   CloseOutline,
   DuplicateOutline,
-  GitBranchOutline,
+  FolderOpenOutline,
+  GitCommitOutline,
   GitCompareOutline,
   GlobeOutline,
   LockClosedOutline,
+  ReorderTwoOutline,
   SettingsOutline,
   TerminalOutline,
   TimeOutline,
@@ -26,10 +28,14 @@ const props = withDefaults(
     canSplit: boolean;
     workspaceReady?: boolean;
     showWindowControls?: boolean;
+    leftPanelOpen?: boolean;
+    rightPanelOpen?: boolean;
   }>(),
   {
     workspaceReady: true,
     showWindowControls: false,
+    leftPanelOpen: false,
+    rightPanelOpen: true,
   },
 );
 
@@ -40,6 +46,8 @@ const emit = defineEmits<{
   newPrivateTab: [];
   splitPane: [dir: SplitDir];
   openSettings: [];
+  toggleLeftPanel: [];
+  toggleRightPanel: [];
 }>();
 
 type TabIcon =
@@ -97,23 +105,53 @@ function tabIcon(tab: Tab): TabIcon {
   <header
     data-tauri-drag-region
     :class="[
-      'flex h-11 shrink-0 items-center gap-2 border-b border-border/60 bg-card',
-      IS_MAC ? 'pr-2 pl-22' : 'pr-2 pl-3',
+      'flex h-11 shrink-0 items-center border-b border-border/60 bg-card',
+      IS_MAC ? 'pr-2 pl-22' : 'pr-2 pl-2',
     ]"
   >
-    <div
-      data-tauri-drag-region
-      class="flex h-full shrink-0 items-center gap-2 px-1 text-[12px] font-semibold tracking-normal"
-    >
-      <NIcon :component="TerminalOutline" :size="15" />
-      <span>Nexterm</span>
+    <div class="flex shrink-0 items-center gap-0.5">
+      <button
+        type="button"
+        :data-toggle-left-panel="leftPanelOpen"
+        title="Source Control"
+        aria-label="Toggle source control panel"
+        :class="[
+          'grid h-7 w-7 place-items-center rounded-md text-[12px] transition-colors',
+          leftPanelOpen
+            ? 'bg-accent text-foreground'
+            : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
+        ]"
+        @click="emit('toggleLeftPanel')"
+      >
+        <NIcon :component="GitCommitOutline" :size="15" />
+      </button>
+      <NButton
+        data-new-tab
+        size="tiny"
+        quaternary
+        title="New terminal"
+        aria-label="New terminal"
+        @click="emit('newTab')"
+      >
+        <template #icon><NIcon :component="AddOutline" /></template>
+      </NButton>
+      <NButton
+        data-new-private-tab
+        size="tiny"
+        quaternary
+        title="New private terminal"
+        aria-label="New private terminal"
+        @click="emit('newPrivateTab')"
+      >
+        <template #icon><NIcon :component="LockClosedOutline" /></template>
+      </NButton>
     </div>
 
-    <div
-      data-tauri-drag-region
-      class="no-scrollbar min-w-0 flex-1 overflow-x-auto"
-    >
-      <div class="flex w-max min-w-full items-center gap-0.5">
+    <div class="no-scrollbar ml-1 mr-1 min-w-0 flex-1 overflow-x-auto">
+      <div
+        data-tauri-drag-region
+        class="flex items-center gap-0.5"
+      >
         <button
           v-for="tab in props.tabs"
           :key="tab.id"
@@ -183,28 +221,6 @@ function tabIcon(tab: Tab): TabIcon {
       class="flex shrink-0 items-center gap-0.5 border-l border-border/60 pl-2"
     >
       <NButton
-        data-new-tab
-        size="tiny"
-        quaternary
-        :disabled="!props.workspaceReady"
-        title="New terminal"
-        aria-label="New terminal"
-        @click="emit('newTab')"
-      >
-        <template #icon><NIcon :component="AddOutline" /></template>
-      </NButton>
-      <NButton
-        data-new-private-tab
-        size="tiny"
-        quaternary
-        :disabled="!props.workspaceReady"
-        title="New private terminal"
-        aria-label="New private terminal"
-        @click="emit('newPrivateTab')"
-      >
-        <template #icon><NIcon :component="LockClosedOutline" /></template>
-      </NButton>
-      <NButton
         data-split-row
         size="tiny"
         quaternary
@@ -224,8 +240,9 @@ function tabIcon(tab: Tab): TabIcon {
         aria-label="Split down"
         @click="emit('splitPane', 'col')"
       >
-        <template #icon><NIcon :component="GitBranchOutline" /></template>
+        <template #icon><NIcon :component="ReorderTwoOutline" /></template>
       </NButton>
+      <div class="mx-0.5 h-4 w-px bg-border/60" />
       <NButton
         data-open-settings
         size="tiny"
@@ -236,6 +253,21 @@ function tabIcon(tab: Tab): TabIcon {
       >
         <template #icon><NIcon :component="SettingsOutline" /></template>
       </NButton>
+      <button
+        type="button"
+        :data-toggle-right-panel="rightPanelOpen"
+        title="Explorer"
+        aria-label="Toggle file explorer panel"
+        :class="[
+          'grid h-6 w-6 shrink-0 place-items-center rounded-md transition-colors',
+          rightPanelOpen
+            ? 'bg-accent text-foreground'
+            : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
+        ]"
+        @click="emit('toggleRightPanel')"
+      >
+        <NIcon :component="FolderOpenOutline" :size="14" />
+      </button>
       <WindowControls v-if="props.showWindowControls" />
     </div>
   </header>

@@ -203,8 +203,7 @@ describe("MainApp.vue", () => {
     await flushPromises();
     await nextTick();
 
-    expect(wrapper.text()).toContain("Nexterm");
-    expect(wrapper.find("[data-terminal-stack]").text()).toContain("1:1");
+    expect(wrapper.find("[data-terminal-stack]").text()).toBe("1:1");
 
     await wrapper.find("[data-new-tab]").trigger("click");
 
@@ -440,7 +439,7 @@ describe("MainApp.vue", () => {
     const tabs = useTabsPiniaStore();
 
     await nextTick();
-    await wrapper.find("[data-sidebar-source]").trigger("click");
+    await wrapper.find("[data-toggle-left-panel]").trigger("click");
 
     expect(wrapper.find("[data-source-control]").text()).toContain("/repo");
 
@@ -475,7 +474,8 @@ describe("MainApp.vue", () => {
     expect(tabs.tabs[0]).toMatchObject({ kind: "terminal", cwd: "/tmp" });
     expect(wrapper.find("[data-file-explorer]").text()).toContain("/repo");
 
-    await wrapper.find("[data-sidebar-source]").trigger("click");
+    await wrapper.find("[data-toggle-left-panel]").trigger("click");
+    await nextTick();
     expect(wrapper.find("[data-source-control]").text()).toContain("/repo");
   });
 });

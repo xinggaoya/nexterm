@@ -346,7 +346,7 @@ watch(rows, () => {
 <template>
   <aside
     data-file-explorer
-    class="flex h-full min-h-0 flex-col bg-card text-foreground outline-none"
+    class="flex h-full w-64 min-h-0 flex-col bg-card text-foreground outline-none"
     tabindex="0"
     @keydown="handleKeydown"
   >
