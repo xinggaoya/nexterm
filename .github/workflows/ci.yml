@@ -28,7 +28,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Type-check
-        run: pnpm exec tsc --noEmit
+        run: pnpm exec vue-tsc --noEmit
 
       - name: Build frontend
         run: pnpm build
