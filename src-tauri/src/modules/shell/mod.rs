@@ -14,9 +14,10 @@ use std::time::Duration;
 use serde::Serialize;
 use shared_child::SharedChild;
 
-use crate::modules::workspace::{authorize_spawn_cwd, WorkspaceEnv, WorkspaceRegistry};
+use crate::modules::process::suppress_command_window;
 #[cfg(windows)]
 use crate::modules::workspace::validate_wsl_distro_name;
+use crate::modules::workspace::{authorize_spawn_cwd, WorkspaceEnv, WorkspaceRegistry};
 
 use background::{BackgroundLogResponse, BackgroundProc, BackgroundProcInfo};
 use session::{SessionRunOutput, ShellSession};
@@ -294,12 +295,14 @@ pub(crate) fn build_oneshot_command(
             cmd.arg("--cd").arg(cwd);
         }
         cmd.arg("--exec").arg("sh").arg("-lc").arg(command);
+        suppress_command_window(&mut cmd);
         return Ok(cmd);
     }
     #[cfg(unix)]
     {
         let mut cmd = Command::new("/bin/sh");
         cmd.arg("-c").arg(command);
+        suppress_command_window(&mut cmd);
         Ok(cmd)
     }
     #[cfg(windows)]
@@ -316,6 +319,7 @@ pub(crate) fn build_oneshot_command(
         } else {
             cmd.arg("-NoProfile").arg("-Command").arg(command);
         }
+        suppress_command_window(&mut cmd);
         Ok(cmd)
     }
 }

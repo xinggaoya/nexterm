@@ -5,6 +5,9 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(windows)]
+use crate::modules::process::suppress_command_window;
+
 // Short TTL keeps the auth-check TOCTOU window tight while still coalescing the
 // burst of canonicalize calls within a single panel refresh (~100ms).
 const CANONICAL_TTL: Duration = Duration::from_secs(1);
@@ -335,10 +338,10 @@ fn looks_utf16le(bytes: &[u8]) -> bool {
 
 #[cfg(windows)]
 fn run_wsl(args: &[&str]) -> Result<String, String> {
-    let out = std::process::Command::new("wsl.exe")
-        .args(args)
-        .output()
-        .map_err(|e| e.to_string())?;
+    let mut cmd = std::process::Command::new("wsl.exe");
+    cmd.args(args);
+    suppress_command_window(&mut cmd);
+    let out = cmd.output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         let stderr = decode_command_output(&out.stderr);
         return Err(stderr.trim().to_string());
@@ -353,14 +356,14 @@ pub(crate) fn wsl_exec_capture(
     args: &[&str],
 ) -> Result<String, String> {
     validate_wsl_distro_name(distro)?;
-    let out = std::process::Command::new("wsl.exe")
-        .arg("-d")
+    let mut cmd = std::process::Command::new("wsl.exe");
+    cmd.arg("-d")
         .arg(distro)
         .arg("--exec")
         .arg(program)
-        .args(args)
-        .output()
-        .map_err(|e| e.to_string())?;
+        .args(args);
+    suppress_command_window(&mut cmd);
+    let out = cmd.output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         let stderr = decode_command_output(&out.stderr);
         return Err(stderr.trim().to_string());

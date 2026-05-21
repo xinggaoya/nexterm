@@ -15,9 +15,10 @@ use crate::modules::git::types::{
     GitOutput, TextSource, DEFAULT_TIMEOUT_SECS, MAX_FILE_BYTES, MAX_OUTPUT_BYTES,
     MAX_TIMEOUT_SECS, MIN_GIT_VERSION,
 };
-use crate::modules::workspace::WorkspaceEnv;
+use crate::modules::process::suppress_command_window;
 #[cfg(windows)]
 use crate::modules::workspace::validate_wsl_distro_name;
+use crate::modules::workspace::WorkspaceEnv;
 
 #[derive(Clone)]
 enum Availability {
@@ -319,6 +320,7 @@ fn build_git_command(
         }
         cmd.arg("--exec").arg("git");
         cmd.args(args);
+        suppress_command_window(&mut cmd);
         return Ok(cmd);
     }
 
@@ -327,6 +329,7 @@ fn build_git_command(
     if let Some(dir) = cwd.filter(|s| !s.is_empty()) {
         cmd.current_dir(Path::new(dir));
     }
+    suppress_command_window(&mut cmd);
     Ok(cmd)
 }
 
