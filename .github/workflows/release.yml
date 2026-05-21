@@ -72,7 +72,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build and upload Tauri bundles
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@action-v0.5.25
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -81,6 +81,5 @@ jobs:
           releaseBody: "自动构建的 Nexterm 桌面安装包。"
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: false
-          uploadWorkflowArtifacts: true
+          includeUpdaterJson: false
           args: ${{ matrix.args }}
