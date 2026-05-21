@@ -41,7 +41,7 @@ vi.mock("@/modules/terminal/TerminalStack.vue", () => ({
     props: ["tabs", "activeId"],
     emits: ["focusLeaf", "cwd", "exit", "searchReady"],
     template:
-      '<div data-terminal-stack>{{ tabs.length }}:{{ activeId }}<button data-terminal-cd @click="$emit(\'cwd\', 2, \'/tmp\')">cd</button></div>',
+      '<div data-terminal-stack>{{ tabs.length }}:{{ activeId }}<button data-terminal-cd @click="$emit(\'cwd\', 2, \'/tmp\')"></button></div>',
   },
 }));
 

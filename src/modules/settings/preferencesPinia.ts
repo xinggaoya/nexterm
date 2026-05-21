@@ -5,8 +5,10 @@ import {
   onPreferencesChange,
   setAutostart,
   setEditorTheme,
+  setExplorerPanelWidth,
   setRestoreWindowState,
   setShowHidden,
+  setSourceControlPanelWidth,
   setTerminalFontFamily,
   setTerminalFontSize,
   setTerminalLetterSpacing,
@@ -111,6 +113,16 @@ export const usePreferencesPiniaStore = defineStore("preferences", {
       this.terminalScrollback = value;
       patchPreferencesSnapshot("terminalScrollback", value);
       await setTerminalScrollback(value);
+    },
+    async updateSourceControlPanelWidth(value: number) {
+      this.sourceControlPanelWidth = value;
+      patchPreferencesSnapshot("sourceControlPanelWidth", value);
+      await setSourceControlPanelWidth(value);
+    },
+    async updateExplorerPanelWidth(value: number) {
+      this.explorerPanelWidth = value;
+      patchPreferencesSnapshot("explorerPanelWidth", value);
+      await setExplorerPanelWidth(value);
     },
   },
 });

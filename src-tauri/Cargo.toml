@@ -1,6 +1,6 @@
 [package]
 name = "nexterm"
-version = "0.1.0"
+version = "0.1.1"
 description = "Nexterm - terminal development environment"
 authors = ["xinggaoya"]
 edition = "2021"
@@ -32,6 +32,7 @@ grep-searcher = "0.1"
 grep-matcher = "0.1"
 globset = "0.4"
 shared_child = "1"
+notify = "8.2"
 tauri-plugin-log = "2"
 tauri-plugin-os = "2"
 tauri-plugin-store = "2"

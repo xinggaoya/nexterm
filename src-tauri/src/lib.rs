@@ -19,7 +19,9 @@ fn parse_launch_dir() -> Option<String> {
         if arg.starts_with('-') {
             continue;
         }
-        let Ok(canon) = std::fs::canonicalize(&arg) else { continue };
+        let Ok(canon) = std::fs::canonicalize(&arg) else {
+            continue;
+        };
         if !canon.is_dir() {
             continue;
         }
@@ -110,6 +112,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(pty::PtyState::default())
         .manage(shell::ShellState::default())
+        .manage(fs::watcher::FsWatcherState::default())
         .manage({
             let registry = workspace::WorkspaceRegistry::default();
             workspace::bootstrap_registry_with_launch_dir(
@@ -139,6 +142,8 @@ pub fn run() {
             fs::search::fs_list_files,
             fs::grep::fs_grep,
             fs::grep::fs_glob,
+            fs::watcher::fs_watch_workspace,
+            fs::watcher::fs_unwatch_workspace,
             git::commands::git_resolve_repo,
             git::commands::git_panel_snapshot,
             git::commands::git_status,
