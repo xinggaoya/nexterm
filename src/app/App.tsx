@@ -830,6 +830,13 @@ export default function App() {
     cycleSidebarView("source-control");
   }, [cycleSidebarView]);
 
+  const openSourceControl = useCallback(() => {
+    const panel = sidebarRef.current;
+    const collapsed = panel ? panel.getSize().asPercentage <= 0 : false;
+    if (sidebarView !== "source-control") persistSidebarView("source-control");
+    if (collapsed) panel?.resize(`${sidebarWidthRef.current}px`);
+  }, [persistSidebarView, sidebarView]);
+
   const openGitGraphFromContext = useCallback(async () => {
     const known = sourceControl.hasRepo ? sourceControl.repo : null;
     if (known) {
@@ -1228,6 +1235,7 @@ export default function App() {
             }
             onOpenShortcuts={() => setShortcutsOpen(true)}
             onOpenSettings={() => void openSettingsWindow()}
+            onOpenSourceControl={openSourceControl}
             searchTarget={searchTarget}
             searchRef={searchInlineRef}
           />

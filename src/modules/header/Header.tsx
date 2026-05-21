@@ -17,6 +17,7 @@ import type { Tab } from "@/modules/tabs";
 import { TabBar } from "@/modules/tabs";
 import {
   GridViewIcon,
+  FolderGitTwoIcon,
   KeyboardIcon,
   LayoutTwoColumnIcon,
   LayoutTwoRowIcon,
@@ -44,6 +45,7 @@ type Props = {
   /** Promote a preview (transient) tab to persistent. */
   onPin: (id: number) => void;
   onToggleSidebar: () => void;
+  onOpenSourceControl: () => void;
   onSplit: (dir: "row" | "col") => void;
   /** Active tab is a terminal and below the per-tab pane cap. */
   canSplit: boolean;
@@ -67,6 +69,7 @@ export function Header({
   onClose,
   onPin,
   onToggleSidebar,
+  onOpenSourceControl,
   onSplit,
   canSplit,
   onOpenShortcuts,
@@ -94,6 +97,10 @@ export function Header({
 
   const splitRightTokens = tokensFor("pane.splitRight");
   const splitDownTokens = tokensFor("pane.splitDown");
+  const sourceControlTokens = tokensFor("pane.source");
+  const sourceControlLabel = sourceControlTokens
+    ? `Source Control (${sourceControlTokens})`
+    : "Source Control";
 
   useEffect(() => {
     const el = rootRef.current;
@@ -147,6 +154,20 @@ export function Header({
           className="shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <HugeiconsIcon icon={SidebarLeftIcon} size={18} strokeWidth={1.75} />
+        </Button>
+
+        <Button
+          onClick={onOpenSourceControl}
+          title={sourceControlLabel}
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <HugeiconsIcon
+            icon={FolderGitTwoIcon}
+            size={17}
+            strokeWidth={1.75}
+          />
         </Button>
 
         <DropdownMenu>
