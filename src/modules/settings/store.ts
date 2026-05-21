@@ -52,6 +52,8 @@ export type Preferences = {
   lastWorkspace: StoredWorkspace | null;
   recentWorkspaces: StoredWorkspace[];
   zoomLevel: number;
+  sourceControlPanelWidth: number;
+  explorerPanelWidth: number;
 };
 
 const STORE_PATH = "nexterm-settings.json";
@@ -71,6 +73,12 @@ const KEY_LAST_WSL_DISTRO = "lastWslDistro";
 const KEY_LAST_WORKSPACE = "lastWorkspace";
 const KEY_RECENT_WORKSPACES = "recentWorkspaces";
 const KEY_ZOOM_LEVEL = "zoomLevel";
+const KEY_SOURCE_CONTROL_PANEL_WIDTH = "sourceControlPanelWidth";
+const KEY_EXPLORER_PANEL_WIDTH = "explorerPanelWidth";
+
+export const SIDE_PANEL_WIDTH_DEFAULT = 256;
+export const SIDE_PANEL_WIDTH_MIN = 180;
+export const SIDE_PANEL_WIDTH_MAX = 520;
 
 export const TERMINAL_FONT_SIZE_DEFAULT = 14;
 export const TERMINAL_FONT_SIZE_MIN = 8;
@@ -103,6 +111,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   lastWorkspace: null,
   recentWorkspaces: [],
   zoomLevel: 1.0,
+  sourceControlPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
+  explorerPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
 };
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
@@ -158,6 +168,14 @@ export async function loadPreferences(): Promise<Preferences> {
       get<StoredWorkspace[]>(KEY_RECENT_WORKSPACES) ??
       DEFAULT_PREFERENCES.recentWorkspaces,
     zoomLevel: get<number>(KEY_ZOOM_LEVEL) ?? DEFAULT_PREFERENCES.zoomLevel,
+    sourceControlPanelWidth: clampSidePanelWidth(
+      get<number>(KEY_SOURCE_CONTROL_PANEL_WIDTH) ??
+        DEFAULT_PREFERENCES.sourceControlPanelWidth,
+    ),
+    explorerPanelWidth: clampSidePanelWidth(
+      get<number>(KEY_EXPLORER_PANEL_WIDTH) ??
+        DEFAULT_PREFERENCES.explorerPanelWidth,
+    ),
   };
 }
 
@@ -242,6 +260,22 @@ export async function setZoomLevel(value: number): Promise<void> {
   await writePref(KEY_ZOOM_LEVEL, value);
 }
 
+function clampSidePanelWidth(value: number): number {
+  if (!Number.isFinite(value)) return SIDE_PANEL_WIDTH_DEFAULT;
+  return Math.min(
+    SIDE_PANEL_WIDTH_MAX,
+    Math.max(SIDE_PANEL_WIDTH_MIN, Math.round(value)),
+  );
+}
+
+export async function setSourceControlPanelWidth(value: number): Promise<void> {
+  await writePref(KEY_SOURCE_CONTROL_PANEL_WIDTH, clampSidePanelWidth(value));
+}
+
+export async function setExplorerPanelWidth(value: number): Promise<void> {
+  await writePref(KEY_EXPLORER_PANEL_WIDTH, clampSidePanelWidth(value));
+}
+
 export type PrefKey = keyof Preferences;
 
 export async function onPreferencesChange(
@@ -263,6 +297,8 @@ export async function onPreferencesChange(
     [KEY_LAST_WORKSPACE]: "lastWorkspace",
     [KEY_RECENT_WORKSPACES]: "recentWorkspaces",
     [KEY_ZOOM_LEVEL]: "zoomLevel",
+    [KEY_SOURCE_CONTROL_PANEL_WIDTH]: "sourceControlPanelWidth",
+    [KEY_EXPLORER_PANEL_WIDTH]: "explorerPanelWidth",
   };
   const unsubLocal = await store.onChange<unknown>((key, value) => {
     const mapped = map[key];

@@ -9,12 +9,13 @@ import {
   TimeOutline,
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NInput, NSpin, NTag } from "naive-ui";
-import { computed, ref, watch, type TextareaHTMLAttributes } from "vue";
+import { computed, onBeforeUnmount, ref, watch, type TextareaHTMLAttributes } from "vue";
 import {
   native,
   type GitCommitResult,
   type GitRepoInfo,
   type GitStatusSnapshot,
+  type WorkspaceFsChangedEvent,
 } from "@/lib/native";
 import {
   buildSourceControlEntries,
@@ -27,6 +28,7 @@ type BusyAction = "refresh" | "commit" | `stage:${string}` | `unstage:${string}`
 
 const props = defineProps<{
   rootPath: string | null;
+  fsEvent?: WorkspaceFsChangedEvent | null;
 }>();
 
 const emit = defineEmits<{
@@ -52,9 +54,11 @@ const actionError = ref<string | null>(null);
 const busyAction = ref<BusyAction | null>(null);
 const commitMessage = ref("");
 const requestId = ref(0);
+const pendingAutoRefresh = ref(false);
 const commitInputProps = {
   "data-commit-message": "",
 } as unknown as TextareaHTMLAttributes;
+let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 const entries = computed(() =>
   buildSourceControlEntries(status.value?.changedFiles ?? []),
@@ -84,6 +88,14 @@ function normalizeError(error: unknown): string {
     if (typeof message === "string") return message;
   }
   return "Unknown source control error";
+}
+
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function isSameRoot(a: string | null, b: string | null): boolean {
+  return !!a && !!b && normalizePath(a) === normalizePath(b);
 }
 
 function statusTone(code: string): "default" | "success" | "warning" | "error" | "info" {
@@ -172,6 +184,27 @@ async function refresh() {
   }
 }
 
+async function autoRefresh() {
+  if (busyAction.value) {
+    pendingAutoRefresh.value = true;
+    return;
+  }
+  if (repoRoot.value) {
+    await refreshStatus();
+  } else {
+    await loadSnapshot(props.rootPath);
+  }
+}
+
+function scheduleAutoRefresh(delay = 260) {
+  if (!props.rootPath) return;
+  if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
+  autoRefreshTimer = setTimeout(() => {
+    autoRefreshTimer = null;
+    void autoRefresh();
+  }, delay);
+}
+
 function openDiff(entry: SourceControlFileEntry) {
   const root = repoRoot.value;
   if (!root) return;
@@ -258,10 +291,28 @@ watch(
   },
   { immediate: true },
 );
+
+watch(
+  () => props.fsEvent,
+  (event) => {
+    if (!event || !isSameRoot(event.rootPath, props.rootPath)) return;
+    scheduleAutoRefresh();
+  },
+);
+
+watch(busyAction, (value) => {
+  if (value || !pendingAutoRefresh.value) return;
+  pendingAutoRefresh.value = false;
+  scheduleAutoRefresh(80);
+});
+
+onBeforeUnmount(() => {
+  if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
+});
 </script>
 
 <template>
-  <aside class="flex h-full w-64 min-h-0 flex-col bg-card text-foreground">
+  <aside class="flex h-full w-full min-h-0 flex-col bg-card text-foreground">
     <div class="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2">
       <div class="flex min-w-0 flex-1 items-center gap-1.5">
         <NIcon :component="GitBranchOutline" :size="14" class="shrink-0 text-muted-foreground" />

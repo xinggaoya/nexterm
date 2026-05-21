@@ -6,7 +6,8 @@ import {
   SearchOutline,
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NSpin } from "naive-ui";
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
+import type { WorkspaceFsChangedEvent } from "@/lib/native";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import ExplorerContextMenu, {
   type ExplorerContextMenuTarget,
@@ -34,6 +35,7 @@ type MenuRow = Extract<VisibleTreeRow, { kind: "entry" | "rename" }>;
 
 const props = defineProps<{
   rootPath: string | null;
+  fsEvent?: WorkspaceFsChangedEvent | null;
 }>();
 
 const emit = defineEmits<{
@@ -52,6 +54,7 @@ const selectedPath = ref<string | null>(null);
 const isSearchOpen = ref(false);
 const isSearchActive = ref(false);
 const menu = ref<ExplorerContextMenuTarget | null>(null);
+let fsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 const rootName = computed(() => {
   if (!props.rootPath) return "";
@@ -124,6 +127,28 @@ async function loadChildren(path: string) {
 
 function refreshPath(path: string | null = props.rootPath) {
   if (path) void loadChildren(path);
+}
+
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function isSameRoot(a: string | null, b: string | null): boolean {
+  return !!a && !!b && normalizePath(a) === normalizePath(b);
+}
+
+function scheduleTreeRefresh() {
+  if (!props.rootPath) return;
+  if (fsRefreshTimer) clearTimeout(fsRefreshTimer);
+  fsRefreshTimer = setTimeout(() => {
+    fsRefreshTimer = null;
+    if (!props.rootPath) return;
+    const loadedPaths = Object.entries(nodes.value)
+      .filter(([, state]) => state.status === "loaded" || state.status === "error")
+      .map(([path]) => path);
+    const targets = loadedPaths.length > 0 ? loadedPaths : [props.rootPath];
+    for (const path of targets) void loadChildren(path);
+  }, 180);
 }
 
 function toggleDir(path: string) {
@@ -336,17 +361,29 @@ watch(
   },
 );
 
+watch(
+  () => props.fsEvent,
+  (event) => {
+    if (!event || !isSameRoot(event.rootPath, props.rootPath)) return;
+    scheduleTreeRefresh();
+  },
+);
+
 watch(rows, () => {
   if (selectedPath.value && !entryIndexByPath.value.has(selectedPath.value)) {
     selectedPath.value = null;
   }
+});
+
+onBeforeUnmount(() => {
+  if (fsRefreshTimer) clearTimeout(fsRefreshTimer);
 });
 </script>
 
 <template>
   <aside
     data-file-explorer
-    class="flex h-full w-64 min-h-0 flex-col bg-card text-foreground outline-none"
+    class="flex h-full w-full min-h-0 flex-col bg-card text-foreground outline-none"
     tabindex="0"
     @keydown="handleKeydown"
   >

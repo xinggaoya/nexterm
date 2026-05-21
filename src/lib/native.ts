@@ -82,10 +82,18 @@ export type GitPanelSnapshot = {
   status: GitStatusSnapshot | null;
 };
 
+export type WorkspaceFsChangedEvent = {
+  rootPath: string;
+  paths: string[];
+  gitRelated: boolean;
+};
+
 export type GitDiscardEntry = {
   path: string;
   untracked: boolean;
 };
+
+export const WORKSPACE_FS_CHANGED_EVENT = "nexterm://workspace-fs-changed";
 
 export const native = {
   workspaceAuthorize: (path: string) =>
@@ -205,4 +213,10 @@ export const native = {
       name: name ?? null,
       workspace: currentWorkspaceEnv(),
     }),
+  fsWatchWorkspace: (rootPath: string) =>
+    invoke<void>("fs_watch_workspace", {
+      rootPath,
+      workspace: currentWorkspaceEnv(),
+    }),
+  fsUnwatchWorkspace: () => invoke<void>("fs_unwatch_workspace"),
 };
