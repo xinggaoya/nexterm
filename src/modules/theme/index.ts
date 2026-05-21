@@ -1,1 +1,1 @@
-export { ThemeProvider, useTheme, type Theme } from "./ThemeProvider";
+export { buildNaiveThemeOverrides, getNaiveTheme } from "./naiveTheme";

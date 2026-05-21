@@ -1,5 +1,5 @@
 import { emit, listen } from "@tauri-apps/api/event";
-import { create } from "zustand";
+import { createSimpleStore } from "@/lib/simpleStore";
 import {
   loadSnippets,
   newSnippetId,
@@ -19,7 +19,7 @@ type State = {
 
 let initialized = false;
 
-export const useSnippetsStore = create<State>((set, get) => ({
+export const useSnippetsStore = createSimpleStore<State>((set, get) => ({
   hydrated: false,
   snippets: [],
   hydrate: async () => {

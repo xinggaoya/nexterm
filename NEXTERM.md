@@ -7,7 +7,7 @@ Nexterm 是当前项目的工程记忆和架构说明。修改项目之前先阅
 Nexterm 是 AI-native 终端开发环境。技术栈：
 
 - Tauri 2 + Rust 后端
-- React 19 + TypeScript 前端
+- Vue 3 + TypeScript 前端，Naive UI 作为主要 UI 组件与主题系统
 - xterm.js 终端渲染
 - Vercel AI SDK v6 驱动 BYOK AI 能力
 - 包管理器：pnpm
@@ -49,12 +49,12 @@ Rust 进程负责所有系统访问。Webview 不直接访问文件系统、进�
 - `secrets::*`：通过 OS keychain 保存 AI provider key。
 - `workspace::*` / `git::*` / `net::*`：工作区、Git 和网络辅助能力。
 
-前端按 `src/modules/` 分区。新功能应放入对应模块，`src/app/App.tsx` 只作为协调层，避免继续膨胀。
+前端按 `src/modules/` 分区。新功能应放入对应模块，主窗口入口由 `src/main.ts` 挂载 Vue 工作台，设置窗口由 `src/settings/main.ts` 挂载 Vue Router 设置页。迁移过程中仍可能存在待替换的旧 React 模块，不能继续向旧 React 层增加新功能。
 
 ## Frontend Rules
 
 - 使用 `@/` 路径别名，不跨模块写深层相对路径。
-- UI 使用现有 shadcn/ui、Hugeicons、Tailwind v4 约定。
+- UI 优先使用 Naive UI，并通过 `NConfigProvider` / `themeOverrides` 接入主题；Tailwind v4 保留用于布局、终端、编辑器和精细样式。
 - 页面应保持现代、简洁、可扫描，不使用营销式大段说明替代实际功能。
 - 路径可能来自 Windows、Unix、OSC 7 或文件树，边界处要兼容 `/` 与 `\`。
 

@@ -1,5 +1,5 @@
 import { detectMonoFontFamily } from "@/lib/fonts";
-import { usePreferencesStore } from "@/modules/settings/preferences";
+import { readPreferencesSnapshot } from "@/modules/settings/preferencesSnapshot";
 import { buildTerminalTheme } from "@/styles/terminalTheme";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
@@ -81,7 +81,7 @@ function getRecycler(): HTMLDivElement {
 }
 
 function termOptions() {
-  const prefs = usePreferencesStore.getState();
+  const prefs = readPreferencesSnapshot();
   return {
     fontFamily: prefs.terminalFontFamily || detectMonoFontFamily(),
     letterSpacing: prefs.terminalLetterSpacing,
@@ -413,7 +413,7 @@ function serializeSlot(slot: Slot): SerializeOutput {
   try {
     const cap = Math.min(
       SNAPSHOT_SCROLLBACK_CAP,
-      usePreferencesStore.getState().terminalScrollback,
+      readPreferencesSnapshot().terminalScrollback,
     );
     snapshot = slot.serializeAddon.serialize({ scrollback: cap });
   } catch (e) {
@@ -457,7 +457,7 @@ const WEBGL_RECOVERY_DELAY_MS = 250;
 
 function attachWebgl(slot: Slot): void {
   if (slot.webglAddon || !slot.term.element) return;
-  if (!usePreferencesStore.getState().terminalWebglEnabled) return;
+  if (!readPreferencesSnapshot().terminalWebglEnabled) return;
   const elem = slot.term.element;
   const before = new Set<HTMLCanvasElement>(
     elem.querySelectorAll<HTMLCanvasElement>("canvas"),
@@ -478,7 +478,7 @@ function attachWebgl(slot: Slot): void {
       // forever. Defer past WebKit's reset window before retrying.
       setTimeout(() => {
         if (slot.webglAddon) return;
-        if (!usePreferencesStore.getState().terminalWebglEnabled) return;
+        if (!readPreferencesSnapshot().terminalWebglEnabled) return;
         attachWebgl(slot);
       }, WEBGL_RECOVERY_DELAY_MS);
     });

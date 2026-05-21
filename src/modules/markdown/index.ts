@@ -1,2 +1,2 @@
-export { MarkdownStack } from "./MarkdownStack";
-export { MarkdownPreviewPane } from "./MarkdownPreviewPane";
+export { default as MarkdownPreviewPane } from "./MarkdownPreviewPane.vue";
+export { default as MarkdownStack } from "./MarkdownStack.vue";

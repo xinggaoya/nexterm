@@ -1,9 +1,13 @@
-import { Chat, type UIMessage } from "@ai-sdk/react";
 import {
+  AbstractChat,
+  type ChatInit,
+  type ChatState,
+  type ChatStatus,
   type ChatTransport,
+  type UIMessage,
   lastAssistantMessageIsCompleteWithApprovalResponses,
 } from "ai";
-import { create } from "zustand";
+import { createSimpleStore } from "@/lib/simpleStore";
 import {
   DEFAULT_MODEL_ID,
   getModel,
@@ -162,9 +166,45 @@ const NOOP_LIVE: Live = {
 };
 
 const CHATS_LRU_CAP = 8;
-const chats = new Map<string, Chat<UIMessage>>();
+const chats = new Map<string, StoreChat<UIMessage>>();
 
-function touchChat(id: string, c: Chat<UIMessage>) {
+class StoreChatState<UI_MESSAGE extends UIMessage>
+  implements ChatState<UI_MESSAGE>
+{
+  status: ChatStatus = "ready";
+  error: Error | undefined = undefined;
+  messages: UI_MESSAGE[];
+
+  constructor(initialMessages: UI_MESSAGE[] = []) {
+    this.messages = initialMessages;
+  }
+
+  pushMessage = (message: UI_MESSAGE) => {
+    this.messages = this.messages.concat(message);
+  };
+
+  popMessage = () => {
+    this.messages = this.messages.slice(0, -1);
+  };
+
+  replaceMessage = (index: number, message: UI_MESSAGE) => {
+    this.messages = [
+      ...this.messages.slice(0, index),
+      this.snapshot(message),
+      ...this.messages.slice(index + 1),
+    ];
+  };
+
+  snapshot = <T>(value: T): T => structuredClone(value);
+}
+
+class StoreChat<UI_MESSAGE extends UIMessage> extends AbstractChat<UI_MESSAGE> {
+  constructor({ messages, ...init }: ChatInit<UI_MESSAGE>) {
+    super({ ...init, state: new StoreChatState(messages) });
+  }
+}
+
+function touchChat(id: string, c: StoreChat<UIMessage>) {
   if (chats.has(id)) chats.delete(id);
   chats.set(id, c);
   while (chats.size > CHATS_LRU_CAP) {
@@ -206,7 +246,7 @@ export function flushPersist(id?: string): void {
   for (const key of Array.from(pendingPersist.keys())) flushPersistEntry(key);
 }
 
-function makeChat(sessionId: string): Chat<UIMessage> {
+function makeChat(sessionId: string): StoreChat<UIMessage> {
   const readCache = new Map<string, { size: number; hash: number }>();
   const toolContext: ToolContext = {
     getCwd: () => useChatStore.getState().live.getCwd(),
@@ -285,7 +325,7 @@ function makeChat(sessionId: string): Chat<UIMessage> {
   const initialMessages = seedMessages.get(sessionId);
   seedMessages.delete(sessionId);
 
-  return new Chat<UIMessage>({
+  return new StoreChat<UIMessage>({
     id: sessionId,
     transport,
     messages: initialMessages,
@@ -299,7 +339,7 @@ function makeChat(sessionId: string): Chat<UIMessage> {
   });
 }
 
-export const useChatStore = create<StoreState>((set, get) => ({
+export const useChatStore = createSimpleStore<StoreState>((set, get) => ({
   live: NOOP_LIVE,
   setLive: (live) => set({ live }),
 
@@ -493,9 +533,8 @@ export const useChatStore = create<StoreState>((set, get) => ({
     }, PERSIST_DEBOUNCE_MS);
     pendingPersist.set(id, { latest: messages, timer });
 
-    // Update zustand session list only when the derived title actually
-    // changes — otherwise we'd rewrite the sessions array (and trigger
-    // re-renders + a store write) on every token.
+    // Update the session list only when the derived title actually changes;
+    // otherwise streaming would rewrite the sessions array on every token.
     const sessions = get().sessions;
     const meta = sessions.find((s) => s.id === id);
     if (!meta) return;
@@ -526,7 +565,7 @@ export function hasKeyForModel(modelId: ModelId): boolean {
   return providerNeedsKey(provider) ? !!apiKeys[provider] : true;
 }
 
-export function getOrCreateChat(sessionId: string): Chat<UIMessage> {
+export function getOrCreateChat(sessionId: string): StoreChat<UIMessage> {
   const existing = chats.get(sessionId);
   if (existing) {
     touchChat(sessionId, existing);
@@ -537,7 +576,7 @@ export function getOrCreateChat(sessionId: string): Chat<UIMessage> {
   return c;
 }
 
-export function getChat(sessionId?: string): Chat<UIMessage> | undefined {
+export function getChat(sessionId?: string): StoreChat<UIMessage> | undefined {
   if (sessionId) return chats.get(sessionId);
   const id = useChatStore.getState().activeSessionId;
   return id ? chats.get(id) : undefined;

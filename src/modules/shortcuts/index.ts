@@ -1,4 +1,3 @@
-export { ShortcutsDialog } from "./ShortcutsDialog";
 export {
   SHORTCUTS,
   SHORTCUT_GROUPS,
@@ -6,7 +5,3 @@ export {
   type ShortcutGroup,
   type ShortcutId,
 } from "./shortcuts";
-export {
-  useGlobalShortcuts,
-  type ShortcutHandlers,
-} from "./lib/useGlobalShortcuts";

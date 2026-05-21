@@ -12,8 +12,8 @@ import { describe, expect, it } from "vitest";
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const src = readFileSync(path.join(here, "PreviewPane.tsx"), "utf8");
-const iframeMatch = src.match(/<iframe[\s\S]*?\/>/);
+const src = readFileSync(path.join(here, "PreviewPane.vue"), "utf8");
+const iframeMatch = src.match(/<iframe[\s\S]*?>/);
 // Strip JSX comments (`// …` inside `{…}` and `{/* … */}` blocks) so the
 // assertions only see actual attribute syntax — the source explains in a
 // comment why `allow-top-navigation` is intentionally omitted, which we

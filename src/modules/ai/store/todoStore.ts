@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { createSimpleStore } from "@/lib/simpleStore";
 import {
   deleteTodos as persistDelete,
   loadTodos as persistLoad,
@@ -16,7 +16,7 @@ type TodosState = {
   clearSession: (sessionId: string) => Promise<void>;
 };
 
-export const useTodosStore = create<TodosState>((set, get) => ({
+export const useTodosStore = createSimpleStore<TodosState>((set, get) => ({
   bySession: {},
   hydrated: new Set(),
 

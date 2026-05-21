@@ -1,9 +1,11 @@
-export { TerminalPane, type TerminalPaneHandle } from "./TerminalPane";
-export { TerminalStack } from "./TerminalStack";
+export { default as TerminalPane } from "./TerminalPane.vue";
+export { default as TerminalStack } from "./TerminalStack.vue";
 export {
+  createTerminalSessionHandle,
   disposeSession,
   respawnSession,
-} from "./lib/useTerminalSession";
+  type TerminalSessionHandle,
+} from "./lib/terminalSessionCore";
 export {
   findLeafCwd,
   hasLeaf,

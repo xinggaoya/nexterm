@@ -1,5 +1,5 @@
 import { emit, listen } from "@tauri-apps/api/event";
-import { create } from "zustand";
+import { createSimpleStore } from "@/lib/simpleStore";
 import {
   BUILTIN_AGENTS,
   loadAgents,
@@ -29,7 +29,7 @@ function broadcast(): void {
   void emit(CHANGED_EVENT);
 }
 
-export const useAgentsStore = create<AgentsState>((set, get) => ({
+export const useAgentsStore = createSimpleStore<AgentsState>((set, get) => ({
   hydrated: false,
   customAgents: [],
   activeId: BUILTIN_AGENTS[0].id,

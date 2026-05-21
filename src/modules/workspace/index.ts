@@ -1,10 +1,9 @@
 export {
   currentWorkspaceScopeKey,
   currentWorkspaceEnv,
-  getWslHome,
   LOCAL_WORKSPACE,
-  useWorkspaceEnvStore,
   workspaceScopeKey,
   type WorkspaceEnv,
   type WslDistro,
-} from "./env";
+} from "./workspaceEnvSnapshot";
+export { useWorkspaceEnvPiniaStore } from "./workspaceEnvPinia";

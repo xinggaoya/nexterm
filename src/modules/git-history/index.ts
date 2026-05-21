@@ -1,2 +1,2 @@
-export { GitHistoryStack } from "./GitHistoryStackLazy";
-export type { GitHistorySearchHandle } from "./GitHistoryPane";
+export { default as GitHistoryPane } from "./GitHistoryPane.vue";
+export { default as GitHistoryStack } from "./GitHistoryStack.vue";

@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { createSimpleStore } from "@/lib/simpleStore";
 import { native } from "../lib/native";
 
 export type QueuedEdit = {
@@ -34,7 +34,7 @@ export function newQueuedEditId(): string {
   return `q-${Date.now().toString(36)}-${(nextId++).toString(36)}`;
 }
 
-export const usePlanStore = create<PlanState>((set, get) => ({
+export const usePlanStore = createSimpleStore<PlanState>((set, get) => ({
   active: false,
   queue: [],
   toggle: () =>
