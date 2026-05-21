@@ -229,6 +229,31 @@ describe("tabs pinia store", () => {
     expect(disposeTerminalSession).toHaveBeenCalledWith(4);
   });
 
+  it("resets the workspace to one terminal tab and disposes old terminal leaves", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init("/repo");
+    const secondTabId = tabs.newTab("/tmp");
+    tabs.splitActivePane(secondTabId, "col");
+    tabs.openFileTab("/repo/src/main.ts");
+
+    tabs.resetWorkspace("/home/dev");
+
+    expect(tabs.tabs).toEqual([
+      {
+        id: 8,
+        kind: "terminal",
+        title: "shell",
+        cwd: "/home/dev",
+        paneTree: { kind: "leaf", id: 9, cwd: "/home/dev" },
+        activeLeafId: 9,
+      },
+    ]);
+    expect(tabs.activeId).toBe(8);
+    expect(disposeTerminalSession).toHaveBeenCalledWith(2);
+    expect(disposeTerminalSession).toHaveBeenCalledWith(4);
+    expect(disposeTerminalSession).toHaveBeenCalledWith(6);
+  });
+
   it("keeps the final tab open when close is requested", () => {
     const tabs = useTabsPiniaStore();
     tabs.init();

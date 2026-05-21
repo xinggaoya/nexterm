@@ -46,14 +46,16 @@ describe("WorkspaceEnvSelector.vue", () => {
     expect(wrapper.text()).toContain("Ubuntu");
   });
 
-  it("selects a WSL distro through the dropdown", async () => {
+  it("emits a WSL distro selection through the dropdown", async () => {
     const store = useWorkspaceEnvPiniaStore();
     store.distros = [{ name: "Debian", default: false, running: true }];
 
     const wrapper = mount(WorkspaceEnvSelector);
     await wrapper.find("[data-option-key='wsl:Debian']").trigger("click");
 
-    expect(store.env).toEqual({ kind: "wsl", distro: "Debian" });
-    expect(wrapper.text()).toContain("Debian");
+    expect(wrapper.emitted("select")).toEqual([
+      [{ kind: "wsl", distro: "Debian" }],
+    ]);
+    expect(store.env).toEqual({ kind: "local" });
   });
 });

@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 function walk(dir: string): string[] {
@@ -12,7 +13,7 @@ function walk(dir: string): string[] {
 
 describe("terminal module Vue boundary", () => {
   it("does not keep React terminal components or hooks", () => {
-    const root = new URL(".", import.meta.url).pathname;
+    const root = fileURLToPath(new URL(".", import.meta.url));
     const files = walk(root).filter((file) => /\.(ts|tsx|vue)$/.test(file));
     const offenders = files
       .filter((file) => !file.endsWith("terminalVueBoundary.test.ts"))

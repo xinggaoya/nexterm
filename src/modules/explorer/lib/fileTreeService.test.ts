@@ -7,6 +7,7 @@ import {
   joinPath,
   readFileTreeDir,
   renameFileTreePath,
+  searchFileTree,
 } from "./fileTreeService";
 import {
   LOCAL_WORKSPACE,
@@ -68,6 +69,32 @@ describe("file tree service", () => {
     expect(invoke).toHaveBeenNthCalledWith(4, "fs_delete", {
       path: "/repo/b.ts",
       workspace: LOCAL_WORKSPACE,
+    });
+  });
+
+  it("searches file tree with the current workspace context", async () => {
+    setCurrentWorkspaceEnv({ kind: "wsl", distro: "Ubuntu" });
+    vi.mocked(invoke).mockResolvedValueOnce({
+      hits: [
+        {
+          path: "/repo/src/main.ts",
+          rel: "src/main.ts",
+          name: "main.ts",
+          is_dir: false,
+        },
+      ],
+      truncated: false,
+    });
+
+    const result = await searchFileTree("/repo", "main", true);
+
+    expect(result.hits).toHaveLength(1);
+    expect(invoke).toHaveBeenCalledWith("fs_search", {
+      root: "/repo",
+      query: "main",
+      limit: 200,
+      showHidden: true,
+      workspace: { kind: "wsl", distro: "Ubuntu" },
     });
   });
 });

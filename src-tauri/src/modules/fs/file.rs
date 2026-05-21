@@ -6,7 +6,7 @@ use serde::Serialize;
 use tauri::Emitter;
 use tempfile::NamedTempFile;
 
-use crate::modules::workspace::{resolve_path, WorkspaceEnv};
+use crate::modules::workspace::{normalize_host_path, resolve_path, WorkspaceEnv};
 
 const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
@@ -129,12 +129,8 @@ pub fn fs_write_file(
 pub fn fs_canonicalize(path: String, workspace: Option<WorkspaceEnv>) -> Result<String, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     let p = resolve_path(&path, &workspace);
-    let canon = std::fs::canonicalize(&p).map_err(|e| e.to_string())?;
-    // Strip the Windows `\\?\` extended-length prefix so the frontend's
-    // path comparator sees the same form regardless of OS.
-    let s = canon.to_string_lossy().to_string();
-    let s = s.strip_prefix(r"\\?\").unwrap_or(&s).to_string();
-    Ok(s.replace('\\', "/"))
+    let canon = normalize_host_path(std::fs::canonicalize(&p).map_err(|e| e.to_string())?);
+    Ok(canon.to_string_lossy().replace('\\', "/"))
 }
 
 #[tauri::command]

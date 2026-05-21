@@ -6,4 +6,5 @@ export {
   type WorkspaceEnv,
   type WslDistro,
 } from "./workspaceEnvSnapshot";
+export { authorizeWorkspace, getWslHome } from "./workspaceNative";
 export { useWorkspaceEnvPiniaStore } from "./workspaceEnvPinia";

@@ -23,13 +23,14 @@ pub struct WorkspaceRegistry {
 
 impl WorkspaceRegistry {
     pub fn authorize<P: AsRef<Path>>(&self, path: P) -> std::io::Result<PathBuf> {
-        let canonical = std::fs::canonicalize(path.as_ref())?;
+        let canonical = normalize_host_path(std::fs::canonicalize(path.as_ref())?);
         let mut set = self.roots.lock().expect("workspace registry poisoned");
         set.insert(canonical.clone());
         Ok(canonical)
     }
 
     pub fn is_authorized(&self, target: &Path) -> bool {
+        let target = normalize_host_path(target.to_path_buf());
         let set = self.roots.lock().expect("workspace registry poisoned");
         set.iter().any(|root| target.starts_with(root))
     }
@@ -37,15 +38,21 @@ impl WorkspaceRegistry {
     pub fn canonicalize_cached<P: AsRef<Path>>(&self, path: P) -> std::io::Result<PathBuf> {
         let key = path.as_ref().to_path_buf();
         {
-            let cache = self.canonical_cache.lock().expect("canonical cache poisoned");
+            let cache = self
+                .canonical_cache
+                .lock()
+                .expect("canonical cache poisoned");
             if let Some(entry) = cache.get(&key) {
                 if entry.inserted_at.elapsed() < CANONICAL_TTL {
                     return Ok(entry.canonical.clone());
                 }
             }
         }
-        let canonical = std::fs::canonicalize(&key)?;
-        let mut cache = self.canonical_cache.lock().expect("canonical cache poisoned");
+        let canonical = normalize_host_path(std::fs::canonicalize(&key)?);
+        let mut cache = self
+            .canonical_cache
+            .lock()
+            .expect("canonical cache poisoned");
         if cache.len() >= CANONICAL_CACHE_CAP {
             cache.retain(|_, entry| entry.inserted_at.elapsed() < CANONICAL_TTL);
             if cache.len() >= CANONICAL_CACHE_CAP {
@@ -61,7 +68,23 @@ impl WorkspaceRegistry {
         );
         Ok(canonical)
     }
+}
 
+#[cfg(windows)]
+pub(crate) fn normalize_host_path(path: PathBuf) -> PathBuf {
+    let raw = path.to_string_lossy();
+    if let Some(rest) = raw.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    if let Some(rest) = raw.strip_prefix(r"\\?\") {
+        return PathBuf::from(rest);
+    }
+    path
+}
+
+#[cfg(not(windows))]
+pub(crate) fn normalize_host_path(path: PathBuf) -> PathBuf {
+    path
 }
 
 // `None` means "use bootstrapped default". `Some` is canonicalized to defeat
@@ -75,7 +98,8 @@ pub fn authorize_spawn_cwd(
         return Ok(None);
     };
     let resolved = resolve_path(cwd, workspace);
-    let canonical = std::fs::canonicalize(&resolved)
+    let canonical = registry
+        .canonicalize_cached(&resolved)
         .map_err(|e| format!("cwd not accessible: {e}"))?;
     if !canonical.is_dir() {
         return Err(format!("cwd is not a directory: {}", canonical.display()));
@@ -89,7 +113,10 @@ pub fn authorize_spawn_cwd(
     Ok(Some(canonical))
 }
 
-pub fn bootstrap_registry(registry: &WorkspaceRegistry) {
+pub fn bootstrap_registry_with_launch_dir(registry: &WorkspaceRegistry, launch_dir: Option<&Path>) {
+    if let Some(dir) = launch_dir {
+        let _ = registry.authorize(dir);
+    }
     let _ = registry.authorize(resolve_launch_dir());
     if let Some(home) = dirs::home_dir() {
         let _ = registry.authorize(home);
@@ -137,7 +164,10 @@ fn resolve_launch_dir() -> PathBuf {
     if let Some(cwd) = launch_cwd_snapshot() {
         return cwd;
     }
-    if let Some(cwd) = std::env::current_dir().ok().filter(|p| is_usable_launch_dir(p)) {
+    if let Some(cwd) = std::env::current_dir()
+        .ok()
+        .filter(|p| is_usable_launch_dir(p))
+    {
         return cwd;
     }
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"))
@@ -582,9 +612,12 @@ mod auth_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        p.push(format!("nexterm-auth-{label}-{nanos}-{}", std::process::id()));
+        p.push(format!(
+            "nexterm-auth-{label}-{nanos}-{}",
+            std::process::id()
+        ));
         fs::create_dir_all(&p).expect("create tempdir");
-        fs::canonicalize(&p).expect("canonicalize tempdir")
+        normalize_host_path(fs::canonicalize(&p).expect("canonicalize tempdir"))
     }
 
     #[test]
@@ -620,7 +653,7 @@ mod auth_tests {
         let root = tempdir("subroot");
         let sub = root.join("inside");
         fs::create_dir_all(&sub).expect("subdir");
-        let canonical_sub = fs::canonicalize(&sub).expect("canon sub");
+        let canonical_sub = normalize_host_path(fs::canonicalize(&sub).expect("canon sub"));
         let reg = WorkspaceRegistry::default();
         reg.authorize(&root).expect("authorize root");
         let s = canonical_sub.to_string_lossy().into_owned();
@@ -628,6 +661,48 @@ mod auth_tests {
             .expect("subdir authorized")
             .expect("returned canonical");
         assert_eq!(resolved, canonical_sub);
+    }
+
+    #[test]
+    fn bootstrap_registry_authorizes_explicit_launch_dir() {
+        let dir = tempdir("launcharg");
+        let reg = WorkspaceRegistry::default();
+        bootstrap_registry_with_launch_dir(&reg, Some(dir.as_path()));
+
+        assert!(
+            reg.is_authorized(&dir),
+            "launch argument dir should be an authorized workspace root"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn registry_authorization_treats_windows_verbatim_prefix_as_equivalent() {
+        fn strip_verbatim(path: &Path) -> PathBuf {
+            let raw = path.to_string_lossy();
+            PathBuf::from(raw.strip_prefix(r"\\?\").unwrap_or(&raw).to_string())
+        }
+
+        fn add_verbatim(path: &Path) -> PathBuf {
+            let raw = path.to_string_lossy();
+            if raw.starts_with(r"\\?\") {
+                PathBuf::from(raw.to_string())
+            } else {
+                PathBuf::from(format!(r"\\?\{raw}"))
+            }
+        }
+
+        let root = tempdir("verbatim");
+        let reg = WorkspaceRegistry::default();
+        let authorized = reg.authorize(&root).expect("authorize root");
+        let normal = strip_verbatim(&authorized);
+        let verbatim = add_verbatim(&normal);
+
+        assert!(reg.is_authorized(&normal), "normal path should match root");
+        assert!(
+            reg.is_authorized(&verbatim),
+            "verbatim path should match root"
+        );
     }
 
     #[test]
@@ -668,7 +743,12 @@ mod auth_tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(&outside, &link).expect("symlink");
         #[cfg(windows)]
-        std::os::windows::fs::symlink_dir(&outside, &link).expect("symlink");
+        if let Err(err) = std::os::windows::fs::symlink_dir(&outside, &link) {
+            if err.raw_os_error() == Some(1314) {
+                return;
+            }
+            panic!("symlink: {err}");
+        }
         let reg = WorkspaceRegistry::default();
         reg.authorize(&allowed).expect("authorize root");
         let s = link.to_string_lossy().into_owned();

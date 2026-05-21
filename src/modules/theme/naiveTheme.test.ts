@@ -34,6 +34,25 @@ describe("naive theme bridge", () => {
     expect(overrides.common?.borderRadius).toBe("8px");
   });
 
+  it("does not pass oklch tokens through to Naive UI color helpers", () => {
+    const overrides = buildNaiveThemeOverrides({
+      background: "rgb(255, 255, 255)",
+      foreground: "rgb(24, 24, 27)",
+      card: "rgb(255, 255, 255)",
+      muted: "rgb(244, 244, 245)",
+      "muted-foreground": "rgb(113, 113, 122)",
+      accent: "rgb(244, 244, 245)",
+      "accent-foreground": "rgb(24, 24, 27)",
+      border: "rgb(228, 228, 231)",
+      primary: "oklch(0.218 0.008 223.9)",
+      destructive: "rgb(239, 68, 68)",
+      ring: "rgb(161, 161, 170)",
+    });
+
+    expect(overrides.common?.primaryColor).toMatch(/^rgb\(/);
+    expect(overrides.common?.primaryColor).not.toContain("oklch");
+  });
+
   it("keeps the resolved theme type explicit for providers", () => {
     const theme: ResolvedTheme = "light";
     expect(getNaiveTheme(theme)).toBeNull();

@@ -3,9 +3,16 @@ import { DesktopOutline } from "@vicons/ionicons5";
 import { NButton, NDropdown, NIcon, type DropdownOption } from "naive-ui";
 import { computed, onMounted } from "vue";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
+import {
+  LOCAL_WORKSPACE,
+  type WorkspaceEnv,
+} from "@/modules/workspace/workspaceEnvSnapshot";
 import { useWorkspaceEnvPiniaStore } from "@/modules/workspace/workspaceEnvPinia";
 
 const workspace = useWorkspaceEnvPiniaStore();
+const emit = defineEmits<{
+  select: [env: WorkspaceEnv];
+}>();
 
 const options = computed<DropdownOption[]>(() => [
   { key: "local", label: "Local" },
@@ -24,11 +31,11 @@ const label = computed(() =>
 function handleSelect(key: string | number) {
   const value = String(key);
   if (value === "local") {
-    workspace.setEnv({ kind: "local" });
+    emit("select", LOCAL_WORKSPACE);
     return;
   }
   if (value.startsWith("wsl:")) {
-    workspace.setEnv({ kind: "wsl", distro: value.slice(4) });
+    emit("select", { kind: "wsl", distro: value.slice(4) });
   }
 }
 

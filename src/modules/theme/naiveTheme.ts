@@ -1,6 +1,6 @@
 import type { GlobalTheme, GlobalThemeOverrides } from "naive-ui";
 import { darkTheme } from "naive-ui";
-import type { AppTokens } from "@/styles/tokens";
+import { normalizeAppTokens, type AppTokens } from "@/styles/tokens";
 
 export type ResolvedTheme = "dark" | "light";
 
@@ -11,27 +11,29 @@ export function getNaiveTheme(theme: ResolvedTheme): GlobalTheme | null {
 export function buildNaiveThemeOverrides(
   tokens: AppTokens,
 ): GlobalThemeOverrides {
+  const t = normalizeAppTokens(tokens);
+
   return {
     common: {
-      bodyColor: tokens.background,
-      baseColor: tokens.background,
-      cardColor: tokens.card,
-      modalColor: tokens.card,
-      popoverColor: tokens.card,
-      textColorBase: tokens.foreground,
-      textColor1: tokens.foreground,
-      textColor2: tokens.foreground,
-      textColor3: tokens["muted-foreground"],
-      primaryColor: tokens.primary,
-      primaryColorHover: tokens.foreground,
-      primaryColorPressed: tokens.primary,
-      primaryColorSuppl: tokens.primary,
-      infoColor: tokens.primary,
-      borderColor: tokens.border,
-      dividerColor: tokens.border,
-      inputColor: tokens.background,
-      closeIconColor: tokens["muted-foreground"],
-      closeIconColorHover: tokens.foreground,
+      bodyColor: t.background,
+      baseColor: t.background,
+      cardColor: t.card,
+      modalColor: t.card,
+      popoverColor: t.card,
+      textColorBase: t.foreground,
+      textColor1: t.foreground,
+      textColor2: t.foreground,
+      textColor3: t["muted-foreground"],
+      primaryColor: t.primary,
+      primaryColorHover: t.foreground,
+      primaryColorPressed: t.primary,
+      primaryColorSuppl: t.primary,
+      infoColor: t.primary,
+      borderColor: t.border,
+      dividerColor: t.border,
+      inputColor: t.background,
+      closeIconColor: t["muted-foreground"],
+      closeIconColorHover: t.foreground,
       borderRadius: "8px",
       borderRadiusSmall: "6px",
       fontFamily:

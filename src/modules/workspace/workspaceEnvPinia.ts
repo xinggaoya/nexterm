@@ -26,7 +26,9 @@ export const useWorkspaceEnvPiniaStore = defineStore("workspace-env", {
     setEnv(env: WorkspaceEnv) {
       this.env = env;
       setCurrentWorkspaceEnv(env);
-      if (env.kind === "wsl") void setLastWslDistro(env.distro);
+      if (env.kind === "wsl") {
+        void Promise.resolve(setLastWslDistro(env.distro)).catch(() => {});
+      }
     },
     async refreshDistros(): Promise<WslDistro[]> {
       this.loading = true;

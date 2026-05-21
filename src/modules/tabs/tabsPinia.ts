@@ -77,6 +77,31 @@ export const useTabsPiniaStore = defineStore("tabs", {
       this.nextId = 3;
       this.initialized = true;
     },
+    resetWorkspace(cwd?: string) {
+      if (!this.initialized) {
+        this.init(cwd);
+        return;
+      }
+      for (const tab of this.tabs) {
+        if (tab.kind !== "terminal") continue;
+        for (const leafId of leafIds(tab.paneTree)) {
+          disposeTerminalSession(leafId);
+        }
+      }
+      const tabId = this.nextId++;
+      const leafId = this.nextId++;
+      this.tabs = [
+        {
+          id: tabId,
+          kind: "terminal",
+          title: "shell",
+          cwd,
+          paneTree: { kind: "leaf", id: leafId, cwd },
+          activeLeafId: leafId,
+        },
+      ];
+      this.activeId = tabId;
+    },
     setActiveId(id: number) {
       if (this.tabs.some((tab) => tab.id === id)) this.activeId = id;
     },

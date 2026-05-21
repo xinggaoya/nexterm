@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const srcRoot = new URL("../", import.meta.url).pathname;
+const srcRoot = fileURLToPath(new URL("../", import.meta.url));
 
 const legacyShellPaths = [
   "components/WindowControls.tsx",

@@ -1,8 +1,9 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const srcRoot = new URL("../", import.meta.url).pathname;
+const srcRoot = fileURLToPath(new URL("../", import.meta.url));
 const importFrom = (specifier: string) =>
   new RegExp(`from\\s+["']${specifier.replace("/", "\\/")}["']`);
 

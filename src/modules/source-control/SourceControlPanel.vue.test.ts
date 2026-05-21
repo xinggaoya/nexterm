@@ -7,6 +7,7 @@ import { native } from "@/modules/ai/lib/native";
 
 vi.mock("@/modules/ai/lib/native", () => ({
   native: {
+    workspaceAuthorize: vi.fn(),
     gitPanelSnapshot: vi.fn(),
     gitStatus: vi.fn(),
     gitStage: vi.fn(),
@@ -26,6 +27,7 @@ async function flush() {
 describe("SourceControlPanel.vue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(native.workspaceAuthorize).mockResolvedValue("/repo");
     vi.mocked(native.gitPanelSnapshot).mockResolvedValue({
       repo: {
         repoRoot: "/repo",
@@ -73,6 +75,7 @@ describe("SourceControlPanel.vue", () => {
     });
     await flush();
 
+    expect(native.workspaceAuthorize).toHaveBeenCalledWith("/repo");
     expect(native.gitPanelSnapshot).toHaveBeenCalledWith("/repo");
     expect(wrapper.text()).toContain("main");
     expect(wrapper.text()).toContain("src/main.ts");

@@ -53,6 +53,30 @@ describe("TerminalPane.vue", () => {
     expect(updateTerminalSessionVisibility).toHaveBeenCalledWith(42, true, true);
   });
 
+  it("replays current visibility after mounting the session", () => {
+    mount(TerminalPane, {
+      global: { plugins: [createPinia()] },
+      props: {
+        leafId: 44,
+        visible: true,
+        focused: true,
+      },
+    });
+
+    const mountOrder = vi.mocked(mountTerminalSession).mock.invocationCallOrder[0];
+    const visibilityOrders = vi
+      .mocked(updateTerminalSessionVisibility)
+      .mock.invocationCallOrder;
+    const lastVisibilityOrder = visibilityOrders[visibilityOrders.length - 1];
+
+    expect(lastVisibilityOrder).toBeGreaterThan(mountOrder);
+    expect(updateTerminalSessionVisibility).toHaveBeenLastCalledWith(
+      44,
+      true,
+      true,
+    );
+  });
+
   it("updates core visibility when visible or focused props change", async () => {
     const wrapper = mount(TerminalPane, {
       global: { plugins: [createPinia()] },

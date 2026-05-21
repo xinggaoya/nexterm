@@ -4,7 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 import AppStatusBar from "./AppStatusBar.vue";
 
 vi.mock("./WorkspaceEnvSelector.vue", () => ({
-  default: { template: "<button data-workspace-env>Local</button>" },
+  default: {
+    emits: ["select"],
+    template:
+      "<button data-workspace-env @click=\"$emit('select', { kind: 'wsl', distro: 'Ubuntu' })\">Local</button>",
+  },
 }));
 
 describe("AppStatusBar.vue", () => {
@@ -31,5 +35,20 @@ describe("AppStatusBar.vue", () => {
 
     expect(wrapper.text()).toContain("local workspace");
     expect(wrapper.text()).not.toContain("Private");
+  });
+
+  it("forwards workspace environment selections", async () => {
+    const wrapper = mount(AppStatusBar, {
+      props: {
+        cwd: null,
+        privateActive: false,
+      },
+    });
+
+    await wrapper.find("[data-workspace-env]").trigger("click");
+
+    expect(wrapper.emitted("workspaceChange")).toEqual([
+      [{ kind: "wsl", distro: "Ubuntu" }],
+    ]);
   });
 });

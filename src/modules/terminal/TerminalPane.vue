@@ -38,6 +38,10 @@ const prefs = usePreferencesPiniaStore();
 const container = ref<HTMLDivElement | null>(null);
 let cleanup: (() => void) | undefined;
 
+function syncCurrentVisibility() {
+  updateTerminalSessionVisibility(props.leafId, props.visible, props.focused);
+}
+
 onMounted(() => {
   if (!container.value) return;
   cleanup = mountTerminalSession({
@@ -50,6 +54,7 @@ onMounted(() => {
       onCwd: (cwd) => emit("cwd", props.leafId, cwd),
     },
   });
+  syncCurrentVisibility();
 });
 
 onBeforeUnmount(() => {
@@ -61,7 +66,6 @@ watch(
   ([leafId, visible, focused]) => {
     updateTerminalSessionVisibility(leafId, visible, focused);
   },
-  { immediate: true },
 );
 
 watch(

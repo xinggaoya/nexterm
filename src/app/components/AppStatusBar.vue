@@ -2,10 +2,15 @@
 import { LockClosedOutline, TerminalOutline } from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
 import WorkspaceEnvSelector from "./WorkspaceEnvSelector.vue";
+import type { WorkspaceEnv } from "@/modules/workspace";
 
 const props = defineProps<{
   cwd: string | null;
   privateActive: boolean;
+}>();
+
+const emit = defineEmits<{
+  workspaceChange: [env: WorkspaceEnv];
 }>();
 </script>
 
@@ -14,7 +19,7 @@ const props = defineProps<{
     class="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-border/60 bg-card px-2 text-[11px] text-muted-foreground"
   >
     <div class="flex min-w-0 items-center gap-1.5">
-      <WorkspaceEnvSelector />
+      <WorkspaceEnvSelector @select="(env) => emit('workspaceChange', env)" />
       <NIcon :component="TerminalOutline" :size="12" class="shrink-0" />
       <span class="truncate">{{ props.cwd ?? "local workspace" }}</span>
     </div>

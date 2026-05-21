@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use crate::modules::git::errors::{GitError, Result};
-use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
+use crate::modules::workspace::{
+    normalize_host_path, resolve_path, WorkspaceEnv, WorkspaceRegistry,
+};
 
 #[derive(Clone, Debug)]
 pub struct ResolvedGitDirectory {
@@ -70,7 +72,7 @@ pub fn resolve_within_repo(repo_root: &Path, rel: &str) -> Result<PathBuf> {
     }
     let joined = repo_root.join(rel);
     let canonical = match std::fs::canonicalize(&joined) {
-        Ok(p) => p,
+        Ok(p) => normalize_host_path(p),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return canonicalize_parent(repo_root, &joined, rel)
         }
@@ -93,7 +95,8 @@ fn canonicalize_parent(repo_root: &Path, joined: &Path, rel: &str) -> Result<Pat
     let parent = joined
         .parent()
         .ok_or_else(|| GitError::InvalidPath(rel.into()))?;
-    let canonical_parent = std::fs::canonicalize(parent).map_err(GitError::Io)?;
+    let canonical_parent =
+        normalize_host_path(std::fs::canonicalize(parent).map_err(GitError::Io)?);
     if !canonical_parent.starts_with(repo_root) {
         return Err(GitError::PathOutsideWorkspace(canonical_parent));
     }

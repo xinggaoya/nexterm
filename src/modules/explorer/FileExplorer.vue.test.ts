@@ -4,7 +4,13 @@ import { createPinia } from "pinia";
 import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import FileExplorer from "./FileExplorer.vue";
-import { readFileTreeDir } from "./lib/fileTreeService";
+import {
+  createFileTreeEntry,
+  deleteFileTreePath,
+  readFileTreeDir,
+  renameFileTreePath,
+  searchFileTree,
+} from "./lib/fileTreeService";
 
 vi.mock("./lib/fileTreeService", async () => {
   const actual =
@@ -17,8 +23,22 @@ vi.mock("./lib/fileTreeService", async () => {
     createFileTreeEntry: vi.fn(),
     deleteFileTreePath: vi.fn(),
     renameFileTreePath: vi.fn(),
+    searchFileTree: vi.fn(),
   };
 });
+
+vi.mock("./lib/iconResolver", () => ({
+  fileIconUrl: (name: string) => `file-icon:${name}`,
+  folderIconUrl: (name: string, expanded: boolean) =>
+    `folder-icon:${name}:${expanded ? "open" : "closed"}`,
+}));
+
+vi.mock("./lib/contextActions", () => ({
+  copyToClipboard: vi.fn(),
+  relativePath: (rootPath: string, path: string) =>
+    path.startsWith(`${rootPath}/`) ? path.slice(rootPath.length + 1) : path,
+  revealInFinder: vi.fn(),
+}));
 
 async function flush() {
   await Promise.resolve();
@@ -33,6 +53,7 @@ describe("FileExplorer.vue", () => {
         return [
           { name: "src", kind: "dir", size: 0, mtime: 1 },
           { name: "README.md", kind: "file", size: 10, mtime: 2 },
+          { name: "package.json", kind: "file", size: 20, mtime: 4 },
         ];
       }
       if (path === "/repo/src") {
@@ -40,9 +61,23 @@ describe("FileExplorer.vue", () => {
       }
       return [];
     });
+    vi.mocked(createFileTreeEntry).mockResolvedValue(undefined);
+    vi.mocked(renameFileTreePath).mockResolvedValue(undefined);
+    vi.mocked(deleteFileTreePath).mockResolvedValue(undefined);
+    vi.mocked(searchFileTree).mockResolvedValue({
+      hits: [
+        {
+          path: "/repo/src/main.ts",
+          rel: "src/main.ts",
+          name: "main.ts",
+          is_dir: false,
+        },
+      ],
+      truncated: false,
+    });
   });
 
-  it("loads the root directory and opens files as preview tabs", async () => {
+  it("loads the root directory with resolved file and folder icons", async () => {
     const wrapper = mount(FileExplorer, {
       global: { plugins: [createPinia()] },
       props: { rootPath: "/repo" },
@@ -53,6 +88,21 @@ describe("FileExplorer.vue", () => {
     expect(wrapper.text()).toContain("repo");
     expect(wrapper.text()).toContain("src");
     expect(wrapper.text()).toContain("README.md");
+    expect(
+      wrapper.find("[data-explorer-root-icon]").attributes("src"),
+    ).toBe("folder-icon:repo:closed");
+    expect(
+      wrapper
+        .find("[data-explorer-row-path='/repo/src'] [data-explorer-entry-icon]")
+        .attributes("src"),
+    ).toBe("folder-icon:src:closed");
+    expect(
+      wrapper
+        .find(
+          "[data-explorer-row-path='/repo/README.md'] [data-explorer-entry-icon]",
+        )
+        .attributes("src"),
+    ).toBe("file-icon:README.md");
 
     await wrapper.find("[data-explorer-row-path='/repo/README.md']").trigger("click");
 
@@ -71,6 +121,11 @@ describe("FileExplorer.vue", () => {
 
     expect(readFileTreeDir).toHaveBeenCalledWith("/repo/src", false);
     expect(wrapper.text()).toContain("main.ts");
+    expect(
+      wrapper
+        .find("[data-explorer-row-path='/repo/src'] [data-explorer-entry-icon]")
+        .attributes("src"),
+    ).toBe("folder-icon:src:open");
   });
 
   it("renders an empty state without a root path", () => {
@@ -80,5 +135,119 @@ describe("FileExplorer.vue", () => {
     });
 
     expect(wrapper.text()).toContain("No current directory");
+  });
+
+  it("creates files from the header inline input and refreshes the root", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper.find("[data-new-file]").trigger("click");
+    await flush();
+    await wrapper.find("[data-inline-tree-input]").setValue("notes.md");
+    await wrapper.find("[data-inline-tree-input]").trigger("keydown", { key: "Enter" });
+    await flush();
+
+    expect(createFileTreeEntry).toHaveBeenCalledWith("/repo/notes.md", "file");
+    expect(readFileTreeDir).toHaveBeenLastCalledWith("/repo", false);
+  });
+
+  it("renames files inline from a row double click", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("dblclick");
+    await flush();
+    await wrapper.find("[data-inline-tree-input]").setValue("README.old.md");
+    await wrapper.find("[data-inline-tree-input]").trigger("keydown", { key: "Enter" });
+    await flush();
+
+    expect(renameFileTreePath).toHaveBeenCalledWith(
+      "/repo/README.md",
+      "/repo/README.old.md",
+    );
+    expect(wrapper.emitted("pathRenamed")).toEqual([
+      ["/repo/README.md", "/repo/README.old.md"],
+    ]);
+  });
+
+  it("deletes files through the context menu after confirmation", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+
+    await wrapper.find("[data-menu-action='delete']").trigger("click");
+    await flush();
+    expect(deleteFileTreePath).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("Click again to confirm");
+
+    await wrapper.find("[data-menu-action='delete']").trigger("click");
+    await flush();
+
+    expect(deleteFileTreePath).toHaveBeenCalledWith("/repo/README.md");
+    expect(wrapper.emitted("pathDeleted")).toEqual([["/repo/README.md"]]);
+  });
+
+  it("searches files and opens the selected search result", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper.find("[data-toggle-search]").trigger("click");
+    await flush();
+    await wrapper.find("[data-explorer-search-input]").setValue("main");
+    await vi.advanceTimersByTimeAsync(300);
+    await flush();
+
+    expect(searchFileTree).toHaveBeenCalledWith("/repo", "main", false);
+    await wrapper.find("[data-search-result='/repo/src/main.ts']").trigger("click");
+
+    const openFileEvents = wrapper.emitted("openFile") ?? [];
+    expect(openFileEvents[openFileEvents.length - 1]).toEqual([
+      "/repo/src/main.ts",
+      false,
+    ]);
+    vi.useRealTimers();
+  });
+
+  it("supports keyboard navigation for rows", async () => {
+    const wrapper = mount(FileExplorer, {
+      attachTo: document.body,
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    const explorer = wrapper.find("[data-file-explorer]");
+    await explorer.trigger("keydown", { key: "ArrowDown" });
+    await explorer.trigger("keydown", { key: "ArrowRight" });
+    await flush();
+    await explorer.trigger("keydown", { key: "ArrowDown" });
+    await explorer.trigger("keydown", { key: "Enter" });
+
+    expect(readFileTreeDir).toHaveBeenCalledWith("/repo/src", false);
+    const openFileEvents = wrapper.emitted("openFile") ?? [];
+    expect(openFileEvents[openFileEvents.length - 1]).toEqual([
+      "/repo/src/main.ts",
+      false,
+    ]);
+    wrapper.unmount();
   });
 });

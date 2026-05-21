@@ -8,6 +8,18 @@ export type DirEntry = {
   mtime: number;
 };
 
+export type SearchHit = {
+  path: string;
+  rel: string;
+  name: string;
+  is_dir: boolean;
+};
+
+export type SearchResult = {
+  hits: SearchHit[];
+  truncated: boolean;
+};
+
 export function joinPath(parent: string, name: string): string {
   if (parent.endsWith("/")) return `${parent}${name}`;
   return `${parent}/${name}`;
@@ -51,4 +63,18 @@ export async function renameFileTreePath(
 
 export async function deleteFileTreePath(path: string): Promise<void> {
   await invoke("fs_delete", { path, workspace: currentWorkspaceEnv() });
+}
+
+export async function searchFileTree(
+  root: string,
+  query: string,
+  showHidden: boolean,
+): Promise<SearchResult> {
+  return invoke<SearchResult>("fs_search", {
+    root,
+    query,
+    limit: 200,
+    showHidden,
+    workspace: currentWorkspaceEnv(),
+  });
 }

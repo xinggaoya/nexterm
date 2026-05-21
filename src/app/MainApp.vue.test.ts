@@ -1,10 +1,32 @@
 // @vitest-environment jsdom
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { nextTick } from "vue";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import MainApp from "./MainApp.vue";
+import { applyTerminalSessionTheme } from "@/modules/terminal";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
+import { currentWorkspaceEnv } from "@/modules/workspace";
+import { setCurrentWorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
+
+const invokeMock = vi.hoisted(() =>
+  vi.fn(async (command: string, args?: Record<string, unknown>) => {
+    if (command === "wsl_home") return "/home/dev";
+    if (command === "workspace_authorize") return args?.path ?? null;
+    return null;
+  }),
+);
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
+  Channel: class {
+    onmessage: unknown;
+  },
+}));
+
+vi.mock("@tauri-apps/api/path", () => ({
+  homeDir: vi.fn(async () => "C:\\Users\\dev"),
+}));
 
 vi.mock("@/components/WindowControls.vue", () => ({
   default: { template: "<div data-window-controls />" },
@@ -16,6 +38,10 @@ vi.mock("@/modules/terminal/TerminalStack.vue", () => ({
     emits: ["focusLeaf", "cwd", "exit", "searchReady"],
     template: '<div data-terminal-stack>{{ tabs.length }}:{{ activeId }}</div>',
   },
+}));
+
+vi.mock("@/modules/terminal", () => ({
+  applyTerminalSessionTheme: vi.fn(),
 }));
 
 vi.mock("@/modules/explorer/FileExplorer.vue", () => ({
@@ -89,12 +115,54 @@ vi.mock("@/modules/git-history/GitHistoryStack.vue", () => ({
 vi.mock("./components/AppStatusBar.vue", () => ({
   default: {
     props: ["cwd", "privateActive"],
+    emits: ["workspaceChange"],
     template:
-      '<footer data-status-bar>{{ cwd ?? "local workspace" }}:{{ privateActive }}</footer>',
+      '<footer data-status-bar><span>{{ cwd ?? "local workspace" }}:{{ privateActive }}</span><button data-switch-wsl @click="$emit(\'workspaceChange\', { kind: \'wsl\', distro: \'Ubuntu\' })"></button><button data-switch-local @click="$emit(\'workspaceChange\', { kind: \'local\' })"></button></footer>',
   },
 }));
 
 describe("MainApp.vue", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setCurrentWorkspaceEnv({ kind: "local" });
+  });
+
+  it("keeps preinitialized launch cwd available on first render", () => {
+    const pinia = createPinia();
+    const tabs = useTabsPiniaStore(pinia);
+    tabs.init("/repo");
+
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia] },
+    });
+
+    expect(wrapper.find("[data-file-explorer]").text()).toContain("/repo");
+    expect(tabs.tabs[0]).toMatchObject({
+      kind: "terminal",
+      cwd: "/repo",
+      paneTree: { kind: "leaf", id: 2, cwd: "/repo" },
+    });
+  });
+
+  it("refreshes terminal themes after syncing app theme tokens", async () => {
+    const originalRaf = window.requestAnimationFrame;
+    window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      callback(0);
+      return 0;
+    }) as typeof window.requestAnimationFrame;
+
+    try {
+      mount(MainApp, {
+        global: { plugins: [createPinia()] },
+      });
+      await nextTick();
+
+      expect(applyTerminalSessionTheme).toHaveBeenCalled();
+    } finally {
+      window.requestAnimationFrame = originalRaf;
+    }
+  });
+
   it("renders the Vue workbench shell and handles terminal tab actions", async () => {
     const pinia = createPinia();
     const wrapper = mount(MainApp, {
@@ -134,10 +202,75 @@ describe("MainApp.vue", () => {
       },
     });
 
-    await wrapper.find("[data-close-active-tab]").trigger("click");
+    expect(wrapper.find("[data-close-active-tab]").exists()).toBe(false);
+
+    await wrapper.find("[data-close-tab-id='5']").trigger("click");
 
     expect(tabs.tabs.map((tab) => tab.id)).toEqual([1, 3]);
     expect(tabs.activeId).toBe(3);
+  });
+
+  it("switches to a WSL workspace and resets terminal tabs to the WSL home", async () => {
+    const pinia = createPinia();
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia] },
+    });
+    const tabs = useTabsPiniaStore();
+
+    tabs.setLeafCwd(2, "D:/repo");
+    tabs.newTab("D:/other");
+    await nextTick();
+
+    await wrapper.find("[data-switch-wsl]").trigger("click");
+    await flushPromises();
+    await nextTick();
+
+    expect(currentWorkspaceEnv()).toEqual({ kind: "wsl", distro: "Ubuntu" });
+    expect(tabs.tabs).toEqual([
+      {
+        id: 5,
+        kind: "terminal",
+        title: "shell",
+        cwd: "/home/dev",
+        paneTree: { kind: "leaf", id: 6, cwd: "/home/dev" },
+        activeLeafId: 6,
+      },
+    ]);
+    expect(tabs.activeId).toBe(5);
+    expect(invokeMock).toHaveBeenCalledWith("wsl_home", { distro: "Ubuntu" });
+    expect(invokeMock).toHaveBeenCalledWith("workspace_authorize", {
+      path: "/home/dev",
+      workspace: { kind: "wsl", distro: "Ubuntu" },
+    });
+  });
+
+  it("blocks workspace switching while editor tabs are dirty", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const pinia = createPinia();
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia] },
+    });
+    const tabs = useTabsPiniaStore();
+
+    const editorId = tabs.openFileTab("/repo/src/main.ts");
+    tabs.updateTab(editorId!, { dirty: true });
+    await nextTick();
+
+    await wrapper.find("[data-switch-wsl]").trigger("click");
+    await flushPromises();
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      "Save or close unsaved editor tabs before switching workspace.",
+    );
+    expect(currentWorkspaceEnv()).toEqual({ kind: "local" });
+    expect(tabs.tabs.some((tab) => tab.kind === "editor" && tab.dirty)).toBe(
+      true,
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith("wsl_home", {
+      distro: "Ubuntu",
+    });
+
+    alertSpy.mockRestore();
   });
 
   it("renders the Vue file explorer and opens files into editor tabs", async () => {

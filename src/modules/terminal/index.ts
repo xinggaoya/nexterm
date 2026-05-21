@@ -1,6 +1,7 @@
 export { default as TerminalPane } from "./TerminalPane.vue";
 export { default as TerminalStack } from "./TerminalStack.vue";
 export {
+  applyTerminalSessionTheme,
   createTerminalSessionHandle,
   disposeSession,
   respawnSession,

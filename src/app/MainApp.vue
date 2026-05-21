@@ -7,6 +7,7 @@ import {
   NMessageProvider,
   NNotificationProvider,
 } from "naive-ui";
+import { homeDir } from "@tauri-apps/api/path";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import AppHeader from "./components/AppHeader.vue";
 import AppStatusBar from "./components/AppStatusBar.vue";
@@ -16,6 +17,13 @@ import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import { MAX_PANES_PER_TAB } from "@/modules/tabs/tabsTypes";
+import {
+  authorizeWorkspace,
+  getWslHome,
+  LOCAL_WORKSPACE,
+  useWorkspaceEnvPiniaStore,
+  type WorkspaceEnv,
+} from "@/modules/workspace";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
 import SourceControlPanel from "@/modules/source-control/SourceControlPanel.vue";
 import AiDiffStack from "@/modules/editor/AiDiffStack.vue";
@@ -24,6 +32,7 @@ import GitDiffStack from "@/modules/editor/GitDiffStack.vue";
 import GitHistoryStack from "@/modules/git-history/GitHistoryStack.vue";
 import MarkdownStack from "@/modules/markdown/MarkdownStack.vue";
 import PreviewStack from "@/modules/preview/PreviewStack.vue";
+import { applyTerminalSessionTheme } from "@/modules/terminal";
 import TerminalStack from "@/modules/terminal/TerminalStack.vue";
 import { leafIds, type SplitDir } from "@/modules/terminal/lib/panes";
 import { buildNaiveThemeOverrides, getNaiveTheme } from "@/modules/theme/naiveTheme";
@@ -31,6 +40,7 @@ import { readAppTokens, type AppTokens } from "@/styles/tokens";
 
 const prefs = usePreferencesPiniaStore();
 const tabs = useTabsPiniaStore();
+const workspace = useWorkspaceEnvPiniaStore();
 tabs.init();
 const sidebarView = ref<"explorer" | "source">("explorer");
 const colorSchemeQuery =
@@ -81,6 +91,17 @@ const canSplitActiveTab = computed(() => {
   if (!tab || tab.kind !== "terminal") return false;
   return leafIds(tab.paneTree).length < MAX_PANES_PER_TAB;
 });
+const isTerminalTab = computed(() => activeTab.value?.kind === "terminal");
+const isEditorTab = computed(() => activeTab.value?.kind === "editor");
+const isPreviewTab = computed(() => activeTab.value?.kind === "preview");
+const isMarkdownTab = computed(() => activeTab.value?.kind === "markdown");
+const isAiDiffTab = computed(() => activeTab.value?.kind === "ai-diff");
+const isGitDiffTab = computed(
+  () =>
+    activeTab.value?.kind === "git-diff" ||
+    activeTab.value?.kind === "git-commit-file",
+);
+const isGitHistoryTab = computed(() => activeTab.value?.kind === "git-history");
 
 function syncDocumentTheme() {
   const root = document.documentElement;
@@ -94,6 +115,7 @@ function syncDocumentTheme() {
   void nextTick(() => {
     const update = () => {
       themeOverrides.value = buildNaiveThemeOverrides(readAppTokens());
+      applyTerminalSessionTheme();
     };
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(update);
     else update();
@@ -108,18 +130,51 @@ function newPrivateTerminalTab() {
   tabs.newPrivateTab(activeCwd.value ?? undefined);
 }
 
+function sameWorkspaceEnv(a: WorkspaceEnv, b: WorkspaceEnv): boolean {
+  if (a.kind !== b.kind) return false;
+  return a.kind === "local" || (b.kind === "wsl" && a.distro === b.distro);
+}
+
+async function switchWorkspace(env: WorkspaceEnv) {
+  if (sameWorkspaceEnv(env, workspace.env)) return;
+  const dirty = tabs.tabs.some((tab) => tab.kind === "editor" && tab.dirty);
+  if (dirty) {
+    window.alert("Save or close unsaved editor tabs before switching workspace.");
+    return;
+  }
+
+  let nextHome: string;
+  try {
+    nextHome =
+      env.kind === "wsl"
+        ? await getWslHome(env.distro)
+        : (await homeDir()).replace(/\\/g, "/");
+  } catch (error) {
+    window.alert(String(error));
+    return;
+  }
+
+  workspace.setEnv(env.kind === "local" ? LOCAL_WORKSPACE : env);
+  try {
+    await authorizeWorkspace(nextHome);
+  } catch {
+    // The active panel will surface authorization failures if needed.
+  }
+  tabs.resetWorkspace(nextHome);
+}
+
 function splitActivePane(dir: SplitDir) {
   const tab = activeTab.value;
   if (tab?.kind !== "terminal") return;
   tabs.splitActivePane(tab.id, dir);
 }
 
-function closeActiveTab() {
-  tabs.closeTab(tabs.activeId);
-}
-
 function openFileTab(path: string, pin: boolean) {
   tabs.openFileTab(path, pin);
+}
+
+function openMarkdownPreview(path: string) {
+  tabs.newMarkdownTab(path);
 }
 
 function openSourceDiff(input: {
@@ -172,15 +227,14 @@ watch(resolvedTheme, syncDocumentTheme, { immediate: true });
               @new-tab="newTerminalTab"
               @new-private-tab="newPrivateTerminalTab"
               @split-pane="splitActivePane"
-              @close-active-tab="closeActiveTab"
               @open-settings="() => void openSettingsWindow()"
             />
 
             <main class="flex min-h-0 flex-1">
-              <aside class="hidden w-72 shrink-0 border-r border-border/60 bg-card/40 md:block">
+              <aside class="hidden w-72 shrink-0 border-r border-border/60 bg-card md:block">
                 <div class="flex h-full min-h-0">
                   <nav
-                    class="flex w-10 shrink-0 flex-col items-center gap-1 border-r border-border/60 py-2"
+                    class="flex w-10 shrink-0 flex-col items-center gap-1 border-r border-border/60 bg-card py-2"
                     aria-label="Sidebar"
                   >
                     <button
@@ -217,6 +271,7 @@ watch(resolvedTheme, syncDocumentTheme, { immediate: true });
                       v-if="sidebarView === 'explorer'"
                       :root-path="workspaceRoot"
                       @open-file="openFileTab"
+                      @open-markdown-preview="openMarkdownPreview"
                     />
                     <SourceControlPanel
                       v-else
@@ -228,51 +283,96 @@ watch(resolvedTheme, syncDocumentTheme, { immediate: true });
                 </div>
               </aside>
 
-              <section class="relative min-w-0 flex-1">
-                <TerminalStack
-                  :tabs="tabs.tabs"
-                  :active-id="tabs.activeId"
-                  @focus-leaf="(tabId, leafId) => tabs.focusPane(tabId, leafId)"
-                  @cwd="(leafId, cwd) => tabs.setLeafCwd(leafId, cwd)"
-                />
+              <section class="relative min-w-0 flex-1 bg-background">
+                <div
+                  :class="[
+                    'absolute inset-0 px-3 pt-2 pb-2',
+                    isTerminalTab ? '' : 'pointer-events-none invisible',
+                  ]"
+                  :aria-hidden="!isTerminalTab"
+                >
+                  <TerminalStack
+                    :tabs="tabs.tabs"
+                    :active-id="tabs.activeId"
+                    @focus-leaf="(tabId, leafId) => tabs.focusPane(tabId, leafId)"
+                    @cwd="(leafId, cwd) => tabs.setLeafCwd(leafId, cwd)"
+                  />
+                </div>
 
-                <PreviewStack
-                  class="absolute inset-0"
-                  :tabs="tabs.tabs"
-                  :active-id="tabs.activeId"
-                  @url-change="(id, url) => tabs.updateTab(id, { url })"
-                />
+                <div
+                  :class="[
+                    'absolute inset-0 px-3 pt-2 pb-2',
+                    isPreviewTab ? '' : 'pointer-events-none invisible',
+                  ]"
+                  :aria-hidden="!isPreviewTab"
+                >
+                  <PreviewStack
+                    :tabs="tabs.tabs"
+                    :active-id="tabs.activeId"
+                    @url-change="(id, url) => tabs.updateTab(id, { url })"
+                  />
+                </div>
 
-                <MarkdownStack
-                  class="absolute inset-0"
-                  :tabs="tabs.tabs"
-                  :active-id="tabs.activeId"
-                />
+                <div
+                  :class="[
+                    'absolute inset-0 px-3 pt-2 pb-2',
+                    isMarkdownTab ? '' : 'pointer-events-none invisible',
+                  ]"
+                  :aria-hidden="!isMarkdownTab"
+                >
+                  <MarkdownStack
+                    :tabs="tabs.tabs"
+                    :active-id="tabs.activeId"
+                  />
+                </div>
 
-                <GitDiffStack
-                  class="absolute inset-0"
-                  :tabs="tabs.tabs"
-                  :active-id="tabs.activeId"
-                />
+                <div
+                  :class="[
+                    'absolute inset-0 px-3 pt-2 pb-2',
+                    isGitDiffTab ? '' : 'pointer-events-none invisible',
+                  ]"
+                  :aria-hidden="!isGitDiffTab"
+                >
+                  <GitDiffStack
+                    :tabs="tabs.tabs"
+                    :active-id="tabs.activeId"
+                  />
+                </div>
 
-                <AiDiffStack
-                  class="absolute inset-0"
-                  :tabs="tabs.tabs"
-                  :active-id="tabs.activeId"
-                  @accept="(approvalId) => setAiDiffStatus(approvalId, 'approved')"
-                  @reject="(approvalId) => setAiDiffStatus(approvalId, 'rejected')"
-                />
+                <div
+                  :class="[
+                    'absolute inset-0 px-3 pt-2 pb-2',
+                    isAiDiffTab ? '' : 'pointer-events-none invisible',
+                  ]"
+                  :aria-hidden="!isAiDiffTab"
+                >
+                  <AiDiffStack
+                    :tabs="tabs.tabs"
+                    :active-id="tabs.activeId"
+                    @accept="(approvalId) => setAiDiffStatus(approvalId, 'approved')"
+                    @reject="(approvalId) => setAiDiffStatus(approvalId, 'rejected')"
+                  />
+                </div>
 
-                <GitHistoryStack
-                  class="absolute inset-0"
-                  :tabs="tabs.tabs"
-                  :active-id="tabs.activeId"
-                  @open-commit-file="(input) => tabs.openCommitFileDiffTab(input)"
-                />
+                <div
+                  :class="[
+                    'absolute inset-0',
+                    isGitHistoryTab ? '' : 'pointer-events-none invisible',
+                  ]"
+                  :aria-hidden="!isGitHistoryTab"
+                >
+                  <GitHistoryStack
+                    :tabs="tabs.tabs"
+                    :active-id="tabs.activeId"
+                    @open-commit-file="(input) => tabs.openCommitFileDiffTab(input)"
+                  />
+                </div>
 
                 <div
                   v-if="activeTab && activeTab.kind === 'editor'"
-                  class="absolute inset-0 flex min-h-0 flex-col bg-background"
+                  class="absolute inset-0 flex min-h-0 flex-col bg-background px-3 pt-2 pb-2"
+                  :class="isEditorTab ? '' : 'pointer-events-none invisible'"
+                  :aria-hidden="!isEditorTab"
                 >
                   <EditorPane
                     :path="activeTab.path"
@@ -282,7 +382,11 @@ watch(resolvedTheme, syncDocumentTheme, { immediate: true });
               </section>
             </main>
 
-            <AppStatusBar :cwd="activeCwd" :private-active="privateActive" />
+            <AppStatusBar
+              :cwd="activeCwd"
+              :private-active="privateActive"
+              @workspace-change="switchWorkspace"
+            />
           </div>
         </NNotificationProvider>
       </NMessageProvider>

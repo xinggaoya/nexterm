@@ -13,6 +13,7 @@ const tabs: Tab[] = [
     id: 1,
     kind: "terminal",
     title: "shell",
+    cwd: "/repo/nexterm",
     paneTree: { kind: "leaf", id: 2 },
     activeLeafId: 2,
   },
@@ -20,9 +21,56 @@ const tabs: Tab[] = [
     id: 3,
     kind: "terminal",
     title: "private",
+    cwd: "C:\\Users\\me\\secret",
     private: true,
     paneTree: { kind: "leaf", id: 4 },
     activeLeafId: 4,
+  },
+  {
+    id: 5,
+    kind: "editor",
+    title: "main.ts",
+    path: "/repo/src/main.ts",
+    dirty: true,
+    preview: false,
+  },
+  {
+    id: 6,
+    kind: "markdown",
+    title: "README.md",
+    path: "/repo/README.md",
+  },
+  {
+    id: 7,
+    kind: "preview",
+    title: "localhost:3180",
+    url: "http://localhost:3180",
+  },
+  {
+    id: 8,
+    kind: "git-diff",
+    title: "main.ts",
+    repoRoot: "/repo",
+    path: "src/main.ts",
+    mode: "+",
+    originalPath: null,
+  },
+  {
+    id: 9,
+    kind: "git-history",
+    title: "History · main",
+    repoRoot: "/repo",
+  },
+  {
+    id: 10,
+    kind: "ai-diff",
+    title: "AI diff",
+    path: "/repo/src/main.ts",
+    originalContent: "old",
+    proposedContent: "new",
+    approvalId: "approval-1",
+    status: "pending",
+    isNewFile: false,
   },
 ];
 
@@ -41,7 +89,6 @@ describe("AppHeader.vue", () => {
     await wrapper.find("[data-new-private-tab]").trigger("click");
     await wrapper.find("[data-split-row]").trigger("click");
     await wrapper.find("[data-split-col]").trigger("click");
-    await wrapper.find("[data-close-active-tab]").trigger("click");
     await wrapper.find("[data-open-settings]").trigger("click");
     await wrapper.find("[data-tab-id='3']").trigger("click");
     await wrapper.find("[data-close-tab-id='3']").trigger("click");
@@ -49,11 +96,35 @@ describe("AppHeader.vue", () => {
     expect(wrapper.emitted("newTab")).toHaveLength(1);
     expect(wrapper.emitted("newPrivateTab")).toHaveLength(1);
     expect(wrapper.emitted("splitPane")).toEqual([[ "row" ], [ "col" ]]);
-    expect(wrapper.emitted("closeActiveTab")).toHaveLength(1);
+    expect(wrapper.find("[data-close-active-tab]").exists()).toBe(false);
+    expect(wrapper.emitted("closeActiveTab")).toBeUndefined();
     expect(wrapper.emitted("openSettings")).toHaveLength(1);
     expect(wrapper.emitted("selectTab")).toEqual([[3]]);
     expect(wrapper.emitted("closeTab")).toEqual([[3]]);
     expect(wrapper.find("[data-window-controls]").exists()).toBe(true);
+  });
+
+  it("renders tab icons and terminal labels from the current project directory", () => {
+    const wrapper = mount(AppHeader, {
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    expect(wrapper.find("[data-tab-label='1']").text()).toBe("nexterm");
+    expect(wrapper.find("[data-tab-label='3']").text()).toBe("secret");
+    expect(wrapper.find("[data-tab-icon='terminal']").exists()).toBe(true);
+    expect(wrapper.find("[data-tab-icon='private-terminal']").exists()).toBe(true);
+    expect(wrapper.find("[data-tab-icon='editor']").exists()).toBe(true);
+    expect(wrapper.find("[data-tab-icon='markdown']").exists()).toBe(true);
+    expect(wrapper.find("[data-tab-icon='preview']").exists()).toBe(true);
+    expect(wrapper.find("[data-tab-icon='git-diff']").exists()).toBe(true);
+    expect(wrapper.find("[data-tab-icon='git-history']").exists()).toBe(true);
+    expect(wrapper.find("[data-tab-icon='ai-diff']").exists()).toBe(true);
+    expect(wrapper.find("[data-tab-dirty='5']").exists()).toBe(true);
   });
 
   it("disables split actions when the active tab cannot split", () => {

@@ -1,20 +1,36 @@
 <script setup lang="ts">
 import {
-  ChevronForwardOutline,
   DocumentOutline,
-  FolderOpenOutline,
   FolderOutline,
   RefreshOutline,
+  SearchOutline,
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NSpin } from "naive-ui";
 import { computed, ref, watch } from "vue";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import ExplorerContextMenu, {
+  type ExplorerContextMenuTarget,
+} from "./ExplorerContextMenu.vue";
+import ExplorerSearch from "./ExplorerSearch.vue";
+import FileTreeRow from "./FileTreeRow.vue";
 import {
   buildFileTreeRows,
-  type FileTreeRow,
+  type FileTreeRow as VisibleTreeRow,
   type FileTreeState,
+  type PendingCreate,
 } from "./lib/fileTreeRows";
-import { readFileTreeDir } from "./lib/fileTreeService";
+import {
+  createFileTreeEntry,
+  deleteFileTreePath,
+  dirname,
+  joinPath,
+  readFileTreeDir,
+  renameFileTreePath,
+} from "./lib/fileTreeService";
+import { folderIconUrl } from "./lib/iconResolver";
+
+type EntryRow = Extract<VisibleTreeRow, { kind: "entry" }>;
+type MenuRow = Extract<VisibleTreeRow, { kind: "entry" | "rename" }>;
 
 const props = defineProps<{
   rootPath: string | null;
@@ -22,34 +38,76 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   openFile: [path: string, pin: boolean];
+  pathRenamed: [from: string, to: string];
+  pathDeleted: [path: string];
+  openMarkdownPreview: [path: string];
 }>();
 
 const prefs = usePreferencesPiniaStore();
 const nodes = ref<FileTreeState>({});
 const expanded = ref<Set<string>>(new Set());
-const pendingCreate = ref(null);
+const pendingCreate = ref<PendingCreate | null>(null);
 const renaming = ref<string | null>(null);
+const selectedPath = ref<string | null>(null);
+const isSearchOpen = ref(false);
+const isSearchActive = ref(false);
+const menu = ref<ExplorerContextMenuTarget | null>(null);
 
 const rootName = computed(() => {
   if (!props.rootPath) return "";
-  const parts = props.rootPath.split(/[\\/]/).filter(Boolean);
-  return parts.length > 0 ? parts[parts.length - 1] : props.rootPath;
+  return basename(props.rootPath);
 });
 
 const rootState = computed(() =>
   props.rootPath ? nodes.value[props.rootPath] : undefined,
 );
 
-const rows = computed(() => {
-  if (!props.rootPath) return [] as FileTreeRow[];
+const treeSnapshot = computed(() => {
+  if (!props.rootPath) {
+    return {
+      rows: [] as VisibleTreeRow[],
+      entryIndexByPath: new Map<string, number>(),
+    };
+  }
   return buildFileTreeRows({
     rootPath: props.rootPath,
     nodes: nodes.value,
     expanded: expanded.value,
     pendingCreate: pendingCreate.value,
     renaming: renaming.value,
-  }).rows;
+  });
 });
+
+const rows = computed(() => treeSnapshot.value.rows);
+const entryIndexByPath = computed(() => treeSnapshot.value.entryIndexByPath);
+const entryPaths = computed(() =>
+  rows.value.flatMap((row) => (row.kind === "entry" ? [row.path] : [])),
+);
+const pendingAtRoot = computed<VisibleTreeRow | null>(() => {
+  if (!props.rootPath || pendingCreate.value?.parentPath !== props.rootPath) {
+    return null;
+  }
+  return {
+    kind: "pending",
+    key: `pending:${props.rootPath}`,
+    depth: 0,
+    pendingKind: pendingCreate.value.kind,
+  };
+});
+
+function basename(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : path;
+}
+
+function normalizeError(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return String(error);
+}
 
 async function loadChildren(path: string) {
   nodes.value = { ...nodes.value, [path]: { status: "loading" } };
@@ -59,13 +117,13 @@ async function loadChildren(path: string) {
   } catch (error) {
     nodes.value = {
       ...nodes.value,
-      [path]: { status: "error", message: String(error) },
+      [path]: { status: "error", message: normalizeError(error) },
     };
   }
 }
 
-function refreshRoot() {
-  if (props.rootPath) void loadChildren(props.rootPath);
+function refreshPath(path: string | null = props.rootPath) {
+  if (path) void loadChildren(path);
 }
 
 function toggleDir(path: string) {
@@ -79,8 +137,9 @@ function toggleDir(path: string) {
   }
 }
 
-function handleRowClick(row: FileTreeRow) {
-  if (row.kind !== "entry") return;
+function handleEntryClick(row: EntryRow) {
+  if (renaming.value) return;
+  selectedPath.value = row.path;
   if (row.isDir) {
     toggleDir(row.path);
     return;
@@ -88,10 +147,164 @@ function handleRowClick(row: FileTreeRow) {
   emit("openFile", row.path, false);
 }
 
-function iconForRow(row: FileTreeRow) {
-  if (row.kind === "pending" || row.kind === "status") return DocumentOutline;
-  if (row.isDir) return row.kind === "entry" && row.isExpanded ? FolderOpenOutline : FolderOutline;
-  return DocumentOutline;
+function beginCreate(parentPath: string | null, kind: "file" | "dir") {
+  if (!parentPath) return;
+  closeMenu();
+  renaming.value = null;
+  pendingCreate.value = { parentPath, kind };
+  if (props.rootPath && parentPath !== props.rootPath) {
+    expanded.value = new Set(expanded.value).add(parentPath);
+  }
+  if (!nodes.value[parentPath]) void loadChildren(parentPath);
+}
+
+function cancelCreate() {
+  pendingCreate.value = null;
+}
+
+async function commitCreate(name: string) {
+  const pending = pendingCreate.value;
+  if (!pending) return;
+  const trimmed = name.trim();
+  if (!trimmed) {
+    pendingCreate.value = null;
+    return;
+  }
+  const path = joinPath(pending.parentPath, trimmed);
+  try {
+    await createFileTreeEntry(path, pending.kind);
+    await loadChildren(pending.parentPath);
+  } finally {
+    pendingCreate.value = null;
+  }
+}
+
+function beginRename(path: string) {
+  closeMenu();
+  pendingCreate.value = null;
+  renaming.value = path;
+}
+
+function cancelRename() {
+  renaming.value = null;
+}
+
+async function commitRename(newName: string) {
+  const from = renaming.value;
+  if (!from) return;
+  const trimmed = newName.trim();
+  const parent = dirname(from);
+  const oldName = basename(from);
+  if (!trimmed || trimmed === oldName) {
+    renaming.value = null;
+    return;
+  }
+  const to = joinPath(parent, trimmed);
+  try {
+    await renameFileTreePath(from, to);
+    emit("pathRenamed", from, to);
+    selectedPath.value = to;
+    await loadChildren(parent);
+  } finally {
+    renaming.value = null;
+  }
+}
+
+async function deletePath(path: string) {
+  await deleteFileTreePath(path);
+  emit("pathDeleted", path);
+  if (selectedPath.value === path || selectedPath.value?.startsWith(`${path}/`)) {
+    selectedPath.value = null;
+  }
+  await loadChildren(dirname(path));
+}
+
+function handleRowContext(payload: { row: MenuRow; x: number; y: number }) {
+  selectedPath.value = payload.row.path;
+  menu.value = {
+    path: payload.row.path,
+    name: payload.row.name,
+    isDir: payload.row.isDir,
+    x: payload.x,
+    y: payload.y,
+    source: "row",
+  };
+}
+
+function openRootMenu(event: MouseEvent) {
+  if (!props.rootPath) return;
+  menu.value = {
+    path: props.rootPath,
+    name: rootName.value || props.rootPath,
+    isDir: true,
+    x: event.clientX,
+    y: event.clientY,
+    source: "root",
+  };
+}
+
+function closeMenu() {
+  menu.value = null;
+}
+
+function moveSelection(index: number) {
+  const paths = entryPaths.value;
+  if (paths.length === 0) return;
+  const clamped = Math.max(0, Math.min(paths.length - 1, index));
+  selectedPath.value = paths[clamped];
+}
+
+function handleKeydown(event: KeyboardEvent) {
+  if (renaming.value || pendingCreate.value || isSearchOpen.value) return;
+  const target = event.target as HTMLElement | null;
+  if (
+    target?.tagName === "INPUT" ||
+    target?.tagName === "TEXTAREA" ||
+    target?.isContentEditable
+  ) {
+    return;
+  }
+
+  const paths = entryPaths.value;
+  if (paths.length === 0) return;
+  const currentIdx = selectedPath.value
+    ? paths.indexOf(selectedPath.value)
+    : -1;
+
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    moveSelection(currentIdx < 0 ? 0 : currentIdx + 1);
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    moveSelection(currentIdx < 0 ? paths.length - 1 : currentIdx - 1);
+  } else if (event.key === "ArrowRight") {
+    if (currentIdx < 0) return;
+    event.preventDefault();
+    const row = rows.value[entryIndexByPath.value.get(paths[currentIdx]) ?? -1];
+    if (row?.kind !== "entry" || !row.isDir) return;
+    if (!row.isExpanded) toggleDir(row.path);
+    else moveSelection(currentIdx + 1);
+  } else if (event.key === "ArrowLeft") {
+    if (currentIdx < 0) return;
+    event.preventDefault();
+    const row = rows.value[entryIndexByPath.value.get(paths[currentIdx]) ?? -1];
+    if (row?.kind !== "entry") return;
+    if (row.isDir && row.isExpanded) {
+      toggleDir(row.path);
+      return;
+    }
+    const parent = dirname(row.path);
+    if (parent && parent !== props.rootPath && entryIndexByPath.value.has(parent)) {
+      selectedPath.value = parent;
+    }
+  } else if (event.key === "Enter") {
+    if (currentIdx < 0) return;
+    event.preventDefault();
+    const row = rows.value[entryIndexByPath.value.get(paths[currentIdx]) ?? -1];
+    if (row?.kind !== "entry") return;
+    if (row.isDir) toggleDir(row.path);
+    else emit("openFile", row.path, false);
+  }
 }
 
 watch(
@@ -101,28 +314,104 @@ watch(
     expanded.value = new Set();
     pendingCreate.value = null;
     renaming.value = null;
+    selectedPath.value = null;
+    isSearchOpen.value = false;
+    isSearchActive.value = false;
+    closeMenu();
     if (rootPath) void loadChildren(rootPath);
   },
   { immediate: true },
 );
+
+watch(
+  () => prefs.showHidden,
+  () => {
+    if (!props.rootPath) return;
+    const loadedPaths = Object.entries(nodes.value)
+      .filter(([, state]) => state.status === "loaded")
+      .map(([path]) => path);
+    for (const path of loadedPaths.length > 0 ? loadedPaths : [props.rootPath]) {
+      void loadChildren(path);
+    }
+  },
+);
+
+watch(rows, () => {
+  if (selectedPath.value && !entryIndexByPath.value.has(selectedPath.value)) {
+    selectedPath.value = null;
+  }
+});
 </script>
 
 <template>
-  <aside class="flex h-full min-h-0 flex-col bg-card/55 text-foreground">
+  <aside
+    data-file-explorer
+    class="flex h-full min-h-0 flex-col bg-card text-foreground outline-none"
+    tabindex="0"
+    @keydown="handleKeydown"
+  >
     <div
-      class="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2"
+      class="flex h-8 shrink-0 items-center gap-1 border-b border-border/60 px-2"
       data-explorer-header
     >
-      <div class="flex min-w-0 flex-1 items-center gap-1.5">
-        <NIcon :component="FolderOutline" :size="14" class="shrink-0 text-muted-foreground" />
-        <span class="truncate text-[12px] font-semibold">{{ rootName || "Explorer" }}</span>
+      <div class="flex min-w-0 flex-1 items-center gap-1.5" :title="rootPath || undefined">
+        <img
+          v-if="rootPath"
+          :src="folderIconUrl(rootName, false)"
+          alt=""
+          data-explorer-root-icon
+          class="size-4 shrink-0"
+        />
+        <NIcon
+          v-else
+          :component="FolderOutline"
+          :size="14"
+          class="shrink-0 text-muted-foreground"
+        />
+        <span class="truncate text-[12px] font-medium text-foreground/85">
+          {{ rootName || "Explorer" }}
+        </span>
       </div>
+      <NButton
+        size="tiny"
+        quaternary
+        data-toggle-search
+        title="Search files"
+        aria-label="Search files"
+        :disabled="!rootPath"
+        @click="isSearchOpen = !isSearchOpen"
+      >
+        <template #icon><NIcon :component="SearchOutline" /></template>
+      </NButton>
+      <NButton
+        size="tiny"
+        quaternary
+        data-new-file
+        title="New file"
+        aria-label="New file"
+        :disabled="!rootPath"
+        @click="beginCreate(rootPath, 'file')"
+      >
+        <template #icon><NIcon :component="DocumentOutline" /></template>
+      </NButton>
+      <NButton
+        size="tiny"
+        quaternary
+        data-new-folder
+        title="New folder"
+        aria-label="New folder"
+        :disabled="!rootPath"
+        @click="beginCreate(rootPath, 'dir')"
+      >
+        <template #icon><NIcon :component="FolderOutline" /></template>
+      </NButton>
       <NButton
         size="tiny"
         quaternary
         title="Refresh"
         aria-label="Refresh"
-        @click="refreshRoot"
+        :disabled="!rootPath"
+        @click="refreshPath()"
       >
         <template #icon><NIcon :component="RefreshOutline" /></template>
       </NButton>
@@ -132,58 +421,67 @@ watch(
       <div class="text-[12px] text-muted-foreground">No current directory</div>
     </div>
 
-    <div v-else class="min-h-0 flex-1 overflow-y-auto py-1">
+    <template v-else>
+      <ExplorerSearch
+        :root-path="rootPath"
+        :open="isSearchOpen"
+        @request-close="isSearchOpen = false"
+        @active-change="(active) => (isSearchActive = active)"
+        @open-file="(path, pin) => emit('openFile', path, pin)"
+      />
+
       <div
-        v-if="rootState?.status === 'loading'"
-        class="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground"
+        v-show="!isSearchActive"
+        class="min-h-0 flex-1 overflow-y-auto py-1"
+        @contextmenu.prevent="openRootMenu"
       >
-        <NSpin size="small" />
-        <span>Loading...</span>
-      </div>
-      <div
-        v-else-if="rootState?.status === 'error'"
-        class="px-3 py-2 text-[11px] text-destructive"
-      >
-        {{ rootState.message }}
-      </div>
-      <div v-else-if="rootState?.status === 'loaded'" class="space-y-0.5">
-        <button
-          v-for="row in rows"
-          :key="row.key"
-          type="button"
-          :data-explorer-row-path="row.kind === 'entry' || row.kind === 'rename' ? row.path : undefined"
-          :class="[
-            'flex h-6 w-full min-w-0 items-center gap-1 rounded-none px-1.5 text-left text-[12px] transition-colors hover:bg-muted/80',
-            row.kind === 'status' && row.tone === 'error'
-              ? 'text-destructive'
-              : 'text-foreground',
-          ]"
-          :style="{ paddingLeft: `${6 + row.depth * 14}px` }"
-          @click="handleRowClick(row)"
+        <FileTreeRow
+          v-if="pendingAtRoot"
+          :row="pendingAtRoot"
+          :selected="false"
+          @commit-create="commitCreate"
+          @cancel-create="cancelCreate"
+        />
+
+        <div
+          v-if="rootState?.status === 'loading'"
+          class="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground"
         >
-          <NIcon
-            v-if="row.kind === 'entry' && row.isDir"
-            :component="ChevronForwardOutline"
-            :size="11"
-            :class="['shrink-0 transition-transform', row.isExpanded ? 'rotate-90' : '']"
+          <NSpin size="small" />
+          <span>Loading...</span>
+        </div>
+        <div
+          v-else-if="rootState?.status === 'error'"
+          class="px-3 py-2 text-[11px] text-destructive"
+        >
+          {{ rootState.message }}
+        </div>
+        <div v-else-if="rootState?.status === 'loaded'" class="space-y-0.5 px-1">
+          <FileTreeRow
+            v-for="row in rows"
+            :key="row.key"
+            :row="row"
+            :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPath === row.path"
+            @entry-click="handleEntryClick"
+            @begin-rename="beginRename"
+            @commit-rename="commitRename"
+            @cancel-rename="cancelRename"
+            @commit-create="commitCreate"
+            @cancel-create="cancelCreate"
+            @row-context="handleRowContext"
           />
-          <span v-else class="w-[11px] shrink-0" />
-          <NIcon
-            :component="iconForRow(row)"
-            :size="14"
-            class="shrink-0 text-muted-foreground"
-          />
-          <span class="min-w-0 flex-1 truncate">
-            <template v-if="row.kind === 'entry' || row.kind === 'rename'">
-              {{ row.name }}
-            </template>
-            <template v-else-if="row.kind === 'pending'">
-              {{ row.pendingKind === "dir" ? "New folder" : "New file" }}
-            </template>
-            <template v-else>{{ row.message }}</template>
-          </span>
-        </button>
+        </div>
       </div>
-    </div>
+    </template>
+
+    <ExplorerContextMenu
+      :target="menu"
+      :root-path="rootPath"
+      @close="closeMenu"
+      @open-file="(path, pin) => emit('openFile', path, pin)"
+      @open-markdown-preview="(path) => emit('openMarkdownPreview', path)"
+      @create="beginCreate"
+      @delete-path="deletePath"
+    />
   </aside>
 </template>

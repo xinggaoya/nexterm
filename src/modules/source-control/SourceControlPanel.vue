@@ -123,6 +123,8 @@ async function loadSnapshot(rootPath: string | null) {
   panelState.value = "loading";
   errorMessage.value = null;
   try {
+    await native.workspaceAuthorize(rootPath);
+    if (currentId !== requestId.value) return;
     const snapshot = await native.gitPanelSnapshot(rootPath);
     if (currentId !== requestId.value) return;
     repo.value = snapshot.repo;

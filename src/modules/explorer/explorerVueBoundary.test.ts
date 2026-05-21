@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -12,7 +13,7 @@ function walk(dir: string): string[] {
 
 describe("explorer module Vue boundary", () => {
   it("does not keep React explorer components or hooks", () => {
-    const root = new URL(".", import.meta.url).pathname;
+    const root = fileURLToPath(new URL(".", import.meta.url));
     const offenders = walk(root)
       .filter((file) => /\.(ts|tsx|vue)$/.test(file))
       .filter((file) => !file.endsWith("explorerVueBoundary.test.ts"))

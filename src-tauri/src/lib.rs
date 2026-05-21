@@ -87,6 +87,7 @@ async fn open_settings_window(app: tauri::AppHandle, tab: Option<String>) -> Res
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     workspace::init_launch_cwd();
+    let launch_dir = parse_launch_dir();
 
     tauri::Builder::default()
         // Skip restoring VISIBLE — frontend calls window.show() after first
@@ -111,10 +112,13 @@ pub fn run() {
         .manage(secrets::SecretsState::default())
         .manage({
             let registry = workspace::WorkspaceRegistry::default();
-            workspace::bootstrap_registry(&registry);
+            workspace::bootstrap_registry_with_launch_dir(
+                &registry,
+                launch_dir.as_deref().map(std::path::Path::new),
+            );
             registry
         })
-        .manage(LaunchDir(Mutex::new(parse_launch_dir())))
+        .manage(LaunchDir(Mutex::new(launch_dir)))
         .invoke_handler(tauri::generate_handler![
             pty::pty_open,
             pty::pty_write,
