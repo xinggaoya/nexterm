@@ -10,11 +10,22 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use portable_pty::PtySize;
+use serde::Serialize;
 use tauri::ipc::{Channel, Response};
 
 use crate::modules::workspace::{authorize_spawn_cwd, WorkspaceEnv, WorkspaceRegistry};
 use session::Session;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PtyTranscriptRead {
+    start_offset: u64,
+    next_offset: u64,
+    total_offset: u64,
+    data_base64: String,
+}
 
 pub struct PtyState {
     sessions: RwLock<HashMap<u32, Arc<Session>>>,
@@ -126,6 +137,32 @@ pub fn pty_resize(
             e.to_string()
         });
     result
+}
+
+#[tauri::command]
+pub fn pty_read_transcript(
+    state: tauri::State<PtyState>,
+    id: u32,
+    since_offset: u64,
+    max_bytes: usize,
+) -> Result<PtyTranscriptRead, String> {
+    let session = state
+        .sessions
+        .read()
+        .unwrap()
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| {
+            log::warn!("pty_read_transcript: unknown id={id}");
+            "no session".to_string()
+        })?;
+    let read = session.transcript.read_from(since_offset, max_bytes)?;
+    Ok(PtyTranscriptRead {
+        start_offset: read.start_offset,
+        next_offset: read.next_offset,
+        total_offset: read.total_offset,
+        data_base64: BASE64.encode(read.data),
+    })
 }
 
 #[tauri::command]

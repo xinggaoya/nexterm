@@ -11,6 +11,7 @@ import {
 } from "./lib/rendererPool";
 import {
   createTerminalSessionHandle,
+  applyTerminalSessionScrollback,
   mountTerminalSession,
   updateTerminalSessionVisibility,
 } from "./lib/terminalSessionCore";
@@ -90,7 +91,10 @@ watch(
 
 watch(
   () => prefs.terminalScrollback,
-  (scrollback) => applyScrollback(scrollback),
+  (scrollback) => {
+    applyScrollback(scrollback);
+    applyTerminalSessionScrollback(scrollback);
+  },
   { immediate: true },
 );
 

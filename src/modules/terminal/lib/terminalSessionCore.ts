@@ -1,16 +1,18 @@
 import { ensureMonoFontsLoaded } from "@/lib/fonts";
 import { configureTerminalSessionDisposer } from "@/modules/tabs/terminalDisposal";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import type { SearchAddon } from "@xterm/addon-search";
-import { DormantRing } from "./dormantRing";
+import { Terminal } from "@xterm/xterm";
 import {
   createShellIntegrationState,
   registerCwdHandler,
   registerPromptTracker,
 } from "./osc-handlers";
-import { openPty, type PtySession } from "./pty-bridge";
+import { openPty, type PtyOutputChunk, type PtySession } from "./pty-bridge";
 import {
   acquireSlot,
   applyTheme as applyPoolTheme,
+  createTerminalOptions,
   focusSlot,
   getSlotForLeaf,
   releaseSlot,
@@ -26,6 +28,7 @@ export type TerminalSessionCallbacks = {
 
 type Session = {
   pty: PtySession | null;
+  transcriptReader: PtySession | null;
   ptyOpening: boolean;
   initialCwd: string | undefined;
   lastCwd: string | null;
@@ -39,11 +42,14 @@ type Session = {
   cols: number;
   rows: number;
   container: HTMLDivElement | null;
-  snapshot: string | null;
   searchQuery: string | null;
-  dormantRing: DormantRing;
   hasSlot: boolean;
-  altScreenAtRelease: boolean;
+  modelTerm: Terminal;
+  modelSerializeAddon: SerializeAddon;
+  modelOscDisposers: (() => void)[];
+  nextOutputOffset: number;
+  outputChain: Promise<void>;
+  generation: number;
 };
 
 export type TerminalSessionHandle = {
@@ -55,6 +61,7 @@ export type TerminalSessionHandle = {
 };
 
 const sessions = new Map<number, Session>();
+const TRANSCRIPT_READ_CHUNK_BYTES = 1024 * 1024;
 
 configureRendererPool({
   resolveLeaf(leafId) {
@@ -67,6 +74,7 @@ configureRendererPool({
       resizePty: (cols, rows) => {
         s.cols = cols;
         s.rows = rows;
+        resizeModel(s, cols, rows);
         s.pty?.resize(cols, rows);
       },
       kickPty: (cols, rows) => {
@@ -94,8 +102,13 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
   const existing = sessions.get(leafId);
   if (existing) return existing;
 
+  const modelTerm = new Terminal(createTerminalOptions());
+  const modelSerializeAddon = new SerializeAddon();
+  modelTerm.loadAddon(modelSerializeAddon);
+
   const session: Session = {
     pty: null,
+    transcriptReader: null,
     ptyOpening: false,
     initialCwd,
     lastCwd: null,
@@ -106,15 +119,19 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     focusedNow: false,
     disposed: false,
     ready: Promise.resolve(),
-    cols: 0,
-    rows: 0,
+    cols: modelTerm.cols,
+    rows: modelTerm.rows,
     container: null,
-    snapshot: null,
     searchQuery: null,
-    dormantRing: new DormantRing(),
     hasSlot: false,
-    altScreenAtRelease: false,
+    modelTerm,
+    modelSerializeAddon,
+    modelOscDisposers: [],
+    nextOutputOffset: 0,
+    outputChain: Promise.resolve(),
+    generation: 0,
   };
+  session.modelOscDisposers = registerModelOsc(session);
   sessions.set(leafId, session);
 
   session.ready = (async () => {
@@ -125,17 +142,155 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
   return session;
 }
 
-function deliverPtyBytes(leafId: number, bytes: Uint8Array): void {
+function registerModelOsc(s: Session): (() => void)[] {
+  const shellState = createShellIntegrationState();
+  const prompt = registerPromptTracker(s.modelTerm, shellState);
+  const cwd = registerCwdHandler(
+    s.modelTerm,
+    (next) => {
+      if (s.lastCwd === next) return;
+      s.lastCwd = next;
+      s.callbacks.onCwd?.(next);
+    },
+    shellState,
+  );
+  return [prompt.dispose, cwd];
+}
+
+function deliverPtyChunk(
+  leafId: number,
+  generation: number,
+  chunk: PtyOutputChunk,
+): void {
   const s = sessions.get(leafId);
-  if (!s) return;
+  if (!s || s.disposed || s.generation !== generation) return;
+  s.outputChain = s.outputChain
+    .then(() => processPtyChunk(leafId, s, generation, chunk))
+    .catch((e) => console.warn("[nexterm] PTY output processing failed:", e));
+}
+
+async function processPtyChunk(
+  leafId: number,
+  s: Session,
+  generation: number,
+  chunk: PtyOutputChunk,
+): Promise<void> {
+  if (s.disposed || s.generation !== generation || chunk.bytes.length === 0) {
+    return;
+  }
+
+  if (chunk.startOffset > s.nextOutputOffset) {
+    await fillTranscriptGap(leafId, s, generation, chunk.startOffset);
+  }
+
+  let startOffset = chunk.startOffset;
+  let bytes = chunk.bytes;
+  if (startOffset < s.nextOutputOffset) {
+    const overlap = s.nextOutputOffset - startOffset;
+    if (overlap >= bytes.length) return;
+    bytes = bytes.subarray(overlap);
+    startOffset = s.nextOutputOffset;
+  }
+
+  await writeSessionBytes(leafId, s, generation, bytes);
+  s.nextOutputOffset = startOffset + bytes.length;
+}
+
+async function fillTranscriptGap(
+  leafId: number,
+  s: Session,
+  generation: number,
+  targetOffset: number,
+): Promise<void> {
+  let cursor = s.nextOutputOffset;
+  while (
+    cursor < targetOffset &&
+    !s.disposed &&
+    s.generation === generation
+  ) {
+    const reader = s.transcriptReader ?? s.pty;
+    if (!reader) {
+      console.warn("[nexterm] missing PTY transcript reader for output gap");
+      return;
+    }
+    const maxBytes = Math.min(
+      TRANSCRIPT_READ_CHUNK_BYTES,
+      targetOffset - cursor,
+    );
+    const read = await reader.readTranscript(cursor, maxBytes);
+    if (read.bytes.length === 0) {
+      console.warn("[nexterm] PTY transcript gap could not be filled");
+      return;
+    }
+
+    let startOffset = read.startOffset;
+    let bytes = read.bytes;
+    if (startOffset < cursor) {
+      const overlap = cursor - startOffset;
+      bytes = bytes.subarray(overlap);
+      startOffset = cursor;
+    }
+    if (startOffset > cursor) {
+      console.warn("[nexterm] PTY transcript read skipped bytes");
+      return;
+    }
+
+    const wanted = Math.min(bytes.length, targetOffset - cursor);
+    await writeSessionBytes(leafId, s, generation, bytes.subarray(0, wanted));
+    cursor += wanted;
+    s.nextOutputOffset = cursor;
+  }
+}
+
+async function writeSessionBytes(
+  leafId: number,
+  s: Session,
+  generation: number,
+  bytes: Uint8Array,
+): Promise<void> {
+  if (bytes.length === 0 || s.disposed || s.generation !== generation) return;
+
   const slot = getSlotForLeaf(leafId);
-  if (slot) slot.term.write(bytes);
-  else s.dormantRing.push(bytes);
+  if (slot && slot.currentLeafId === leafId) {
+    await Promise.all([
+      writeToTerminal(s.modelTerm, bytes),
+      writeToTerminal(slot.term, bytes),
+    ]);
+    return;
+  }
+
+  await writeToTerminal(s.modelTerm, bytes);
+  const currentSlot = getSlotForLeaf(leafId);
+  if (
+    currentSlot &&
+    currentSlot.currentLeafId === leafId &&
+    !s.disposed &&
+    s.generation === generation
+  ) {
+    await writeToTerminal(currentSlot.term, bytes);
+  }
+}
+
+function writeToTerminal(
+  term: Terminal,
+  data: string | Uint8Array,
+): Promise<void> {
+  if (typeof data !== "string" && data.length === 0) return Promise.resolve();
+  if (typeof data === "string" && data.length === 0) return Promise.resolve();
+  return new Promise((resolve) => {
+    try {
+      term.write(data, () => resolve());
+    } catch (e) {
+      console.warn("[nexterm] terminal write failed:", e);
+      resolve();
+    }
+  });
 }
 
 async function openPtyForSession(
   leafId: number,
   s: Session,
+  generation: number,
   cwd: string | undefined,
 ): Promise<PtySession> {
   const startCols = s.cols > 0 ? s.cols : 80;
@@ -144,8 +299,9 @@ async function openPtyForSession(
     startCols,
     startRows,
     {
-      onData: (bytes) => deliverPtyBytes(leafId, bytes),
+      onData: (chunk) => deliverPtyChunk(leafId, generation, chunk),
       onExit: (code) => {
+        if (s.generation !== generation) return;
         s.shellExited = true;
         s.pty = null;
         const slot = getSlotForLeaf(leafId);
@@ -160,35 +316,19 @@ async function openPtyForSession(
 
 function bindLeafToSlot(leafId: number, s: Session): void {
   if (!s.container) return;
-  const altScreen = s.altScreenAtRelease;
-  s.altScreenAtRelease = false;
+  resizeModel(s, s.cols, s.rows);
   acquireSlot({
     leafId,
     container: s.container,
-    snapshot: s.snapshot,
-    altScreen,
-    drainRing: (write) => s.dormantRing.drain(write),
+    snapshot: serializeModel(s),
+    altScreen: isAltScreen(s.modelTerm),
     shellExited: s.shellExited,
     searchQuery: s.searchQuery,
     cols: s.cols,
     rows: s.rows,
-    registerOsc: (term) => {
-      const shellState = createShellIntegrationState();
-      const prompt = registerPromptTracker(term, shellState);
-      const cwd = registerCwdHandler(
-        term,
-        (next) => {
-          if (s.lastCwd === next) return;
-          s.lastCwd = next;
-          s.callbacks.onCwd?.(next);
-        },
-        shellState,
-      );
-      return [prompt.dispose, cwd];
-    },
+    registerOsc: () => [],
     onSearchReady: (addon) => s.callbacks.onSearchReady?.(addon),
   });
-  s.snapshot = null;
   s.hasSlot = true;
   if (s.lastCwd !== null) s.callbacks.onCwd?.(s.lastCwd);
   if (s.pendingExit !== null) {
@@ -198,14 +338,49 @@ function bindLeafToSlot(leafId: number, s: Session): void {
   }
 }
 
+function serializeModel(s: Session): string | null {
+  try {
+    return s.modelSerializeAddon.serialize();
+  } catch (e) {
+    console.warn("[nexterm] model serialize failed:", e);
+    return null;
+  }
+}
+
+function isAltScreen(term: Terminal): boolean {
+  try {
+    return term.buffer.active.type === "alternate";
+  } catch {
+    return false;
+  }
+}
+
+function resizeModel(s: Session, cols: number, rows: number): void {
+  if (cols <= 0 || rows <= 0) return;
+  if (s.modelTerm.cols === cols && s.modelTerm.rows === rows) return;
+  try {
+    s.modelTerm.resize(cols, rows);
+  } catch (e) {
+    console.warn("[nexterm] model resize failed:", e);
+  }
+}
+
+function resetModel(s: Session): void {
+  try {
+    s.modelTerm.clear();
+    s.modelTerm.reset();
+  } catch (e) {
+    console.warn("[nexterm] model reset failed:", e);
+  }
+}
+
 function unbindLeafFromSlot(leafId: number, s: Session): void {
   if (!s.hasSlot) return;
   const out = releaseSlot(leafId);
   if (out) {
-    s.snapshot = out.snapshot;
     if (out.cols > 0) s.cols = out.cols;
     if (out.rows > 0) s.rows = out.rows;
-    s.altScreenAtRelease = out.altScreen;
+    resizeModel(s, s.cols, s.rows);
   }
   s.hasSlot = false;
 }
@@ -223,15 +398,17 @@ function attachSession(
   if (s.visibleNow) bindLeafToSlot(leafId, s);
 
   if (!s.pty && !s.ptyOpening && !s.shellExited) {
+    const generation = s.generation;
     s.ptyOpening = true;
-    openPtyForSession(leafId, s, s.initialCwd)
+    openPtyForSession(leafId, s, generation, s.initialCwd)
       .then((pty) => {
         s.ptyOpening = false;
-        if (s.disposed) {
+        if (s.disposed || s.generation !== generation) {
           pty.close();
           return;
         }
         s.pty = pty;
+        s.transcriptReader = pty;
         if (s.cols > 0 && s.rows > 0) pty.resize(s.cols, s.rows);
       })
       .catch((e) => {
@@ -297,13 +474,16 @@ export async function respawnSession(
 ): Promise<void> {
   const s = sessions.get(leafId);
   if (!s || s.disposed) return;
-  s.pty?.close();
+  s.generation++;
+  const previous = s.pty ?? s.transcriptReader;
   s.pty = null;
-  s.snapshot = null;
-  s.dormantRing = new DormantRing();
+  s.transcriptReader = null;
+  await previous?.close();
+  s.outputChain = Promise.resolve();
+  s.nextOutputOffset = 0;
   s.shellExited = false;
   s.pendingExit = null;
-  s.altScreenAtRelease = false;
+  resetModel(s);
 
   const slot = getSlotForLeaf(leafId);
   if (slot) {
@@ -312,21 +492,23 @@ export async function respawnSession(
     slot.term.reset();
   }
 
+  const generation = s.generation;
   s.ptyOpening = true;
   let pty: PtySession;
   try {
-    pty = await openPtyForSession(leafId, s, cwd ?? s.initialCwd);
+    pty = await openPtyForSession(leafId, s, generation, cwd ?? s.initialCwd);
   } catch (e) {
     s.ptyOpening = false;
     console.error("[nexterm] respawn openPty failed:", e);
     return;
   }
   s.ptyOpening = false;
-  if (s.disposed) {
+  if (s.disposed || s.generation !== generation) {
     pty.close();
     return;
   }
   s.pty = pty;
+  s.transcriptReader = pty;
   if (s.cols > 0 && s.rows > 0) pty.resize(s.cols, s.rows);
 }
 
@@ -334,10 +516,19 @@ export function disposeSession(leafId: number): void {
   const s = sessions.get(leafId);
   if (!s) return;
   s.disposed = true;
+  s.generation++;
   unbindLeafFromSlot(leafId, s);
-  s.snapshot = null;
-  s.pty?.close();
+  const previous = s.pty ?? s.transcriptReader;
   s.pty = null;
+  s.transcriptReader = null;
+  previous?.close();
+  for (const dispose of s.modelOscDisposers) {
+    try {
+      dispose();
+    } catch {}
+  }
+  s.modelOscDisposers = [];
+  s.modelTerm.dispose();
   sessions.delete(leafId);
 }
 
@@ -357,24 +548,15 @@ export function getTerminalBuffer(
 ): string | null {
   const s = sessions.get(leafId);
   if (!s) return null;
-  const slot = getSlotForLeaf(leafId);
-  if (slot) {
-    const buf = slot.term.buffer.active;
-    const total = buf.length;
-    const lines: string[] = [];
-    const start = Math.max(0, total - maxLines);
-    for (let i = start; i < total; i++) {
-      lines.push(buf.getLine(i)?.translateToString(true) ?? "");
-    }
-    while (lines.length && lines[lines.length - 1] === "") lines.pop();
-    return lines.join("\n");
+  const buf = s.modelTerm.buffer.active;
+  const total = buf.length;
+  const lines: string[] = [];
+  const start = Math.max(0, total - maxLines);
+  for (let i = start; i < total; i++) {
+    lines.push(buf.getLine(i)?.translateToString(true) ?? "");
   }
-  if (!s.snapshot) return "";
-  const plain = stripAnsi(s.snapshot);
-  const lines = plain.split(/\r?\n/);
-  const tail = lines.slice(-maxLines);
-  while (tail.length && tail[tail.length - 1] === "") tail.pop();
-  return tail.join("\n");
+  while (lines.length && lines[lines.length - 1] === "") lines.pop();
+  return lines.join("\n");
 }
 
 export function getTerminalSelection(leafId: number): string | null {
@@ -387,6 +569,13 @@ export function applyTerminalSessionTheme(): void {
   applyPoolTheme();
 }
 
+export function applyTerminalSessionScrollback(value: number): void {
+  for (const s of sessions.values()) {
+    if (s.modelTerm.options.scrollback === value) continue;
+    s.modelTerm.options.scrollback = value;
+  }
+}
+
 export function createTerminalSessionHandle(
   leafId: number,
 ): TerminalSessionHandle {
@@ -397,11 +586,4 @@ export function createTerminalSessionHandle(
     getSelection: () => getTerminalSelection(leafId),
     applyTheme: () => applyTerminalSessionTheme(),
   };
-}
-
-const ANSI_RE =
-  /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][AB012]|\x1b[78=>]|\x1bc|\x1b[NOP\]X^_]/g;
-
-function stripAnsi(s: string): string {
-  return s.replace(ANSI_RE, "");
 }

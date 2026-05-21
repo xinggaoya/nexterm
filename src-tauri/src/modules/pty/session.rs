@@ -1,11 +1,14 @@
-use std::io::{Read, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use portable_pty::{native_pty_system, ChildKiller, MasterPty, PtySize};
 use tauri::ipc::{Channel, Response};
+use tempfile::{Builder as TempFileBuilder, NamedTempFile};
 
 use super::da_filter::DaFilter;
 use super::shell_init;
@@ -16,15 +19,124 @@ use crate::modules::workspace::WorkspaceEnv;
 const FLUSH_COALESCE: Duration = Duration::from_millis(4);
 const FLUSH_MAX_IDLE: Duration = Duration::from_millis(50);
 const READ_BUF: usize = 16 * 1024;
-// Cap on buffered-but-not-yet-flushed bytes. On overflow we discard the
-// entire pending buffer and emit an SGR-reset + notice in its place.
-// Dropping a partial prefix would slice a CSI sequence in half and corrupt
-// xterm's screen state. 4 MiB is ~1000 full 80x24 screens.
+// Cap on buffered-but-not-yet-flushed bytes. On overflow we discard only the
+// live channel backlog; the transcript below remains complete and lets the
+// frontend fill the offset gap without corrupting xterm state.
 const MAX_PENDING: usize = 4 * 1024 * 1024;
-// Hard reset (ESC c) + dim notice. Written verbatim into the stream when
-// we're forced to discard backlog.
-const OVERFLOW_NOTICE: &[u8] =
-    b"\x1bc\x1b[2m[nexterm: dropped output due to backpressure]\x1b[0m\r\n";
+const MAX_TRANSCRIPT_READ: usize = 4 * 1024 * 1024;
+
+pub struct TranscriptRead {
+    pub start_offset: u64,
+    pub next_offset: u64,
+    pub total_offset: u64,
+    pub data: Vec<u8>,
+}
+
+pub(crate) struct Transcript {
+    file: Mutex<NamedTempFile>,
+    path: PathBuf,
+    offset: AtomicU64,
+}
+
+impl Transcript {
+    fn new() -> Result<Self, String> {
+        let file = TempFileBuilder::new()
+            .prefix("nexterm-pty-")
+            .suffix(".log")
+            .tempfile()
+            .map_err(|e| format!("create pty transcript: {e}"))?;
+        Ok(Self {
+            path: file.path().to_path_buf(),
+            file: Mutex::new(file),
+            offset: AtomicU64::new(0),
+        })
+    }
+
+    fn append(&self, bytes: &[u8]) -> Result<u64, String> {
+        let start = self.offset.load(Ordering::Acquire);
+        {
+            let mut file = self.file.lock().unwrap();
+            file.as_file_mut()
+                .write_all(bytes)
+                .map_err(|e| format!("write pty transcript: {e}"))?;
+        }
+        self.offset
+            .fetch_add(bytes.len() as u64, Ordering::AcqRel);
+        Ok(start)
+    }
+
+    pub(crate) fn read_from(
+        &self,
+        since_offset: u64,
+        max_bytes: usize,
+    ) -> Result<TranscriptRead, String> {
+        let total_offset = self.offset.load(Ordering::Acquire);
+        let start_offset = since_offset.min(total_offset);
+        let remaining = (total_offset - start_offset) as usize;
+        let cap = max_bytes.clamp(1, MAX_TRANSCRIPT_READ).min(remaining);
+        let data = read_file_range(&self.path, start_offset, cap)?;
+        let next_offset = start_offset + data.len() as u64;
+        Ok(TranscriptRead {
+            start_offset,
+            next_offset,
+            total_offset,
+            data,
+        })
+    }
+}
+
+fn read_file_range(path: &Path, start_offset: u64, max_bytes: usize) -> Result<Vec<u8>, String> {
+    let mut file = File::open(path).map_err(|e| format!("open pty transcript: {e}"))?;
+    file.seek(SeekFrom::Start(start_offset))
+        .map_err(|e| format!("seek pty transcript: {e}"))?;
+    let mut data = Vec::with_capacity(max_bytes);
+    file.take(max_bytes as u64)
+        .read_to_end(&mut data)
+        .map_err(|e| format!("read pty transcript: {e}"))?;
+    Ok(data)
+}
+
+struct PendingOutput {
+    start_offset: Option<u64>,
+    bytes: Vec<u8>,
+}
+
+impl PendingOutput {
+    fn new() -> Self {
+        Self {
+            start_offset: None,
+            bytes: Vec::with_capacity(READ_BUF),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
+    fn clear(&mut self) {
+        self.start_offset = None;
+        self.bytes.clear();
+    }
+
+    fn push(&mut self, start_offset: u64, bytes: &[u8]) {
+        if self.bytes.is_empty() {
+            self.start_offset = Some(start_offset);
+        }
+        self.bytes.extend_from_slice(bytes);
+    }
+
+    fn take_frame(&mut self) -> Option<Vec<u8>> {
+        if self.bytes.is_empty() {
+            return None;
+        }
+        let start = self.start_offset.take().unwrap_or(0);
+        let bytes = std::mem::take(&mut self.bytes);
+        let mut frame = Vec::with_capacity(8 + bytes.len());
+        frame.extend_from_slice(&start.to_le_bytes());
+        frame.extend_from_slice(&bytes);
+        Some(frame)
+    }
+}
 
 pub struct Session {
     // Field drop order is intentional. Rust drops fields top-to-bottom:
@@ -43,6 +155,7 @@ pub struct Session {
     pub killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pub master: Mutex<Box<dyn MasterPty + Send>>,
+    pub(crate) transcript: Arc<Transcript>,
 }
 
 impl Drop for Session {
@@ -135,16 +248,16 @@ pub fn spawn(
         killer: Mutex::new(killer),
         writer: writer.clone(),
         master: Mutex::new(pair.master),
+        transcript: Arc::new(Transcript::new()?),
     });
 
-    let pending: Arc<(Mutex<Vec<u8>>, Condvar)> = Arc::new((
-        Mutex::new(Vec::with_capacity(READ_BUF)),
-        Condvar::new(),
-    ));
+    let pending: Arc<(Mutex<PendingOutput>, Condvar)> =
+        Arc::new((Mutex::new(PendingOutput::new()), Condvar::new()));
     let done = Arc::new(AtomicBool::new(false));
     let spawn_at = Instant::now();
 
     let pending_r = pending.clone();
+    let transcript_r = session.transcript.clone();
     let writer_for_da = writer.clone();
     let reader_thread = thread::Builder::new()
         .name("nexterm-pty-reader".into())
@@ -171,14 +284,20 @@ pub fn spawn(
                         if filtered.is_empty() {
                             continue;
                         }
+                        let transcript_start = match transcript_r.append(&filtered) {
+                            Ok(offset) => offset,
+                            Err(e) => {
+                                log::error!("{e}");
+                                transcript_r.offset.load(Ordering::Acquire)
+                            }
+                        };
                         let (lock, cv) = &*pending_r;
                         let mut g = lock.lock().unwrap();
-                        if g.len() + filtered.len() > MAX_PENDING {
-                            dropped_bytes += g.len() as u64;
+                        if g.bytes.len() + filtered.len() > MAX_PENDING {
+                            dropped_bytes += g.bytes.len() as u64;
                             g.clear();
-                            g.extend_from_slice(OVERFLOW_NOTICE);
                         }
-                        g.extend_from_slice(&filtered);
+                        g.push(transcript_start, &filtered);
                         cv.notify_one();
                     }
                     Err(e) => {
@@ -189,7 +308,9 @@ pub fn spawn(
             }
             pending_r.1.notify_one();
             if dropped_bytes > 0 {
-                log::warn!("pty backpressure: dropped {dropped_bytes} bytes (cap {MAX_PENDING})");
+                log::warn!(
+                    "pty live backpressure: skipped {dropped_bytes} buffered bytes; transcript remains complete (cap {MAX_PENDING})"
+                );
             }
         })
         .expect("spawn pty reader thread");
@@ -214,11 +335,11 @@ pub fn spawn(
                 }
                 // Coalesce a short window so a burst flushes as one chunk.
                 thread::sleep(FLUSH_COALESCE);
-                let chunk = std::mem::take(&mut *lock.lock().unwrap());
-                if chunk.is_empty() {
+                let frame = lock.lock().unwrap().take_frame();
+                let Some(frame) = frame else {
                     continue;
-                }
-                if let Err(e) = on_data_flush.send(Response::new(chunk)) {
+                };
+                if let Err(e) = on_data_flush.send(Response::new(frame)) {
                     log::debug!("pty flusher exiting, channel closed: {e}");
                     break;
                 }
@@ -253,8 +374,8 @@ pub fn spawn(
                 log::error!("pty reader thread panicked: {e:?}");
             }
             let (lock, cv) = &*pending_e;
-            let tail = std::mem::take(&mut *lock.lock().unwrap());
-            if !tail.is_empty() {
+            let tail = lock.lock().unwrap().take_frame();
+            if let Some(tail) = tail {
                 if let Err(e) = on_data_exit.send(Response::new(tail)) {
                     log::debug!("pty final-data send failed (channel closed): {e}");
                 }
