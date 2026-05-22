@@ -6,6 +6,7 @@ import {
   setAutostart,
   setEditorTheme,
   setExplorerPanelWidth,
+  setFileOpenMode,
   setRestoreWindowState,
   setShowHidden,
   setSourceControlPanelWidth,
@@ -17,6 +18,7 @@ import {
   setTheme,
   setVimMode,
   type EditorThemeId,
+  type FileOpenMode,
   type Preferences,
   type ThemePref,
 } from "./store";
@@ -83,6 +85,11 @@ export const usePreferencesPiniaStore = defineStore("preferences", {
       this.vimMode = value;
       patchPreferencesSnapshot("vimMode", value);
       await setVimMode(value);
+    },
+    async updateFileOpenMode(value: FileOpenMode) {
+      this.fileOpenMode = value;
+      patchPreferencesSnapshot("fileOpenMode", value);
+      await setFileOpenMode(value);
     },
     async updateShowHidden(value: boolean) {
       this.showHidden = value;

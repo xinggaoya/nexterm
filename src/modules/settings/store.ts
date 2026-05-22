@@ -3,6 +3,7 @@ import { LazyStore } from "@tauri-apps/plugin-store";
 import type { WorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
 
 export type ThemePref = "system" | "light" | "dark";
+export type FileOpenMode = "preview" | "pinned";
 
 export const EDITOR_THEMES = [
   "atomone",
@@ -42,6 +43,7 @@ export type Preferences = {
   autostart: boolean;
   restoreWindowState: boolean;
   vimMode: boolean;
+  fileOpenMode: FileOpenMode;
   showHidden: boolean;
   terminalWebglEnabled: boolean;
   terminalFontFamily: string;
@@ -62,6 +64,7 @@ const KEY_EDITOR_THEME = "editorTheme";
 const KEY_AUTOSTART = "autostart";
 const KEY_RESTORE_WINDOW = "restoreWindowState";
 const KEY_VIM_MODE = "vimMode";
+const KEY_FILE_OPEN_MODE = "fileOpenMode";
 const KEY_SHOW_HIDDEN = "showHidden";
 const LEGACY_KEY_SHOW_HIDDEN_DIRS = "showHiddenDirectories";
 const KEY_TERMINAL_WEBGL_ENABLED = "terminalWebglEnabled";
@@ -101,6 +104,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   autostart: false,
   restoreWindowState: true,
   vimMode: false,
+  fileOpenMode: "preview",
   showHidden: false,
   terminalWebglEnabled: true,
   terminalFontFamily: "",
@@ -138,6 +142,8 @@ export async function loadPreferences(): Promise<Preferences> {
       get<boolean>(KEY_RESTORE_WINDOW) ??
       DEFAULT_PREFERENCES.restoreWindowState,
     vimMode: get<boolean>(KEY_VIM_MODE) ?? DEFAULT_PREFERENCES.vimMode,
+    fileOpenMode:
+      get<FileOpenMode>(KEY_FILE_OPEN_MODE) ?? DEFAULT_PREFERENCES.fileOpenMode,
     showHidden:
       get<boolean>(KEY_SHOW_HIDDEN) ??
       get<boolean>(LEGACY_KEY_SHOW_HIDDEN_DIRS) ??
@@ -197,6 +203,10 @@ export async function setRestoreWindowState(value: boolean): Promise<void> {
 
 export async function setVimMode(value: boolean): Promise<void> {
   await writePref(KEY_VIM_MODE, value);
+}
+
+export async function setFileOpenMode(value: FileOpenMode): Promise<void> {
+  await writePref(KEY_FILE_OPEN_MODE, value);
 }
 
 export async function setShowHidden(value: boolean): Promise<void> {
@@ -287,6 +297,7 @@ export async function onPreferencesChange(
     [KEY_AUTOSTART]: "autostart",
     [KEY_RESTORE_WINDOW]: "restoreWindowState",
     [KEY_VIM_MODE]: "vimMode",
+    [KEY_FILE_OPEN_MODE]: "fileOpenMode",
     [KEY_SHOW_HIDDEN]: "showHidden",
     [KEY_TERMINAL_WEBGL_ENABLED]: "terminalWebglEnabled",
     [KEY_TERMINAL_FONT_FAMILY]: "terminalFontFamily",

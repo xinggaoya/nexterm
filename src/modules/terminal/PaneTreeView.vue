@@ -13,6 +13,7 @@ const emit = defineEmits<{
   focusLeaf: [leafId: number];
   searchReady: [leafId: number, addon: SearchAddon];
   cwd: [leafId: number, cwd: string];
+  title: [leafId: number, title: string];
   exit: [leafId: number, code: number];
 }>();
 
@@ -36,6 +37,7 @@ function focusLeaf(leafId: number) {
       :initial-cwd="node.cwd"
       @search-ready="(leafId, addon) => emit('searchReady', leafId, addon)"
       @cwd="(leafId, cwd) => emit('cwd', leafId, cwd)"
+      @title="(leafId, title) => emit('title', leafId, title)"
       @exit="(leafId, code) => emit('exit', leafId, code)"
     />
   </div>
@@ -63,6 +65,7 @@ function focusLeaf(leafId: number) {
           @focus-leaf="(leafId) => emit('focusLeaf', leafId)"
           @search-ready="(leafId, addon) => emit('searchReady', leafId, addon)"
           @cwd="(leafId, cwd) => emit('cwd', leafId, cwd)"
+          @title="(leafId, title) => emit('title', leafId, title)"
           @exit="(leafId, code) => emit('exit', leafId, code)"
         />
       </div>

@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import {
   AddOutline,
+  ArrowDownOutline,
+  ArrowUpOutline,
   CheckmarkCircleOutline,
   DocumentOutline,
   GitBranchOutline,
   RefreshOutline,
   RemoveOutline,
+  SyncOutline,
   TimeOutline,
+  TrashOutline,
 } from "@vicons/ionicons5";
-import { NButton, NIcon, NInput, NSpin, NTag } from "naive-ui";
+import { NButton, NIcon, NInput, NSpin, NTag, useDialog } from "naive-ui";
 import { computed, onBeforeUnmount, ref, watch, type TextareaHTMLAttributes } from "vue";
 import {
   native,
@@ -19,12 +23,26 @@ import {
 } from "@/lib/native";
 import {
   buildSourceControlEntries,
+  discardEntriesForEntries,
   getPrimaryDiffMode,
+  pathsToStage,
+  pathsToUnstage,
   type SourceControlFileEntry,
 } from "./sourceControlModel";
 
 type PanelState = "idle" | "loading" | "no-root" | "no-repo" | "ready" | "error";
-type BusyAction = "refresh" | "commit" | `stage:${string}` | `unstage:${string}`;
+type BusyAction =
+  | "refresh"
+  | "commit"
+  | "stage-all"
+  | "unstage-all"
+  | "discard-all"
+  | "fetch"
+  | "pull"
+  | "push"
+  | `stage:${string}`
+  | `unstage:${string}`
+  | `discard:${string}`;
 
 const props = defineProps<{
   rootPath: string | null;
@@ -55,6 +73,7 @@ const busyAction = ref<BusyAction | null>(null);
 const commitMessage = ref("");
 const requestId = ref(0);
 const pendingAutoRefresh = ref(false);
+const dialog = useDialog();
 const commitInputProps = {
   "data-commit-message": "",
 } as unknown as TextareaHTMLAttributes;
@@ -73,6 +92,9 @@ const stagedCount = computed(
   () => entries.value.filter((entry) => entry.staged).length,
 );
 const changedCount = computed(() => entries.value.length);
+const stageAllPaths = computed(() => pathsToStage(entries.value));
+const unstageAllPaths = computed(() => pathsToUnstage(entries.value));
+const discardAllEntries = computed(() => discardEntriesForEntries(entries.value));
 const canCommit = computed(
   () =>
     !!repoRoot.value &&
@@ -117,6 +139,17 @@ function stageLabel(entry: SourceControlFileEntry): string {
   if (entry.checkState === "checked") return "Staged";
   if (entry.checkState === "indeterminate") return "Mixed";
   return "Unstaged";
+}
+
+function resetActionFeedback() {
+  actionMessage.value = null;
+  actionError.value = null;
+}
+
+function pushedLabel(remote: string | null, branch: string | null): string {
+  if (remote && branch) return `${remote}/${branch}`;
+  if (branch) return branch;
+  return remote ?? "upstream";
 }
 
 async function loadSnapshot(rootPath: string | null) {
@@ -175,8 +208,7 @@ async function refreshStatus() {
 async function refresh() {
   if (busyAction.value) return;
   busyAction.value = "refresh";
-  actionMessage.value = null;
-  actionError.value = null;
+  resetActionFeedback();
   try {
     await refreshStatus();
   } finally {
@@ -230,8 +262,7 @@ async function stageFile(entry: SourceControlFileEntry) {
   const root = repoRoot.value;
   if (!root || busyAction.value) return;
   busyAction.value = `stage:${entry.path}`;
-  actionMessage.value = null;
-  actionError.value = null;
+  resetActionFeedback();
   try {
     await native.gitStage(root, [entry.path]);
     await refreshStatus();
@@ -246,10 +277,136 @@ async function unstageFile(entry: SourceControlFileEntry) {
   const root = repoRoot.value;
   if (!root || busyAction.value) return;
   busyAction.value = `unstage:${entry.path}`;
-  actionMessage.value = null;
-  actionError.value = null;
+  resetActionFeedback();
   try {
     await native.gitUnstage(root, [entry.path]);
+    await refreshStatus();
+  } catch (error) {
+    actionError.value = normalizeError(error);
+  } finally {
+    busyAction.value = null;
+  }
+}
+
+async function stageAll() {
+  const root = repoRoot.value;
+  const paths = stageAllPaths.value;
+  if (!root || paths.length === 0 || busyAction.value) return;
+  busyAction.value = "stage-all";
+  resetActionFeedback();
+  try {
+    await native.gitStage(root, paths);
+    await refreshStatus();
+  } catch (error) {
+    actionError.value = normalizeError(error);
+  } finally {
+    busyAction.value = null;
+  }
+}
+
+async function unstageAll() {
+  const root = repoRoot.value;
+  const paths = unstageAllPaths.value;
+  if (!root || paths.length === 0 || busyAction.value) return;
+  busyAction.value = "unstage-all";
+  resetActionFeedback();
+  try {
+    await native.gitUnstage(root, paths);
+    await refreshStatus();
+  } catch (error) {
+    actionError.value = normalizeError(error);
+  } finally {
+    busyAction.value = null;
+  }
+}
+
+async function discardEntries(
+  entriesToDiscard: { path: string; untracked: boolean }[],
+  busy: BusyAction,
+) {
+  const root = repoRoot.value;
+  if (!root || entriesToDiscard.length === 0 || busyAction.value) return;
+  busyAction.value = busy;
+  resetActionFeedback();
+  try {
+    await native.gitDiscard(root, entriesToDiscard);
+    await refreshStatus();
+  } catch (error) {
+    actionError.value = normalizeError(error);
+  } finally {
+    busyAction.value = null;
+  }
+}
+
+function confirmDiscardFile(entry: SourceControlFileEntry) {
+  if (!entry.unstaged || busyAction.value) return;
+  dialog.warning({
+    title: "Discard changes?",
+    content: `This will permanently discard changes in ${entry.path}.`,
+    positiveText: "Discard",
+    negativeText: "Cancel",
+    onPositiveClick: () =>
+      discardEntries(
+        [{ path: entry.path, untracked: entry.untracked }],
+        `discard:${entry.path}`,
+      ),
+  });
+}
+
+function confirmDiscardAll() {
+  const discardEntriesValue = discardAllEntries.value;
+  if (discardEntriesValue.length === 0 || busyAction.value) return;
+  dialog.warning({
+    title: "Discard changes?",
+    content: `This will permanently discard ${discardEntriesValue.length} unstaged change${
+      discardEntriesValue.length === 1 ? "" : "s"
+    }.`,
+    positiveText: "Discard",
+    negativeText: "Cancel",
+    onPositiveClick: () => discardEntries(discardEntriesValue, "discard-all"),
+  });
+}
+
+async function fetchRemote() {
+  const root = repoRoot.value;
+  if (!root || busyAction.value) return;
+  busyAction.value = "fetch";
+  resetActionFeedback();
+  try {
+    await native.gitFetch(root);
+    actionMessage.value = "Fetched latest refs";
+    await refreshStatus();
+  } catch (error) {
+    actionError.value = normalizeError(error);
+  } finally {
+    busyAction.value = null;
+  }
+}
+
+async function pullRemote() {
+  const root = repoRoot.value;
+  if (!root || busyAction.value) return;
+  busyAction.value = "pull";
+  resetActionFeedback();
+  try {
+    await native.gitPullFfOnly(root);
+    actionMessage.value = "Pulled latest changes";
+    await refreshStatus();
+  } catch (error) {
+    actionError.value = normalizeError(error);
+  } finally {
+    busyAction.value = null;
+  }
+}
+
+async function pushRemote() {
+  const root = repoRoot.value;
+  if (!root || busyAction.value) return;
+  busyAction.value = "push";
+  resetActionFeedback();
+  try {
+    const result = await native.gitPush(root);
+    actionMessage.value = `Pushed to ${pushedLabel(result.remote, result.branch)}`;
     await refreshStatus();
   } catch (error) {
     actionError.value = normalizeError(error);
@@ -263,8 +420,7 @@ async function commit() {
   const message = commitMessage.value.trim();
   if (!root || !message || busyAction.value) return;
   busyAction.value = "commit";
-  actionMessage.value = null;
-  actionError.value = null;
+  resetActionFeedback();
   try {
     const result = await native.gitCommit(root, message);
     commitMessage.value = "";
@@ -319,6 +475,42 @@ onBeforeUnmount(() => {
         <span class="truncate text-[12px] font-semibold">{{ branchLabel }}</span>
       </div>
       <NTag v-if="changedCount > 0" size="small" round>{{ changedCount }}</NTag>
+      <NButton
+        size="tiny"
+        quaternary
+        data-git-fetch
+        title="Fetch"
+        aria-label="Fetch"
+        :loading="busyAction === 'fetch'"
+        :disabled="!repoRoot || (busyAction !== null && busyAction !== 'fetch')"
+        @click="fetchRemote"
+      >
+        <template #icon><NIcon :component="SyncOutline" /></template>
+      </NButton>
+      <NButton
+        size="tiny"
+        quaternary
+        data-git-pull
+        title="Pull"
+        aria-label="Pull"
+        :loading="busyAction === 'pull'"
+        :disabled="!repoRoot || (busyAction !== null && busyAction !== 'pull')"
+        @click="pullRemote"
+      >
+        <template #icon><NIcon :component="ArrowDownOutline" /></template>
+      </NButton>
+      <NButton
+        size="tiny"
+        quaternary
+        data-git-push
+        title="Push"
+        aria-label="Push"
+        :loading="busyAction === 'push'"
+        :disabled="!repoRoot || (busyAction !== null && busyAction !== 'push')"
+        @click="pushRemote"
+      >
+        <template #icon><NIcon :component="ArrowUpOutline" /></template>
+      </NButton>
       <NButton
         size="tiny"
         quaternary
@@ -380,8 +572,46 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-else class="space-y-0.5 px-1">
-          <div class="px-1.5 pb-1 pt-0.5 text-[11px] font-medium text-muted-foreground">
-            Changes · {{ changedCount }}
+          <div class="flex items-center gap-1 px-1.5 pb-1 pt-0.5">
+            <div class="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
+              Changes · {{ changedCount }}
+            </div>
+            <NButton
+              size="tiny"
+              quaternary
+              data-stage-all
+              title="Stage all"
+              aria-label="Stage all"
+              :loading="busyAction === 'stage-all'"
+              :disabled="stageAllPaths.length === 0 || (busyAction !== null && busyAction !== 'stage-all')"
+              @click="stageAll"
+            >
+              <template #icon><NIcon :component="AddOutline" /></template>
+            </NButton>
+            <NButton
+              size="tiny"
+              quaternary
+              data-unstage-all
+              title="Unstage all"
+              aria-label="Unstage all"
+              :loading="busyAction === 'unstage-all'"
+              :disabled="unstageAllPaths.length === 0 || (busyAction !== null && busyAction !== 'unstage-all')"
+              @click="unstageAll"
+            >
+              <template #icon><NIcon :component="RemoveOutline" /></template>
+            </NButton>
+            <NButton
+              size="tiny"
+              quaternary
+              data-discard-all
+              title="Discard all unstaged changes"
+              aria-label="Discard all unstaged changes"
+              :loading="busyAction === 'discard-all'"
+              :disabled="discardAllEntries.length === 0 || (busyAction !== null && busyAction !== 'discard-all')"
+              @click="confirmDiscardAll"
+            >
+              <template #icon><NIcon :component="TrashOutline" /></template>
+            </NButton>
           </div>
           <div
             v-for="entry in entries"
@@ -403,6 +633,20 @@ onBeforeUnmount(() => {
                 {{ stageLabel(entry) }}
               </span>
             </button>
+            <NButton
+              v-if="entry.unstaged"
+              size="tiny"
+              quaternary
+              type="error"
+              :data-discard-file="entry.path"
+              title="Discard changes"
+              aria-label="Discard changes"
+              :loading="busyAction === `discard:${entry.path}`"
+              :disabled="busyAction !== null && busyAction !== `discard:${entry.path}`"
+              @click.stop="confirmDiscardFile(entry)"
+            >
+              <template #icon><NIcon :component="TrashOutline" /></template>
+            </NButton>
             <NButton
               v-if="entry.checkState === 'checked'"
               size="tiny"

@@ -1,10 +1,12 @@
 import { defineStore } from "pinia";
 import {
   findLeafCwd,
+  findLeafTitle,
   hasLeaf,
   leafIds,
   removeLeaf,
   setLeafCwd as setLeafCwdInTree,
+  setLeafTitle as setLeafTitleInTree,
   siblingLeafOf,
   splitLeaf,
   type SplitDir,
@@ -353,6 +355,7 @@ export const useTabsPiniaStore = defineStore("tabs", {
           ? {
               ...tab,
               activeLeafId: leafId,
+              terminalTitle: findLeafTitle(tab.paneTree, leafId),
               ...(findLeafCwd(tab.paneTree, leafId) !== undefined
                 ? { cwd: findLeafCwd(tab.paneTree, leafId) }
                 : {}),
@@ -367,6 +370,17 @@ export const useTabsPiniaStore = defineStore("tabs", {
         const patch =
           tab.activeLeafId === leafId ? { cwd } : {};
         return { ...tab, ...patch, paneTree: nextTree };
+      });
+    },
+    setLeafTitle(leafId: number, terminalTitle: string) {
+      this.tabs = this.tabs.map((tab) => {
+        if (tab.kind !== "terminal") return tab;
+        const nextTree = setLeafTitleInTree(tab.paneTree, leafId, terminalTitle);
+        return {
+          ...tab,
+          terminalTitle: findLeafTitle(nextTree, tab.activeLeafId),
+          paneTree: nextTree,
+        };
       });
     },
     updateTab(id: number, patch: TabPatch) {

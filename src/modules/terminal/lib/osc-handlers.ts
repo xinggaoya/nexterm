@@ -1,5 +1,7 @@
 import type { IMarker, Terminal } from "@xterm/xterm";
 
+const MAX_TERMINAL_TITLE_LENGTH = 120;
+
 /**
  * Cross-handler state shared between the OSC 7 cwd handler and the OSC 133
  * prompt-marker handler. Tracks whether we are currently inside a running
@@ -32,6 +34,22 @@ export function registerCwdHandler(
     return true;
   });
   return () => d.dispose();
+}
+
+export function registerTitleHandler(
+  term: Terminal,
+  onTitle: (title: string) => void,
+): () => void {
+  const disposers = [0, 2].map((code) =>
+    term.parser.registerOscHandler(code, (data) => {
+      const title = sanitizeTitle(data);
+      if (title) onTitle(title);
+      return true;
+    }),
+  );
+  return () => {
+    for (const d of disposers) d.dispose();
+  };
 }
 
 export type PromptTracker = {
@@ -83,4 +101,14 @@ function parseOsc7(data: string): string | null {
   // /C:/Users/foo -> C:/Users/foo so it's a valid Windows path.
   if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1);
   return path;
+}
+
+function sanitizeTitle(data: string): string | null {
+  const title = data
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\x9b[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, "")
+    .trim()
+    .slice(0, MAX_TERMINAL_TITLE_LENGTH);
+  return title.length > 0 ? title : null;
 }

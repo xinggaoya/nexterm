@@ -54,6 +54,22 @@ describe("TerminalPane.vue", () => {
     expect(updateTerminalSessionVisibility).toHaveBeenCalledWith(42, true, true);
   });
 
+  it("emits title updates from the terminal session", () => {
+    const wrapper = mount(TerminalPane, {
+      global: { plugins: [createPinia()] },
+      props: {
+        leafId: 42,
+        visible: true,
+        focused: true,
+      },
+    });
+
+    const callbacks = vi.mocked(mountTerminalSession).mock.calls[0][0].callbacks;
+    callbacks?.onTitle?.("OpenAI Codex");
+
+    expect(wrapper.emitted("title")).toEqual([[42, "OpenAI Codex"]]);
+  });
+
   it("replays current visibility after mounting the session", () => {
     mount(TerminalPane, {
       global: { plugins: [createPinia()] },

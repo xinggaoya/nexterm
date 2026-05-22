@@ -42,6 +42,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   selectTab: [id: number];
   closeTab: [id: number];
+  pinTab: [id: number];
   newTab: [];
   newPrivateTab: [];
   splitPane: [dir: SplitDir];
@@ -69,6 +70,7 @@ function tabKindLabel(tab: Tab): string {
 }
 
 function tabLabel(tab: Tab): string {
+  if (tab.kind === "terminal" && tab.terminalTitle) return tab.terminalTitle;
   if (tab.kind === "terminal" && tab.cwd) return basename(tab.cwd);
   return tab.title;
 }
@@ -98,6 +100,10 @@ function tabIcon(tab: Tab): TabIcon {
     return { type: "component", name: "git-history", component: TimeOutline };
   }
   return { type: "component", name: "git-diff", component: GitCompareOutline };
+}
+
+function pinPreviewTab(tab: Tab) {
+  if (tab.kind === "editor" && tab.preview) emit("pinTab", tab.id);
 }
 </script>
 
@@ -166,6 +172,7 @@ function tabIcon(tab: Tab): TabIcon {
               : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
           ]"
           @click="emit('selectTab', tab.id)"
+          @dblclick="pinPreviewTab(tab)"
         >
           <span class="flex min-w-0 flex-1 items-center gap-1.5 truncate">
             <template v-for="icon in [tabIcon(tab)]" :key="icon.name">

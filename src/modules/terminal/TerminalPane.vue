@@ -33,6 +33,7 @@ const emit = defineEmits<{
   searchReady: [leafId: number, addon: SearchAddon];
   exit: [leafId: number, code: number];
   cwd: [leafId: number, cwd: string];
+  title: [leafId: number, title: string];
 }>();
 
 const prefs = usePreferencesPiniaStore();
@@ -53,6 +54,7 @@ onMounted(() => {
       onSearchReady: (addon) => emit("searchReady", props.leafId, addon),
       onExit: (code) => emit("exit", props.leafId, code),
       onCwd: (cwd) => emit("cwd", props.leafId, cwd),
+      onTitle: (title) => emit("title", props.leafId, title),
     },
   });
   syncCurrentVisibility();

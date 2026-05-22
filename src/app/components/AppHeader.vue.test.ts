@@ -13,6 +13,7 @@ const tabs: Tab[] = [
     id: 1,
     kind: "terminal",
     title: "shell",
+    terminalTitle: "OpenAI Codex",
     cwd: "/repo/nexterm",
     paneTree: { kind: "leaf", id: 2 },
     activeLeafId: 2,
@@ -36,18 +37,26 @@ const tabs: Tab[] = [
   },
   {
     id: 6,
+    kind: "editor",
+    title: "preview.ts",
+    path: "/repo/src/preview.ts",
+    dirty: false,
+    preview: true,
+  },
+  {
+    id: 7,
     kind: "markdown",
     title: "README.md",
     path: "/repo/README.md",
   },
   {
-    id: 7,
+    id: 8,
     kind: "preview",
     title: "localhost:3180",
     url: "http://localhost:3180",
   },
   {
-    id: 8,
+    id: 9,
     kind: "git-diff",
     title: "main.ts",
     repoRoot: "/repo",
@@ -56,13 +65,13 @@ const tabs: Tab[] = [
     originalPath: null,
   },
   {
-    id: 9,
+    id: 10,
     kind: "git-history",
     title: "History · main",
     repoRoot: "/repo",
   },
   {
-    id: 10,
+    id: 11,
     kind: "git-commit-file",
     title: "main.ts @ abc123",
     repoRoot: "/repo",
@@ -104,6 +113,23 @@ describe("AppHeader.vue", () => {
     expect(wrapper.find("[data-window-controls]").exists()).toBe(true);
   });
 
+  it("emits pinTab only when double clicking an editor preview tab", async () => {
+    const wrapper = mount(AppHeader, {
+      props: {
+        tabs,
+        activeId: 6,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    await wrapper.find("[data-tab-id='6']").trigger("dblclick");
+    await wrapper.find("[data-tab-id='5']").trigger("dblclick");
+    await wrapper.find("[data-tab-id='1']").trigger("dblclick");
+
+    expect(wrapper.emitted("pinTab")).toEqual([[6]]);
+  });
+
   it("renders tab icons and terminal labels from the current project directory", () => {
     const wrapper = mount(AppHeader, {
       props: {
@@ -114,7 +140,7 @@ describe("AppHeader.vue", () => {
       },
     });
 
-    expect(wrapper.find("[data-tab-label='1']").text()).toBe("nexterm");
+    expect(wrapper.find("[data-tab-label='1']").text()).toBe("OpenAI Codex");
     expect(wrapper.find("[data-tab-label='3']").text()).toBe("secret");
     expect(wrapper.find("[data-tab-icon='terminal']").exists()).toBe(true);
     expect(wrapper.find("[data-tab-icon='private-terminal']").exists()).toBe(true);

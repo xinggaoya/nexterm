@@ -7,6 +7,7 @@ import {
   createShellIntegrationState,
   registerCwdHandler,
   registerPromptTracker,
+  registerTitleHandler,
 } from "./osc-handlers";
 import { openPty, type PtyOutputChunk, type PtySession } from "./pty-bridge";
 import {
@@ -24,6 +25,7 @@ export type TerminalSessionCallbacks = {
   onSearchReady?: (addon: SearchAddon) => void;
   onExit?: (code: number) => void;
   onCwd?: (cwd: string) => void;
+  onTitle?: (title: string) => void;
 };
 
 type Session = {
@@ -154,7 +156,10 @@ function registerModelOsc(s: Session): (() => void)[] {
     },
     shellState,
   );
-  return [prompt.dispose, cwd];
+  const title = registerTitleHandler(s.modelTerm, (next) => {
+    s.callbacks.onTitle?.(next);
+  });
+  return [prompt.dispose, cwd, title];
 }
 
 function deliverPtyChunk(

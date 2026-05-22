@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildSourceControlEntries, getPrimaryDiffMode } from "./sourceControlModel";
+import {
+  buildSourceControlEntries,
+  discardEntriesForEntries,
+  getPrimaryDiffMode,
+  pathsToStage,
+  pathsToUnstage,
+} from "./sourceControlModel";
 import type { GitChangedFile } from "@/lib/native";
 
 const files: GitChangedFile[] = [
@@ -66,5 +72,33 @@ describe("source control model", () => {
 
     expect(getPrimaryDiffMode(entries[0])).toBe("+");
     expect(getPrimaryDiffMode(entries[1])).toBe("-");
+  });
+
+  it("selects eligible paths for bulk stage, unstage, and discard", () => {
+    const entries = buildSourceControlEntries([
+      ...files,
+      {
+        path: "src/mixed.ts",
+        originalPath: null,
+        indexStatus: "M",
+        worktreeStatus: "M",
+        staged: true,
+        unstaged: true,
+        untracked: false,
+        statusLabel: "Modified",
+      },
+    ]);
+
+    expect(pathsToStage(entries)).toEqual([
+      "src/app.vue",
+      "src/new.ts",
+      "src/mixed.ts",
+    ]);
+    expect(pathsToUnstage(entries)).toEqual(["src/main.ts", "src/mixed.ts"]);
+    expect(discardEntriesForEntries(entries)).toEqual([
+      { path: "src/app.vue", untracked: false },
+      { path: "src/new.ts", untracked: true },
+      { path: "src/mixed.ts", untracked: false },
+    ]);
   });
 });

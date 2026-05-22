@@ -6,6 +6,7 @@ export type TerminalTab = {
   id: number;
   kind: "terminal";
   title: string;
+  terminalTitle?: string;
   cwd?: string;
   paneTree: PaneNode;
   activeLeafId: number;
