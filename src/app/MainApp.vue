@@ -30,6 +30,7 @@ import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import { MAX_PANES_PER_TAB } from "@/modules/tabs/tabsTypes";
 import {
   getWslHome,
+  normalizeWorkspacePath,
   useWorkspaceEnvPiniaStore,
   useWorkspaceRootPiniaStore,
   type WorkspaceEnv,
@@ -267,6 +268,10 @@ function emitWorkspaceRefresh(
   workspaceFsEvent.value = { rootPath, paths, gitRelated };
 }
 
+function isSameWorkspaceRoot(a: string | null, b: string | null): boolean {
+  return !!a && !!b && normalizeWorkspacePath(a) === normalizeWorkspacePath(b);
+}
+
 function stopWorkspaceRefreshFallback() {
   if (!workspaceRefreshFallbackTimer) return;
   clearInterval(workspaceRefreshFallbackTimer);
@@ -304,7 +309,7 @@ async function listenWorkspaceFsChanges() {
     WORKSPACE_FS_CHANGED_EVENT,
     (event) => {
       const rootPath = workspaceRoot.value;
-      if (!rootPath || event.payload.rootPath !== rootPath) return;
+      if (!isSameWorkspaceRoot(event.payload.rootPath, rootPath)) return;
       workspaceFsEvent.value = event.payload;
     },
   );
