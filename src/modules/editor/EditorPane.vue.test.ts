@@ -36,6 +36,45 @@ describe("EditorPane.vue", () => {
     expect(readEditorDocument).toHaveBeenCalledWith("/repo/src/main.ts");
     expect(wrapper.find("[data-editor-host]").exists()).toBe(true);
     expect(wrapper.text()).toContain("main.ts");
+    expect(wrapper.find("[data-editor-mode-source]").exists()).toBe(false);
+  });
+
+  it("offers source, split, and preview modes for markdown files", async () => {
+    vi.mocked(readEditorDocument).mockResolvedValueOnce({
+      status: "ready",
+      content: "# Draft\n\nUse `pnpm test`.",
+      size: 26,
+    });
+
+    const wrapper = mount(EditorPane, {
+      global: { plugins: [createPinia()] },
+      props: { path: "/repo/README.md" },
+    });
+    await flush();
+
+    expect(wrapper.find("[data-editor-mode-root]").attributes("data-mode")).toBe(
+      "split",
+    );
+    expect(wrapper.find("[data-editor-mode-source]").exists()).toBe(true);
+    expect(wrapper.find("[data-editor-mode-split]").exists()).toBe(true);
+    expect(wrapper.find("[data-editor-mode-preview]").exists()).toBe(true);
+    expect(wrapper.find("[data-editor-markdown-preview]").text()).toContain(
+      "Draft",
+    );
+
+    wrapper.vm.setContentForTest("# Updated\n\nLive preview");
+    await nextTick();
+
+    expect(wrapper.find("[data-editor-markdown-preview]").text()).toContain(
+      "Updated",
+    );
+
+    await wrapper.find("[data-editor-mode-preview]").trigger("click");
+    await nextTick();
+
+    expect(wrapper.find("[data-editor-mode-root]").attributes("data-mode")).toBe(
+      "preview",
+    );
   });
 
   it("renders non-text states without mounting an editor", async () => {

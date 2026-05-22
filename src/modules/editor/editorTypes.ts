@@ -1,3 +1,5 @@
+export type EditorViewMode = "source" | "split" | "preview";
+
 export type EditorPaneHandle = {
   setQuery: (query: string) => void;
   findNext: () => void;

@@ -32,6 +32,13 @@ import { folderIconUrl } from "./lib/iconResolver";
 
 type EntryRow = Extract<VisibleTreeRow, { kind: "entry" }>;
 type MenuRow = Extract<VisibleTreeRow, { kind: "entry" | "rename" }>;
+type LoadChildrenOptions = {
+  silent?: boolean;
+};
+type InFlightLoad = {
+  rerun: boolean;
+  silent: boolean;
+};
 
 const props = defineProps<{
   rootPath: string | null;
@@ -55,6 +62,8 @@ const isSearchOpen = ref(false);
 const isSearchActive = ref(false);
 const menu = ref<ExplorerContextMenuTarget | null>(null);
 let fsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+const pendingFsEventPaths = new Set<string>();
+const inFlightLoads = new Map<string, InFlightLoad>();
 
 const rootName = computed(() => {
   if (!props.rootPath) return "";
@@ -112,8 +121,20 @@ function normalizeError(error: unknown): string {
   return String(error);
 }
 
-async function loadChildren(path: string) {
-  nodes.value = { ...nodes.value, [path]: { status: "loading" } };
+async function loadChildren(path: string, options: LoadChildrenOptions = {}) {
+  const current = nodes.value[path];
+  const silent = options.silent === true && current?.status === "loaded";
+  const active = inFlightLoads.get(path);
+  if (active) {
+    active.rerun = true;
+    active.silent = active.silent && silent;
+    return;
+  }
+
+  inFlightLoads.set(path, { rerun: false, silent });
+  if (!silent) {
+    nodes.value = { ...nodes.value, [path]: { status: "loading" } };
+  }
   try {
     const entries = await readFileTreeDir(path, prefs.showHidden);
     nodes.value = { ...nodes.value, [path]: { status: "loaded", entries } };
@@ -122,6 +143,12 @@ async function loadChildren(path: string) {
       ...nodes.value,
       [path]: { status: "error", message: normalizeError(error) },
     };
+  } finally {
+    const finished = inFlightLoads.get(path);
+    inFlightLoads.delete(path);
+    if (finished?.rerun) {
+      void loadChildren(path, { silent: finished.silent });
+    }
   }
 }
 
@@ -137,17 +164,93 @@ function isSameRoot(a: string | null, b: string | null): boolean {
   return !!a && !!b && normalizePath(a) === normalizePath(b);
 }
 
-function scheduleTreeRefresh() {
+function isRefreshableState(state: FileTreeState[string] | undefined): boolean {
+  return state?.status === "loaded" || state?.status === "error";
+}
+
+function isPathWithinRoot(path: string, root: string): boolean {
+  return path === root || path.startsWith(`${root}/`);
+}
+
+function nearestRefreshableAncestor(
+  path: string,
+  root: string,
+  refreshablePaths: Map<string, string>,
+): string | null {
+  let cursor = dirname(path);
+  while (isPathWithinRoot(cursor, root)) {
+    const original = refreshablePaths.get(cursor);
+    if (original) return original;
+    if (cursor === root) break;
+    const next = dirname(cursor);
+    if (next === cursor) break;
+    cursor = next;
+  }
+  return null;
+}
+
+function refreshTargetsForPaths(paths: string[]): string[] {
+  if (!props.rootPath) return [];
+  const root = normalizePath(props.rootPath);
+  const refreshablePaths = new Map<string, string>();
+  for (const [path, state] of Object.entries(nodes.value)) {
+    if (isRefreshableState(state)) {
+      refreshablePaths.set(normalizePath(path), path);
+    }
+  }
+
+  const targets = new Set<string>();
+  let sawRelevantPath = false;
+  for (const rawPath of paths.length > 0 ? paths : [props.rootPath]) {
+    const path = normalizePath(rawPath);
+    if (!isPathWithinRoot(path, root)) continue;
+    sawRelevantPath = true;
+
+    const sizeBefore = targets.size;
+    if (path === root) {
+      const target = refreshablePaths.get(root);
+      if (target) targets.add(target);
+      continue;
+    }
+
+    const parent = refreshablePaths.get(dirname(path));
+    if (parent) targets.add(parent);
+
+    const direct = refreshablePaths.get(path);
+    if (direct) targets.add(direct);
+
+    if (targets.size === sizeBefore) {
+      const ancestor = nearestRefreshableAncestor(path, root, refreshablePaths);
+      if (ancestor) targets.add(ancestor);
+    }
+  }
+
+  if (targets.size === 0 && sawRelevantPath && props.rootPath) {
+    targets.add(props.rootPath);
+  }
+  return Array.from(targets);
+}
+
+function clearScheduledTreeRefresh() {
+  if (fsRefreshTimer) clearTimeout(fsRefreshTimer);
+  fsRefreshTimer = null;
+  pendingFsEventPaths.clear();
+}
+
+function scheduleTreeRefresh(event: WorkspaceFsChangedEvent) {
   if (!props.rootPath) return;
+  for (const path of event.paths.length > 0 ? event.paths : [props.rootPath]) {
+    pendingFsEventPaths.add(path);
+  }
   if (fsRefreshTimer) clearTimeout(fsRefreshTimer);
   fsRefreshTimer = setTimeout(() => {
     fsRefreshTimer = null;
     if (!props.rootPath) return;
-    const loadedPaths = Object.entries(nodes.value)
-      .filter(([, state]) => state.status === "loaded" || state.status === "error")
-      .map(([path]) => path);
-    const targets = loadedPaths.length > 0 ? loadedPaths : [props.rootPath];
-    for (const path of targets) void loadChildren(path);
+    const paths = Array.from(pendingFsEventPaths);
+    pendingFsEventPaths.clear();
+    for (const path of refreshTargetsForPaths(paths)) {
+      void loadChildren(path, { silent: true });
+    }
   }, 180);
 }
 
@@ -335,6 +438,7 @@ function handleKeydown(event: KeyboardEvent) {
 watch(
   () => props.rootPath,
   (rootPath) => {
+    clearScheduledTreeRefresh();
     nodes.value = {};
     expanded.value = new Set();
     pendingCreate.value = null;
@@ -365,7 +469,7 @@ watch(
   () => props.fsEvent,
   (event) => {
     if (!event || !isSameRoot(event.rootPath, props.rootPath)) return;
-    scheduleTreeRefresh();
+    scheduleTreeRefresh(event);
   },
 );
 
@@ -376,7 +480,7 @@ watch(rows, () => {
 });
 
 onBeforeUnmount(() => {
-  if (fsRefreshTimer) clearTimeout(fsRefreshTimer);
+  clearScheduledTreeRefresh();
 });
 </script>
 

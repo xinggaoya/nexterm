@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SourceControlPanel from "./SourceControlPanel.vue";
 import { native, type GitChangedFile } from "@/lib/native";
 
@@ -93,6 +93,10 @@ describe("SourceControlPanel.vue", () => {
       truncated: false,
       changedFiles: [],
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("loads repository status and opens diffs/history", async () => {
@@ -336,5 +340,50 @@ describe("SourceControlPanel.vue", () => {
     expect(native.gitPush).toHaveBeenCalledWith("/repo");
     expect(native.gitStatus).toHaveBeenCalledTimes(3);
     expect(wrapper.text()).toContain("Pushed to origin/main");
+  });
+
+  it("ignores non-git filesystem events for automatic status refresh", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(SourceControlPanel, {
+      props: { rootPath: "/repo", fsEvent: null },
+    });
+    await flush();
+    vi.mocked(native.gitStatus).mockClear();
+
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/src/new.ts"],
+        gitRelated: false,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(300);
+    await flush();
+
+    expect(native.gitStatus).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("refreshes status for git-related filesystem events", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(SourceControlPanel, {
+      props: { rootPath: "/repo", fsEvent: null },
+    });
+    await flush();
+    vi.mocked(native.gitStatus).mockClear();
+
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/.git/index"],
+        gitRelated: true,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(300);
+    await flush();
+
+    expect(native.gitStatus).toHaveBeenCalledTimes(1);
+    expect(native.gitStatus).toHaveBeenCalledWith("/repo");
+    vi.useRealTimers();
   });
 });
