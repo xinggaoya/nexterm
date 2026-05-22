@@ -21,7 +21,16 @@ const invokeMock = vi.hoisted(() =>
     return null;
   }),
 );
-const eventListenMock = vi.hoisted(() => vi.fn(async () => vi.fn()));
+const eventListenMock = vi.hoisted(() => {
+  const handlers: Array<(event: { payload: unknown }) => void> = [];
+  const listen = vi.fn(
+    async (_event: string, handler: (event: { payload: unknown }) => void) => {
+      handlers.push(handler);
+      return vi.fn();
+    },
+  );
+  return Object.assign(listen, { handlers });
+});
 const windowMock = vi.hoisted(() => {
   const closeRequestedHandlers: ((event: { preventDefault: () => void }) => void | Promise<void>)[] = [];
   return {
@@ -75,19 +84,19 @@ vi.mock("@/modules/terminal", () => ({
 
 vi.mock("@/modules/explorer/FileExplorer.vue", () => ({
   default: {
-    props: ["rootPath"],
+    props: ["rootPath", "fsEvent"],
     emits: ["openFile"],
     template:
-      '<aside data-file-explorer>{{ rootPath ?? "none" }}<button data-open-file @click="$emit(\'openFile\', \'/repo/src/main.ts\', false)">open</button><button data-open-other-file @click="$emit(\'openFile\', \'/repo/src/other.ts\', false)">other</button></aside>',
+      '<aside data-file-explorer>{{ rootPath ?? "none" }}<span data-explorer-fs-event>{{ fsEvent?.paths?.join("|") ?? "none" }}</span><button data-open-file @click="$emit(\'openFile\', \'/repo/src/main.ts\', false)">open</button><button data-open-other-file @click="$emit(\'openFile\', \'/repo/src/other.ts\', false)">other</button></aside>',
   },
 }));
 
 vi.mock("@/modules/source-control/SourceControlPanel.vue", () => ({
   default: {
-    props: ["rootPath"],
+    props: ["rootPath", "fsEvent"],
     emits: ["openDiff", "openHistory"],
     template:
-      '<aside data-source-control>{{ rootPath ?? "none" }}<button data-open-source-diff @click="$emit(\'openDiff\', { repoRoot: \'/repo\', path: \'src/main.ts\', mode: \'-\', originalPath: null, title: \'main.ts\' })">diff</button><button data-open-source-history @click="$emit(\'openHistory\', { repoRoot: \'/repo\', branch: \'main\' })">history</button></aside>',
+      '<aside data-source-control>{{ rootPath ?? "none" }}<span data-source-fs-event>{{ fsEvent?.paths?.join("|") ?? "none" }}</span><button data-open-source-diff @click="$emit(\'openDiff\', { repoRoot: \'/repo\', path: \'src/main.ts\', mode: \'-\', originalPath: null, title: \'main.ts\' })">diff</button><button data-open-source-history @click="$emit(\'openHistory\', { repoRoot: \'/repo\', branch: \'main\' })">history</button></aside>',
   },
 }));
 
@@ -166,6 +175,7 @@ describe("MainApp.vue", () => {
     windowMock.closeRequestedHandlers.length = 0;
     delete (window as typeof window & { __TAURI_INTERNALS__?: unknown })
       .__TAURI_INTERNALS__;
+    eventListenMock.handlers.length = 0;
     document.body.innerHTML = "";
     setCurrentWorkspaceEnv({ kind: "local" });
   });
@@ -689,6 +699,40 @@ describe("MainApp.vue", () => {
     await wrapper.find("[data-toggle-left-panel]").trigger("click");
     await nextTick();
     expect(wrapper.find("[data-source-control]").text()).toContain("/repo");
+  });
+
+  it("forwards workspace fs events when Windows root separators differ", async () => {
+    (window as typeof window & { __TAURI_INTERNALS__?: unknown })
+      .__TAURI_INTERNALS__ = { invoke: vi.fn(async () => null) };
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "D:/repo";
+    usePreferencesPiniaStore(pinia).hydrated = true;
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia] },
+    });
+    await flushPromises();
+    await nextTick();
+
+    eventListenMock.handlers[0]?.({
+      payload: {
+        rootPath: "D:\\repo",
+        paths: ["D:/repo/src/main.ts"],
+        gitRelated: false,
+      },
+    });
+    await nextTick();
+
+    expect(wrapper.find("[data-explorer-fs-event]").text()).toBe(
+      "D:/repo/src/main.ts",
+    );
+
+    await wrapper.find("[data-toggle-left-panel]").trigger("click");
+    await nextTick();
+
+    expect(wrapper.find("[data-source-fs-event]").text()).toBe(
+      "D:/repo/src/main.ts",
+    );
   });
 
 });

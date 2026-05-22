@@ -342,7 +342,7 @@ describe("SourceControlPanel.vue", () => {
     expect(wrapper.text()).toContain("Pushed to origin/main");
   });
 
-  it("ignores non-git filesystem events for automatic status refresh", async () => {
+  it("refreshes status for workspace file events", async () => {
     vi.useFakeTimers();
     const wrapper = mount(SourceControlPanel, {
       props: { rootPath: "/repo", fsEvent: null },
@@ -360,7 +360,8 @@ describe("SourceControlPanel.vue", () => {
     await vi.advanceTimersByTimeAsync(300);
     await flush();
 
-    expect(native.gitStatus).not.toHaveBeenCalled();
+    expect(native.gitStatus).toHaveBeenCalledTimes(1);
+    expect(native.gitStatus).toHaveBeenCalledWith("/repo");
     vi.useRealTimers();
   });
 
@@ -384,6 +385,47 @@ describe("SourceControlPanel.vue", () => {
 
     expect(native.gitStatus).toHaveBeenCalledTimes(1);
     expect(native.gitStatus).toHaveBeenCalledWith("/repo");
+    vi.useRealTimers();
+  });
+
+  it("runs a pending auto refresh after a busy source control action finishes", async () => {
+    vi.useFakeTimers();
+    const deferredStage: { resolve?: () => void } = {};
+    vi.mocked(native.gitStage).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          deferredStage.resolve = resolve;
+        }),
+    );
+
+    const wrapper = mount(SourceControlPanel, {
+      props: { rootPath: "/repo", fsEvent: null },
+    });
+    await flush();
+    vi.mocked(native.gitStatus).mockClear();
+
+    await wrapper.find("[data-stage-file='src/main.ts']").trigger("click");
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/src/main.ts"],
+        gitRelated: false,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(300);
+    await flush();
+
+    expect(native.gitStatus).not.toHaveBeenCalled();
+
+    if (!deferredStage.resolve) throw new Error("stage action did not start");
+    deferredStage.resolve();
+    await flush();
+    expect(native.gitStatus).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(80);
+    await flush();
+
+    expect(native.gitStatus).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
 });
