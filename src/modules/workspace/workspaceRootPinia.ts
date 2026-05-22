@@ -81,6 +81,45 @@ function workspaceKey(record: Pick<StoredWorkspace, "path" | "env">): string {
   return `${workspaceScopeKey(record.env)}:${record.path}`;
 }
 
+function isWindowsDrivePath(path: string): boolean {
+  return /^[A-Za-z]:\//.test(path);
+}
+
+function isLinuxAbsolutePath(path: string): boolean {
+  return path.startsWith("/") && !path.startsWith("//");
+}
+
+function isUncPath(path: string): boolean {
+  return path.startsWith("//");
+}
+
+function isWslUncPath(path: string): boolean {
+  return /^\/\/wsl(?:\.localhost|\$)\//i.test(path);
+}
+
+function dialogDefaultPath(
+  rootPath: string | null,
+  env: WorkspaceEnv,
+): string | undefined {
+  if (!rootPath) return undefined;
+  if (env.kind === "wsl" && isLinuxAbsolutePath(rootPath)) return undefined;
+  return rootPath;
+}
+
+function envForSelectedDirectory(
+  selected: string,
+  current: WorkspaceEnv,
+): WorkspaceEnv {
+  const path = normalizeWorkspacePath(selected);
+  if (
+    current.kind === "wsl" &&
+    (isWindowsDrivePath(path) || (isUncPath(path) && !isWslUncPath(path)))
+  ) {
+    return LOCAL_WORKSPACE;
+  }
+  return current;
+}
+
 function upsertRecent(
   recent: StoredWorkspace[],
   record: StoredWorkspace,
@@ -170,9 +209,12 @@ export const useWorkspaceRootPiniaStore = defineStore("workspace-root", {
       }
     },
     async chooseWorkspace(): Promise<StoredWorkspace | null> {
-      const selected = await selectWorkspaceDirectory(this.rootPath ?? undefined);
+      const env = useWorkspaceEnvPiniaStore().env;
+      const selected = await selectWorkspaceDirectory(
+        dialogDefaultPath(this.rootPath, env),
+      );
       if (!selected) return null;
-      return this.openWorkspace(selected);
+      return this.openWorkspace(selected, envForSelectedDirectory(selected, env));
     },
     clearWorkspace() {
       this.rootPath = null;

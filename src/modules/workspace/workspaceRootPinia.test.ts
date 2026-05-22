@@ -5,6 +5,7 @@ import {
   LOCAL_WORKSPACE,
   setCurrentWorkspaceEnv,
 } from "./workspaceEnvSnapshot";
+import { useWorkspaceEnvPiniaStore } from "./workspaceEnvPinia";
 import { useWorkspaceRootPiniaStore } from "./workspaceRootPinia";
 
 const settingsMock = vi.hoisted(() => ({
@@ -155,5 +156,50 @@ describe("workspace root pinia store", () => {
     expect(opened?.path).toBe("/picked");
     expect(store.rootPath).toBe("/picked");
     expect(dialogMock.selectWorkspaceDirectory).toHaveBeenCalledWith(undefined);
+  });
+
+  it("does not pass a Linux WSL path as the Windows directory picker default", async () => {
+    const env = { kind: "wsl" as const, distro: "Ubuntu" };
+    useWorkspaceEnvPiniaStore().setEnv(env);
+    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce(null);
+    const store = useWorkspaceRootPiniaStore();
+    store.rootPath = "/home/dev";
+
+    await store.chooseWorkspace();
+
+    expect(dialogMock.selectWorkspaceDirectory).toHaveBeenCalledWith(undefined);
+    expect(nativeMock.authorizeWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("opens Windows drive selections as local workspaces even while WSL is active", async () => {
+    const env = { kind: "wsl" as const, distro: "Ubuntu" };
+    useWorkspaceEnvPiniaStore().setEnv(env);
+    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce("D:/repo");
+    nativeMock.authorizeWorkspace.mockResolvedValueOnce("D:/repo");
+    const store = useWorkspaceRootPiniaStore();
+
+    const opened = await store.chooseWorkspace();
+
+    expect(opened?.path).toBe("D:/repo");
+    expect(currentWorkspaceEnv()).toEqual(LOCAL_WORKSPACE);
+    expect(nativeMock.authorizeWorkspace).toHaveBeenCalledWith(
+      "D:/repo",
+      LOCAL_WORKSPACE,
+    );
+  });
+
+  it("opens non-WSL UNC selections as local workspaces while WSL is active", async () => {
+    const env = { kind: "wsl" as const, distro: "Ubuntu" };
+    useWorkspaceEnvPiniaStore().setEnv(env);
+    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce("//server/share/repo");
+    nativeMock.authorizeWorkspace.mockResolvedValueOnce("//server/share/repo");
+    const store = useWorkspaceRootPiniaStore();
+
+    await store.chooseWorkspace();
+
+    expect(nativeMock.authorizeWorkspace).toHaveBeenCalledWith(
+      "//server/share/repo",
+      LOCAL_WORKSPACE,
+    );
   });
 });
