@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   copyToClipboard,
   relativePath,
@@ -31,6 +31,7 @@ const emit = defineEmits<{
 }>();
 
 const confirmDeletePath = ref<string | null>(null);
+const menuElement = ref<HTMLElement | null>(null);
 
 function isMarkdownPath(path: string): boolean {
   return /\.(md|markdown|mdx)$/i.test(path);
@@ -39,6 +40,24 @@ function isMarkdownPath(path: string): boolean {
 function close() {
   confirmDeletePath.value = null;
   emit("close");
+}
+
+function handleOutsidePointerDown(event: Event) {
+  if (!props.target) return;
+  const node = event.target instanceof Node ? event.target : null;
+  if (node && menuElement.value?.contains(node)) return;
+  close();
+}
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape" && props.target) {
+    event.preventDefault();
+    close();
+  }
+}
+
+function handleWindowBlur() {
+  if (props.target) close();
 }
 
 function createTargetPath(target: ExplorerContextMenuTarget): string {
@@ -94,11 +113,24 @@ watch(
     confirmDeletePath.value = null;
   },
 );
+
+onMounted(() => {
+  window.addEventListener("pointerdown", handleOutsidePointerDown, true);
+  window.addEventListener("keydown", handleGlobalKeydown);
+  window.addEventListener("blur", handleWindowBlur);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("pointerdown", handleOutsidePointerDown, true);
+  window.removeEventListener("keydown", handleGlobalKeydown);
+  window.removeEventListener("blur", handleWindowBlur);
+});
 </script>
 
 <template>
   <div
     v-if="target"
+    ref="menuElement"
     class="fixed z-50 min-w-44 rounded-lg border border-border bg-popover p-1 text-[12px] text-popover-foreground shadow-lg"
     :style="{ left: `${target.x}px`, top: `${target.y}px` }"
     @click.stop

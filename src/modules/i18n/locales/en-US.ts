@@ -25,6 +25,7 @@ const enUS = {
       markdown: "Markdown",
       newPrivateTerminal: "New private terminal",
       newTerminal: "New terminal",
+      openFolder: "Open Folder",
       preview: "Preview",
       privateTerminal: "Private terminal",
       sourceControl: "Source Control",

@@ -549,6 +549,7 @@ watch([leftPanelOpen, rightPanelOpen], () => {
               @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement)"
               @new-tab="newTerminalTab"
               @new-private-tab="newPrivateTerminalTab"
+              @choose-workspace="chooseWorkspace"
               @split-pane="splitActivePane"
               @open-settings="openSettings"
               @toggle-left-panel="leftPanelOpen = !leftPanelOpen"
@@ -720,7 +721,6 @@ watch([leftPanelOpen, rightPanelOpen], () => {
               :workspace-root="workspaceRoot"
               :terminal-cwd="activeCwd"
               :private-active="privateActive"
-              @choose-workspace="chooseWorkspace"
               @workspace-change="switchWorkspace"
             />
 

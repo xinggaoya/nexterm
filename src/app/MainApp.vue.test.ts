@@ -146,9 +146,9 @@ vi.mock("@/modules/git-history/GitHistoryStack.vue", () => ({
 vi.mock("./components/AppStatusBar.vue", () => ({
   default: {
     props: ["workspaceRoot", "terminalCwd", "privateActive"],
-    emits: ["workspaceChange", "chooseWorkspace"],
+    emits: ["workspaceChange"],
     template:
-      '<footer data-status-bar><span>{{ workspaceRoot ?? "No workspace" }}:{{ terminalCwd ?? "no-terminal" }}:{{ privateActive }}</span><button data-choose-workspace @click="$emit(\'chooseWorkspace\')"></button><button data-switch-wsl @click="$emit(\'workspaceChange\', { kind: \'wsl\', distro: \'Ubuntu\' })"></button><button data-switch-local @click="$emit(\'workspaceChange\', { kind: \'local\' })"></button></footer>',
+      '<footer data-status-bar><span>{{ workspaceRoot ?? "No workspace" }}:{{ terminalCwd ?? "no-terminal" }}:{{ privateActive }}</span><button data-switch-wsl @click="$emit(\'workspaceChange\', { kind: \'wsl\', distro: \'Ubuntu\' })"></button><button data-switch-local @click="$emit(\'workspaceChange\', { kind: \'local\' })"></button></footer>',
   },
 }));
 
@@ -194,6 +194,26 @@ describe("MainApp.vue", () => {
     expect(wrapper.find("[data-workspace-welcome]").exists()).toBe(true);
     expect(wrapper.find("[data-file-explorer]").exists()).toBe(false);
     expect(tabs.tabs).toHaveLength(0);
+  });
+
+  it("opens a workspace from the promoted header action", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.chooseWorkspace = vi.fn(async () => {
+      workspaceRoot.rootPath = "/repo";
+      return { path: "/repo", env: LOCAL_WORKSPACE, openedAt: 1 };
+    });
+
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+
+    await wrapper.find("[data-open-workspace]").trigger("click");
+    await flushPromises();
+    await nextTick();
+
+    expect(workspaceRoot.chooseWorkspace).toHaveBeenCalledTimes(1);
+    expect(wrapper.find("[data-terminal-stack]").text()).toBe("1:1");
   });
 
   it("keeps preinitialized workspace root available on first render", async () => {

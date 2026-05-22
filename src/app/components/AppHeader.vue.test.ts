@@ -117,6 +117,7 @@ describe("AppHeader.vue", () => {
 
     await wrapper.find("[data-new-tab]").trigger("click");
     await wrapper.find("[data-new-private-tab]").trigger("click");
+    await wrapper.find("[data-open-workspace]").trigger("click");
     await wrapper.find("[data-split-row]").trigger("click");
     await wrapper.find("[data-split-col]").trigger("click");
     await wrapper.find("[data-open-settings]").trigger("click");
@@ -125,6 +126,7 @@ describe("AppHeader.vue", () => {
 
     expect(wrapper.emitted("newTab")).toHaveLength(1);
     expect(wrapper.emitted("newPrivateTab")).toHaveLength(1);
+    expect(wrapper.emitted("chooseWorkspace")).toHaveLength(1);
     expect(wrapper.emitted("splitPane")).toEqual([[ "row" ], [ "col" ]]);
     expect(wrapper.find("[data-close-active-tab]").exists()).toBe(false);
     expect(wrapper.emitted("closeActiveTab")).toBeUndefined();
@@ -188,7 +190,7 @@ describe("AppHeader.vue", () => {
     expect(wrapper.find("[data-window-controls]").exists()).toBe(false);
   });
 
-  it("uses a dedicated handle for moving the window instead of the whole header", () => {
+  it("uses non-button drag regions for moving the window", () => {
     const wrapper = mount(AppHeader, {
       props: {
         tabs,
@@ -199,12 +201,14 @@ describe("AppHeader.vue", () => {
     });
 
     const header = wrapper.find("header");
-    const dragHandle = wrapper.find("[data-window-drag-handle]");
+    const dragRegion = wrapper.find("[data-window-drag-region]");
 
     expect(header.attributes("data-tauri-drag-region")).toBeUndefined();
-    expect(dragHandle.exists()).toBe(true);
+    expect(wrapper.find("[data-window-drag-handle]").exists()).toBe(false);
+    expect(dragRegion.exists()).toBe(true);
+    expect(dragRegion.element.tagName).toBe("DIV");
 
-    dragHandle.element.dispatchEvent(
+    dragRegion.element.dispatchEvent(
       pointerEvent("pointerdown", {
         button: 0,
         pointerId: 1,

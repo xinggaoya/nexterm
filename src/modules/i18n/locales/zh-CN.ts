@@ -27,6 +27,7 @@ const zhCN = {
       markdown: "Markdown",
       newPrivateTerminal: "新建私有终端",
       newTerminal: "新建终端",
+      openFolder: "打开文件夹",
       preview: "预览",
       privateTerminal: "私有终端",
       sourceControl: "源代码管理",
