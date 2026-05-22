@@ -133,9 +133,7 @@ pub async fn workspace_authorize(
     registry: tauri::State<'_, WorkspaceRegistry>,
 ) -> Result<String, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
-    let resolved = resolve_path(&path, &workspace);
-    let canonical = registry.authorize(&resolved).map_err(|e| e.to_string())?;
-    Ok(canonical.to_string_lossy().replace('\\', "/"))
+    authorize_workspace_path(&registry, &path, &workspace)
 }
 
 #[tauri::command]
@@ -230,6 +228,40 @@ pub fn resolve_path(path: &str, _workspace: &WorkspaceEnv) -> PathBuf {
     PathBuf::from(path)
 }
 
+fn authorize_workspace_path(
+    registry: &WorkspaceRegistry,
+    path: &str,
+    workspace: &WorkspaceEnv,
+) -> Result<String, String> {
+    let client_path = normalize_workspace_request_path(path, workspace)?;
+    let resolved = resolve_path(&client_path, workspace);
+    let canonical = registry.authorize(&resolved).map_err(|e| e.to_string())?;
+    if workspace.is_wsl() {
+        Ok(client_path)
+    } else {
+        Ok(canonical.to_string_lossy().replace('\\', "/"))
+    }
+}
+
+#[cfg(windows)]
+fn normalize_workspace_request_path(
+    path: &str,
+    workspace: &WorkspaceEnv,
+) -> Result<String, String> {
+    match workspace {
+        WorkspaceEnv::Local => Ok(path.to_string()),
+        WorkspaceEnv::Wsl { distro } => normalize_wsl_workspace_request_path(distro, path),
+    }
+}
+
+#[cfg(not(windows))]
+fn normalize_workspace_request_path(
+    path: &str,
+    _workspace: &WorkspaceEnv,
+) -> Result<String, String> {
+    Ok(path.to_string())
+}
+
 /// True for WSL distro names safe to splice into a UNC path. Real WSL distros
 /// are alphanumeric with `.`, `_`, `-` separators (e.g. `Ubuntu-22.04`). Reject
 /// anything that could traverse out of the `\\wsl.localhost\<distro>\` prefix
@@ -254,6 +286,83 @@ pub(crate) fn validate_wsl_distro_name(distro: &str) -> Result<(), String> {
     } else {
         Err(format!("unsafe WSL distro name: {distro}"))
     }
+}
+
+#[cfg(windows)]
+fn normalize_wsl_absolute_path(path: &str) -> String {
+    let normalized = path.trim().replace('\\', "/");
+    if normalized == "/" {
+        return "/".into();
+    }
+    let trimmed = normalized.trim_end_matches('/');
+    if trimmed.is_empty() {
+        "/".into()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+#[cfg(windows)]
+fn strip_wsl_unc_prefix(normalized: &str) -> Option<&str> {
+    let lower = normalized.to_ascii_lowercase();
+    for prefix in ["//wsl.localhost/", "//wsl$/"] {
+        if lower.starts_with(prefix) {
+            return Some(&normalized[prefix.len()..]);
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+fn is_incomplete_wsl_unc_path(normalized: &str) -> bool {
+    let lower = normalized.to_ascii_lowercase();
+    lower == "//wsl.localhost"
+        || lower == "//wsl.localhost/"
+        || lower == "//wsl$"
+        || lower == "//wsl$/"
+}
+
+#[cfg(windows)]
+fn wsl_unc_to_linux_path(distro: &str, path: &str) -> Result<Option<String>, String> {
+    let normalized = path.trim().replace('\\', "/");
+    let Some(rest) = strip_wsl_unc_prefix(&normalized) else {
+        if is_incomplete_wsl_unc_path(&normalized) {
+            return Err(format!("WSL UNC path must include a distro name: {path}"));
+        }
+        return Ok(None);
+    };
+    let mut parts = rest.splitn(2, '/');
+    let selected_distro = parts.next().unwrap_or("");
+    if selected_distro.is_empty() {
+        return Err(format!("WSL UNC path must include a distro name: {path}"));
+    }
+    if !selected_distro.eq_ignore_ascii_case(distro) {
+        return Err(format!(
+            "selected WSL path belongs to distro {selected_distro}, but current WSL workspace is {distro}"
+        ));
+    }
+    let suffix = parts.next().unwrap_or("");
+    let linux = if suffix.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{suffix}")
+    };
+    Ok(Some(normalize_wsl_absolute_path(&linux)))
+}
+
+#[cfg(windows)]
+fn normalize_wsl_workspace_request_path(distro: &str, path: &str) -> Result<String, String> {
+    validate_wsl_distro_name(distro)?;
+    if let Some(linux_path) = wsl_unc_to_linux_path(distro, path)? {
+        return Ok(linux_path);
+    }
+    let normalized = normalize_wsl_absolute_path(path);
+    if !normalized.starts_with('/') || normalized.starts_with("//") {
+        return Err(format!(
+            "expected an absolute WSL path for {distro}, got {path}"
+        ));
+    }
+    Ok(normalized)
 }
 
 #[cfg(windows)]
@@ -587,6 +696,60 @@ mod tests {
     fn wsl_drvfs_rejects_non_drive_mounts() {
         assert_eq!(wsl_drvfs_to_windows("/mnt/wsl"), None);
         assert_eq!(wsl_drvfs_to_windows("/home/vinicios"), None);
+    }
+
+    #[test]
+    fn wsl_workspace_request_keeps_linux_path_for_client_state() {
+        assert_eq!(
+            normalize_wsl_workspace_request_path("Ubuntu", "/home/vinicios/repo").unwrap(),
+            "/home/vinicios/repo"
+        );
+    }
+
+    #[test]
+    fn wsl_workspace_request_converts_localhost_unc_to_linux_path() {
+        assert_eq!(
+            normalize_wsl_workspace_request_path(
+                "Ubuntu",
+                r"\\wsl.localhost\Ubuntu\home\vinicios\repo"
+            )
+            .unwrap(),
+            "/home/vinicios/repo"
+        );
+    }
+
+    #[test]
+    fn wsl_workspace_request_converts_legacy_unc_to_linux_path() {
+        assert_eq!(
+            normalize_wsl_workspace_request_path("Ubuntu", r"\\wsl$\Ubuntu\home\vinicios").unwrap(),
+            "/home/vinicios"
+        );
+    }
+
+    #[test]
+    fn wsl_workspace_request_rejects_other_distro_unc() {
+        let err =
+            normalize_wsl_workspace_request_path("Ubuntu", r"\\wsl.localhost\Debian\home\vinicios")
+                .expect_err("cross-distro UNC must be rejected");
+
+        assert!(err.contains("Debian"), "got: {err}");
+        assert!(err.contains("Ubuntu"), "got: {err}");
+    }
+
+    #[test]
+    fn wsl_workspace_request_rejects_windows_drive_path() {
+        let err = normalize_wsl_workspace_request_path("Ubuntu", r"D:\repo")
+            .expect_err("Windows drive paths are not valid WSL workspace roots");
+
+        assert!(err.contains("absolute WSL path"), "got: {err}");
+    }
+
+    #[test]
+    fn wsl_workspace_request_rejects_non_wsl_unc_path() {
+        let err = normalize_wsl_workspace_request_path("Ubuntu", r"\\server\share\repo")
+            .expect_err("non-WSL UNC paths are not valid WSL workspace roots");
+
+        assert!(err.contains("absolute WSL path"), "got: {err}");
     }
 
     #[test]
