@@ -127,7 +127,7 @@
     margin: 0;
     overflow: hidden;
     }
-  html, body, #root, #settings-root {
+  html, body, #root {
     height: 100%;
     }
   html {
@@ -152,8 +152,7 @@ html[data-chrome="borderless"],
 html[data-chrome="borderless"] body {
   background: transparent !important;
 }
-html[data-chrome="borderless"] #root,
-html[data-chrome="borderless"] #settings-root {
+html[data-chrome="borderless"] #root {
   height: 100%;
   border-radius: 12px;
   overflow: hidden;

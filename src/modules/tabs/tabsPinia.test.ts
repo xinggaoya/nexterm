@@ -53,6 +53,38 @@ describe("tabs pinia store", () => {
     });
   });
 
+  it("reorders tabs without changing the active tab identity", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init();
+    const secondId = tabs.newTab("/tmp");
+    const editorId = tabs.openFileTab("/repo/src/main.ts");
+
+    tabs.setActiveId(secondId);
+    tabs.moveTab(editorId!, 1, "before");
+
+    expect(tabs.tabs.map((tab) => tab.id)).toEqual([editorId, 1, secondId]);
+    expect(tabs.activeId).toBe(secondId);
+
+    tabs.moveTab(editorId!, secondId, "after");
+
+    expect(tabs.tabs.map((tab) => tab.id)).toEqual([1, secondId, editorId]);
+    expect(tabs.activeId).toBe(secondId);
+  });
+
+  it("ignores invalid tab reorder requests", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init();
+    const secondId = tabs.newTab("/tmp");
+    const original = tabs.tabs;
+
+    tabs.moveTab(1, 1, "before");
+    tabs.moveTab(999, secondId, "before");
+    tabs.moveTab(1, 999, "after");
+
+    expect(tabs.tabs).toBe(original);
+    expect(tabs.tabs.map((tab) => tab.id)).toEqual([1, secondId]);
+  });
+
   it("opens editor preview tabs in a reusable slot and pins them", () => {
     const tabs = useTabsPiniaStore();
     tabs.init();

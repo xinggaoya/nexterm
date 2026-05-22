@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import GitHistoryPane from "./GitHistoryPane.vue";
 import { native } from "@/lib/native";
 
@@ -49,6 +49,10 @@ describe("GitHistoryPane.vue", () => {
     vi.mocked(native.gitRemoteUrl).mockResolvedValue(null);
   });
 
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
   it("loads commit history and renders a compact table", async () => {
     const wrapper = mount(GitHistoryPane, {
       props: {
@@ -66,7 +70,7 @@ describe("GitHistoryPane.vue", () => {
     expect(wrapper.text()).toContain("-3");
   });
 
-  it("loads commit files and emits a commit-file open request", async () => {
+  it("opens commit details in a drawer and emits a commit-file open request", async () => {
     const wrapper = mount(GitHistoryPane, {
       props: {
         repoRoot: "/repo",
@@ -78,11 +82,19 @@ describe("GitHistoryPane.vue", () => {
     await flush();
 
     expect(native.gitCommitFiles).toHaveBeenCalledWith("/repo", "abcdef123456");
-    expect(wrapper.text()).toContain("main.ts");
-    expect(wrapper.text()).toContain("src");
-    expect(wrapper.find("[data-commit-file='src/main.ts']").exists()).toBe(true);
+    expect(wrapper.find("[data-commit-file='src/main.ts']").exists()).toBe(false);
 
-    await wrapper.find("[data-commit-file='src/main.ts']").trigger("click");
+    const drawer = document.body.querySelector("[data-commit-detail-drawer]");
+    expect(drawer?.textContent).toContain("main.ts");
+    expect(drawer?.textContent).toContain("src");
+
+    const fileButton = document.body.querySelector<HTMLElement>(
+      "[data-commit-file='src/main.ts']",
+    );
+    expect(fileButton).not.toBeNull();
+
+    fileButton?.click();
+    await flush();
 
     expect(wrapper.emitted("openCommitFile")).toEqual([
       [

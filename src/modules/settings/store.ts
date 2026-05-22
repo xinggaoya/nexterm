@@ -91,6 +91,20 @@ export const TERMINAL_FONT_SIZES = [
   10, 12, 13, 14, 15, 16, 18, 20, 22, 24,
 ] as const;
 
+export const TERMINAL_FONT_FAMILY_PRESETS = [
+  "JetBrains Mono",
+  "JetBrainsMono Nerd Font",
+  "Fira Code",
+  "FiraCode Nerd Font",
+  "Cascadia Code",
+  "CaskaydiaCove Nerd Font",
+  "Hack",
+  "Hack Nerd Font",
+  "Iosevka",
+  "Iosevka Term Nerd Font",
+  "MesloLGS NF",
+] as const;
+
 export const TERMINAL_SCROLLBACK_DEFAULT = 2000;
 export const TERMINAL_SCROLLBACK_MIN = 200;
 export const TERMINAL_SCROLLBACK_MAX = 50_000;
