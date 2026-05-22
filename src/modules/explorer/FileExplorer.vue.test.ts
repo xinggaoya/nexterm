@@ -2,7 +2,7 @@
 import { mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { nextTick } from "vue";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FileExplorer from "./FileExplorer.vue";
 import {
   createFileTreeEntry,
@@ -10,6 +10,7 @@ import {
   readFileTreeDir,
   renameFileTreePath,
   searchFileTree,
+  type DirEntry,
 } from "./lib/fileTreeService";
 
 vi.mock("./lib/fileTreeService", async () => {
@@ -75,6 +76,10 @@ describe("FileExplorer.vue", () => {
       ],
       truncated: false,
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("loads the root directory with resolved file and folder icons", async () => {
@@ -249,5 +254,174 @@ describe("FileExplorer.vue", () => {
       false,
     ]);
     wrapper.unmount();
+  });
+
+  it("refreshes only the affected loaded directory for batched fs events", async () => {
+    vi.useFakeTimers();
+    vi.mocked(readFileTreeDir).mockImplementation(async (path) => {
+      if (path === "/repo") {
+        return [
+          { name: "docs", kind: "dir", size: 0, mtime: 1 },
+          { name: "src", kind: "dir", size: 0, mtime: 2 },
+        ];
+      }
+      if (path === "/repo/docs") {
+        return [{ name: "guide.md", kind: "file", size: 10, mtime: 3 }];
+      }
+      if (path === "/repo/src") {
+        return [{ name: "main.ts", kind: "file", size: 20, mtime: 4 }];
+      }
+      return [];
+    });
+
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo", fsEvent: null },
+    });
+    await flush();
+
+    await wrapper.find("[data-explorer-row-path='/repo/docs']").trigger("click");
+    await flush();
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+    vi.mocked(readFileTreeDir).mockClear();
+
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/src/a.ts", "/repo/src/b.ts"],
+        gitRelated: false,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(180);
+    await flush();
+
+    expect(readFileTreeDir).toHaveBeenCalledTimes(1);
+    expect(readFileTreeDir).toHaveBeenCalledWith("/repo/src", false);
+    vi.useRealTimers();
+  });
+
+  it("keeps loaded rows visible while auto-refreshing an expanded directory", async () => {
+    vi.useFakeTimers();
+    let srcReads = 0;
+    const deferredRefresh: { resolve?: (entries: DirEntry[]) => void } = {};
+    vi.mocked(readFileTreeDir).mockImplementation((path) => {
+      if (path === "/repo") {
+        return Promise.resolve([
+          { name: "src", kind: "dir", size: 0, mtime: 1 },
+        ]);
+      }
+      if (path === "/repo/src") {
+        srcReads += 1;
+        if (srcReads === 1) {
+          return Promise.resolve([
+            { name: "main.ts", kind: "file", size: 20, mtime: 2 },
+          ]);
+        }
+        return new Promise((resolve) => {
+          deferredRefresh.resolve = resolve;
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo", fsEvent: null },
+    });
+    await flush();
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/src/new.ts"],
+        gitRelated: false,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(180);
+    await flush();
+
+    expect(wrapper.text()).toContain("main.ts");
+    expect(wrapper.text()).not.toContain("Loading...");
+
+    expect(deferredRefresh.resolve).toBeTypeOf("function");
+    deferredRefresh.resolve!([
+      { name: "main.ts", kind: "file", size: 20, mtime: 2 },
+      { name: "new.ts", kind: "file", size: 30, mtime: 3 },
+    ]);
+    await flush();
+
+    expect(wrapper.text()).toContain("new.ts");
+    vi.useRealTimers();
+  });
+
+  it("coalesces repeated fs refreshes while a directory read is in flight", async () => {
+    vi.useFakeTimers();
+    let srcReads = 0;
+    const pendingRefreshes: Array<(entries: DirEntry[]) => void> = [];
+    vi.mocked(readFileTreeDir).mockImplementation((path) => {
+      if (path === "/repo") {
+        return Promise.resolve([
+          { name: "src", kind: "dir", size: 0, mtime: 1 },
+        ]);
+      }
+      if (path === "/repo/src") {
+        srcReads += 1;
+        if (srcReads === 1) {
+          return Promise.resolve([
+            { name: "main.ts", kind: "file", size: 20, mtime: 2 },
+          ]);
+        }
+        return new Promise((resolve) => pendingRefreshes.push(resolve));
+      }
+      return Promise.resolve([]);
+    });
+
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo", fsEvent: null },
+    });
+    await flush();
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+    vi.mocked(readFileTreeDir).mockClear();
+
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/src/a.ts"],
+        gitRelated: false,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(180);
+    await flush();
+
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/src/b.ts"],
+        gitRelated: false,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(180);
+    await flush();
+
+    expect(readFileTreeDir).toHaveBeenCalledTimes(1);
+    pendingRefreshes[0]?.([
+      { name: "main.ts", kind: "file", size: 20, mtime: 2 },
+      { name: "a.ts", kind: "file", size: 30, mtime: 3 },
+    ]);
+    await flush();
+
+    expect(readFileTreeDir).toHaveBeenCalledTimes(2);
+    pendingRefreshes[1]?.([
+      { name: "main.ts", kind: "file", size: 20, mtime: 2 },
+      { name: "a.ts", kind: "file", size: 30, mtime: 3 },
+      { name: "b.ts", kind: "file", size: 40, mtime: 4 },
+    ]);
+    await flush();
+    vi.useRealTimers();
   });
 });

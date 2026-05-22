@@ -25,6 +25,7 @@ import {
   type SettingsTab,
 } from "@/modules/settings/tabs";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import { dirtyEditorTabs } from "@/modules/tabs/closeGuards";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import { MAX_PANES_PER_TAB } from "@/modules/tabs/tabsTypes";
 import {
@@ -34,6 +35,7 @@ import {
   type WorkspaceEnv,
 } from "@/modules/workspace";
 import WorkspaceWelcome from "./components/WorkspaceWelcome.vue";
+import UnsavedCloseGuard from "./components/UnsavedCloseGuard.vue";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
 import SourceControlPanel from "@/modules/source-control/SourceControlPanel.vue";
 import EditorPane from "@/modules/editor/EditorPane.vue";
@@ -68,6 +70,7 @@ const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
 const sourceControlPanelWidth = ref(prefs.sourceControlPanelWidth);
 const explorerPanelWidth = ref(prefs.explorerPanelWidth);
 const rightSplitHost = ref<HTMLElement | null>(null);
+const closeGuard = ref<InstanceType<typeof UnsavedCloseGuard> | null>(null);
 const rightSplitWidth = ref(0);
 const workspaceFsEvent = ref<WorkspaceFsChangedEvent | null>(null);
 let rightSplitResizeObserver: ResizeObserver | null = null;
@@ -341,8 +344,7 @@ async function switchWorkspace(env: WorkspaceEnv) {
 }
 
 function hasDirtyEditors(): boolean {
-  const dirty = tabs.tabs.some((tab) => tab.kind === "editor" && tab.dirty);
-  if (dirty) {
+  if (dirtyEditorTabs(tabs.tabs).length > 0) {
     window.alert("Save or close unsaved editor tabs before switching workspace.");
     return true;
   }
@@ -411,6 +413,14 @@ function openSourceDiff(input: {
 
 function openSourceHistory(input: { repoRoot: string; branch?: string | null }) {
   tabs.openCommitHistoryTab(input);
+}
+
+function requestCloseTab(id: number) {
+  if (closeGuard.value) {
+    closeGuard.value.requestCloseTab(id);
+    return;
+  }
+  tabs.closeTab(id);
 }
 
 function openSettings(tab: SettingsTab = SETTINGS_DEFAULT_TAB) {
@@ -490,6 +500,11 @@ watch([leftPanelOpen, rightPanelOpen], () => {
       <NMessageProvider>
         <NNotificationProvider>
           <div class="flex h-screen flex-col overflow-hidden bg-background text-foreground select-none">
+            <UnsavedCloseGuard
+              ref="closeGuard"
+              :tabs="tabs.tabs"
+              @close-tab="(id) => tabs.closeTab(id)"
+            />
             <AppHeader
               :tabs="tabs.tabs"
               :active-id="tabs.activeId"
@@ -499,7 +514,7 @@ watch([leftPanelOpen, rightPanelOpen], () => {
               :left-panel-open="leftPanelOpen"
               :right-panel-open="rightPanelOpen"
               @select-tab="(id) => tabs.setActiveId(id)"
-              @close-tab="(id) => tabs.closeTab(id)"
+              @close-tab="requestCloseTab"
               @pin-tab="(id) => tabs.pinTab(id)"
               @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement)"
               @new-tab="newTerminalTab"

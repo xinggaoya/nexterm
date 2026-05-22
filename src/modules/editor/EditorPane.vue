@@ -2,8 +2,7 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { autocompletion, closeBrackets } from "@codemirror/autocomplete";
 import { bracketMatching, foldGutter } from "@codemirror/language";
-import { lintGutter } from "@codemirror/lint";
-import { search, searchKeymap } from "@codemirror/search";
+import { searchKeymap } from "@codemirror/search";
 import { EditorState, type Extension } from "@codemirror/state";
 import {
   EditorView,
@@ -12,15 +11,25 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
-import { NButton, NSpin } from "naive-ui";
+import { NSpin } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import type { EditorViewMode } from "./editorTypes";
+import EditorStatusBar from "./EditorStatusBar.vue";
+import EditorToolbar from "./EditorToolbar.vue";
+import MarkdownEditorPreview from "./MarkdownEditorPreview.vue";
 import {
   readEditorDocument,
   writeEditorDocument,
   type EditorDocumentState,
 } from "./lib/documentService";
-import { resolveLanguage } from "./lib/languageResolver";
+import { buildSharedExtensions, languageCompartment } from "./lib/extensions";
+import {
+  isMarkdownPath,
+  languageLabelForPath,
+  resolveLanguage,
+  resolveLanguageSync,
+} from "./lib/languageResolver";
 import { EDITOR_THEME_EXT } from "./lib/themes";
 
 const props = defineProps<{
@@ -39,10 +48,32 @@ const doc = ref<EditorDocumentState>({ status: "loading" });
 const savedContent = ref("");
 const buffer = ref("");
 const dirty = ref(false);
+const mode = ref<EditorViewMode>("source");
+const line = ref(1);
+const column = ref(1);
+const selectionLength = ref(0);
 
 const fileName = computed(() => {
   const parts = props.path.split(/[\\/]/).filter(Boolean);
   return parts.length > 0 ? parts[parts.length - 1] : props.path;
+});
+
+const markdown = computed(() => isMarkdownPath(props.path));
+const languageLabel = computed(() => languageLabelForPath(props.path));
+
+const sourcePaneClass = computed(() => {
+  if (!markdown.value || mode.value === "source") return "h-full w-full";
+  if (mode.value === "split") return "h-full w-1/2 border-r border-border/60";
+  return "h-full w-0";
+});
+
+const previewPaneClass = computed(() =>
+  mode.value === "split" ? "h-full w-1/2" : "h-full w-full",
+);
+
+const sizeLabel = computed(() => {
+  const current = doc.value;
+  return "size" in current ? formatBytes(current.size) : "0 B";
 });
 
 function formatBytes(n: number): string {
@@ -57,13 +88,27 @@ function setDirty(next: boolean) {
   emit("dirtyChange", next);
 }
 
+function setMode(next: EditorViewMode) {
+  if (!markdown.value && next !== "source") return;
+  mode.value = next;
+  void nextTick(() => view.value?.requestMeasure());
+}
+
 function destroyEditor() {
   view.value?.destroy();
   view.value = null;
   if (host.value) host.value.innerHTML = "";
 }
 
-function editorBaseExtensions(): Extension[] {
+function updateCursorInfo(state: EditorState) {
+  const selection = state.selection.main;
+  const lineInfo = state.doc.lineAt(selection.head);
+  line.value = lineInfo.number;
+  column.value = selection.head - lineInfo.from + 1;
+  selectionLength.value = Math.abs(selection.to - selection.from);
+}
+
+function editorBaseExtensions(language: Extension | null): Extension[] {
   const theme = EDITOR_THEME_EXT[prefs.editorTheme] ?? EDITOR_THEME_EXT.atomone;
   return [
     lineNumbers(),
@@ -73,25 +118,26 @@ function editorBaseExtensions(): Extension[] {
     bracketMatching(),
     closeBrackets(),
     autocompletion(),
-    search({ top: true }),
-    lintGutter(),
     highlightActiveLine(),
+    ...buildSharedExtensions(),
+    languageCompartment.of(language ?? []),
     theme,
-    EditorState.tabSize.of(2),
-    EditorView.lineWrapping,
-    EditorView.updateListener.of((update) => {
-      if (!update.docChanged) return;
-      const next = update.state.doc.toString();
-      buffer.value = next;
-      setDirty(next !== savedContent.value);
-    }),
     EditorView.theme({
       "&": { height: "100%" },
       ".cm-scroller": {
-        fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
         fontSize: "13px",
         lineHeight: "1.55",
       },
+    }),
+    EditorView.updateListener.of((update) => {
+      if (update.docChanged) {
+        const next = update.state.doc.toString();
+        buffer.value = next;
+        setDirty(next !== savedContent.value);
+      }
+      if (update.docChanged || update.selectionSet) {
+        updateCursorInfo(update.state);
+      }
     }),
     keymap.of([
       {
@@ -114,20 +160,30 @@ async function mountEditor(content: string) {
   await nextTick();
   if (!host.value) return;
   destroyEditor();
-  const language = await resolveLanguage(props.path);
+  const initialLanguage = resolveLanguageSync(props.path);
   const state = EditorState.create({
     doc: content,
-    extensions: [
-      ...editorBaseExtensions(),
-      ...(language ? [language] : []),
-    ],
+    extensions: editorBaseExtensions(initialLanguage),
   });
   view.value = new EditorView({ state, parent: host.value });
+  updateCursorInfo(state);
+
+  if (initialLanguage) return;
+  const currentPath = props.path;
+  const language = await resolveLanguage(currentPath);
+  if (props.path !== currentPath || !view.value) return;
+  view.value.dispatch({
+    effects: languageCompartment.reconfigure(language ?? []),
+  });
 }
 
 async function load() {
   destroyEditor();
   doc.value = { status: "loading" };
+  mode.value = isMarkdownPath(props.path) ? "split" : "source";
+  line.value = 1;
+  column.value = 1;
+  selectionLength.value = 0;
   setDirty(false);
   emit("dirtyChange", false);
   const result = await readEditorDocument(props.path);
@@ -173,6 +229,13 @@ function setContentForTest(content: string) {
 
 watch(() => props.path, () => void load(), { immediate: true });
 
+watch(
+  () => prefs.editorTheme,
+  () => {
+    if (doc.value.status === "ready") void mountEditor(buffer.value);
+  },
+);
+
 onBeforeUnmount(() => {
   destroyEditor();
 });
@@ -187,19 +250,15 @@ defineExpose({
 
 <template>
   <div class="flex h-full min-h-0 flex-col bg-background">
-    <div class="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-3">
-      <div class="min-w-0">
-        <div class="truncate text-[12px] font-medium">{{ fileName }}</div>
-      </div>
-      <NButton
-        size="tiny"
-        secondary
-        :disabled="!dirty"
-        @click="() => void save()"
-      >
-        Save
-      </NButton>
-    </div>
+    <EditorToolbar
+      :file-name="fileName"
+      :language-label="languageLabel"
+      :dirty="dirty"
+      :is-markdown="markdown"
+      :mode="mode"
+      @save="() => void save()"
+      @mode-change="setMode"
+    />
 
     <div v-if="doc.status === 'loading'" class="grid min-h-0 flex-1 place-items-center">
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
@@ -235,6 +294,41 @@ defineExpose({
         </div>
       </div>
     </div>
-    <div v-if="doc.status === 'ready'" ref="host" data-editor-host class="min-h-0 flex-1 overflow-hidden" />
+    <div
+      v-else
+      data-editor-mode-root
+      class="min-h-0 flex-1 overflow-hidden"
+      :data-mode="mode"
+    >
+      <div class="flex h-full min-h-0">
+        <div
+          v-show="!markdown || mode !== 'preview'"
+          data-editor-source-panel
+          class="min-h-0 overflow-hidden"
+          :class="sourcePaneClass"
+        >
+          <div ref="host" data-editor-host class="h-full min-h-0" />
+        </div>
+        <div
+          v-if="markdown"
+          v-show="mode !== 'source'"
+          data-editor-preview-panel
+          class="min-h-0 overflow-hidden"
+          :class="previewPaneClass"
+        >
+          <MarkdownEditorPreview :content="buffer" />
+        </div>
+      </div>
+    </div>
+
+    <EditorStatusBar
+      v-if="doc.status === 'ready'"
+      :language-label="languageLabel"
+      :size-label="sizeLabel"
+      :dirty="dirty"
+      :line="line"
+      :column="column"
+      :selection-length="selectionLength"
+    />
   </div>
 </template>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,6 +21,21 @@ const invokeMock = vi.hoisted(() =>
     return null;
   }),
 );
+const eventListenMock = vi.hoisted(() => vi.fn(async () => vi.fn()));
+const windowMock = vi.hoisted(() => {
+  const closeRequestedHandlers: ((event: { preventDefault: () => void }) => void | Promise<void>)[] = [];
+  return {
+    closeRequestedHandlers,
+    currentWindow: {
+      close: vi.fn(async () => {}),
+      onCloseRequested: vi.fn(async (handler) => {
+        closeRequestedHandlers.push(handler);
+        return vi.fn();
+      }),
+      startDragging: vi.fn(async () => {}),
+    },
+  };
+});
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
@@ -31,6 +46,14 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 vi.mock("@tauri-apps/api/path", () => ({
   homeDir: vi.fn(async () => "C:\\Users\\dev"),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: eventListenMock,
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => windowMock.currentWindow,
 }));
 
 vi.mock("@/components/WindowControls.vue", () => ({
@@ -127,9 +150,23 @@ vi.mock("./components/WorkspaceWelcome.vue", () => ({
   },
 }));
 
+function wrapperCleanup(host: HTMLElement) {
+  document.body
+    .querySelectorAll("[data-settings-panel]")
+    .forEach((node) => node.remove());
+  document.body
+    .querySelectorAll(".n-dialog-container, .n-modal-container")
+    .forEach((node) => node.remove());
+  host.remove();
+}
+
 describe("MainApp.vue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    windowMock.closeRequestedHandlers.length = 0;
+    delete (window as typeof window & { __TAURI_INTERNALS__?: unknown })
+      .__TAURI_INTERNALS__;
+    document.body.innerHTML = "";
     setCurrentWorkspaceEnv({ kind: "local" });
   });
 
@@ -358,6 +395,60 @@ describe("MainApp.vue", () => {
     });
 
     alertSpy.mockRestore();
+  });
+
+  it("confirms before closing an unsaved editor tab", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    let wrapper: VueWrapper | null = null;
+
+    try {
+      wrapper = mount(MainApp, {
+        attachTo: host,
+        global: { plugins: [pinia] },
+      });
+      const tabs = useTabsPiniaStore();
+
+      await nextTick();
+      await wrapper.find("[data-open-file]").trigger("click");
+      await wrapper.find("[data-editor-dirty]").trigger("click");
+      await nextTick();
+
+      await wrapper.find("[data-close-tab-id='3']").trigger("click");
+      await nextTick();
+      await flushPromises();
+
+      expect(tabs.tabs.map((tab) => tab.id)).toEqual([1, 3]);
+      expect(document.body.textContent).toContain("Close unsaved file?");
+      expect(document.body.textContent).toContain("main.ts");
+
+      const cancelButton = Array.from(document.body.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("Cancel"),
+      );
+      cancelButton?.click();
+      await nextTick();
+      await flushPromises();
+
+      expect(tabs.tabs.map((tab) => tab.id)).toEqual([1, 3]);
+
+      await wrapper.find("[data-close-tab-id='3']").trigger("click");
+      await nextTick();
+      await flushPromises();
+      const closeButton = Array.from(document.body.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("Close Without Saving"),
+      );
+      closeButton?.click();
+      await nextTick();
+      await flushPromises();
+
+      expect(tabs.tabs.map((tab) => tab.id)).toEqual([1]);
+    } finally {
+      wrapper?.unmount();
+      wrapperCleanup(host);
+    }
   });
 
   it("renders the Vue file explorer and opens files into editor tabs", async () => {
@@ -599,4 +690,5 @@ describe("MainApp.vue", () => {
     await nextTick();
     expect(wrapper.find("[data-source-control]").text()).toContain("/repo");
   });
+
 });

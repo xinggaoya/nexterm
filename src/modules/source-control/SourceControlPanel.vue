@@ -452,6 +452,7 @@ watch(
   () => props.fsEvent,
   (event) => {
     if (!event || !isSameRoot(event.rootPath, props.rootPath)) return;
+    if (!event.gitRelated) return;
     scheduleAutoRefresh();
   },
 );
