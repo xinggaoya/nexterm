@@ -2,13 +2,40 @@
 import { mount } from "@vue/test-utils";
 import { NSelect } from "naive-ui";
 import { createPinia } from "pinia";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { applyLanguagePreference, i18n, setI18nLanguage } from "@/modules/i18n";
 import GeneralSection from "./GeneralSection.vue";
 
 describe("GeneralSection.vue", () => {
+  beforeEach(() => {
+    setI18nLanguage("en-US");
+  });
+
+  it("renders language preference options in the appearance section", () => {
+    const wrapper = mount(GeneralSection, {
+      global: { plugins: [createPinia(), i18n] },
+    });
+
+    const languageSelect = wrapper
+      .findAllComponents(NSelect)
+      .find((select) =>
+        (select.props("options") as Array<{ value: string }> | undefined)?.some(
+          (option) => option.value === "zh-CN",
+        ),
+      );
+
+    expect(languageSelect).toBeTruthy();
+    expect(languageSelect?.props("value")).toBe("system");
+    expect(languageSelect?.props("options")).toEqual([
+      { label: "System", value: "system" },
+      { label: "Simplified Chinese", value: "zh-CN" },
+      { label: "English", value: "en-US" },
+    ]);
+  });
+
   it("renders terminal font family as a preset-only select", () => {
     const wrapper = mount(GeneralSection, {
-      global: { plugins: [createPinia()] },
+      global: { plugins: [createPinia(), i18n] },
     });
 
     const fontSelect = wrapper
@@ -33,5 +60,17 @@ describe("GeneralSection.vue", () => {
         { label: "Maple Mono NF", value: "Maple Mono NF" },
       ]),
     );
+  });
+
+  it("renders translated labels after switching to Simplified Chinese", async () => {
+    await applyLanguagePreference("zh-CN");
+
+    const wrapper = mount(GeneralSection, {
+      global: { plugins: [createPinia(), i18n] },
+    });
+
+    expect(wrapper.text()).toContain("通用");
+    expect(wrapper.text()).toContain("语言");
+    expect(wrapper.text()).toContain("终端");
   });
 });

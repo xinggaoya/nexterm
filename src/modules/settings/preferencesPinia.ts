@@ -7,6 +7,7 @@ import {
   setEditorTheme,
   setExplorerPanelWidth,
   setFileOpenMode,
+  setLanguage,
   setRestoreWindowState,
   setShowHidden,
   setSourceControlPanelWidth,
@@ -19,6 +20,7 @@ import {
   setVimMode,
   type EditorThemeId,
   type FileOpenMode,
+  type LanguagePref,
   type Preferences,
   type ThemePref,
 } from "./store";
@@ -65,6 +67,11 @@ export const usePreferencesPiniaStore = defineStore("preferences", {
       this.theme = value;
       patchPreferencesSnapshot("theme", value);
       await setTheme(value);
+    },
+    async updateLanguage(value: LanguagePref) {
+      this.language = value;
+      patchPreferencesSnapshot("language", value);
+      await setLanguage(value);
     },
     async updateEditorTheme(value: EditorThemeId) {
       this.editorTheme = value;

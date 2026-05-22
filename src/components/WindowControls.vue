@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { NIcon } from "naive-ui";
 import { onMounted, onUnmounted, ref } from "vue";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
+import { t } from "@/modules/i18n/translate";
 
 const props = defineProps<{
   closeOnly?: boolean;
@@ -40,8 +41,8 @@ onUnmounted(() => {
     <template v-if="!closeOnly">
       <button
         type="button"
-        aria-label="Minimize"
-        title="Minimize"
+        :aria-label="t('app.windowControls.minimize')"
+        :title="t('app.windowControls.minimize')"
         class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         @click="windowRef.minimize()"
       >
@@ -49,8 +50,8 @@ onUnmounted(() => {
       </button>
       <button
         type="button"
-        :aria-label="maximized ? 'Restore' : 'Maximize'"
-        :title="maximized ? 'Restore' : 'Maximize'"
+        :aria-label="maximized ? t('app.windowControls.restore') : t('app.windowControls.maximize')"
+        :title="maximized ? t('app.windowControls.restore') : t('app.windowControls.maximize')"
         class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         @click="windowRef.toggleMaximize()"
       >
@@ -59,8 +60,8 @@ onUnmounted(() => {
     </template>
     <button
       type="button"
-      aria-label="Close"
-      title="Close"
+      :aria-label="t('app.windowControls.close')"
+      :title="t('app.windowControls.close')"
       class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
       @click="windowRef.close()"
     >

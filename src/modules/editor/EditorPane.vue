@@ -13,6 +13,7 @@ import {
 } from "@codemirror/view";
 import { NSpin } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
+import { t } from "@/modules/i18n/translate";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import type { EditorViewMode } from "./editorTypes";
 import EditorStatusBar from "./EditorStatusBar.vue";
@@ -263,7 +264,7 @@ defineExpose({
     <div v-if="doc.status === 'loading'" class="grid min-h-0 flex-1 place-items-center">
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
         <NSpin size="small" />
-        <span>Loading...</span>
+        <span>{{ t("editor.loadingFile") }}</span>
       </div>
     </div>
     <div
@@ -277,9 +278,9 @@ defineExpose({
       class="grid min-h-0 flex-1 place-items-center p-6 text-center"
     >
       <div>
-        <div class="text-sm font-medium">Binary file</div>
+        <div class="text-sm font-medium">{{ t("editor.binaryFile") }}</div>
         <div class="mt-1 text-xs text-muted-foreground">
-          {{ formatBytes(doc.size) }} · preview not supported
+          {{ formatBytes(doc.size) }} · {{ t("editor.previewNotSupported") }}
         </div>
       </div>
     </div>
@@ -288,9 +289,14 @@ defineExpose({
       class="grid min-h-0 flex-1 place-items-center p-6 text-center"
     >
       <div>
-        <div class="text-sm font-medium">File too large</div>
+        <div class="text-sm font-medium">{{ t("editor.fileTooLarge") }}</div>
         <div class="mt-1 text-xs text-muted-foreground">
-          {{ formatBytes(doc.size) }} exceeds the {{ formatBytes(doc.limit) }} limit.
+          {{
+            t("editor.exceedsLimit", {
+              size: formatBytes(doc.size),
+              limit: formatBytes(doc.limit),
+            })
+          }}
         </div>
       </div>
     </div>

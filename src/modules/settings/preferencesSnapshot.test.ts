@@ -14,6 +14,7 @@ describe("preferences snapshot", () => {
       DEFAULT_PREFERENCES.terminalFontSize,
     );
     expect(readPreferencesSnapshot().theme).toBe(DEFAULT_PREFERENCES.theme);
+    expect(readPreferencesSnapshot().language).toBe("system");
     expect(readPreferencesSnapshot().fileOpenMode).toBe("preview");
   });
 
@@ -30,8 +31,10 @@ describe("preferences snapshot", () => {
     replacePreferencesSnapshot(DEFAULT_PREFERENCES);
     patchPreferencesSnapshot("terminalFontFamily", "Fira Code");
     patchPreferencesSnapshot("fileOpenMode", "pinned");
+    patchPreferencesSnapshot("language", "zh-CN");
 
     expect(readPreferencesSnapshot().terminalFontFamily).toBe("Fira Code");
     expect(readPreferencesSnapshot().fileOpenMode).toBe("pinned");
+    expect(readPreferencesSnapshot().language).toBe("zh-CN");
   });
 });

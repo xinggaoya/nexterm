@@ -2,6 +2,7 @@
 import { DocumentTextOutline } from "@vicons/ionicons5";
 import { NIcon, NSpin } from "naive-ui";
 import { computed, ref, watch } from "vue";
+import { t } from "@/modules/i18n/translate";
 import {
   readMarkdownDocument,
   type MarkdownDocumentState,
@@ -51,7 +52,7 @@ watch(() => props.path, () => void load(), { immediate: true });
     <div v-if="doc.status === 'loading'" class="grid min-h-0 flex-1 place-items-center">
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
         <NSpin size="small" />
-        <span>Loading...</span>
+        <span>{{ t("markdown.loading") }}</span>
       </div>
     </div>
 
@@ -59,7 +60,7 @@ watch(() => props.path, () => void load(), { immediate: true });
       v-else-if="doc.status === 'error'"
       class="grid min-h-0 flex-1 place-items-center p-6 text-center text-xs text-destructive"
     >
-      Failed to read file: {{ doc.message }}
+      {{ t("markdown.failedRead", { message: doc.message }) }}
     </div>
 
     <div
@@ -67,9 +68,9 @@ watch(() => props.path, () => void load(), { immediate: true });
       class="grid min-h-0 flex-1 place-items-center p-6 text-center"
     >
       <div>
-        <div class="text-sm font-medium">Binary file</div>
+        <div class="text-sm font-medium">{{ t("markdown.binaryFile") }}</div>
         <div class="mt-1 text-xs text-muted-foreground">
-          {{ formatBytes(doc.size) }} · cannot render as markdown
+          {{ formatBytes(doc.size) }} · {{ t("markdown.cannotRender") }}
         </div>
       </div>
     </div>
@@ -79,9 +80,14 @@ watch(() => props.path, () => void load(), { immediate: true });
       class="grid min-h-0 flex-1 place-items-center p-6 text-center"
     >
       <div>
-        <div class="text-sm font-medium">File too large</div>
+        <div class="text-sm font-medium">{{ t("markdown.fileTooLarge") }}</div>
         <div class="mt-1 text-xs text-muted-foreground">
-          File is {{ formatBytes(doc.size) }}; limit {{ formatBytes(doc.limit) }}.
+          {{
+            t("markdown.limit", {
+              size: formatBytes(doc.size),
+              limit: formatBytes(doc.limit),
+            })
+          }}
         </div>
       </div>
     </div>

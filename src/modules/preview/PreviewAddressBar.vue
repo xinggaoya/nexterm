@@ -8,6 +8,7 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { NButton, NDropdown, NIcon, NInput } from "naive-ui";
 import { computed, ref, watch } from "vue";
+import { t } from "@/modules/i18n/translate";
 import { normalizePreviewUrl, PORT_PRESETS } from "./previewUrl";
 
 const props = defineProps<{
@@ -34,7 +35,7 @@ const portOptions = computed(() =>
     key: preset.port,
     label:
       checkingPort.value === preset.port
-        ? `${preset.label}  checking...`
+        ? `${preset.label}  ${t("preview.checking")}`
         : `${preset.label}  :${preset.port}`,
   })),
 );
@@ -49,7 +50,7 @@ watch(
 function submitDraft() {
   const next = normalizePreviewUrl(draft.value);
   if (!next) {
-    notice.value = "Enter a URL or pick a port preset.";
+    notice.value = t("preview.enterUrl");
     return;
   }
   notice.value = null;
@@ -78,7 +79,7 @@ async function tryPort(port: number) {
   const ok = await probeUrl(next);
   checkingPort.value = null;
   if (!ok) {
-    notice.value = `No server listening on :${port}.`;
+    notice.value = t("preview.noServer", { port });
     return;
   }
   draft.value = next;
@@ -109,8 +110,8 @@ defineExpose({ focus });
       <NButton
         size="tiny"
         quaternary
-        title="Reload"
-        aria-label="Reload"
+        :title="t('preview.reload')"
+        :aria-label="t('preview.reload')"
         @click="emit('reload')"
       >
         <template #icon><NIcon :component="ReloadOutline" /></template>
@@ -125,11 +126,11 @@ defineExpose({ focus });
         <NButton
           size="tiny"
           quaternary
-          title="Common dev-server ports"
-          aria-label="Common dev-server ports"
+          :title="t('preview.commonPorts')"
+          :aria-label="t('preview.commonPorts')"
         >
           <template #icon><NIcon :component="GlobeOutline" /></template>
-          <span class="hidden text-[11px] sm:inline">Ports</span>
+          <span class="hidden text-[11px] sm:inline">{{ t("preview.ports") }}</span>
           <NIcon :component="ChevronDownOutline" :size="12" />
         </NButton>
       </NDropdown>
@@ -152,8 +153,8 @@ defineExpose({ focus });
         size="tiny"
         quaternary
         :disabled="!props.url"
-        title="Open in system browser"
-        aria-label="Open in system browser"
+        :title="t('preview.openInBrowser')"
+        :aria-label="t('preview.openInBrowser')"
         @click="openExternal"
       >
         <template #icon><NIcon :component="OpenOutline" /></template>
@@ -170,7 +171,7 @@ defineExpose({ focus });
         class="rounded px-1 text-[10px] opacity-80 hover:bg-accent hover:opacity-100"
         @click="notice = null"
       >
-        Dismiss
+        {{ t("preview.dismiss") }}
       </button>
     </div>
   </div>

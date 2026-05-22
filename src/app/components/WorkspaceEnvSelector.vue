@@ -3,6 +3,7 @@ import { DesktopOutline } from "@vicons/ionicons5";
 import { NButton, NDropdown, NIcon, type DropdownOption } from "naive-ui";
 import { computed, onMounted } from "vue";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
+import { t } from "@/modules/i18n/translate";
 import {
   LOCAL_WORKSPACE,
   type WorkspaceEnv,
@@ -15,17 +16,17 @@ const emit = defineEmits<{
 }>();
 
 const options = computed<DropdownOption[]>(() => [
-  { key: "local", label: "Local" },
+  { key: "local", label: t("common.local") },
   ...workspace.distros.map((distro) => ({
     key: `wsl:${distro.name}`,
-    label: `${distro.name}${distro.default ? " default" : ""}${
-      distro.running ? " running" : ""
+    label: `${distro.name}${distro.default ? ` ${t("common.default")}` : ""}${
+      distro.running ? ` ${t("common.running")}` : ""
     }`,
   })),
 ]);
 
 const label = computed(() =>
-  workspace.env.kind === "wsl" ? workspace.env.distro : "Local",
+  workspace.env.kind === "wsl" ? workspace.env.distro : t("common.local"),
 );
 
 function handleSelect(key: string | number) {
@@ -49,8 +50,8 @@ onMounted(() => {
     <NButton
       size="tiny"
       quaternary
-      title="Workspace environment"
-      aria-label="Workspace environment"
+      :title="t('app.workspaceEnv.title')"
+      :aria-label="t('app.workspaceEnv.title')"
       class="max-w-44"
     >
       <template #icon><NIcon :component="DesktopOutline" /></template>

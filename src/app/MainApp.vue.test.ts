@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { NConfigProvider } from "naive-ui";
 import { createPinia } from "pinia";
 import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import MainApp from "./MainApp.vue";
+import { i18n, setI18nLanguage } from "@/modules/i18n";
 import { applyTerminalSessionTheme } from "@/modules/terminal";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
@@ -177,6 +179,7 @@ describe("MainApp.vue", () => {
       .__TAURI_INTERNALS__;
     eventListenMock.handlers.length = 0;
     document.body.innerHTML = "";
+    setI18nLanguage("en-US");
     setCurrentWorkspaceEnv({ kind: "local" });
   });
 
@@ -184,7 +187,7 @@ describe("MainApp.vue", () => {
     const pinia = createPinia();
 
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
 
@@ -199,7 +202,7 @@ describe("MainApp.vue", () => {
     workspaceRoot.rootPath = "/repo";
 
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
     await nextTick();
@@ -221,7 +224,7 @@ describe("MainApp.vue", () => {
 
     try {
       mount(MainApp, {
-        global: { plugins: [createPinia()] },
+        global: { plugins: [createPinia(), i18n] },
       });
       await nextTick();
 
@@ -229,6 +232,23 @@ describe("MainApp.vue", () => {
     } finally {
       window.requestAnimationFrame = originalRaf;
     }
+  });
+
+  it("passes the resolved app locale into Naive UI providers", async () => {
+    const pinia = createPinia();
+    const prefs = usePreferencesPiniaStore(pinia);
+    prefs.language = "zh-CN";
+
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+    await flushPromises();
+    await nextTick();
+
+    const provider = wrapper.findComponent(NConfigProvider);
+    expect(provider.props("locale")?.name).toBe("zh-CN");
+    expect(provider.props("dateLocale")?.name).toBe("zh-CN");
+    expect(document.documentElement.lang).toBe("zh-CN");
   });
 
   it("opens a workspace from the welcome screen and handles terminal tab actions", async () => {
@@ -243,7 +263,7 @@ describe("MainApp.vue", () => {
       return { path: "/repo", env: LOCAL_WORKSPACE, openedAt: 1 };
     });
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
 
@@ -301,7 +321,7 @@ describe("MainApp.vue", () => {
     try {
       const wrapper = mount(MainApp, {
         attachTo: host,
-        global: { plugins: [pinia] },
+        global: { plugins: [pinia, i18n] },
       });
       await nextTick();
 
@@ -327,7 +347,7 @@ describe("MainApp.vue", () => {
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
 
@@ -345,7 +365,7 @@ describe("MainApp.vue", () => {
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "D:/repo";
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
 
@@ -382,7 +402,7 @@ describe("MainApp.vue", () => {
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
 
@@ -418,7 +438,7 @@ describe("MainApp.vue", () => {
     try {
       wrapper = mount(MainApp, {
         attachTo: host,
-        global: { plugins: [pinia] },
+        global: { plugins: [pinia, i18n] },
       });
       const tabs = useTabsPiniaStore();
 
@@ -466,7 +486,7 @@ describe("MainApp.vue", () => {
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
 
@@ -500,7 +520,7 @@ describe("MainApp.vue", () => {
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
 
@@ -543,7 +563,7 @@ describe("MainApp.vue", () => {
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const prefs = usePreferencesPiniaStore();
     const tabs = useTabsPiniaStore();
@@ -571,7 +591,7 @@ describe("MainApp.vue", () => {
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
 
@@ -605,7 +625,7 @@ describe("MainApp.vue", () => {
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
 
@@ -629,7 +649,7 @@ describe("MainApp.vue", () => {
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
 
@@ -656,7 +676,7 @@ describe("MainApp.vue", () => {
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
 
@@ -685,7 +705,7 @@ describe("MainApp.vue", () => {
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "/repo";
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     const tabs = useTabsPiniaStore();
     await nextTick();
@@ -709,7 +729,7 @@ describe("MainApp.vue", () => {
     workspaceRoot.rootPath = "D:/repo";
     usePreferencesPiniaStore(pinia).hydrated = true;
     const wrapper = mount(MainApp, {
-      global: { plugins: [pinia] },
+      global: { plugins: [pinia, i18n] },
     });
     await flushPromises();
     await nextTick();

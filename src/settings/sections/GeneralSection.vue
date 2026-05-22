@@ -10,6 +10,7 @@ import {
   NSwitch,
 } from "naive-ui";
 import { computed } from "vue";
+import { currentLocale, t } from "@/modules/i18n/translate";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import {
   EDITOR_THEME_LABELS,
@@ -20,56 +21,75 @@ import {
   TERMINAL_SCROLLBACK_PRESETS,
   type EditorThemeId,
   type FileOpenMode,
+  type LanguagePref,
   type ThemePref,
 } from "@/modules/settings/store";
 
 const prefs = usePreferencesPiniaStore();
 
-const themeOptions: { label: string; value: ThemePref }[] = [
-  { label: "System", value: "system" },
-  { label: "Light", value: "light" },
-  { label: "Dark", value: "dark" },
-];
+const themeOptions = computed<{ label: string; value: ThemePref }[]>(() => [
+  { label: t("settings.options.system"), value: "system" },
+  { label: t("settings.options.light"), value: "light" },
+  { label: t("settings.options.dark"), value: "dark" },
+]);
+
+const languageOptions = computed<{ label: string; value: LanguagePref }[]>(() => [
+  { label: t("settings.options.system"), value: "system" },
+  { label: t("settings.options.zhCN"), value: "zh-CN" },
+  { label: t("settings.options.enUS"), value: "en-US" },
+]);
 
 const editorThemeOptions = EDITOR_THEMES.map((value) => ({
   label: EDITOR_THEME_LABELS[value],
   value,
 }));
 
-const fileOpenModeOptions: { label: string; value: FileOpenMode }[] = [
-  { label: "Preview first", value: "preview" },
-  { label: "Open pinned", value: "pinned" },
-];
+const fileOpenModeOptions = computed<{ label: string; value: FileOpenMode }[]>(() => [
+  { label: t("settings.options.previewFirst"), value: "preview" },
+  { label: t("settings.options.openPinned"), value: "pinned" },
+]);
 
-const terminalFontFamilyOptions = [
-  { label: "Auto detect", value: "" },
+const terminalFontFamilyOptions = computed(() => [
+  { label: t("common.autoDetect"), value: "" },
   ...TERMINAL_FONT_FAMILY_PRESETS.map((value) => ({ label: value, value })),
-];
+]);
 
 const scrollbackOptions = computed(() =>
-  TERMINAL_SCROLLBACK_PRESETS.map((value) => ({ label: value.toLocaleString(), value })),
+  TERMINAL_SCROLLBACK_PRESETS.map((value) => ({
+    label: value.toLocaleString(currentLocale()),
+    value,
+  })),
 );
 </script>
 
 <template>
   <section class="space-y-5">
     <div>
-      <h1 class="text-lg font-semibold tracking-normal">General</h1>
+      <h1 class="text-lg font-semibold tracking-normal">
+        {{ t("settings.general.title") }}
+      </h1>
       <p class="mt-1 text-xs text-muted-foreground">
-        Appearance, startup, editor, and terminal defaults.
+        {{ t("settings.general.description") }}
       </p>
     </div>
 
-    <NCard size="small" title="Appearance" embedded>
+    <NCard size="small" :title="t('settings.general.appearance')" embedded>
       <NForm label-placement="left" label-width="150" size="small">
-        <NFormItem label="Theme">
+        <NFormItem :label="t('settings.general.theme')">
           <NSelect
             :value="prefs.theme"
             :options="themeOptions"
             @update:value="(value) => prefs.updateTheme(value as ThemePref)"
           />
         </NFormItem>
-        <NFormItem label="Editor theme">
+        <NFormItem :label="t('settings.general.language')">
+          <NSelect
+            :value="prefs.language"
+            :options="languageOptions"
+            @update:value="(value) => prefs.updateLanguage(value as LanguagePref)"
+          />
+        </NFormItem>
+        <NFormItem :label="t('settings.general.editorTheme')">
           <NSelect
             :value="prefs.editorTheme"
             :options="editorThemeOptions"
@@ -79,21 +99,21 @@ const scrollbackOptions = computed(() =>
       </NForm>
     </NCard>
 
-    <NCard size="small" title="Startup and workspace" embedded>
+    <NCard size="small" :title="t('settings.general.startupAndWorkspace')" embedded>
       <NForm label-placement="left" label-width="150" size="small">
-        <NFormItem label="Autostart">
+        <NFormItem :label="t('settings.general.autostart')">
           <NSwitch
             :value="prefs.autostart"
             @update:value="prefs.updateAutostart"
           />
         </NFormItem>
-        <NFormItem label="Restore window">
+        <NFormItem :label="t('settings.general.restoreWindow')">
           <NSwitch
             :value="prefs.restoreWindowState"
             @update:value="prefs.updateRestoreWindowState"
           />
         </NFormItem>
-        <NFormItem label="Show hidden files">
+        <NFormItem :label="t('settings.general.showHiddenFiles')">
           <NSwitch
             :value="prefs.showHidden"
             @update:value="prefs.updateShowHidden"
@@ -102,30 +122,30 @@ const scrollbackOptions = computed(() =>
       </NForm>
     </NCard>
 
-    <NCard size="small" title="Editor" embedded>
+    <NCard size="small" :title="t('settings.general.editor')" embedded>
       <NForm label-placement="left" label-width="150" size="small">
-        <NFormItem label="File click behavior">
+        <NFormItem :label="t('settings.general.fileClickBehavior')">
           <NSelect
             :value="prefs.fileOpenMode"
             :options="fileOpenModeOptions"
             @update:value="(value) => prefs.updateFileOpenMode(value as FileOpenMode)"
           />
         </NFormItem>
-        <NFormItem label="Vim mode">
+        <NFormItem :label="t('settings.general.vimMode')">
           <NSwitch :value="prefs.vimMode" @update:value="prefs.updateVimMode" />
         </NFormItem>
       </NForm>
     </NCard>
 
-    <NCard size="small" title="Terminal" embedded>
+    <NCard size="small" :title="t('settings.general.terminal')" embedded>
       <NForm label-placement="left" label-width="150" size="small">
-        <NFormItem label="WebGL renderer">
+        <NFormItem :label="t('settings.general.webglRenderer')">
           <NSwitch
             :value="prefs.terminalWebglEnabled"
             @update:value="prefs.updateTerminalWebglEnabled"
           />
         </NFormItem>
-        <NFormItem label="Font family">
+        <NFormItem :label="t('settings.general.fontFamily')">
           <NSelect
             :value="prefs.terminalFontFamily"
             :options="terminalFontFamilyOptions"
@@ -133,7 +153,7 @@ const scrollbackOptions = computed(() =>
             @update:value="(value) => prefs.updateTerminalFontFamily(String(value ?? ''))"
           />
         </NFormItem>
-        <NFormItem label="Font size">
+        <NFormItem :label="t('settings.general.fontSize')">
           <NSpace vertical class="w-full">
             <NSlider
               :value="prefs.terminalFontSize"
@@ -149,7 +169,7 @@ const scrollbackOptions = computed(() =>
             />
           </NSpace>
         </NFormItem>
-        <NFormItem label="Letter spacing">
+        <NFormItem :label="t('settings.general.letterSpacing')">
           <NInputNumber
             :value="prefs.terminalLetterSpacing"
             :min="-10"
@@ -157,7 +177,7 @@ const scrollbackOptions = computed(() =>
             @update:value="(value) => prefs.updateTerminalLetterSpacing(value ?? 0)"
           />
         </NFormItem>
-        <NFormItem label="Scrollback">
+        <NFormItem :label="t('settings.general.scrollback')">
           <NSelect
             :value="prefs.terminalScrollback"
             :options="scrollbackOptions"

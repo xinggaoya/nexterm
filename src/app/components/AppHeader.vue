@@ -20,6 +20,7 @@ import { onBeforeUnmount, ref, type Component } from "vue";
 import WindowControls from "@/components/WindowControls.vue";
 import { IS_MAC } from "@/lib/platform";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { t } from "@/modules/i18n/translate";
 import type { TabDropPlacement } from "@/modules/tabs/tabsReorder";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import type { SplitDir } from "@/modules/terminal/lib/panes";
@@ -91,12 +92,16 @@ function basename(path: string): string {
 }
 
 function tabKindLabel(tab: Tab): string {
-  if (tab.kind === "terminal") return tab.private ? "Private terminal" : "Terminal";
-  if (tab.kind === "git-history") return "Git history";
-  if (tab.kind === "git-diff" || tab.kind === "git-commit-file") return "Git diff";
-  if (tab.kind === "markdown") return "Markdown";
-  if (tab.kind === "preview") return "Preview";
-  return "Editor";
+  if (tab.kind === "terminal") {
+    return tab.private ? t("app.header.privateTerminal") : t("app.header.terminal");
+  }
+  if (tab.kind === "git-history") return t("app.header.gitHistory");
+  if (tab.kind === "git-diff" || tab.kind === "git-commit-file") {
+    return t("app.header.gitDiff");
+  }
+  if (tab.kind === "markdown") return t("app.header.markdown");
+  if (tab.kind === "preview") return t("app.header.preview");
+  return t("settings.general.editor");
 }
 
 function tabLabel(tab: Tab): string {
@@ -315,8 +320,8 @@ onBeforeUnmount(() => {
       <button
         type="button"
         :data-toggle-left-panel="leftPanelOpen"
-        title="Source Control"
-        aria-label="Toggle source control panel"
+        :title="t('app.header.sourceControl')"
+        :aria-label="t('app.header.toggleSourceControl')"
         :class="[
           'grid h-7 w-7 place-items-center rounded-md text-[12px] transition-colors',
           leftPanelOpen
@@ -330,8 +335,8 @@ onBeforeUnmount(() => {
       <button
         type="button"
         data-window-drag-handle
-        title="Drag window"
-        aria-label="Drag window"
+        :title="t('app.header.dragWindow')"
+        :aria-label="t('app.header.dragWindow')"
         class="grid h-7 w-7 cursor-grab place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground active:cursor-grabbing"
         @pointerdown="startWindowDrag"
       >
@@ -341,8 +346,8 @@ onBeforeUnmount(() => {
         data-new-tab
         size="tiny"
         quaternary
-        title="New terminal"
-        aria-label="New terminal"
+        :title="t('app.header.newTerminal')"
+        :aria-label="t('app.header.newTerminal')"
         @click="emit('newTab')"
       >
         <template #icon><NIcon :component="AddOutline" /></template>
@@ -351,8 +356,8 @@ onBeforeUnmount(() => {
         data-new-private-tab
         size="tiny"
         quaternary
-        title="New private terminal"
-        aria-label="New private terminal"
+        :title="t('app.header.newPrivateTerminal')"
+        :aria-label="t('app.header.newPrivateTerminal')"
         @click="emit('newPrivateTab')"
       >
         <template #icon><NIcon :component="LockClosedOutline" /></template>
@@ -414,7 +419,7 @@ onBeforeUnmount(() => {
             <span
               v-if="tab.kind === 'editor' && tab.dirty"
               :data-tab-dirty="tab.id"
-              aria-label="Unsaved changes"
+              :aria-label="t('app.header.unsavedChanges')"
               class="size-1.5 shrink-0 rounded-full bg-foreground/70"
             />
           </span>
@@ -424,8 +429,8 @@ onBeforeUnmount(() => {
             tabindex="-1"
             :data-close-tab-id="tab.id"
             class="grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-70 group-hover:hover:opacity-100"
-            title="Close tab"
-            aria-label="Close tab"
+            :title="t('app.header.closeTab')"
+            :aria-label="t('app.header.closeTab')"
             @click.stop="emit('closeTab', tab.id)"
             @pointerdown.stop
             @keydown.enter.stop.prevent="emit('closeTab', tab.id)"
@@ -446,8 +451,8 @@ onBeforeUnmount(() => {
         size="tiny"
         quaternary
         :disabled="!props.workspaceReady || !canSplit"
-        title="Split right"
-        aria-label="Split right"
+        :title="t('app.header.splitRight')"
+        :aria-label="t('app.header.splitRight')"
         @click="emit('splitPane', 'row')"
       >
         <template #icon><NIcon :component="DuplicateOutline" /></template>
@@ -457,8 +462,8 @@ onBeforeUnmount(() => {
         size="tiny"
         quaternary
         :disabled="!props.workspaceReady || !canSplit"
-        title="Split down"
-        aria-label="Split down"
+        :title="t('app.header.splitDown')"
+        :aria-label="t('app.header.splitDown')"
         @click="emit('splitPane', 'col')"
       >
         <template #icon><NIcon :component="ReorderTwoOutline" /></template>
@@ -468,8 +473,8 @@ onBeforeUnmount(() => {
         data-open-settings
         size="tiny"
         quaternary
-        title="Settings"
-        aria-label="Settings"
+        :title="t('common.settings')"
+        :aria-label="t('common.settings')"
         @click="emit('openSettings')"
       >
         <template #icon><NIcon :component="SettingsOutline" /></template>
@@ -477,8 +482,8 @@ onBeforeUnmount(() => {
       <button
         type="button"
         :data-toggle-right-panel="rightPanelOpen"
-        title="Explorer"
-        aria-label="Toggle file explorer panel"
+        :title="t('common.explorer')"
+        :aria-label="t('app.header.toggleExplorer')"
         :class="[
           'grid h-6 w-6 shrink-0 place-items-center rounded-md transition-colors',
           rightPanelOpen

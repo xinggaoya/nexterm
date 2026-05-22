@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useDialog } from "naive-ui";
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
+import { t } from "@/modules/i18n/translate";
 import {
   describeDirtyEditorTabs,
   dirtyEditorTabs,
@@ -27,10 +28,12 @@ let unmounted = false;
 
 function showCloseTabDialog(tab: EditorTab) {
   dialog.warning({
-    title: "Close unsaved file?",
-    content: `Unsaved changes in ${describeDirtyEditorTabs([tab])} will be discarded.`,
-    positiveText: "Close Without Saving",
-    negativeText: "Cancel",
+    title: t("app.unsaved.closeFileTitle"),
+    content: t("app.unsaved.closeFileContent", {
+      files: describeDirtyEditorTabs([tab]),
+    }),
+    positiveText: t("app.unsaved.closeWithoutSaving"),
+    negativeText: t("common.cancel"),
     positiveButtonProps: { type: "error" },
     onPositiveClick: () => emit("closeTab", tab.id),
   });
@@ -65,12 +68,12 @@ function showWindowCloseDialog(dirtyTabs: EditorTab[]) {
   if (windowCloseDialogOpen) return;
   windowCloseDialogOpen = true;
   dialog.warning({
-    title: "Exit with unsaved files?",
-    content: `${describeDirtyEditorTabs(
-      dirtyTabs,
-    )} will be discarded if you exit Nexterm.`,
-    positiveText: "Exit Without Saving",
-    negativeText: "Cancel",
+    title: t("app.unsaved.exitTitle"),
+    content: t("app.unsaved.exitContent", {
+      files: describeDirtyEditorTabs(dirtyTabs),
+    }),
+    positiveText: t("app.unsaved.exitWithoutSaving"),
+    negativeText: t("common.cancel"),
     positiveButtonProps: { type: "error" },
     onPositiveClick: closeWindowWithoutSaving,
     onNegativeClick: resetWindowCloseDialog,
