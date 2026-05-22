@@ -244,6 +244,37 @@ describe("MainApp.vue", () => {
     expect(tabs.activeId).toBe(3);
   });
 
+  it("opens settings inside the main window without invoking a Tauri settings window", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+
+    try {
+      const wrapper = mount(MainApp, {
+        attachTo: host,
+        global: { plugins: [pinia] },
+      });
+      await nextTick();
+
+      expect(document.body.querySelector("[data-settings-panel]")).toBeNull();
+
+      await wrapper.find("[data-open-settings]").trigger("click");
+      await nextTick();
+      await flushPromises();
+
+      expect(invokeMock).not.toHaveBeenCalled();
+      expect(document.body.querySelector("[data-settings-panel]")).not.toBeNull();
+      expect(document.body.querySelector("[data-settings-tab='general']")).not.toBeNull();
+    } finally {
+      document.body.removeChild(host);
+      document.body
+        .querySelectorAll("[data-settings-panel]")
+        .forEach((node) => node.remove());
+    }
+  });
+
   it("updates terminal tab titles from terminal title events", async () => {
     const pinia = createPinia();
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);

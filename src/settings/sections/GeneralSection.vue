@@ -3,7 +3,6 @@ import {
   NCard,
   NForm,
   NFormItem,
-  NInput,
   NInputNumber,
   NSelect,
   NSlider,
@@ -15,6 +14,7 @@ import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import {
   EDITOR_THEME_LABELS,
   EDITOR_THEMES,
+  TERMINAL_FONT_FAMILY_PRESETS,
   TERMINAL_FONT_SIZE_MAX,
   TERMINAL_FONT_SIZE_MIN,
   TERMINAL_SCROLLBACK_PRESETS,
@@ -39,6 +39,11 @@ const editorThemeOptions = EDITOR_THEMES.map((value) => ({
 const fileOpenModeOptions: { label: string; value: FileOpenMode }[] = [
   { label: "Preview first", value: "preview" },
   { label: "Open pinned", value: "pinned" },
+];
+
+const terminalFontFamilyOptions = [
+  { label: "Auto detect", value: "" },
+  ...TERMINAL_FONT_FAMILY_PRESETS.map((value) => ({ label: value, value })),
 ];
 
 const scrollbackOptions = computed(() =>
@@ -121,10 +126,11 @@ const scrollbackOptions = computed(() =>
           />
         </NFormItem>
         <NFormItem label="Font family">
-          <NInput
+          <NSelect
             :value="prefs.terminalFontFamily"
-            placeholder="JetBrains Mono"
-            @update:value="prefs.updateTerminalFontFamily"
+            :options="terminalFontFamilyOptions"
+            filterable
+            @update:value="(value) => prefs.updateTerminalFontFamily(String(value ?? ''))"
           />
         </NFormItem>
         <NFormItem label="Font size">

@@ -1,8 +1,17 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { nextTick } from "vue";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import AppHeader from "./AppHeader.vue";
 import type { Tab } from "@/modules/tabs/tabsTypes";
+
+const windowApi = vi.hoisted(() => ({
+  startDragging: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => windowApi,
+}));
 
 vi.mock("@/components/WindowControls.vue", () => ({
   default: { template: "<div data-window-controls />" },
@@ -84,6 +93,18 @@ const tabs: Tab[] = [
 ];
 
 describe("AppHeader.vue", () => {
+  beforeEach(() => {
+    windowApi.startDragging.mockClear();
+  });
+
+  function pointerEvent(type: string, init: Record<string, number>) {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    for (const [key, value] of Object.entries(init)) {
+      Object.defineProperty(event, key, { value });
+    }
+    return event;
+  }
+
   it("emits workbench actions from toolbar controls", async () => {
     const wrapper = mount(AppHeader, {
       props: {
@@ -165,5 +186,135 @@ describe("AppHeader.vue", () => {
     expect(wrapper.find("[data-split-row]").attributes("disabled")).toBeDefined();
     expect(wrapper.find("[data-split-col]").attributes("disabled")).toBeDefined();
     expect(wrapper.find("[data-window-controls]").exists()).toBe(false);
+  });
+
+  it("uses a dedicated handle for moving the window instead of the whole header", () => {
+    const wrapper = mount(AppHeader, {
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    const header = wrapper.find("header");
+    const dragHandle = wrapper.find("[data-window-drag-handle]");
+
+    expect(header.attributes("data-tauri-drag-region")).toBeUndefined();
+    expect(dragHandle.exists()).toBe(true);
+
+    dragHandle.element.dispatchEvent(
+      pointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 1,
+        clientX: 10,
+        clientY: 14,
+      }),
+    );
+
+    expect(windowApi.startDragging).toHaveBeenCalledTimes(1);
+    expect(wrapper.emitted("selectTab")).toBeUndefined();
+    expect(wrapper.emitted("reorderTab")).toBeUndefined();
+  });
+
+  it("emits a reorder request from pointer dragging a tab", async () => {
+    const wrapper = mount(AppHeader, {
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+    const source = wrapper.find("[data-tab-id='1']");
+    const target = wrapper.find("[data-tab-id='5']");
+    vi.spyOn(target.element, "getBoundingClientRect").mockReturnValue({
+      x: 100,
+      y: 0,
+      left: 100,
+      right: 220,
+      top: 0,
+      bottom: 28,
+      width: 120,
+      height: 28,
+      toJSON: () => ({}),
+    });
+    const originalElementFromPoint = document.elementFromPoint;
+    const elementFromPoint = vi.fn(() => target.element);
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: elementFromPoint,
+    });
+
+    source.element.dispatchEvent(
+      pointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 1,
+        clientX: 10,
+        clientY: 14,
+      }),
+    );
+    window.dispatchEvent(
+      pointerEvent("pointermove", {
+        pointerId: 1,
+        clientX: 190,
+        clientY: 14,
+      }),
+    );
+    await nextTick();
+
+    const dragGhost = wrapper.find("[data-tab-drag-ghost]");
+
+    expect(dragGhost.exists()).toBe(true);
+    expect(dragGhost.text()).toContain("OpenAI Codex");
+    expect(dragGhost.attributes("style")).toContain("translate3d(190px, 14px, 0)");
+
+    window.dispatchEvent(
+      pointerEvent("pointerup", {
+        pointerId: 1,
+        clientX: 190,
+        clientY: 14,
+      }),
+    );
+    await nextTick();
+    await source.trigger("click");
+
+    expect(wrapper.emitted("reorderTab")).toEqual([[1, 5, "after"]]);
+    expect(wrapper.emitted("selectTab")).toBeUndefined();
+    expect(wrapper.find("[data-tab-drag-ghost]").exists()).toBe(false);
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: originalElementFromPoint,
+    });
+  });
+
+  it("keeps tab labels truncated inside adaptive tab widths", () => {
+    const wrapper = mount(AppHeader, {
+      props: {
+        tabs: [
+          {
+            id: 1,
+            kind: "editor",
+            title: "a-very-long-file-name-that-should-not-overflow-the-title-bar.ts",
+            path: "/repo/src/a-very-long-file-name-that-should-not-overflow-the-title-bar.ts",
+            dirty: false,
+            preview: false,
+          },
+          ...tabs,
+        ],
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    const tabButton = wrapper.find("[data-tab-id='1']");
+
+    expect(tabButton.classes()).toContain("min-w-[5.5rem]");
+    expect(tabButton.classes()).toContain("max-w-56");
+    expect(tabButton.classes()).toContain("flex-[1_1_10rem]");
+    expect(tabButton.classes()).not.toContain("shrink-0");
+    expect(wrapper.find("[data-tab-label='1']").classes()).toContain("truncate");
   });
 });

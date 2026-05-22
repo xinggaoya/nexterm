@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { CopyOutline, DocumentOutline, OpenOutline, RefreshOutline } from "@vicons/ionicons5";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { NButton, NIcon, NInput, NSpin, NTag } from "naive-ui";
+import { NButton, NDrawer, NDrawerContent, NIcon, NInput, NSpin, NTag } from "naive-ui";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import {
   native,
@@ -48,6 +48,7 @@ const commits = ref<GitLogEntry[]>([]);
 const loadStatus = ref<LoadStatus>("idle");
 const error = ref<string | null>(null);
 const selectedSha = ref<string | null>(null);
+const detailOpen = ref(false);
 const search = ref("");
 const endReached = ref(false);
 const remoteWeb = ref<RemoteWebInfo | null>(null);
@@ -160,6 +161,7 @@ async function loadInitial() {
   error.value = null;
   endReached.value = false;
   selectedSha.value = null;
+  detailOpen.value = false;
   filesBySha.clear();
   try {
     const entries = await native.gitLog(props.repoRoot, { limit: PAGE_SIZE });
@@ -181,8 +183,8 @@ async function loadRemote() {
 }
 
 async function selectCommit(commit: GitLogEntry) {
-  selectedSha.value = selectedSha.value === commit.sha ? null : commit.sha;
-  if (!selectedSha.value) return;
+  selectedSha.value = commit.sha;
+  detailOpen.value = true;
   if (filesBySha.has(commit.sha)) return;
   filesBySha.set(commit.sha, { state: "loading" });
   try {
@@ -344,80 +346,96 @@ onMounted(() => {
         </button>
       </div>
 
-      <aside class="hidden w-96 shrink-0 border-l border-border/60 bg-card/30 lg:flex lg:min-h-0 lg:flex-col">
-        <div v-if="!selectedCommit" class="grid min-h-0 flex-1 place-items-center p-6 text-center text-xs text-muted-foreground">
-          Select a commit to inspect changed files.
-        </div>
+      <NDrawer
+        v-model:show="detailOpen"
+        placement="right"
+        width="min(520px, 92vw)"
+        :auto-focus="false"
+        :block-scroll="false"
+      >
+        <NDrawerContent
+          closable
+          body-content-style="height: 100%; padding: 0;"
+          :native-scrollbar="false"
+        >
+          <template #header>
+            <div class="text-[12px] font-semibold">Commit Details</div>
+          </template>
 
-        <template v-else>
-          <div class="shrink-0 border-b border-border/50 p-3">
-            <div class="flex items-start gap-2">
-              <NTag size="small" :bordered="false">{{ selectedCommit.shortSha }}</NTag>
-              <div class="min-w-0 flex-1 text-[12.5px] font-semibold leading-snug">
-                {{ selectedCommit.subject || "(no subject)" }}
+          <div
+            v-if="selectedCommit"
+            data-commit-detail-drawer
+            class="flex h-full min-h-0 flex-col bg-background"
+          >
+            <div class="shrink-0 border-b border-border/50 p-3">
+              <div class="flex items-start gap-2">
+                <NTag size="small" :bordered="false">{{ selectedCommit.shortSha }}</NTag>
+                <div class="min-w-0 flex-1 text-[12.5px] font-semibold leading-snug">
+                  {{ selectedCommit.subject || "(no subject)" }}
+                </div>
+              </div>
+              <div class="mt-2 truncate text-[10.5px] text-muted-foreground">
+                {{ selectedCommit.author || "Unknown" }}
+                <span v-if="selectedCommit.authorEmail"> · {{ selectedCommit.authorEmail }}</span>
+                · {{ absoluteTime(selectedCommit.timestampSecs) }}
+              </div>
+              <div class="mt-2 flex items-center gap-1">
+                <NButton size="tiny" quaternary @click="copySha(selectedCommit.sha)">
+                  <template #icon><NIcon :component="CopyOutline" /></template>
+                  Copy SHA
+                </NButton>
+                <NButton
+                  v-if="selectedWebUrl && remoteWeb"
+                  size="tiny"
+                  quaternary
+                  @click="openSelectedRemote"
+                >
+                  <template #icon><NIcon :component="OpenOutline" /></template>
+                  {{ hostLabel(remoteWeb) }}
+                </NButton>
               </div>
             </div>
-            <div class="mt-2 truncate text-[10.5px] text-muted-foreground">
-              {{ selectedCommit.author || "Unknown" }}
-              <span v-if="selectedCommit.authorEmail"> · {{ selectedCommit.authorEmail }}</span>
-              · {{ absoluteTime(selectedCommit.timestampSecs) }}
-            </div>
-            <div class="mt-2 flex items-center gap-1">
-              <NButton size="tiny" quaternary @click="copySha(selectedCommit.sha)">
-                <template #icon><NIcon :component="CopyOutline" /></template>
-                Copy SHA
-              </NButton>
-              <NButton
-                v-if="selectedWebUrl && remoteWeb"
-                size="tiny"
-                quaternary
-                @click="openSelectedRemote"
+
+            <div class="min-h-0 flex-1 overflow-auto p-2">
+              <div v-if="!selectedFiles || selectedFiles.state === 'loading'" class="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
+                <NSpin size="small" />
+                <span>Loading files...</span>
+              </div>
+              <div v-else-if="selectedFiles.state === 'error'" class="px-2 py-3 text-xs text-destructive">
+                {{ selectedFiles.error }}
+              </div>
+              <div v-else-if="selectedFiles.files.length === 0" class="px-2 py-3 text-xs text-muted-foreground">
+                No file changes.
+              </div>
+              <button
+                v-for="file in selectedFiles.files"
+                v-else
+                :key="file.path"
+                type="button"
+                :data-commit-file="file.path"
+                class="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-accent/45"
+                @click="openCommitFile(selectedCommit, file)"
               >
-                <template #icon><NIcon :component="OpenOutline" /></template>
-                {{ hostLabel(remoteWeb) }}
-              </NButton>
-            </div>
-          </div>
-
-          <div class="min-h-0 flex-1 overflow-auto p-2">
-            <div v-if="!selectedFiles || selectedFiles.state === 'loading'" class="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
-              <NSpin size="small" />
-              <span>Loading files...</span>
-            </div>
-            <div v-else-if="selectedFiles.state === 'error'" class="px-2 py-3 text-xs text-destructive">
-              {{ selectedFiles.error }}
-            </div>
-            <div v-else-if="selectedFiles.files.length === 0" class="px-2 py-3 text-xs text-muted-foreground">
-              No file changes.
-            </div>
-            <button
-              v-for="file in selectedFiles.files"
-              v-else
-              :key="file.path"
-              type="button"
-              :data-commit-file="file.path"
-              class="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-accent/45"
-              @click="openCommitFile(selectedCommit, file)"
-            >
-              <img :src="fileIconUrl(basename(file.path))" alt="" class="size-3.5 shrink-0" />
-              <div class="flex min-w-0 flex-1 items-baseline gap-1.5">
-                <span class="truncate text-[11.5px] font-medium">{{ basename(file.path) }}</span>
-                <span v-if="dirname(file.path)" class="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
-                  {{ dirname(file.path) }}
+                <img :src="fileIconUrl(basename(file.path))" alt="" class="size-3.5 shrink-0" />
+                <div class="flex min-w-0 flex-1 items-baseline gap-1.5">
+                  <span class="truncate text-[11.5px] font-medium">{{ basename(file.path) }}</span>
+                  <span v-if="dirname(file.path)" class="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
+                    {{ dirname(file.path) }}
+                  </span>
+                </div>
+                <span v-if="file.isBinary" class="text-[10px] text-muted-foreground">binary</span>
+                <template v-else>
+                  <span v-if="file.added > 0" class="font-mono text-[10px] text-emerald-600 dark:text-emerald-400">+{{ file.added }}</span>
+                  <span v-if="file.removed > 0" class="font-mono text-[10px] text-rose-600 dark:text-rose-400">-{{ file.removed }}</span>
+                </template>
+                <span :class="['w-4 text-center text-[9.5px] font-bold', statusClass(file.status)]">
+                  {{ file.status.toUpperCase() }}
                 </span>
-              </div>
-              <span v-if="file.isBinary" class="text-[10px] text-muted-foreground">binary</span>
-              <template v-else>
-                <span v-if="file.added > 0" class="font-mono text-[10px] text-emerald-600 dark:text-emerald-400">+{{ file.added }}</span>
-                <span v-if="file.removed > 0" class="font-mono text-[10px] text-rose-600 dark:text-rose-400">-{{ file.removed }}</span>
-              </template>
-              <span :class="['w-4 text-center text-[9.5px] font-bold', statusClass(file.status)]">
-                {{ file.status.toUpperCase() }}
-              </span>
-            </button>
+              </button>
+            </div>
           </div>
-        </template>
-      </aside>
+        </NDrawerContent>
+      </NDrawer>
     </div>
   </div>
 </template>

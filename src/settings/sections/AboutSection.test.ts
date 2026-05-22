@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("AboutSection.vue", () => {
-  it("does not bundle package.json dependency metadata into the settings window", () => {
+  it("does not bundle package.json dependency metadata into the settings panel", () => {
     const source = readFileSync(
       new URL("./AboutSection.vue", import.meta.url),
       "utf8",

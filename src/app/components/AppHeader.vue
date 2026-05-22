@@ -8,16 +8,19 @@ import {
   GitCompareOutline,
   GlobeOutline,
   LockClosedOutline,
+  MoveOutline,
   ReorderTwoOutline,
   SettingsOutline,
   TerminalOutline,
   TimeOutline,
 } from "@vicons/ionicons5";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { NButton, NIcon } from "naive-ui";
-import type { Component } from "vue";
+import { onBeforeUnmount, ref, type Component } from "vue";
 import WindowControls from "@/components/WindowControls.vue";
 import { IS_MAC } from "@/lib/platform";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import type { TabDropPlacement } from "@/modules/tabs/tabsReorder";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import type { SplitDir } from "@/modules/terminal/lib/panes";
 
@@ -49,11 +52,38 @@ const emit = defineEmits<{
   openSettings: [];
   toggleLeftPanel: [];
   toggleRightPanel: [];
+  reorderTab: [sourceId: number, targetId: number, placement: TabDropPlacement];
 }>();
 
 type TabIcon =
   | { type: "component"; name: string; component: Component; class?: string }
   | { type: "image"; name: string; src: string };
+
+type PointerDragState = {
+  sourceId: number;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  sourceWidth: number;
+  dragging: boolean;
+};
+
+type DragGhostState = {
+  tab: Tab;
+  x: number;
+  y: number;
+  width: number;
+};
+
+const DRAG_START_THRESHOLD_PX = 6;
+const draggingTabId = ref<number | null>(null);
+const dropTarget = ref<{
+  id: number;
+  placement: TabDropPlacement;
+} | null>(null);
+const pointerDrag = ref<PointerDragState | null>(null);
+const suppressedClickTabId = ref<number | null>(null);
+const dragGhost = ref<DragGhostState | null>(null);
 
 function basename(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
@@ -105,11 +135,177 @@ function tabIcon(tab: Tab): TabIcon {
 function pinPreviewTab(tab: Tab) {
   if (tab.kind === "editor" && tab.preview) emit("pinTab", tab.id);
 }
+
+function clearDragState() {
+  draggingTabId.value = null;
+  dropTarget.value = null;
+  pointerDrag.value = null;
+  dragGhost.value = null;
+}
+
+function dropPlacementFromElement(
+  clientX: number,
+  element: HTMLElement,
+): TabDropPlacement {
+  const rect = element.getBoundingClientRect();
+  return clientX < rect.left + rect.width / 2 ? "before" : "after";
+}
+
+function tabElementFromPoint(clientX: number, clientY: number): HTMLElement | null {
+  return document
+    .elementFromPoint(clientX, clientY)
+    ?.closest<HTMLElement>("[data-tab-id]") ?? null;
+}
+
+function tabIdFromElement(element: HTMLElement): number | null {
+  const id = Number(element.dataset.tabId);
+  return Number.isFinite(id) ? id : null;
+}
+
+function updateDropTargetFromPointer(event: PointerEvent) {
+  const drag = pointerDrag.value;
+  if (!drag) return;
+  const targetElement = tabElementFromPoint(event.clientX, event.clientY);
+  if (!targetElement) {
+    dropTarget.value = null;
+    return;
+  }
+  const targetId = tabIdFromElement(targetElement);
+  if (targetId === null || targetId === drag.sourceId) {
+    dropTarget.value = null;
+    return;
+  }
+  dropTarget.value = {
+    id: targetId,
+    placement: dropPlacementFromElement(event.clientX, targetElement),
+  };
+}
+
+function clampDragGhostWidth(width: number): number {
+  if (!Number.isFinite(width) || width <= 0) return 160;
+  return Math.min(224, Math.max(104, width));
+}
+
+function updateDragGhostFromPointer(event: PointerEvent, drag: PointerDragState) {
+  const tab = props.tabs.find((item) => item.id === drag.sourceId);
+  if (!tab) {
+    dragGhost.value = null;
+    return;
+  }
+  dragGhost.value = {
+    tab,
+    x: event.clientX,
+    y: event.clientY,
+    width: drag.sourceWidth,
+  };
+}
+
+function addPointerListeners() {
+  window.addEventListener("pointermove", handleWindowPointerMove, { passive: false });
+  window.addEventListener("pointerup", handleWindowPointerUp);
+  window.addEventListener("pointercancel", handleWindowPointerCancel);
+}
+
+function removePointerListeners() {
+  window.removeEventListener("pointermove", handleWindowPointerMove);
+  window.removeEventListener("pointerup", handleWindowPointerUp);
+  window.removeEventListener("pointercancel", handleWindowPointerCancel);
+}
+
+function suppressNextTabClick(tabId: number) {
+  suppressedClickTabId.value = tabId;
+  window.setTimeout(() => {
+    if (suppressedClickTabId.value === tabId) suppressedClickTabId.value = null;
+  }, 400);
+}
+
+function handleWindowPointerMove(event: PointerEvent) {
+  const drag = pointerDrag.value;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+
+  const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+  if (!drag.dragging && distance < DRAG_START_THRESHOLD_PX) return;
+
+  event.preventDefault();
+  if (!drag.dragging) {
+    drag.dragging = true;
+    draggingTabId.value = drag.sourceId;
+  }
+  updateDragGhostFromPointer(event, drag);
+  updateDropTargetFromPointer(event);
+}
+
+function handleWindowPointerUp(event: PointerEvent) {
+  const drag = pointerDrag.value;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+
+  const sourceId = drag.sourceId;
+  if (drag.dragging) updateDropTargetFromPointer(event);
+  const target = dropTarget.value;
+  removePointerListeners();
+  if (drag.dragging) {
+    event.preventDefault();
+    suppressNextTabClick(sourceId);
+    if (target && target.id !== sourceId) {
+      emit("reorderTab", sourceId, target.id, target.placement);
+    }
+  }
+  clearDragState();
+}
+
+function handleWindowPointerCancel(event: PointerEvent) {
+  const drag = pointerDrag.value;
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  removePointerListeners();
+  clearDragState();
+}
+
+function handleTabPointerDown(event: PointerEvent, tab: Tab) {
+  if (props.tabs.length <= 1 || event.button !== 0) return;
+  event.stopPropagation();
+  removePointerListeners();
+  const sourceElement =
+    event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  pointerDrag.value = {
+    sourceId: tab.id,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    sourceWidth: clampDragGhostWidth(
+      sourceElement?.getBoundingClientRect().width ?? 0,
+    ),
+    dragging: false,
+  };
+  addPointerListeners();
+}
+
+function handleTabClick(tab: Tab) {
+  if (suppressedClickTabId.value === tab.id) {
+    suppressedClickTabId.value = null;
+    return;
+  }
+  emit("selectTab", tab.id);
+}
+
+async function startWindowDrag(event: PointerEvent) {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  try {
+    const windowRef = getCurrentWindow();
+    await windowRef.startDragging();
+  } catch {
+    // Running in a browser-only dev/test context has no native window to drag.
+  }
+}
+
+onBeforeUnmount(() => {
+  removePointerListeners();
+});
 </script>
 
 <template>
   <header
-    data-tauri-drag-region
     :class="[
       'flex h-11 shrink-0 items-center border-b border-border/60 bg-card',
       IS_MAC ? 'pr-2 pl-22' : 'pr-2 pl-2',
@@ -130,6 +326,16 @@ function pinPreviewTab(tab: Tab) {
         @click="emit('toggleLeftPanel')"
       >
         <NIcon :component="GitCommitOutline" :size="15" />
+      </button>
+      <button
+        type="button"
+        data-window-drag-handle
+        title="Drag window"
+        aria-label="Drag window"
+        class="grid h-7 w-7 cursor-grab place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground active:cursor-grabbing"
+        @pointerdown="startWindowDrag"
+      >
+        <NIcon :component="MoveOutline" :size="14" />
       </button>
       <NButton
         data-new-tab
@@ -154,25 +360,32 @@ function pinPreviewTab(tab: Tab) {
     </div>
 
     <div class="no-scrollbar ml-1 mr-1 min-w-0 flex-1 overflow-x-auto">
-      <div
-        data-tauri-drag-region
-        class="flex items-center gap-0.5"
-      >
+      <div class="flex min-w-full items-center gap-0.5">
         <button
           v-for="tab in props.tabs"
           :key="tab.id"
           type="button"
           :data-tab-id="tab.id"
+          :aria-grabbed="draggingTabId === tab.id"
           :title="`${tabKindLabel(tab)}: ${tabLabel(tab)}`"
           :class="[
-            'group flex h-7 min-w-0 max-w-56 shrink-0 items-center justify-between gap-1.5 rounded-md px-2 text-left text-[12px] transition-colors',
+            'group relative flex h-7 min-w-[5.5rem] max-w-56 flex-[1_1_10rem] items-center justify-between gap-1.5 rounded-md px-2 text-left text-[12px] transition-[background-color,color,box-shadow,opacity]',
             props.tabs.length === 1 ? 'pe-2' : 'pe-1',
+            props.tabs.length > 1 ? 'cursor-grab active:cursor-grabbing' : '',
+            draggingTabId === tab.id ? 'cursor-grabbing opacity-60' : '',
+            dropTarget?.id === tab.id && dropTarget.placement === 'before'
+              ? 'before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary'
+              : '',
+            dropTarget?.id === tab.id && dropTarget.placement === 'after'
+              ? 'after:absolute after:inset-y-1 after:right-0 after:w-0.5 after:rounded-full after:bg-primary'
+              : '',
             tab.id === props.activeId
               ? 'bg-accent text-foreground'
               : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
           ]"
-          @click="emit('selectTab', tab.id)"
+          @click="handleTabClick(tab)"
           @dblclick="pinPreviewTab(tab)"
+          @pointerdown="handleTabPointerDown($event, tab)"
         >
           <span class="flex min-w-0 flex-1 items-center gap-1.5 truncate">
             <template v-for="icon in [tabIcon(tab)]" :key="icon.name">
@@ -214,6 +427,7 @@ function pinPreviewTab(tab: Tab) {
             title="Close tab"
             aria-label="Close tab"
             @click.stop="emit('closeTab', tab.id)"
+            @pointerdown.stop
             @keydown.enter.stop.prevent="emit('closeTab', tab.id)"
             @keydown.space.stop.prevent="emit('closeTab', tab.id)"
           >
@@ -276,6 +490,32 @@ function pinPreviewTab(tab: Tab) {
         <NIcon :component="FolderOpenOutline" :size="14" />
       </button>
       <WindowControls v-if="props.showWindowControls" />
+    </div>
+
+    <div
+      v-if="dragGhost"
+      data-tab-drag-ghost
+      class="pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-md border border-border/70 bg-card px-2 text-left text-[12px] text-foreground opacity-95 shadow-lg ring-1 ring-foreground/10 transition-[box-shadow,opacity]"
+      :style="{
+        width: `${dragGhost.width}px`,
+        transform: `translate3d(${dragGhost.x}px, ${dragGhost.y}px, 0) translate(-50%, -50%)`,
+      }"
+    >
+      <template v-for="icon in [tabIcon(dragGhost.tab)]" :key="icon.name">
+        <img
+          v-if="icon.type === 'image'"
+          :src="icon.src"
+          alt=""
+          class="size-3.5 shrink-0"
+        />
+        <NIcon
+          v-else
+          :component="icon.component"
+          :size="14"
+          :class="['shrink-0', icon.class]"
+        />
+      </template>
+      <span class="min-w-0 truncate">{{ tabLabel(dragGhost.tab) }}</span>
     </div>
   </header>
 </template>

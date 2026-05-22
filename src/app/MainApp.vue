@@ -2,6 +2,8 @@
 import {
   NConfigProvider,
   NDialogProvider,
+  NDrawer,
+  NDrawerContent,
   NMessageProvider,
   NNotificationProvider,
   NSplit,
@@ -18,7 +20,10 @@ import {
   SIDE_PANEL_WIDTH_MIN,
   type StoredWorkspace,
 } from "@/modules/settings/store";
-import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
+import {
+  SETTINGS_DEFAULT_TAB,
+  type SettingsTab,
+} from "@/modules/settings/tabs";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import { MAX_PANES_PER_TAB } from "@/modules/tabs/tabsTypes";
@@ -46,6 +51,7 @@ import TerminalStack from "@/modules/terminal/TerminalStack.vue";
 import { leafIds, type SplitDir } from "@/modules/terminal/lib/panes";
 import { buildNaiveThemeOverrides, getNaiveTheme } from "@/modules/theme/naiveTheme";
 import { readAppTokens, type AppTokens } from "@/styles/tokens";
+import SettingsPanel from "@/settings/SettingsPanel.vue";
 
 const prefs = usePreferencesPiniaStore();
 const tabs = useTabsPiniaStore();
@@ -53,9 +59,12 @@ const workspaceEnv = useWorkspaceEnvPiniaStore();
 const workspaceRootStore = useWorkspaceRootPiniaStore();
 const leftPanelOpen = ref(false);
 const rightPanelOpen = ref(true);
+const settingsOpen = ref(false);
+const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
 const PANEL_RESIZE_TRIGGER_SIZE = 6;
 const PANEL_WIDTH_SAVE_DELAY_MS = 250;
 const WORKSPACE_REFRESH_FALLBACK_MS = 5000;
+const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
 const sourceControlPanelWidth = ref(prefs.sourceControlPanelWidth);
 const explorerPanelWidth = ref(prefs.explorerPanelWidth);
 const rightSplitHost = ref<HTMLElement | null>(null);
@@ -404,6 +413,11 @@ function openSourceHistory(input: { repoRoot: string; branch?: string | null }) 
   tabs.openCommitHistoryTab(input);
 }
 
+function openSettings(tab: SettingsTab = SETTINGS_DEFAULT_TAB) {
+  activeSettingsTab.value = tab;
+  settingsOpen.value = true;
+}
+
 onMounted(() => {
   if (hasTauriInternals()) {
     void prefs.hydrate();
@@ -487,10 +501,11 @@ watch([leftPanelOpen, rightPanelOpen], () => {
               @select-tab="(id) => tabs.setActiveId(id)"
               @close-tab="(id) => tabs.closeTab(id)"
               @pin-tab="(id) => tabs.pinTab(id)"
+              @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement)"
               @new-tab="newTerminalTab"
               @new-private-tab="newPrivateTerminalTab"
               @split-pane="splitActivePane"
-              @open-settings="() => void openSettingsWindow()"
+              @open-settings="openSettings"
               @toggle-left-panel="leftPanelOpen = !leftPanelOpen"
               @toggle-right-panel="rightPanelOpen = !rightPanelOpen"
             />
@@ -663,6 +678,24 @@ watch([leftPanelOpen, rightPanelOpen], () => {
               @choose-workspace="chooseWorkspace"
               @workspace-change="switchWorkspace"
             />
+
+            <NDrawer
+              v-model:show="settingsOpen"
+              placement="right"
+              :width="SETTINGS_DRAWER_WIDTH"
+              :auto-focus="false"
+            >
+              <NDrawerContent
+                body-content-style="height: 100%; padding: 0;"
+                :native-scrollbar="false"
+              >
+                <SettingsPanel
+                  v-model:active-tab="activeSettingsTab"
+                  show-close
+                  @close="settingsOpen = false"
+                />
+              </NDrawerContent>
+            </NDrawer>
           </div>
         </NNotificationProvider>
       </NMessageProvider>

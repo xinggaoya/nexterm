@@ -12,6 +12,7 @@ import {
   type SplitDir,
 } from "@/modules/terminal/lib/panes";
 import { disposeTerminalSession } from "./terminalDisposal";
+import { reorderTabs, type TabDropPlacement } from "./tabsReorder";
 import {
   MAX_PANES_PER_TAB,
   type EditorTab,
@@ -203,6 +204,9 @@ export const useTabsPiniaStore = defineStore("tabs", {
           ? { ...tab, preview: false }
           : tab,
       );
+    },
+    moveTab(sourceId: number, targetId: number, placement: TabDropPlacement) {
+      this.tabs = reorderTabs(this.tabs, sourceId, targetId, placement);
     },
     newPreviewTab(url: string): number {
       if (!this.initialized) this.init();

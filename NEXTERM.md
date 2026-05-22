@@ -47,7 +47,7 @@ Rust 进程负责所有系统访问。Webview 不直接访问文件系统、进�
 - `shell::*`：一次性命令、持久 shell 会话、后台进程和日志缓冲。
 - `workspace::*` / `git::*`：工作区和 Git 辅助能力。
 
-前端按 `src/modules/` 分区。新功能应放入对应模块，主窗口入口由 `src/main.ts` 挂载 Vue 工作台，设置窗口由 `src/settings/main.ts` 挂载 Vue Router 设置页。迁移过程中仍可能存在待替换的旧 React 模块，不能继续向旧 React 层增加新功能。
+前端按 `src/modules/` 分区。新功能应放入对应模块，主窗口入口由 `src/main.ts` 挂载 Vue 工作台，设置页作为主窗口内的 Naive UI 抽屉/面板挂载，不再创建独立设置窗口。迁移过程中仍可能存在待替换的旧 React 模块，不能继续向旧 React 层增加新功能。
 
 ## Frontend Rules
 
