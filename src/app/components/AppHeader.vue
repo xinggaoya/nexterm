@@ -8,7 +8,6 @@ import {
   GitCompareOutline,
   GlobeOutline,
   LockClosedOutline,
-  MoveOutline,
   ReorderTwoOutline,
   SettingsOutline,
   TerminalOutline,
@@ -49,6 +48,7 @@ const emit = defineEmits<{
   pinTab: [id: number];
   newTab: [];
   newPrivateTab: [];
+  chooseWorkspace: [];
   splitPane: [dir: SplitDir];
   openSettings: [];
   toggleLeftPanel: [];
@@ -332,16 +332,18 @@ onBeforeUnmount(() => {
       >
         <NIcon :component="GitCommitOutline" :size="15" />
       </button>
-      <button
-        type="button"
-        data-window-drag-handle
-        :title="t('app.header.dragWindow')"
-        :aria-label="t('app.header.dragWindow')"
-        class="grid h-7 w-7 cursor-grab place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground active:cursor-grabbing"
-        @pointerdown="startWindowDrag"
+      <NButton
+        data-open-workspace
+        size="tiny"
+        secondary
+        :title="t('app.header.openFolder')"
+        :aria-label="t('app.header.openFolder')"
+        class="shrink-0"
+        @click="emit('chooseWorkspace')"
       >
-        <NIcon :component="MoveOutline" :size="14" />
-      </button>
+        <template #icon><NIcon :component="FolderOpenOutline" /></template>
+        <span class="hidden xl:inline">{{ t("app.header.openFolder") }}</span>
+      </NButton>
       <NButton
         data-new-tab
         size="tiny"
@@ -363,6 +365,13 @@ onBeforeUnmount(() => {
         <template #icon><NIcon :component="LockClosedOutline" /></template>
       </NButton>
     </div>
+
+    <div
+      data-window-drag-region
+      :title="t('app.header.dragWindow')"
+      class="mx-1 h-7 w-5 shrink-0 cursor-grab rounded-md transition-colors hover:bg-accent/40 active:cursor-grabbing"
+      @pointerdown="startWindowDrag"
+    />
 
     <div class="no-scrollbar ml-1 mr-1 min-w-0 flex-1 overflow-x-auto">
       <div class="flex min-w-full items-center gap-0.5">
@@ -439,6 +448,12 @@ onBeforeUnmount(() => {
             <NIcon :component="CloseOutline" :size="11" />
           </span>
         </button>
+        <div
+          data-window-drag-region
+          :title="t('app.header.dragWindow')"
+          class="h-7 min-w-5 flex-1 cursor-grab rounded-md transition-colors hover:bg-accent/40 active:cursor-grabbing"
+          @pointerdown="startWindowDrag"
+        />
       </div>
     </div>
 

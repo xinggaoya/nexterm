@@ -207,6 +207,75 @@ describe("FileExplorer.vue", () => {
     expect(wrapper.emitted("pathDeleted")).toEqual([["/repo/README.md"]]);
   });
 
+  it("closes the context menu when clicking outside it", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+
+    expect(wrapper.find("[data-menu-action='delete']").exists()).toBe(true);
+
+    window.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, cancelable: true }),
+    );
+    await flush();
+
+    expect(wrapper.find("[data-menu-action='delete']").exists()).toBe(false);
+  });
+
+  it("closes the context menu on Escape", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await flush();
+
+    expect(wrapper.find("[data-menu-action='delete']").exists()).toBe(false);
+  });
+
+  it("keeps the context menu open for internal pointer interactions", async () => {
+    const wrapper = mount(FileExplorer, {
+      attachTo: document.body,
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+
+    const deleteButton = wrapper.find("[data-menu-action='delete']");
+    deleteButton.element.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, cancelable: true }),
+    );
+    await flush();
+
+    expect(wrapper.find("[data-menu-action='delete']").exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it("searches files and opens the selected search result", async () => {
     vi.useFakeTimers();
     const wrapper = mount(FileExplorer, {

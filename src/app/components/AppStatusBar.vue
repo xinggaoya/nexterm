@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import {
-  FolderOpenOutline,
   LockClosedOutline,
   TerminalOutline,
 } from "@vicons/ionicons5";
-import { NButton, NIcon } from "naive-ui";
+import { NIcon } from "naive-ui";
 import WorkspaceEnvSelector from "./WorkspaceEnvSelector.vue";
 import { t } from "@/modules/i18n/translate";
 import type { WorkspaceEnv } from "@/modules/workspace";
@@ -17,7 +16,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   workspaceChange: [env: WorkspaceEnv];
-  chooseWorkspace: [];
 }>();
 </script>
 
@@ -27,16 +25,6 @@ const emit = defineEmits<{
   >
     <div class="flex min-w-0 items-center gap-1.5">
       <WorkspaceEnvSelector @select="(env) => emit('workspaceChange', env)" />
-      <NButton
-        size="tiny"
-        quaternary
-        :title="t('app.status.openFolder')"
-        :aria-label="t('app.status.openFolder')"
-        data-open-workspace
-        @click="emit('chooseWorkspace')"
-      >
-        <template #icon><NIcon :component="FolderOpenOutline" /></template>
-      </NButton>
       <NIcon :component="TerminalOutline" :size="12" class="shrink-0" />
       <span class="truncate" :title="props.workspaceRoot ?? undefined">
         {{ props.workspaceRoot ?? t("app.status.noWorkspace") }}

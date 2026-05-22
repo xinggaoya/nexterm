@@ -25,7 +25,7 @@ describe("AppStatusBar.vue", () => {
     expect(wrapper.text()).toContain("/tmp");
     expect(wrapper.text()).toContain("Private");
     expect(wrapper.find("[data-workspace-env]").exists()).toBe(true);
-    expect(wrapper.find("[data-open-workspace]").exists()).toBe(true);
+    expect(wrapper.find("[data-open-workspace]").exists()).toBe(false);
   });
 
   it("falls back to no workspace when a root is unavailable", () => {
@@ -57,17 +57,4 @@ describe("AppStatusBar.vue", () => {
     ]);
   });
 
-  it("emits workspace selection requests", async () => {
-    const wrapper = mount(AppStatusBar, {
-      props: {
-        workspaceRoot: null,
-        terminalCwd: null,
-        privateActive: false,
-      },
-    });
-
-    await wrapper.find("[data-open-workspace]").trigger("click");
-
-    expect(wrapper.emitted("chooseWorkspace")).toHaveLength(1);
-  });
 });

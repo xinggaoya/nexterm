@@ -577,6 +577,7 @@ onBeforeUnmount(() => {
       <div
         v-show="!isSearchActive"
         class="min-h-0 flex-1 overflow-y-auto py-1"
+        @scroll.passive="closeMenu"
         @contextmenu.prevent="openRootMenu"
       >
         <FileTreeRow
