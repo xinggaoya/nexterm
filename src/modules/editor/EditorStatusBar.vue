@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from "@/modules/i18n/translate";
+
 const props = defineProps<{
   languageLabel: string;
   sizeLabel: string;
@@ -14,11 +16,15 @@ const props = defineProps<{
     <div class="flex min-w-0 items-center gap-3">
       <span class="truncate">{{ props.languageLabel }}</span>
       <span>{{ props.sizeLabel }}</span>
-      <span v-if="props.dirty" class="text-foreground">Unsaved</span>
+      <span v-if="props.dirty" class="text-foreground">
+        {{ t("editor.unsaved") }}
+      </span>
     </div>
     <div class="flex shrink-0 items-center gap-3 tabular-nums">
-      <span v-if="props.selectionLength > 0">Sel {{ props.selectionLength }}</span>
-      <span>Ln {{ props.line }}, Col {{ props.column }}</span>
+      <span v-if="props.selectionLength > 0">
+        {{ t("editor.selection", { count: props.selectionLength }) }}
+      </span>
+      <span>{{ t("editor.lineColumn", { line: props.line, column: props.column }) }}</span>
     </div>
   </div>
 </template>

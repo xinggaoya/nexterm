@@ -6,6 +6,7 @@ import {
 } from "@vicons/ionicons5";
 import { NButton, NIcon } from "naive-ui";
 import WorkspaceEnvSelector from "./WorkspaceEnvSelector.vue";
+import { t } from "@/modules/i18n/translate";
 import type { WorkspaceEnv } from "@/modules/workspace";
 
 const props = defineProps<{
@@ -29,8 +30,8 @@ const emit = defineEmits<{
       <NButton
         size="tiny"
         quaternary
-        title="Open folder"
-        aria-label="Open folder"
+        :title="t('app.status.openFolder')"
+        :aria-label="t('app.status.openFolder')"
         data-open-workspace
         @click="emit('chooseWorkspace')"
       >
@@ -38,7 +39,7 @@ const emit = defineEmits<{
       </NButton>
       <NIcon :component="TerminalOutline" :size="12" class="shrink-0" />
       <span class="truncate" :title="props.workspaceRoot ?? undefined">
-        {{ props.workspaceRoot ?? "No workspace" }}
+        {{ props.workspaceRoot ?? t("app.status.noWorkspace") }}
       </span>
       <span
         v-if="props.terminalCwd && props.workspaceRoot && props.terminalCwd !== props.workspaceRoot"
@@ -54,7 +55,7 @@ const emit = defineEmits<{
         class="inline-flex h-4 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 text-[10px] font-medium text-amber-700 dark:text-amber-300"
       >
         <NIcon :component="LockClosedOutline" :size="10" />
-        Private
+        {{ t("app.status.private") }}
       </span>
     </div>
   </footer>

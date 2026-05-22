@@ -6,6 +6,7 @@ import {
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NSpin } from "naive-ui";
 import WorkspaceEnvSelector from "./WorkspaceEnvSelector.vue";
+import { t } from "@/modules/i18n/translate";
 import type { StoredWorkspace } from "@/modules/settings/store";
 import type { WorkspaceEnv } from "@/modules/workspace";
 
@@ -27,7 +28,7 @@ function basename(path: string): string {
 }
 
 function envLabel(env: WorkspaceEnv): string {
-  return env.kind === "wsl" ? env.distro : "Local";
+  return env.kind === "wsl" ? env.distro : t("common.local");
 }
 </script>
 
@@ -59,7 +60,7 @@ function envLabel(env: WorkspaceEnv): string {
             @click="emit('chooseWorkspace')"
           >
             <template #icon><NIcon :component="FolderOpenOutline" /></template>
-            Open Folder
+            {{ t("app.welcome.openFolder") }}
           </NButton>
         </div>
 
@@ -76,18 +77,18 @@ function envLabel(env: WorkspaceEnv): string {
         <div class="flex h-10 items-center gap-2 border-b border-border/60 px-3">
           <NIcon :component="TimeOutline" :size="15" class="text-muted-foreground" />
           <h2 class="text-xs font-semibold tracking-normal text-foreground/85">
-            Recent Workspaces
+            {{ t("app.welcome.recentWorkspaces") }}
           </h2>
         </div>
         <div v-if="props.loading" class="flex items-center gap-2 px-3 py-4 text-xs text-muted-foreground">
           <NSpin size="small" />
-          <span>Opening...</span>
+          <span>{{ t("app.welcome.opening") }}</span>
         </div>
         <div
           v-else-if="props.recentWorkspaces.length === 0"
           class="px-3 py-4 text-xs text-muted-foreground"
         >
-          No recent workspaces
+          {{ t("app.welcome.noRecentWorkspaces") }}
         </div>
         <div v-else class="max-h-[420px] overflow-y-auto p-1">
           <button

@@ -17,6 +17,7 @@ import {
   parseRemoteWebUrl,
   type RemoteWebInfo,
 } from "./lib/remoteWebUrl";
+import { currentLocale, t } from "@/modules/i18n/translate";
 
 type CommitFileDiffOpenInput = {
   repoRoot: string;
@@ -119,7 +120,7 @@ function compactDate(secs: number): string {
   const date = new Date(secs * 1000);
   const now = new Date();
   const sameYear = date.getFullYear() === now.getFullYear();
-  const month = date.toLocaleString(undefined, { month: "short" });
+  const month = date.toLocaleString(currentLocale(), { month: "short" });
   const day = String(date.getDate()).padStart(2, "0");
   if (sameYear) {
     const hh = String(date.getHours()).padStart(2, "0");
@@ -131,7 +132,7 @@ function compactDate(secs: number): string {
 
 function absoluteTime(secs: number): string {
   if (!secs) return "";
-  return new Date(secs * 1000).toLocaleString(undefined, {
+  return new Date(secs * 1000).toLocaleString(currentLocale(), {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -236,7 +237,9 @@ onMounted(() => {
   <div data-git-history class="flex h-full min-h-0 flex-col bg-background">
     <div class="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-card/50 px-3">
       <div class="min-w-0 flex-1">
-        <div class="truncate text-[12px] font-medium">Commit History</div>
+        <div class="truncate text-[12px] font-medium">
+          {{ t("gitHistory.commitHistory") }}
+        </div>
         <div class="truncate font-mono text-[10.5px] text-muted-foreground">
           {{ props.repoRoot }}
         </div>
@@ -245,10 +248,15 @@ onMounted(() => {
         v-model:value="search"
         size="tiny"
         class="max-w-56"
-        placeholder="Filter commits"
+        :placeholder="t('gitHistory.filterCommits')"
         clearable
       />
-      <NButton size="tiny" quaternary title="Refresh" @click="() => void loadInitial()">
+      <NButton
+        size="tiny"
+        quaternary
+        :title="t('common.refresh')"
+        @click="() => void loadInitial()"
+      >
         <template #icon><NIcon :component="RefreshOutline" /></template>
       </NButton>
     </div>
@@ -259,7 +267,7 @@ onMounted(() => {
     >
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
         <NSpin size="small" />
-        <span>Loading commits...</span>
+        <span>{{ t("gitHistory.loadingCommits") }}</span>
       </div>
     </div>
 
@@ -268,9 +276,11 @@ onMounted(() => {
       class="grid min-h-0 flex-1 place-items-center p-6 text-center"
     >
       <div class="space-y-2">
-        <div class="text-sm font-medium">Could not load history</div>
+        <div class="text-sm font-medium">{{ t("gitHistory.couldNotLoad") }}</div>
         <div class="max-w-md text-xs text-destructive">{{ error }}</div>
-        <NButton size="small" @click="() => void loadInitial()">Retry</NButton>
+        <NButton size="small" @click="() => void loadInitial()">
+          {{ t("common.retry") }}
+        </NButton>
       </div>
     </div>
 
@@ -279,9 +289,9 @@ onMounted(() => {
       class="grid min-h-0 flex-1 place-items-center p-6 text-center"
     >
       <div>
-        <div class="text-sm font-medium">No commits yet</div>
+        <div class="text-sm font-medium">{{ t("gitHistory.noCommitsTitle") }}</div>
         <div class="mt-1 text-xs text-muted-foreground">
-          This branch has no commits.
+          {{ t("gitHistory.noCommitsDescription") }}
         </div>
       </div>
     </div>
@@ -290,11 +300,11 @@ onMounted(() => {
       <div class="min-w-0 flex-1 overflow-auto">
         <div class="grid h-6 items-center gap-3 border-b border-border/40 bg-card/55 px-3 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70 [grid-template-columns:68px_72px_minmax(0,1fr)_160px_96px_116px]">
           <div />
-          <div>SHA</div>
-          <div>Subject</div>
-          <div>Author</div>
-          <div class="text-right">Date</div>
-          <div class="text-right">Changes</div>
+          <div>{{ t("gitHistory.sha") }}</div>
+          <div>{{ t("gitHistory.subject") }}</div>
+          <div>{{ t("gitHistory.author") }}</div>
+          <div class="text-right">{{ t("gitHistory.date") }}</div>
+          <div class="text-right">{{ t("gitHistory.changes") }}</div>
         </div>
 
         <button
@@ -323,10 +333,10 @@ onMounted(() => {
             {{ commit.shortSha }}
           </span>
           <span class="min-w-0 truncate text-[12px] font-medium">
-            {{ commit.subject || "(no subject)" }}
+            {{ commit.subject || t("gitHistory.noSubject") }}
           </span>
           <span class="min-w-0 truncate text-[10.5px] text-muted-foreground">
-            {{ commit.author || "Unknown" }}
+            {{ commit.author || t("common.unknown") }}
           </span>
           <span class="text-right font-mono text-[10.5px] tabular-nums text-muted-foreground">
             {{ compactDate(commit.timestampSecs) }}
@@ -359,7 +369,9 @@ onMounted(() => {
           :native-scrollbar="false"
         >
           <template #header>
-            <div class="text-[12px] font-semibold">Commit Details</div>
+            <div class="text-[12px] font-semibold">
+              {{ t("gitHistory.commitDetails") }}
+            </div>
           </template>
 
           <div
@@ -371,18 +383,18 @@ onMounted(() => {
               <div class="flex items-start gap-2">
                 <NTag size="small" :bordered="false">{{ selectedCommit.shortSha }}</NTag>
                 <div class="min-w-0 flex-1 text-[12.5px] font-semibold leading-snug">
-                  {{ selectedCommit.subject || "(no subject)" }}
+                  {{ selectedCommit.subject || t("gitHistory.noSubject") }}
                 </div>
               </div>
               <div class="mt-2 truncate text-[10.5px] text-muted-foreground">
-                {{ selectedCommit.author || "Unknown" }}
+                {{ selectedCommit.author || t("common.unknown") }}
                 <span v-if="selectedCommit.authorEmail"> · {{ selectedCommit.authorEmail }}</span>
                 · {{ absoluteTime(selectedCommit.timestampSecs) }}
               </div>
               <div class="mt-2 flex items-center gap-1">
                 <NButton size="tiny" quaternary @click="copySha(selectedCommit.sha)">
                   <template #icon><NIcon :component="CopyOutline" /></template>
-                  Copy SHA
+                  {{ t("gitHistory.copySha") }}
                 </NButton>
                 <NButton
                   v-if="selectedWebUrl && remoteWeb"
@@ -399,13 +411,13 @@ onMounted(() => {
             <div class="min-h-0 flex-1 overflow-auto p-2">
               <div v-if="!selectedFiles || selectedFiles.state === 'loading'" class="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
                 <NSpin size="small" />
-                <span>Loading files...</span>
+                <span>{{ t("gitHistory.loadingFiles") }}</span>
               </div>
               <div v-else-if="selectedFiles.state === 'error'" class="px-2 py-3 text-xs text-destructive">
                 {{ selectedFiles.error }}
               </div>
               <div v-else-if="selectedFiles.files.length === 0" class="px-2 py-3 text-xs text-muted-foreground">
-                No file changes.
+                {{ t("gitHistory.noFileChanges") }}
               </div>
               <button
                 v-for="file in selectedFiles.files"
@@ -423,7 +435,9 @@ onMounted(() => {
                     {{ dirname(file.path) }}
                   </span>
                 </div>
-                <span v-if="file.isBinary" class="text-[10px] text-muted-foreground">binary</span>
+                <span v-if="file.isBinary" class="text-[10px] text-muted-foreground">
+                  {{ t("gitHistory.binary") }}
+                </span>
                 <template v-else>
                   <span v-if="file.added > 0" class="font-mono text-[10px] text-emerald-600 dark:text-emerald-400">+{{ file.added }}</span>
                   <span v-if="file.removed > 0" class="font-mono text-[10px] text-rose-600 dark:text-rose-400">-{{ file.removed }}</span>

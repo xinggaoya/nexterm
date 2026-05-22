@@ -2,6 +2,7 @@
 import { ChevronForwardOutline } from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
 import { computed } from "vue";
+import { t } from "@/modules/i18n/translate";
 import InlineTreeInput from "./InlineTreeInput.vue";
 import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
 import type { FileTreeRow } from "./lib/fileTreeRows";
@@ -118,7 +119,7 @@ function handleContextMenu(event: MouseEvent) {
     <img :src="iconUrl" alt="" class="size-4 shrink-0 opacity-70" />
     <InlineTreeInput
       initial=""
-      :placeholder="row.pendingKind === 'dir' ? 'New folder' : 'New file'"
+      :placeholder="row.pendingKind === 'dir' ? t('explorer.newFolder') : t('explorer.newFile')"
       @commit="(value) => emit('commitCreate', value)"
       @cancel="emit('cancelCreate')"
     />

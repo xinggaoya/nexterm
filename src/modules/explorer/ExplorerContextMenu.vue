@@ -6,6 +6,7 @@ import {
   revealInFinder,
 } from "./lib/contextActions";
 import { dirname } from "./lib/fileTreeService";
+import { t } from "@/modules/i18n/translate";
 
 export type ExplorerContextMenuTarget = {
   path: string;
@@ -110,7 +111,7 @@ watch(
       class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
       @click="openFile(true)"
     >
-      Open
+      {{ t("explorer.open") }}
     </button>
     <button
       v-if="!target.isDir && isMarkdownPath(target.path)"
@@ -119,7 +120,7 @@ watch(
       class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
       @click="openMarkdownPreview"
     >
-      Open Preview
+      {{ t("explorer.openPreview") }}
     </button>
     <button
       type="button"
@@ -127,7 +128,7 @@ watch(
       class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
       @click="revealTarget"
     >
-      Reveal in Finder
+      {{ t("explorer.revealInFinder") }}
     </button>
     <div class="my-1 h-px bg-border/70" />
     <button
@@ -136,7 +137,7 @@ watch(
       class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
       @click="create('file')"
     >
-      New File
+      {{ t("explorer.newFile") }}
     </button>
     <button
       type="button"
@@ -144,7 +145,7 @@ watch(
       class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
       @click="create('dir')"
     >
-      New Folder
+      {{ t("explorer.newFolder") }}
     </button>
     <div class="my-1 h-px bg-border/70" />
     <button
@@ -153,7 +154,7 @@ watch(
       class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
       @click="copyPath(false)"
     >
-      Copy Path
+      {{ t("explorer.copyPath") }}
     </button>
     <button
       type="button"
@@ -161,7 +162,7 @@ watch(
       class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
       @click="copyPath(true)"
     >
-      Copy Relative Path
+      {{ t("explorer.copyRelativePath") }}
     </button>
     <template v-if="target.source !== 'root'">
       <div class="my-1 h-px bg-border/70" />
@@ -171,7 +172,11 @@ watch(
         class="flex h-7 w-full items-center rounded-md px-2 text-left text-destructive hover:bg-destructive/10"
         @click="confirmDelete"
       >
-        {{ confirmDeletePath === target.path ? "Click again to confirm" : "Delete" }}
+        {{
+          confirmDeletePath === target.path
+            ? t("explorer.clickAgainToConfirm")
+            : t("explorer.delete")
+        }}
       </button>
     </template>
   </div>

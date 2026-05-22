@@ -11,8 +11,12 @@ import {
 import { homeDir } from "@tauri-apps/api/path";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import AppHeader from "./components/AppHeader.vue";
 import AppStatusBar from "./components/AppStatusBar.vue";
+import { applyLanguagePreference } from "@/modules/i18n";
+import { getNaiveLocaleConfig } from "@/modules/i18n/naive";
+import { resolveAppLocale } from "@/modules/i18n/types";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import {
@@ -56,6 +60,7 @@ import { buildNaiveThemeOverrides, getNaiveTheme } from "@/modules/theme/naiveTh
 import { readAppTokens, type AppTokens } from "@/styles/tokens";
 import SettingsPanel from "@/settings/SettingsPanel.vue";
 
+const { t } = useI18n();
 const prefs = usePreferencesPiniaStore();
 const tabs = useTabsPiniaStore();
 const workspaceEnv = useWorkspaceEnvPiniaStore();
@@ -104,11 +109,13 @@ const fallbackTokens: AppTokens = {
 };
 
 const themeOverrides = ref(buildNaiveThemeOverrides(fallbackTokens));
+const resolvedLocale = ref(resolveAppLocale(prefs.language));
 const resolvedTheme = computed(() => {
   if (prefs.theme === "system") return systemDark.value ? "dark" : "light";
   return prefs.theme;
 });
 const naiveTheme = computed(() => getNaiveTheme(resolvedTheme.value));
+const naiveLocaleConfig = computed(() => getNaiveLocaleConfig(resolvedLocale.value));
 const activeTab = computed(() => tabs.tabs.find((tab) => tab.id === tabs.activeId));
 const hasWorkspace = computed(() => !!workspaceRootStore.rootPath);
 const activeCwd = computed(() =>
@@ -190,6 +197,10 @@ function syncDocumentTheme() {
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(update);
     else update();
   });
+}
+
+async function syncLanguage() {
+  resolvedLocale.value = await applyLanguagePreference(prefs.language);
 }
 
 function clampPanelWidth(value: number): number {
@@ -350,7 +361,7 @@ async function switchWorkspace(env: WorkspaceEnv) {
 
 function hasDirtyEditors(): boolean {
   if (dirtyEditorTabs(tabs.tabs).length > 0) {
-    window.alert("Save or close unsaved editor tabs before switching workspace.");
+    window.alert(t("app.unsaved.switchWorkspaceBlocked"));
     return true;
   }
   return false;
@@ -440,6 +451,7 @@ onMounted(() => {
     void restartWorkspaceWatcher(workspaceRoot.value);
   }
   colorSchemeQuery?.addEventListener("change", colorSchemeListener);
+  window.addEventListener("languagechange", syncLanguage);
   if (typeof ResizeObserver === "function") {
     rightSplitResizeObserver = new ResizeObserver(measureRightSplitWidth);
     if (rightSplitHost.value) rightSplitResizeObserver.observe(rightSplitHost.value);
@@ -450,6 +462,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   colorSchemeQuery?.removeEventListener("change", colorSchemeListener);
+  window.removeEventListener("languagechange", syncLanguage);
   rightSplitResizeObserver?.disconnect();
   rightSplitResizeObserver = null;
   window.removeEventListener("resize", measureRightSplitWidth);
@@ -464,6 +477,13 @@ onUnmounted(() => {
 });
 
 watch(resolvedTheme, syncDocumentTheme, { immediate: true });
+watch(
+  () => prefs.language,
+  () => {
+    void syncLanguage();
+  },
+  { immediate: true },
+);
 watch(
   () => workspaceRootStore.rootPath,
   (rootPath) => {
@@ -500,7 +520,12 @@ watch([leftPanelOpen, rightPanelOpen], () => {
 </script>
 
 <template>
-  <NConfigProvider :theme="naiveTheme" :theme-overrides="themeOverrides">
+  <NConfigProvider
+    :theme="naiveTheme"
+    :theme-overrides="themeOverrides"
+    :locale="naiveLocaleConfig.locale"
+    :date-locale="naiveLocaleConfig.dateLocale"
+  >
     <NDialogProvider>
       <NMessageProvider>
         <NNotificationProvider>

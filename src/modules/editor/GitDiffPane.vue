@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { NSpin, NTag } from "naive-ui";
 import { computed, ref, watch } from "vue";
+import { t } from "@/modules/i18n/translate";
 import DiffCodeMirror from "./DiffCodeMirror.vue";
 import {
   commitDiffKey,
@@ -173,7 +174,7 @@ watch(
         class="flex h-full items-center justify-center gap-2 text-[11px] text-muted-foreground"
       >
         <NSpin size="small" />
-        <span>Loading diff...</span>
+        <span>{{ t("editor.loadingDiff") }}</span>
       </div>
 
       <div
@@ -186,7 +187,7 @@ watch(
       <pre
         v-else-if="useFallback"
         class="min-h-full overflow-auto whitespace-pre-wrap p-4 font-mono text-[12px] leading-relaxed text-muted-foreground"
-      >{{ loaded?.fallbackPatch || "Diff preview is not available for this file." }}</pre>
+      >{{ loaded?.fallbackPatch || t("editor.diffFallbackUnavailable") }}</pre>
 
       <DiffCodeMirror
         v-else-if="loaded"

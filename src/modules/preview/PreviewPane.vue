@@ -2,6 +2,7 @@
 import { AlertCircleOutline, GlobeOutline } from "@vicons/ionicons5";
 import { NButton, NIcon } from "naive-ui";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { t } from "@/modules/i18n/translate";
 import PreviewAddressBar from "./PreviewAddressBar.vue";
 import { isLocalPreviewUrl } from "./previewUrl";
 import type { PreviewPaneHandle } from "./previewTypes";
@@ -94,7 +95,7 @@ defineExpose<PreviewPaneHandle>({
     >
       <NIcon :component="AlertCircleOutline" :size="13" class="shrink-0" />
       <span class="truncate">
-        Many public sites refuse to embed (X-Frame-Options). If the page is blank, open it externally.
+        {{ t("preview.xfoHint") }}
       </span>
     </div>
 
@@ -108,7 +109,7 @@ defineExpose<PreviewPaneHandle>({
         v-if="props.url && loaded"
         :key="`${props.url}#${nonce}`"
         :src="props.url"
-        title="Preview"
+        :title="t('preview.preview')"
         class="h-full w-full border-0"
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
         referrerPolicy="no-referrer"
@@ -123,12 +124,16 @@ defineExpose<PreviewPaneHandle>({
           <NIcon :component="GlobeOutline" :size="18" />
         </div>
         <div class="space-y-1">
-          <p class="text-[12.5px] font-medium text-foreground">Preview suspended</p>
+          <p class="text-[12.5px] font-medium text-foreground">
+            {{ t("preview.suspendedTitle") }}
+          </p>
           <p class="max-w-xs text-[11px] leading-relaxed text-muted-foreground">
-            Released to free memory after sitting in the background.
+            {{ t("preview.suspendedDescription") }}
           </p>
         </div>
-        <NButton size="tiny" secondary @click="reload">Reload</NButton>
+        <NButton size="tiny" secondary @click="reload">
+          {{ t("preview.reload") }}
+        </NButton>
       </div>
 
       <div
@@ -139,9 +144,11 @@ defineExpose<PreviewPaneHandle>({
           <NIcon :component="GlobeOutline" :size="20" />
         </div>
         <div class="space-y-1.5">
-          <p class="text-sm font-medium text-foreground">Nothing to preview yet</p>
+          <p class="text-sm font-medium text-foreground">
+            {{ t("preview.nothingTitle") }}
+          </p>
           <p class="max-w-sm text-xs leading-relaxed text-muted-foreground">
-            Type a URL above, or open the Ports menu to jump straight to your running dev server.
+            {{ t("preview.nothingDescription") }}
           </p>
         </div>
       </div>

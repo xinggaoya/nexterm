@@ -11,6 +11,7 @@ import {
   normalizeSettingsTab,
   type SettingsTab,
 } from "@/modules/settings/tabs";
+import { t } from "@/modules/i18n/translate";
 import AboutSection from "./sections/AboutSection.vue";
 import GeneralSection from "./sections/GeneralSection.vue";
 
@@ -31,11 +32,11 @@ const emit = defineEmits<{
 
 const tabs: {
   id: SettingsTab;
-  label: string;
+  labelKey: string;
   icon: typeof SettingsOutline;
 }[] = [
-  { id: "general", label: "General", icon: SettingsOutline },
-  { id: "about", label: "About", icon: InformationCircleOutline },
+  { id: "general", labelKey: "settings.tabs.general", icon: SettingsOutline },
+  { id: "about", labelKey: "settings.tabs.about", icon: InformationCircleOutline },
 ];
 
 const fallbackTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
@@ -59,7 +60,9 @@ function selectTab(tab: SettingsTab) {
   >
     <header class="flex h-13 shrink-0 items-center gap-3 border-b border-border/60 px-4">
       <div class="min-w-0 flex-1">
-        <h2 class="truncate text-sm font-semibold tracking-normal">Settings</h2>
+        <h2 class="truncate text-sm font-semibold tracking-normal">
+          {{ t("settings.panel.title") }}
+        </h2>
       </div>
       <div class="flex h-7 items-center gap-1 rounded-lg bg-muted/55 p-0.5">
         <button
@@ -77,7 +80,7 @@ function selectTab(tab: SettingsTab) {
           @click="selectTab(tab.id)"
         >
           <NIcon :component="tab.icon" :size="13" />
-          <span>{{ tab.label }}</span>
+          <span>{{ t(tab.labelKey) }}</span>
         </button>
       </div>
       <NButton
@@ -85,8 +88,8 @@ function selectTab(tab: SettingsTab) {
         data-close-settings
         size="tiny"
         quaternary
-        title="Close settings"
-        aria-label="Close settings"
+        :title="t('settings.panel.close')"
+        :aria-label="t('settings.panel.close')"
         @click="emit('close')"
       >
         <template #icon><NIcon :component="CloseOutline" /></template>

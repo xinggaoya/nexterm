@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { NButton, NButtonGroup } from "naive-ui";
+import { t } from "@/modules/i18n/translate";
 import type { EditorViewMode } from "./editorTypes";
 
 const props = defineProps<{
@@ -22,7 +23,7 @@ const emit = defineEmits<{
       <div class="min-w-0">
         <div class="truncate text-[12px] font-medium leading-4">{{ props.fileName }}</div>
         <div class="truncate text-[10px] leading-3 text-muted-foreground">
-          {{ props.languageLabel }}{{ props.dirty ? " · Unsaved" : "" }}
+          {{ props.languageLabel }}{{ props.dirty ? ` · ${t("editor.unsaved")}` : "" }}
         </div>
       </div>
     </div>
@@ -36,7 +37,7 @@ const emit = defineEmits<{
           :aria-pressed="props.mode === 'source'"
           @click="emit('modeChange', 'source')"
         >
-          Source
+          {{ t("editor.source") }}
         </NButton>
         <NButton
           data-editor-mode-split
@@ -45,7 +46,7 @@ const emit = defineEmits<{
           :aria-pressed="props.mode === 'split'"
           @click="emit('modeChange', 'split')"
         >
-          Split
+          {{ t("editor.split") }}
         </NButton>
         <NButton
           data-editor-mode-preview
@@ -54,7 +55,7 @@ const emit = defineEmits<{
           :aria-pressed="props.mode === 'preview'"
           @click="emit('modeChange', 'preview')"
         >
-          Preview
+          {{ t("preview.preview") }}
         </NButton>
       </NButtonGroup>
 
@@ -64,7 +65,7 @@ const emit = defineEmits<{
         :disabled="!props.dirty"
         @click="emit('save')"
       >
-        Save
+        {{ t("editor.save") }}
       </NButton>
     </div>
   </div>

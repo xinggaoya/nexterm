@@ -2,6 +2,7 @@
 import { CloseOutline, SearchOutline } from "@vicons/ionicons5";
 import { NIcon, NSpin } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { t } from "@/modules/i18n/translate";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
 import { searchFileTree, type SearchHit } from "./lib/fileTreeService";
@@ -141,14 +142,14 @@ onBeforeUnmount(clearTimer);
         ref="inputRef"
         v-model="query"
         data-explorer-search-input
-        placeholder="Search files..."
+        :placeholder="t('explorer.searchFiles')"
         class="h-7 w-full rounded-md border border-border bg-background px-7 text-[12px] text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring"
         @keydown="handleKeydown"
       />
       <button
         v-if="query"
         type="button"
-        aria-label="Clear search"
+        :aria-label="t('explorer.clearSearch')"
         class="absolute right-3.5 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
         @click="query = ''"
       >
@@ -162,13 +163,13 @@ onBeforeUnmount(clearTimer);
         class="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground"
       >
         <NSpin size="small" />
-        <span>Searching...</span>
+        <span>{{ t("explorer.searching") }}</span>
       </div>
       <div
         v-else-if="results.length === 0"
         class="px-3 py-2 text-[11px] text-muted-foreground"
       >
-        No matches
+        {{ t("explorer.noMatches") }}
       </div>
       <button
         v-for="(hit, index) in results"
@@ -200,7 +201,7 @@ onBeforeUnmount(clearTimer);
         v-if="truncated && results.length > 0"
         class="px-3 py-1.5 text-[10px] text-muted-foreground"
       >
-        Showing partial results. Refine your query.
+        {{ t("explorer.partialResults") }}
       </div>
     </div>
   </div>

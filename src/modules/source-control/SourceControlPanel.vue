@@ -29,6 +29,7 @@ import {
   pathsToUnstage,
   type SourceControlFileEntry,
 } from "./sourceControlModel";
+import { t } from "@/modules/i18n/translate";
 
 type PanelState = "idle" | "loading" | "no-root" | "no-repo" | "ready" | "error";
 type BusyAction =
@@ -85,7 +86,7 @@ const entries = computed(() =>
 const repoRoot = computed(() => status.value?.repoRoot ?? repo.value?.repoRoot ?? null);
 const branchLabel = computed(() => {
   const current = status.value ?? repo.value;
-  if (!current) return "Source Control";
+  if (!current) return t("app.header.sourceControl");
   return current.isDetached ? "detached" : current.branch;
 });
 const stagedCount = computed(
@@ -109,7 +110,7 @@ function normalizeError(error: unknown): string {
     const message = (error as { message?: unknown }).message;
     if (typeof message === "string") return message;
   }
-  return "Unknown source control error";
+  return t("sourceControl.unknownError");
 }
 
 function normalizePath(path: string): string {
@@ -136,9 +137,9 @@ function statusTone(code: string): "default" | "success" | "warning" | "error" |
 }
 
 function stageLabel(entry: SourceControlFileEntry): string {
-  if (entry.checkState === "checked") return "Staged";
-  if (entry.checkState === "indeterminate") return "Mixed";
-  return "Unstaged";
+  if (entry.checkState === "checked") return t("sourceControl.staged");
+  if (entry.checkState === "indeterminate") return t("sourceControl.mixed");
+  return t("sourceControl.unstaged");
 }
 
 function resetActionFeedback() {
@@ -341,10 +342,10 @@ async function discardEntries(
 function confirmDiscardFile(entry: SourceControlFileEntry) {
   if (!entry.unstaged || busyAction.value) return;
   dialog.warning({
-    title: "Discard changes?",
-    content: `This will permanently discard changes in ${entry.path}.`,
-    positiveText: "Discard",
-    negativeText: "Cancel",
+    title: t("sourceControl.discardTitle"),
+    content: t("sourceControl.discardFileContent", { path: entry.path }),
+    positiveText: t("sourceControl.discard"),
+    negativeText: t("common.cancel"),
     onPositiveClick: () =>
       discardEntries(
         [{ path: entry.path, untracked: entry.untracked }],
@@ -357,12 +358,13 @@ function confirmDiscardAll() {
   const discardEntriesValue = discardAllEntries.value;
   if (discardEntriesValue.length === 0 || busyAction.value) return;
   dialog.warning({
-    title: "Discard changes?",
-    content: `This will permanently discard ${discardEntriesValue.length} unstaged change${
-      discardEntriesValue.length === 1 ? "" : "s"
-    }.`,
-    positiveText: "Discard",
-    negativeText: "Cancel",
+    title: t("sourceControl.discardTitle"),
+    content: t("sourceControl.discardManyContent", {
+      count: discardEntriesValue.length,
+      changeWord: discardEntriesValue.length === 1 ? "change" : "changes",
+    }),
+    positiveText: t("sourceControl.discard"),
+    negativeText: t("common.cancel"),
     onPositiveClick: () => discardEntries(discardEntriesValue, "discard-all"),
   });
 }
@@ -374,7 +376,7 @@ async function fetchRemote() {
   resetActionFeedback();
   try {
     await native.gitFetch(root);
-    actionMessage.value = "Fetched latest refs";
+    actionMessage.value = t("sourceControl.fetchedLatestRefs");
     await refreshStatus();
   } catch (error) {
     actionError.value = normalizeError(error);
@@ -390,7 +392,7 @@ async function pullRemote() {
   resetActionFeedback();
   try {
     await native.gitPullFfOnly(root);
-    actionMessage.value = "Pulled latest changes";
+    actionMessage.value = t("sourceControl.pulledLatestChanges");
     await refreshStatus();
   } catch (error) {
     actionError.value = normalizeError(error);
@@ -406,7 +408,9 @@ async function pushRemote() {
   resetActionFeedback();
   try {
     const result = await native.gitPush(root);
-    actionMessage.value = `Pushed to ${pushedLabel(result.remote, result.branch)}`;
+    actionMessage.value = t("sourceControl.pushedTo", {
+      target: pushedLabel(result.remote, result.branch),
+    });
     await refreshStatus();
   } catch (error) {
     actionError.value = normalizeError(error);
@@ -479,8 +483,8 @@ onBeforeUnmount(() => {
         size="tiny"
         quaternary
         data-git-fetch
-        title="Fetch"
-        aria-label="Fetch"
+        :title="t('sourceControl.fetch')"
+        :aria-label="t('sourceControl.fetch')"
         :loading="busyAction === 'fetch'"
         :disabled="!repoRoot || (busyAction !== null && busyAction !== 'fetch')"
         @click="fetchRemote"
@@ -491,8 +495,8 @@ onBeforeUnmount(() => {
         size="tiny"
         quaternary
         data-git-pull
-        title="Pull"
-        aria-label="Pull"
+        :title="t('sourceControl.pull')"
+        :aria-label="t('sourceControl.pull')"
         :loading="busyAction === 'pull'"
         :disabled="!repoRoot || (busyAction !== null && busyAction !== 'pull')"
         @click="pullRemote"
@@ -503,8 +507,8 @@ onBeforeUnmount(() => {
         size="tiny"
         quaternary
         data-git-push
-        title="Push"
-        aria-label="Push"
+        :title="t('sourceControl.push')"
+        :aria-label="t('sourceControl.push')"
         :loading="busyAction === 'push'"
         :disabled="!repoRoot || (busyAction !== null && busyAction !== 'push')"
         @click="pushRemote"
@@ -514,8 +518,8 @@ onBeforeUnmount(() => {
       <NButton
         size="tiny"
         quaternary
-        title="Refresh"
-        aria-label="Refresh"
+        :title="t('common.refresh')"
+        :aria-label="t('common.refresh')"
         :loading="busyAction === 'refresh'"
         @click="refresh"
       >
@@ -525,8 +529,8 @@ onBeforeUnmount(() => {
         size="tiny"
         quaternary
         data-open-history
-        title="History"
-        aria-label="History"
+        :title="t('common.history')"
+        :aria-label="t('common.history')"
         :disabled="!repoRoot"
         @click="openHistory"
       >
@@ -535,12 +539,14 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="panelState === 'no-root'" class="grid min-h-0 flex-1 place-items-center p-4 text-center">
-      <div class="text-[12px] text-muted-foreground">No current directory</div>
+      <div class="text-[12px] text-muted-foreground">
+        {{ t("common.noCurrentDirectory") }}
+      </div>
     </div>
 
     <div v-else-if="panelState === 'loading'" class="flex min-h-0 flex-1 items-center justify-center gap-2 text-[12px] text-muted-foreground">
       <NSpin size="small" />
-      <span>Loading source control...</span>
+      <span>{{ t("sourceControl.loading") }}</span>
     </div>
 
     <div v-else-if="panelState === 'error'" class="grid min-h-0 flex-1 place-items-center p-4 text-center">
@@ -548,7 +554,9 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-else-if="panelState === 'no-repo'" class="grid min-h-0 flex-1 place-items-center p-4 text-center">
-      <div class="text-[12px] text-muted-foreground">No Git repository</div>
+      <div class="text-[12px] text-muted-foreground">
+        {{ t("sourceControl.noGitRepository") }}
+      </div>
     </div>
 
     <template v-else>
@@ -559,7 +567,7 @@ onBeforeUnmount(() => {
           <template v-if="status && (status.ahead > 0 || status.behind > 0)">
             ↑{{ status.ahead }} ↓{{ status.behind }}
           </template>
-          <template v-else>Clean remote state</template>
+          <template v-else>{{ t("sourceControl.cleanRemoteState") }}</template>
         </span>
       </div>
 
@@ -567,21 +575,23 @@ onBeforeUnmount(() => {
         <div v-if="entries.length === 0" class="grid h-full place-items-center p-4 text-center">
           <div class="space-y-1">
             <NIcon :component="CheckmarkCircleOutline" :size="22" class="text-emerald-500" />
-            <div class="text-[12px] text-muted-foreground">No changes</div>
+            <div class="text-[12px] text-muted-foreground">
+              {{ t("sourceControl.noChanges") }}
+            </div>
           </div>
         </div>
 
         <div v-else class="space-y-0.5 px-1">
           <div class="flex items-center gap-1 px-1.5 pb-1 pt-0.5">
             <div class="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
-              Changes · {{ changedCount }}
+              {{ t("sourceControl.changes") }} · {{ changedCount }}
             </div>
             <NButton
               size="tiny"
               quaternary
               data-stage-all
-              title="Stage all"
-              aria-label="Stage all"
+              :title="t('sourceControl.stageAll')"
+              :aria-label="t('sourceControl.stageAll')"
               :loading="busyAction === 'stage-all'"
               :disabled="stageAllPaths.length === 0 || (busyAction !== null && busyAction !== 'stage-all')"
               @click="stageAll"
@@ -592,8 +602,8 @@ onBeforeUnmount(() => {
               size="tiny"
               quaternary
               data-unstage-all
-              title="Unstage all"
-              aria-label="Unstage all"
+              :title="t('sourceControl.unstageAll')"
+              :aria-label="t('sourceControl.unstageAll')"
               :loading="busyAction === 'unstage-all'"
               :disabled="unstageAllPaths.length === 0 || (busyAction !== null && busyAction !== 'unstage-all')"
               @click="unstageAll"
@@ -604,8 +614,8 @@ onBeforeUnmount(() => {
               size="tiny"
               quaternary
               data-discard-all
-              title="Discard all unstaged changes"
-              aria-label="Discard all unstaged changes"
+              :title="t('sourceControl.discardAllUnstaged')"
+              :aria-label="t('sourceControl.discardAllUnstaged')"
               :loading="busyAction === 'discard-all'"
               :disabled="discardAllEntries.length === 0 || (busyAction !== null && busyAction !== 'discard-all')"
               @click="confirmDiscardAll"
@@ -639,8 +649,8 @@ onBeforeUnmount(() => {
               quaternary
               type="error"
               :data-discard-file="entry.path"
-              title="Discard changes"
-              aria-label="Discard changes"
+              :title="t('sourceControl.discardChanges')"
+              :aria-label="t('sourceControl.discardChanges')"
               :loading="busyAction === `discard:${entry.path}`"
               :disabled="busyAction !== null && busyAction !== `discard:${entry.path}`"
               @click.stop="confirmDiscardFile(entry)"
@@ -652,8 +662,8 @@ onBeforeUnmount(() => {
               size="tiny"
               quaternary
               :data-unstage-file="entry.path"
-              title="Unstage"
-              aria-label="Unstage"
+              :title="t('sourceControl.unstage')"
+              :aria-label="t('sourceControl.unstage')"
               :loading="busyAction === `unstage:${entry.path}`"
               :disabled="busyAction !== null && busyAction !== `unstage:${entry.path}`"
               @click.stop="unstageFile(entry)"
@@ -665,8 +675,8 @@ onBeforeUnmount(() => {
               size="tiny"
               quaternary
               :data-stage-file="entry.path"
-              title="Stage"
-              aria-label="Stage"
+              :title="t('sourceControl.stage')"
+              :aria-label="t('sourceControl.stage')"
               :loading="busyAction === `stage:${entry.path}`"
               :disabled="busyAction !== null && busyAction !== `stage:${entry.path}`"
               @click.stop="stageFile(entry)"
@@ -682,14 +692,14 @@ onBeforeUnmount(() => {
           v-model:value="commitMessage"
           type="textarea"
           size="small"
-          placeholder="Commit message"
+          :placeholder="t('sourceControl.commitMessage')"
           :autosize="{ minRows: 2, maxRows: 4 }"
           :input-props="commitInputProps"
           @keydown="handleCommitKeydown"
         />
         <div class="flex items-center gap-2">
           <span class="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
-            {{ stagedCount }} staged
+            {{ t("sourceControl.stagedCount", { count: stagedCount }) }}
           </span>
           <NButton
             size="small"
@@ -699,7 +709,7 @@ onBeforeUnmount(() => {
             :loading="busyAction === 'commit'"
             @click="commit"
           >
-            Commit
+            {{ t("common.commit") }}
           </NButton>
         </div>
         <div v-if="actionError" class="text-[11px] text-destructive">{{ actionError }}</div>

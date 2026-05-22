@@ -1,6 +1,9 @@
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { LazyStore } from "@tauri-apps/plugin-store";
+import type { LanguagePref } from "@/modules/i18n/types";
 import type { WorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
+
+export type { LanguagePref } from "@/modules/i18n/types";
 
 export type ThemePref = "system" | "light" | "dark";
 export type FileOpenMode = "preview" | "pinned";
@@ -39,6 +42,7 @@ export const EDITOR_THEME_LABELS: Record<EditorThemeId, string> = {
 
 export type Preferences = {
   theme: ThemePref;
+  language: LanguagePref;
   editorTheme: EditorThemeId;
   autostart: boolean;
   restoreWindowState: boolean;
@@ -60,6 +64,7 @@ export type Preferences = {
 
 const STORE_PATH = "nexterm-settings.json";
 const KEY_THEME = "theme";
+const KEY_LANGUAGE = "language";
 const KEY_EDITOR_THEME = "editorTheme";
 const KEY_AUTOSTART = "autostart";
 const KEY_RESTORE_WINDOW = "restoreWindowState";
@@ -149,6 +154,7 @@ export const TERMINAL_SCROLLBACK_PRESETS = [
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: "system",
+  language: "system",
   editorTheme: "atomone",
   autostart: false,
   restoreWindowState: true,
@@ -184,6 +190,7 @@ export async function loadPreferences(): Promise<Preferences> {
   const get = <T>(k: string): T | undefined => map.get(k) as T | undefined;
   return {
     theme: get<ThemePref>(KEY_THEME) ?? DEFAULT_PREFERENCES.theme,
+    language: get<LanguagePref>(KEY_LANGUAGE) ?? DEFAULT_PREFERENCES.language,
     editorTheme:
       get<EditorThemeId>(KEY_EDITOR_THEME) ?? DEFAULT_PREFERENCES.editorTheme,
     autostart: get<boolean>(KEY_AUTOSTART) ?? DEFAULT_PREFERENCES.autostart,
@@ -236,6 +243,10 @@ export async function loadPreferences(): Promise<Preferences> {
 
 export async function setTheme(value: ThemePref): Promise<void> {
   await writePref(KEY_THEME, value);
+}
+
+export async function setLanguage(value: LanguagePref): Promise<void> {
+  await writePref(KEY_LANGUAGE, value);
 }
 
 export async function setEditorTheme(value: EditorThemeId): Promise<void> {
@@ -342,6 +353,7 @@ export async function onPreferencesChange(
 ): Promise<UnlistenFn> {
   const map: Record<string, PrefKey> = {
     [KEY_THEME]: "theme",
+    [KEY_LANGUAGE]: "language",
     [KEY_EDITOR_THEME]: "editorTheme",
     [KEY_AUTOSTART]: "autostart",
     [KEY_RESTORE_WINDOW]: "restoreWindowState",

@@ -7,6 +7,7 @@ import {
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NSpin } from "naive-ui";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { t } from "@/modules/i18n/translate";
 import type { WorkspaceFsChangedEvent } from "@/lib/native";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import ExplorerContextMenu, {
@@ -510,15 +511,15 @@ onBeforeUnmount(() => {
           class="shrink-0 text-muted-foreground"
         />
         <span class="truncate text-[12px] font-medium text-foreground/85">
-          {{ rootName || "Explorer" }}
+          {{ rootName || t("common.explorer") }}
         </span>
       </div>
       <NButton
         size="tiny"
         quaternary
         data-toggle-search
-        title="Search files"
-        aria-label="Search files"
+        :title="t('explorer.searchFilesTitle')"
+        :aria-label="t('explorer.searchFilesTitle')"
         :disabled="!rootPath"
         @click="isSearchOpen = !isSearchOpen"
       >
@@ -528,8 +529,8 @@ onBeforeUnmount(() => {
         size="tiny"
         quaternary
         data-new-file
-        title="New file"
-        aria-label="New file"
+        :title="t('explorer.newFile')"
+        :aria-label="t('explorer.newFile')"
         :disabled="!rootPath"
         @click="beginCreate(rootPath, 'file')"
       >
@@ -539,8 +540,8 @@ onBeforeUnmount(() => {
         size="tiny"
         quaternary
         data-new-folder
-        title="New folder"
-        aria-label="New folder"
+        :title="t('explorer.newFolder')"
+        :aria-label="t('explorer.newFolder')"
         :disabled="!rootPath"
         @click="beginCreate(rootPath, 'dir')"
       >
@@ -549,8 +550,8 @@ onBeforeUnmount(() => {
       <NButton
         size="tiny"
         quaternary
-        title="Refresh"
-        aria-label="Refresh"
+        :title="t('common.refresh')"
+        :aria-label="t('common.refresh')"
         :disabled="!rootPath"
         @click="refreshPath()"
       >
@@ -559,7 +560,9 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="!rootPath" class="grid min-h-0 flex-1 place-items-center p-4 text-center">
-      <div class="text-[12px] text-muted-foreground">No current directory</div>
+      <div class="text-[12px] text-muted-foreground">
+        {{ t("common.noCurrentDirectory") }}
+      </div>
     </div>
 
     <template v-else>
@@ -589,7 +592,7 @@ onBeforeUnmount(() => {
           class="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground"
         >
           <NSpin size="small" />
-          <span>Loading...</span>
+          <span>{{ t("explorer.loading") }}</span>
         </div>
         <div
           v-else-if="rootState?.status === 'error'"
