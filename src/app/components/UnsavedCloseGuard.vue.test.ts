@@ -12,6 +12,7 @@ const windowMock = vi.hoisted(() => {
     closeRequestedHandlers,
     currentWindow: {
       close: vi.fn(async () => {}),
+      destroy: vi.fn(async () => {}),
       onCloseRequested: vi.fn(async (handler) => {
         closeRequestedHandlers.push(handler);
         return vi.fn();
@@ -82,6 +83,7 @@ describe("UnsavedCloseGuard", () => {
 
       expect(preventDefault).toHaveBeenCalledTimes(1);
       expect(windowMock.currentWindow.close).not.toHaveBeenCalled();
+      expect(windowMock.currentWindow.destroy).not.toHaveBeenCalled();
       expect(document.body.textContent).toContain("Exit with unsaved files?");
       expect(document.body.textContent).toContain("main.ts");
 
@@ -89,7 +91,8 @@ describe("UnsavedCloseGuard", () => {
       await nextTick();
       await flushPromises();
 
-      expect(windowMock.currentWindow.close).toHaveBeenCalledTimes(1);
+      expect(windowMock.currentWindow.close).not.toHaveBeenCalled();
+      expect(windowMock.currentWindow.destroy).toHaveBeenCalledTimes(1);
 
       const secondPreventDefault = vi.fn();
       await windowMock.closeRequestedHandlers[0]?.({
@@ -97,6 +100,46 @@ describe("UnsavedCloseGuard", () => {
       });
 
       expect(secondPreventDefault).not.toHaveBeenCalled();
+    } finally {
+      wrapper.unmount();
+      host.remove();
+      delete (window as typeof window & { __TAURI_INTERNALS__?: unknown })
+        .__TAURI_INTERNALS__;
+    }
+  });
+
+  it("allows the native window to close when editors are clean", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const wrapper = mount(
+      {
+        components: { NDialogProvider, UnsavedCloseGuard },
+        setup() {
+          return {
+            tabs: dirtyEditorTabs.map((tab) =>
+              tab.kind === "editor" ? { ...tab, dirty: false } : tab,
+            ),
+          };
+        },
+        template:
+          "<NDialogProvider><UnsavedCloseGuard :tabs=\"tabs\" /></NDialogProvider>",
+      },
+      { attachTo: host },
+    );
+
+    try {
+      await nextTick();
+      await flushPromises();
+
+      const preventDefault = vi.fn();
+      await windowMock.closeRequestedHandlers[0]?.({ preventDefault });
+      await nextTick();
+      await flushPromises();
+
+      expect(preventDefault).not.toHaveBeenCalled();
+      expect(document.body.textContent).not.toContain("Exit with unsaved files?");
+      expect(windowMock.currentWindow.close).not.toHaveBeenCalled();
+      expect(windowMock.currentWindow.destroy).not.toHaveBeenCalled();
     } finally {
       wrapper.unmount();
       host.remove();

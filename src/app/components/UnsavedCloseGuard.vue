@@ -54,10 +54,10 @@ function closeWindowWithoutSaving() {
   allowWindowClose.value = true;
   resetWindowCloseDialog();
   getCurrentWindow()
-    .close()
+    .destroy()
     .catch((error) => {
       allowWindowClose.value = false;
-      console.error("window.close failed:", error);
+      console.error("window.destroy failed:", error);
     });
 }
 
