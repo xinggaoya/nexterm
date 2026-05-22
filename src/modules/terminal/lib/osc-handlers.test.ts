@@ -4,6 +4,7 @@ import {
   createShellIntegrationState,
   registerCwdHandler,
   registerPromptTracker,
+  registerTitleHandler,
 } from "./osc-handlers";
 
 /**
@@ -94,5 +95,49 @@ describe("OSC 7 cwd handler — gated by OSC 133 in-command state", () => {
 
     handlers.get(7)?.("file:///C:/Users/me/project");
     expect(onCwd).toHaveBeenCalledWith("C:/Users/me/project");
+  });
+});
+
+describe("OSC title handler", () => {
+  it("accepts OSC 0 and OSC 2 title updates", () => {
+    const { term, handlers } = makeFakeTerm();
+    const onTitle = vi.fn();
+    registerTitleHandler(term, onTitle);
+
+    handlers.get(0)?.("Claude Code");
+    handlers.get(2)?.("OpenAI Codex");
+
+    expect(onTitle).toHaveBeenNthCalledWith(1, "Claude Code");
+    expect(onTitle).toHaveBeenNthCalledWith(2, "OpenAI Codex");
+  });
+
+  it("ignores blank terminal titles", () => {
+    const { term, handlers } = makeFakeTerm();
+    const onTitle = vi.fn();
+    registerTitleHandler(term, onTitle);
+
+    handlers.get(2)?.(" \t\n ");
+
+    expect(onTitle).not.toHaveBeenCalled();
+  });
+
+  it("sanitizes control characters and caps long titles", () => {
+    const { term, handlers } = makeFakeTerm();
+    const onTitle = vi.fn();
+    registerTitleHandler(term, onTitle);
+
+    handlers.get(2)?.(`  ${"a".repeat(130)}\x1b[31m  `);
+
+    expect(onTitle).toHaveBeenCalledWith("a".repeat(120));
+  });
+
+  it("strips embedded ANSI escape sequences from titles", () => {
+    const { term, handlers } = makeFakeTerm();
+    const onTitle = vi.fn();
+    registerTitleHandler(term, onTitle);
+
+    handlers.get(2)?.("OpenAI\x1b[31m Codex");
+
+    expect(onTitle).toHaveBeenCalledWith("OpenAI Codex");
   });
 });

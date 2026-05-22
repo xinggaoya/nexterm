@@ -1,4 +1,4 @@
-import type { GitChangedFile } from "@/lib/native";
+import type { GitChangedFile, GitDiscardEntry } from "@/lib/native";
 
 export type DiffMode = "+" | "-";
 export type CheckState = "checked" | "indeterminate" | "unchecked";
@@ -74,4 +74,20 @@ export function buildSourceControlEntries(
 
 export function getPrimaryDiffMode(entry: SourceControlFileEntry): DiffMode {
   return entry.staged ? "+" : "-";
+}
+
+export function pathsToStage(entries: SourceControlFileEntry[]): string[] {
+  return entries.filter((entry) => entry.unstaged).map((entry) => entry.path);
+}
+
+export function pathsToUnstage(entries: SourceControlFileEntry[]): string[] {
+  return entries.filter((entry) => entry.staged).map((entry) => entry.path);
+}
+
+export function discardEntriesForEntries(
+  entries: SourceControlFileEntry[],
+): GitDiscardEntry[] {
+  return entries
+    .filter((entry) => entry.unstaged)
+    .map((entry) => ({ path: entry.path, untracked: entry.untracked }));
 }

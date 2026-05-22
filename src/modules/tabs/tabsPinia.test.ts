@@ -308,4 +308,45 @@ describe("tabs pinia store", () => {
       paneTree: { kind: "leaf", id: 2, cwd: "/next" },
     });
   });
+
+  it("tracks terminal titles per leaf and syncs the active leaf title", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init("/repo");
+    tabs.splitActivePane(1, "row");
+
+    tabs.setLeafTitle(2, "left cli");
+
+    expect(tabs.tabs[0]).toMatchObject({
+      activeLeafId: 4,
+      terminalTitle: undefined,
+      paneTree: {
+        kind: "split",
+        children: [
+          { kind: "leaf", id: 2, terminalTitle: "left cli" },
+          { kind: "leaf", id: 4 },
+        ],
+      },
+    });
+
+    tabs.setLeafTitle(4, "right cli");
+
+    expect(tabs.tabs[0]).toMatchObject({
+      activeLeafId: 4,
+      terminalTitle: "right cli",
+      paneTree: {
+        kind: "split",
+        children: [
+          { kind: "leaf", id: 2, terminalTitle: "left cli" },
+          { kind: "leaf", id: 4, terminalTitle: "right cli" },
+        ],
+      },
+    });
+
+    tabs.focusPane(1, 2);
+
+    expect(tabs.tabs[0]).toMatchObject({
+      activeLeafId: 2,
+      terminalTitle: "left cli",
+    });
+  });
 });

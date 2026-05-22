@@ -8,9 +8,9 @@ vi.mock("./TerminalPane.vue", () => ({
   default: {
     name: "TerminalPane",
     props: ["leafId", "visible", "focused", "initialCwd"],
-    emits: ["searchReady", "exit", "cwd"],
+    emits: ["searchReady", "exit", "cwd", "title"],
     template:
-      '<div class="terminal-pane" :data-leaf="leafId" @click="$emit(\'cwd\', leafId, `/cwd/${leafId}`)" />',
+      '<div class="terminal-pane" :data-leaf="leafId"><button data-terminal-cwd @click="$emit(\'cwd\', leafId, `/cwd/${leafId}`)" /><button data-terminal-title @click="$emit(\'title\', leafId, `title-${leafId}`)" /></div>',
   },
 }));
 
@@ -65,5 +65,27 @@ describe("TerminalStack.vue", () => {
     await wrapper.find("[data-pane-leaf='70']").trigger("mousedown");
 
     expect(wrapper.emitted("focusLeaf")).toEqual([[7, 70]]);
+  });
+
+  it("emits title updates from terminal leaves", async () => {
+    const wrapper = mount(TerminalStack, {
+      global: { plugins: [createPinia()] },
+      props: {
+        tabs: [
+          {
+            id: 7,
+            kind: "terminal",
+            title: "shell",
+            paneTree: { kind: "leaf", id: 70 },
+            activeLeafId: 70,
+          },
+        ],
+        activeId: 7,
+      },
+    });
+
+    await wrapper.find("[data-terminal-title]").trigger("click");
+
+    expect(wrapper.emitted("title")).toEqual([[70, "title-70"]]);
   });
 });

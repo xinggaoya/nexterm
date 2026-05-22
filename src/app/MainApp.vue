@@ -382,7 +382,8 @@ function splitActivePane(dir: SplitDir) {
 }
 
 function openFileTab(path: string, pin: boolean) {
-  tabs.openFileTab(path, pin);
+  const shouldPin = pin || prefs.fileOpenMode === "pinned";
+  tabs.openFileTab(path, shouldPin);
 }
 
 function openMarkdownPreview(path: string) {
@@ -485,6 +486,7 @@ watch([leftPanelOpen, rightPanelOpen], () => {
               :right-panel-open="rightPanelOpen"
               @select-tab="(id) => tabs.setActiveId(id)"
               @close-tab="(id) => tabs.closeTab(id)"
+              @pin-tab="(id) => tabs.pinTab(id)"
               @new-tab="newTerminalTab"
               @new-private-tab="newPrivateTerminalTab"
               @split-pane="splitActivePane"
@@ -551,6 +553,7 @@ watch([leftPanelOpen, rightPanelOpen], () => {
                               :active-id="tabs.activeId"
                               @focus-leaf="(tabId, leafId) => tabs.focusPane(tabId, leafId)"
                               @cwd="(leafId, cwd) => tabs.setLeafCwd(leafId, cwd)"
+                              @title="(leafId, title) => tabs.setLeafTitle(leafId, title)"
                             />
                           </div>
 

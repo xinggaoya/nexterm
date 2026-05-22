@@ -19,6 +19,7 @@ import {
   TERMINAL_FONT_SIZE_MIN,
   TERMINAL_SCROLLBACK_PRESETS,
   type EditorThemeId,
+  type FileOpenMode,
   type ThemePref,
 } from "@/modules/settings/store";
 
@@ -34,6 +35,11 @@ const editorThemeOptions = EDITOR_THEMES.map((value) => ({
   label: EDITOR_THEME_LABELS[value],
   value,
 }));
+
+const fileOpenModeOptions: { label: string; value: FileOpenMode }[] = [
+  { label: "Preview first", value: "preview" },
+  { label: "Open pinned", value: "pinned" },
+];
 
 const scrollbackOptions = computed(() =>
   TERMINAL_SCROLLBACK_PRESETS.map((value) => ({ label: value.toLocaleString(), value })),
@@ -93,6 +99,13 @@ const scrollbackOptions = computed(() =>
 
     <NCard size="small" title="Editor" embedded>
       <NForm label-placement="left" label-width="150" size="small">
+        <NFormItem label="File click behavior">
+          <NSelect
+            :value="prefs.fileOpenMode"
+            :options="fileOpenModeOptions"
+            @update:value="(value) => prefs.updateFileOpenMode(value as FileOpenMode)"
+          />
+        </NFormItem>
         <NFormItem label="Vim mode">
           <NSwitch :value="prefs.vimMode" @update:value="prefs.updateVimMode" />
         </NFormItem>

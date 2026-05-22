@@ -5,6 +5,7 @@ import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import MainApp from "./MainApp.vue";
 import { applyTerminalSessionTheme } from "@/modules/terminal";
+import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import {
   currentWorkspaceEnv,
@@ -39,9 +40,9 @@ vi.mock("@/components/WindowControls.vue", () => ({
 vi.mock("@/modules/terminal/TerminalStack.vue", () => ({
   default: {
     props: ["tabs", "activeId"],
-    emits: ["focusLeaf", "cwd", "exit", "searchReady"],
+    emits: ["focusLeaf", "cwd", "title", "exit", "searchReady"],
     template:
-      '<div data-terminal-stack>{{ tabs.length }}:{{ activeId }}<button data-terminal-cd @click="$emit(\'cwd\', 2, \'/tmp\')"></button></div>',
+      '<div data-terminal-stack>{{ tabs.length }}:{{ activeId }}<button data-terminal-cd @click="$emit(\'cwd\', 2, \'/tmp\')"></button><button data-terminal-title @click="$emit(\'title\', 2, \'OpenAI Codex\')"></button></div>',
   },
 }));
 
@@ -54,7 +55,7 @@ vi.mock("@/modules/explorer/FileExplorer.vue", () => ({
     props: ["rootPath"],
     emits: ["openFile"],
     template:
-      '<aside data-file-explorer>{{ rootPath ?? "none" }}<button data-open-file @click="$emit(\'openFile\', \'/repo/src/main.ts\', false)">open</button></aside>',
+      '<aside data-file-explorer>{{ rootPath ?? "none" }}<button data-open-file @click="$emit(\'openFile\', \'/repo/src/main.ts\', false)">open</button><button data-open-other-file @click="$emit(\'openFile\', \'/repo/src/other.ts\', false)">other</button></aside>',
   },
 }));
 
@@ -243,6 +244,24 @@ describe("MainApp.vue", () => {
     expect(tabs.activeId).toBe(3);
   });
 
+  it("updates terminal tab titles from terminal title events", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia] },
+    });
+    const tabs = useTabsPiniaStore();
+
+    await wrapper.find("[data-terminal-title]").trigger("click");
+
+    expect(tabs.tabs[0]).toMatchObject({
+      kind: "terminal",
+      terminalTitle: "OpenAI Codex",
+      paneTree: { kind: "leaf", id: 2, terminalTitle: "OpenAI Codex" },
+    });
+  });
+
   it("switches to a WSL workspace and resets terminal tabs to the WSL home", async () => {
     const pinia = createPinia();
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
@@ -340,6 +359,77 @@ describe("MainApp.vue", () => {
     expect(tabs.tabs[1]).toMatchObject({
       kind: "editor",
       dirty: true,
+      preview: false,
+    });
+  });
+
+  it("pins editor preview tabs from a tab double click", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia] },
+    });
+    const tabs = useTabsPiniaStore();
+
+    await nextTick();
+    await wrapper.find("[data-open-file]").trigger("click");
+    await nextTick();
+
+    expect(tabs.tabs[1]).toMatchObject({
+      kind: "editor",
+      path: "/repo/src/main.ts",
+      preview: true,
+    });
+
+    await wrapper.find("[data-tab-id='3']").trigger("dblclick");
+    await nextTick();
+
+    expect(tabs.tabs[1]).toMatchObject({
+      kind: "editor",
+      path: "/repo/src/main.ts",
+      preview: false,
+    });
+
+    await wrapper.find("[data-open-other-file]").trigger("click");
+
+    expect(tabs.tabs.map((tab) => tab.id)).toEqual([1, 3, 4]);
+    expect(tabs.tabs[1]).toMatchObject({
+      kind: "editor",
+      path: "/repo/src/main.ts",
+      preview: false,
+    });
+    expect(tabs.tabs[2]).toMatchObject({
+      kind: "editor",
+      path: "/repo/src/other.ts",
+      preview: true,
+    });
+  });
+
+  it("opens clicked files as pinned editor tabs when previews are disabled", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia] },
+    });
+    const prefs = usePreferencesPiniaStore();
+    const tabs = useTabsPiniaStore();
+    prefs.fileOpenMode = "pinned";
+
+    await nextTick();
+    await wrapper.find("[data-open-file]").trigger("click");
+    await wrapper.find("[data-open-other-file]").trigger("click");
+
+    expect(tabs.tabs.map((tab) => tab.id)).toEqual([1, 3, 4]);
+    expect(tabs.tabs[1]).toMatchObject({
+      kind: "editor",
+      path: "/repo/src/main.ts",
+      preview: false,
+    });
+    expect(tabs.tabs[2]).toMatchObject({
+      kind: "editor",
+      path: "/repo/src/other.ts",
       preview: false,
     });
   });

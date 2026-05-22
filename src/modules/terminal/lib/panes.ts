@@ -3,7 +3,7 @@ export type PaneId = number;
 export type SplitDir = "row" | "col";
 
 export type PaneNode =
-  | { kind: "leaf"; id: PaneId; cwd?: string }
+  | { kind: "leaf"; id: PaneId; cwd?: string; terminalTitle?: string }
   | {
       kind: "split";
       id: PaneId;
@@ -31,6 +31,15 @@ export function findLeafCwd(n: PaneNode, id: PaneId): string | undefined {
   return undefined;
 }
 
+export function findLeafTitle(n: PaneNode, id: PaneId): string | undefined {
+  if (isLeaf(n)) return n.id === id ? n.terminalTitle : undefined;
+  for (const c of n.children) {
+    const found = findLeafTitle(c, id);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
 export function setLeafCwd(
   n: PaneNode,
   id: PaneId,
@@ -43,6 +52,24 @@ export function setLeafCwd(
   let changed = false;
   const next = n.children.map((c) => {
     const u = setLeafCwd(c, id, cwd);
+    if (u !== c) changed = true;
+    return u;
+  });
+  return changed ? { ...n, children: next } : n;
+}
+
+export function setLeafTitle(
+  n: PaneNode,
+  id: PaneId,
+  terminalTitle: string,
+): PaneNode {
+  if (isLeaf(n)) {
+    if (n.id !== id || n.terminalTitle === terminalTitle) return n;
+    return { ...n, terminalTitle };
+  }
+  let changed = false;
+  const next = n.children.map((c) => {
+    const u = setLeafTitle(c, id, terminalTitle);
     if (u !== c) changed = true;
     return u;
   });

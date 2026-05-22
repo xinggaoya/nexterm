@@ -14,6 +14,7 @@ describe("preferences snapshot", () => {
       DEFAULT_PREFERENCES.terminalFontSize,
     );
     expect(readPreferencesSnapshot().theme).toBe(DEFAULT_PREFERENCES.theme);
+    expect(readPreferencesSnapshot().fileOpenMode).toBe("preview");
   });
 
   it("replaces the whole snapshot without keeping caller object identity", () => {
@@ -28,7 +29,9 @@ describe("preferences snapshot", () => {
   it("patches individual preferences for cross-store synchronization", () => {
     replacePreferencesSnapshot(DEFAULT_PREFERENCES);
     patchPreferencesSnapshot("terminalFontFamily", "Fira Code");
+    patchPreferencesSnapshot("fileOpenMode", "pinned");
 
     expect(readPreferencesSnapshot().terminalFontFamily).toBe("Fira Code");
+    expect(readPreferencesSnapshot().fileOpenMode).toBe("pinned");
   });
 });
