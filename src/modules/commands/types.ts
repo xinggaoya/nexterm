@@ -2,6 +2,7 @@ export type CommandId =
   | "workbench.commandPalette.open"
   | "workbench.quickOpen.open"
   | "workbench.closeActiveTab"
+  | "tasks.run"
   | "terminal.new"
   | "terminal.splitHorizontal"
   | "terminal.splitVertical"
@@ -26,6 +27,7 @@ export type CommandCategory =
   | "terminal"
   | "panel"
   | "settings"
+  | "tasks"
   | "git";
 
 export type CommandSpec = {
