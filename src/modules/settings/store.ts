@@ -1,5 +1,6 @@
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { LazyStore } from "@tauri-apps/plugin-store";
+import type { CommandId, KeybindingOverrides } from "@/modules/commands/types";
 import type { LanguagePref } from "@/modules/i18n/types";
 import type { WorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
 
@@ -57,6 +58,7 @@ export type Preferences = {
   remoteTerminalEnabled: boolean;
   remoteTerminalPort: number;
   remoteTerminalToken: string;
+  keybindings: KeybindingOverrides;
   lastWslDistro: string | null;
   lastWorkspace: StoredWorkspace | null;
   recentWorkspaces: StoredWorkspace[];
@@ -83,6 +85,7 @@ const KEY_TERMINAL_SCROLLBACK = "terminalScrollback";
 const KEY_REMOTE_TERMINAL_ENABLED = "remoteTerminalEnabled";
 const KEY_REMOTE_TERMINAL_PORT = "remoteTerminalPort";
 const KEY_REMOTE_TERMINAL_TOKEN = "remoteTerminalToken";
+const KEY_KEYBINDINGS = "keybindings";
 const KEY_LAST_WSL_DISTRO = "lastWslDistro";
 const KEY_LAST_WORKSPACE = "lastWorkspace";
 const KEY_RECENT_WORKSPACES = "recentWorkspaces";
@@ -176,6 +179,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   remoteTerminalEnabled: false,
   remoteTerminalPort: REMOTE_TERMINAL_PORT_DEFAULT,
   remoteTerminalToken: "",
+  keybindings: {},
   lastWslDistro: null,
   lastWorkspace: null,
   recentWorkspaces: [],
@@ -192,6 +196,17 @@ async function writePref<T>(key: string, value: T): Promise<void> {
   await store.set(key, value);
   await store.save();
   await emit(PREFS_CHANGED_EVENT, { key, value });
+}
+
+function normalizeKeybindingOverrides(value: unknown): KeybindingOverrides {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result: KeybindingOverrides = {};
+  for (const [id, keybinding] of Object.entries(value)) {
+    if (typeof keybinding === "string" || keybinding === null) {
+      result[id as CommandId] = keybinding;
+    }
+  }
+  return result;
 }
 
 export async function loadPreferences(): Promise<Preferences> {
@@ -240,6 +255,7 @@ export async function loadPreferences(): Promise<Preferences> {
     remoteTerminalToken:
       get<string>(KEY_REMOTE_TERMINAL_TOKEN) ??
       DEFAULT_PREFERENCES.remoteTerminalToken,
+    keybindings: normalizeKeybindingOverrides(get(KEY_KEYBINDINGS)),
     lastWslDistro:
       get<string | null>(KEY_LAST_WSL_DISTRO) ??
       DEFAULT_PREFERENCES.lastWslDistro,
@@ -347,6 +363,12 @@ export async function setRemoteTerminalToken(value: string): Promise<void> {
   await writePref(KEY_REMOTE_TERMINAL_TOKEN, value.trim());
 }
 
+export async function setKeybindings(
+  value: KeybindingOverrides,
+): Promise<void> {
+  await writePref(KEY_KEYBINDINGS, value);
+}
+
 export async function setLastWslDistro(value: string | null): Promise<void> {
   await writePref(KEY_LAST_WSL_DISTRO, value);
 }
@@ -405,6 +427,7 @@ export async function onPreferencesChange(
     [KEY_REMOTE_TERMINAL_ENABLED]: "remoteTerminalEnabled",
     [KEY_REMOTE_TERMINAL_PORT]: "remoteTerminalPort",
     [KEY_REMOTE_TERMINAL_TOKEN]: "remoteTerminalToken",
+    [KEY_KEYBINDINGS]: "keybindings",
     [KEY_LAST_WSL_DISTRO]: "lastWslDistro",
     [KEY_LAST_WORKSPACE]: "lastWorkspace",
     [KEY_RECENT_WORKSPACES]: "recentWorkspaces",

@@ -8,6 +8,7 @@ import {
   GitCompareOutline,
   GlobeOutline,
   ReorderTwoOutline,
+  SearchOutline,
   SettingsOutline,
   TerminalOutline,
   TimeOutline,
@@ -49,6 +50,7 @@ const emit = defineEmits<{
   newTab: [];
   chooseWorkspace: [];
   splitPane: [dir: SplitDir];
+  openCommandPalette: [];
   openSettings: [];
   toggleLeftPanel: [];
   toggleRightPanel: [];
@@ -470,6 +472,17 @@ onBeforeUnmount(() => {
         </NButton>
       </TooltipTitle>
       <div class="mx-0.5 h-4 w-px bg-border/60" />
+      <TooltipTitle :label="t('app.header.openCommandCenter')">
+        <NButton
+          data-open-command-palette
+          size="tiny"
+          quaternary
+          :aria-label="t('app.header.openCommandCenter')"
+          @click="emit('openCommandPalette')"
+        >
+          <template #icon><NIcon :component="SearchOutline" /></template>
+        </NButton>
+      </TooltipTitle>
       <TooltipTitle :label="t('common.settings')">
         <NButton
           data-open-settings
