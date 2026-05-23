@@ -22,6 +22,7 @@ export type PtySession = {
   id: number;
   write: (data: string) => Promise<void>;
   resize: (cols: number, rows: number) => Promise<void>;
+  updateMetadata: (patch: { title?: string; cwd?: string }) => Promise<void>;
   readTranscript: (
     sinceOffset: number,
     maxBytes?: number,
@@ -78,6 +79,12 @@ export async function openPty(
     id,
     write: (data) => invoke("pty_write", { id, data }),
     resize: (c, r) => invoke("pty_resize", { id, cols: c, rows: r }),
+    updateMetadata: (patch) =>
+      invoke("pty_update_metadata", {
+        id,
+        title: patch.title ?? null,
+        cwd: patch.cwd ?? null,
+      }),
     readTranscript: async (sinceOffset, maxBytes = TRANSCRIPT_READ_CHUNK) => {
       const raw = await invoke<RawTranscriptRead>("pty_read_transcript", {
         id,

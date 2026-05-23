@@ -49,6 +49,7 @@ export default defineConfig(async ({ mode }) => ({
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, "index.html"),
+        remote: path.resolve(__dirname, "remote.html"),
       },
       output: {
         manualChunks(id: string) {

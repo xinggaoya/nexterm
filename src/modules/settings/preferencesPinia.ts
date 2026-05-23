@@ -9,6 +9,9 @@ import {
   setFileOpenMode,
   setLanguage,
   setRestoreWindowState,
+  setRemoteTerminalEnabled,
+  setRemoteTerminalPort,
+  setRemoteTerminalToken,
   setShowHidden,
   setSourceControlPanelWidth,
   setTerminalFontFamily,
@@ -127,6 +130,21 @@ export const usePreferencesPiniaStore = defineStore("preferences", {
       this.terminalScrollback = value;
       patchPreferencesSnapshot("terminalScrollback", value);
       await setTerminalScrollback(value);
+    },
+    async updateRemoteTerminalEnabled(value: boolean) {
+      this.remoteTerminalEnabled = value;
+      patchPreferencesSnapshot("remoteTerminalEnabled", value);
+      await setRemoteTerminalEnabled(value);
+    },
+    async updateRemoteTerminalPort(value: number) {
+      this.remoteTerminalPort = value;
+      patchPreferencesSnapshot("remoteTerminalPort", value);
+      await setRemoteTerminalPort(value);
+    },
+    async updateRemoteTerminalToken(value: string) {
+      this.remoteTerminalToken = value;
+      patchPreferencesSnapshot("remoteTerminalToken", value);
+      await setRemoteTerminalToken(value);
     },
     async updateSourceControlPanelWidth(value: number) {
       this.sourceControlPanelWidth = value;

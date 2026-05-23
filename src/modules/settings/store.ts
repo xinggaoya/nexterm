@@ -54,6 +54,9 @@ export type Preferences = {
   terminalLetterSpacing: number;
   terminalFontSize: number;
   terminalScrollback: number;
+  remoteTerminalEnabled: boolean;
+  remoteTerminalPort: number;
+  remoteTerminalToken: string;
   lastWslDistro: string | null;
   lastWorkspace: StoredWorkspace | null;
   recentWorkspaces: StoredWorkspace[];
@@ -77,6 +80,9 @@ const KEY_TERMINAL_FONT_FAMILY = "terminalFontFamily";
 const KEY_TERMINAL_LETTER_SPACING = "terminalLetterSpacing";
 const KEY_TERMINAL_FONT_SIZE = "terminalFontSize";
 const KEY_TERMINAL_SCROLLBACK = "terminalScrollback";
+const KEY_REMOTE_TERMINAL_ENABLED = "remoteTerminalEnabled";
+const KEY_REMOTE_TERMINAL_PORT = "remoteTerminalPort";
+const KEY_REMOTE_TERMINAL_TOKEN = "remoteTerminalToken";
 const KEY_LAST_WSL_DISTRO = "lastWslDistro";
 const KEY_LAST_WORKSPACE = "lastWorkspace";
 const KEY_RECENT_WORKSPACES = "recentWorkspaces";
@@ -151,6 +157,7 @@ export const TERMINAL_SCROLLBACK_MAX = 50_000;
 export const TERMINAL_SCROLLBACK_PRESETS = [
   500, 1000, 2000, 5000, 10_000, 25_000,
 ] as const;
+export const REMOTE_TERMINAL_PORT_DEFAULT = 8765;
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: "system",
@@ -166,6 +173,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   terminalLetterSpacing: 0,
   terminalFontSize: TERMINAL_FONT_SIZE_DEFAULT,
   terminalScrollback: TERMINAL_SCROLLBACK_DEFAULT,
+  remoteTerminalEnabled: false,
+  remoteTerminalPort: REMOTE_TERMINAL_PORT_DEFAULT,
+  remoteTerminalToken: "",
   lastWslDistro: null,
   lastWorkspace: null,
   recentWorkspaces: [],
@@ -220,6 +230,16 @@ export async function loadPreferences(): Promise<Preferences> {
       get<number>(KEY_TERMINAL_SCROLLBACK) ??
         DEFAULT_PREFERENCES.terminalScrollback,
     ),
+    remoteTerminalEnabled:
+      get<boolean>(KEY_REMOTE_TERMINAL_ENABLED) ??
+      DEFAULT_PREFERENCES.remoteTerminalEnabled,
+    remoteTerminalPort: clampRemotePort(
+      get<number>(KEY_REMOTE_TERMINAL_PORT) ??
+        DEFAULT_PREFERENCES.remoteTerminalPort,
+    ),
+    remoteTerminalToken:
+      get<string>(KEY_REMOTE_TERMINAL_TOKEN) ??
+      DEFAULT_PREFERENCES.remoteTerminalToken,
     lastWslDistro:
       get<string | null>(KEY_LAST_WSL_DISTRO) ??
       DEFAULT_PREFERENCES.lastWslDistro,
@@ -310,6 +330,23 @@ export async function setTerminalScrollback(value: number): Promise<void> {
   await writePref(KEY_TERMINAL_SCROLLBACK, clampScrollback(value));
 }
 
+export async function setRemoteTerminalEnabled(value: boolean): Promise<void> {
+  await writePref(KEY_REMOTE_TERMINAL_ENABLED, value);
+}
+
+function clampRemotePort(value: number): number {
+  if (!Number.isFinite(value)) return REMOTE_TERMINAL_PORT_DEFAULT;
+  return Math.min(65535, Math.max(1, Math.round(value)));
+}
+
+export async function setRemoteTerminalPort(value: number): Promise<void> {
+  await writePref(KEY_REMOTE_TERMINAL_PORT, clampRemotePort(value));
+}
+
+export async function setRemoteTerminalToken(value: string): Promise<void> {
+  await writePref(KEY_REMOTE_TERMINAL_TOKEN, value.trim());
+}
+
 export async function setLastWslDistro(value: string | null): Promise<void> {
   await writePref(KEY_LAST_WSL_DISTRO, value);
 }
@@ -365,6 +402,9 @@ export async function onPreferencesChange(
     [KEY_TERMINAL_LETTER_SPACING]: "terminalLetterSpacing",
     [KEY_TERMINAL_FONT_SIZE]: "terminalFontSize",
     [KEY_TERMINAL_SCROLLBACK]: "terminalScrollback",
+    [KEY_REMOTE_TERMINAL_ENABLED]: "remoteTerminalEnabled",
+    [KEY_REMOTE_TERMINAL_PORT]: "remoteTerminalPort",
+    [KEY_REMOTE_TERMINAL_TOKEN]: "remoteTerminalToken",
     [KEY_LAST_WSL_DISTRO]: "lastWslDistro",
     [KEY_LAST_WORKSPACE]: "lastWorkspace",
     [KEY_RECENT_WORKSPACES]: "recentWorkspaces",
