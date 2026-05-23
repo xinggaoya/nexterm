@@ -122,9 +122,6 @@ const activeCwd = computed(() =>
   activeTab.value?.kind === "terminal" ? activeTab.value.cwd ?? null : null,
 );
 const workspaceRoot = computed(() => workspaceRootStore.rootPath);
-const privateActive = computed(
-  () => activeTab.value?.kind === "terminal" && activeTab.value.private === true,
-);
 const canSplitActiveTab = computed(() => {
   const tab = activeTab.value;
   if (!tab || tab.kind !== "terminal") return false;
@@ -329,11 +326,6 @@ async function listenWorkspaceFsChanges() {
 function newTerminalTab() {
   if (!workspaceRoot.value) return;
   tabs.newTab(workspaceRoot.value);
-}
-
-function newPrivateTerminalTab() {
-  if (!workspaceRoot.value) return;
-  tabs.newPrivateTab(workspaceRoot.value);
 }
 
 function sameWorkspaceEnv(a: WorkspaceEnv, b: WorkspaceEnv): boolean {
@@ -548,7 +540,6 @@ watch([leftPanelOpen, rightPanelOpen], () => {
               @pin-tab="(id) => tabs.pinTab(id)"
               @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement)"
               @new-tab="newTerminalTab"
-              @new-private-tab="newPrivateTerminalTab"
               @choose-workspace="chooseWorkspace"
               @split-pane="splitActivePane"
               @open-settings="openSettings"
@@ -720,7 +711,6 @@ watch([leftPanelOpen, rightPanelOpen], () => {
             <AppStatusBar
               :workspace-root="workspaceRoot"
               :terminal-cwd="activeCwd"
-              :private-active="privateActive"
               @workspace-change="switchWorkspace"
             />
 

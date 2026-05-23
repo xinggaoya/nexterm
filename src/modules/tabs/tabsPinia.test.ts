@@ -231,24 +231,6 @@ describe("tabs pinia store", () => {
     });
   });
 
-  it("creates private terminal tabs", () => {
-    const tabs = useTabsPiniaStore();
-    tabs.init();
-
-    const id = tabs.newPrivateTab("/secret");
-
-    expect(id).toBe(3);
-    expect(tabs.activeId).toBe(3);
-    expect(tabs.tabs[1]).toMatchObject({
-      id: 3,
-      kind: "terminal",
-      title: "private",
-      cwd: "/secret",
-      private: true,
-      activeLeafId: 4,
-    });
-  });
-
   it("closes terminal tabs and activates the previous tab", () => {
     const tabs = useTabsPiniaStore();
     tabs.init();

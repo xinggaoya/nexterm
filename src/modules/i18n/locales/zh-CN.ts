@@ -25,11 +25,9 @@ const zhCN = {
       gitDiff: "Git 差异",
       gitHistory: "Git 历史",
       markdown: "Markdown",
-      newPrivateTerminal: "新建私有终端",
       newTerminal: "新建终端",
       openFolder: "打开文件夹",
       preview: "预览",
-      privateTerminal: "私有终端",
       sourceControl: "源代码管理",
       splitDown: "向下拆分",
       splitRight: "向右拆分",
@@ -41,7 +39,6 @@ const zhCN = {
     status: {
       noWorkspace: "未打开工作区",
       openFolder: "打开文件夹",
-      private: "私有",
     },
     workspaceEnv: {
       title: "工作区环境",

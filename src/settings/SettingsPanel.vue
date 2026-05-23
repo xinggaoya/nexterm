@@ -6,6 +6,7 @@ import {
 } from "@vicons/ionicons5";
 import { NButton, NIcon } from "naive-ui";
 import { computed, ref } from "vue";
+import TooltipTitle from "@/components/TooltipTitle.vue";
 import {
   SETTINGS_DEFAULT_TAB,
   normalizeSettingsTab,
@@ -83,17 +84,17 @@ function selectTab(tab: SettingsTab) {
           <span>{{ t(tab.labelKey) }}</span>
         </button>
       </div>
-      <NButton
-        v-if="showClose"
-        data-close-settings
-        size="tiny"
-        quaternary
-        :title="t('settings.panel.close')"
-        :aria-label="t('settings.panel.close')"
-        @click="emit('close')"
-      >
-        <template #icon><NIcon :component="CloseOutline" /></template>
-      </NButton>
+      <TooltipTitle v-if="showClose" :label="t('settings.panel.close')">
+        <NButton
+          data-close-settings
+          size="tiny"
+          quaternary
+          :aria-label="t('settings.panel.close')"
+          @click="emit('close')"
+        >
+          <template #icon><NIcon :component="CloseOutline" /></template>
+        </NButton>
+      </TooltipTitle>
     </header>
 
     <main class="no-scrollbar min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-6">

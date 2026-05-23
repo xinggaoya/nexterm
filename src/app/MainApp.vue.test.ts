@@ -145,10 +145,10 @@ vi.mock("@/modules/git-history/GitHistoryStack.vue", () => ({
 
 vi.mock("./components/AppStatusBar.vue", () => ({
   default: {
-    props: ["workspaceRoot", "terminalCwd", "privateActive"],
+    props: ["workspaceRoot", "terminalCwd"],
     emits: ["workspaceChange"],
     template:
-      '<footer data-status-bar><span>{{ workspaceRoot ?? "No workspace" }}:{{ terminalCwd ?? "no-terminal" }}:{{ privateActive }}</span><button data-switch-wsl @click="$emit(\'workspaceChange\', { kind: \'wsl\', distro: \'Ubuntu\' })"></button><button data-switch-local @click="$emit(\'workspaceChange\', { kind: \'local\' })"></button></footer>',
+      '<footer data-status-bar><span>{{ workspaceRoot ?? "No workspace" }}:{{ terminalCwd ?? "no-terminal" }}</span><button data-switch-wsl @click="$emit(\'workspaceChange\', { kind: \'wsl\', distro: \'Ubuntu\' })"></button><button data-switch-local @click="$emit(\'workspaceChange\', { kind: \'local\' })"></button></footer>',
   },
 }));
 
@@ -297,38 +297,28 @@ describe("MainApp.vue", () => {
 
     expect(tabs.tabs).toHaveLength(2);
     expect(wrapper.find("[data-terminal-stack]").text()).toContain("2:3");
-
-    await wrapper.find("[data-new-private-tab]").trigger("click");
-
-    expect(tabs.tabs).toHaveLength(3);
-    expect(tabs.activeId).toBe(5);
-    expect(tabs.tabs[2]).toMatchObject({
-      id: 5,
-      kind: "terminal",
-      title: "private",
-      private: true,
-      activeLeafId: 6,
-      cwd: "/repo",
-    });
-    expect(wrapper.find("[data-status-bar]").text()).toContain("/repo:/repo:true");
+    expect(wrapper.find("[data-new-private-tab]").exists()).toBe(false);
 
     await wrapper.find("[data-split-row]").trigger("click");
 
-    expect(tabs.tabs[2]).toMatchObject({
-      activeLeafId: 8,
+    expect(tabs.tabs[1]).toMatchObject({
+      id: 3,
+      kind: "terminal",
+      activeLeafId: 6,
       paneTree: {
         kind: "split",
-        id: 7,
+        id: 5,
         dir: "row",
       },
     });
+    expect(wrapper.find("[data-status-bar]").text()).toContain("/repo:/repo");
 
     expect(wrapper.find("[data-close-active-tab]").exists()).toBe(false);
 
-    await wrapper.find("[data-close-tab-id='5']").trigger("click");
+    await wrapper.find("[data-close-tab-id='3']").trigger("click");
 
-    expect(tabs.tabs.map((tab) => tab.id)).toEqual([1, 3]);
-    expect(tabs.activeId).toBe(3);
+    expect(tabs.tabs.map((tab) => tab.id)).toEqual([1]);
+    expect(tabs.activeId).toBe(1);
   });
 
   it("opens settings inside the main window without invoking a Tauri settings window", async () => {

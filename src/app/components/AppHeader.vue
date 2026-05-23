@@ -7,7 +7,6 @@ import {
   GitCommitOutline,
   GitCompareOutline,
   GlobeOutline,
-  LockClosedOutline,
   ReorderTwoOutline,
   SettingsOutline,
   TerminalOutline,
@@ -16,6 +15,7 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { NButton, NIcon } from "naive-ui";
 import { onBeforeUnmount, ref, type Component } from "vue";
+import TooltipTitle from "@/components/TooltipTitle.vue";
 import WindowControls from "@/components/WindowControls.vue";
 import { IS_MAC } from "@/lib/platform";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
@@ -47,7 +47,6 @@ const emit = defineEmits<{
   closeTab: [id: number];
   pinTab: [id: number];
   newTab: [];
-  newPrivateTab: [];
   chooseWorkspace: [];
   splitPane: [dir: SplitDir];
   openSettings: [];
@@ -93,7 +92,7 @@ function basename(path: string): string {
 
 function tabKindLabel(tab: Tab): string {
   if (tab.kind === "terminal") {
-    return tab.private ? t("app.header.privateTerminal") : t("app.header.terminal");
+    return t("app.header.terminal");
   }
   if (tab.kind === "git-history") return t("app.header.gitHistory");
   if (tab.kind === "git-diff" || tab.kind === "git-commit-file") {
@@ -111,14 +110,6 @@ function tabLabel(tab: Tab): string {
 }
 
 function tabIcon(tab: Tab): TabIcon {
-  if (tab.kind === "terminal" && tab.private) {
-    return {
-      type: "component",
-      name: "private-terminal",
-      component: LockClosedOutline,
-      class: "text-amber-500",
-    };
-  }
   if (tab.kind === "terminal") {
     return { type: "component", name: "terminal", component: TerminalOutline };
   }
@@ -317,53 +308,46 @@ onBeforeUnmount(() => {
     ]"
   >
     <div class="flex shrink-0 items-center gap-0.5">
-      <button
-        type="button"
-        :data-toggle-left-panel="leftPanelOpen"
-        :title="t('app.header.sourceControl')"
-        :aria-label="t('app.header.toggleSourceControl')"
-        :class="[
-          'grid h-7 w-7 place-items-center rounded-md text-[12px] transition-colors',
-          leftPanelOpen
-            ? 'bg-accent text-foreground'
-            : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
-        ]"
-        @click="emit('toggleLeftPanel')"
-      >
-        <NIcon :component="GitCommitOutline" :size="15" />
-      </button>
-      <NButton
-        data-open-workspace
-        size="tiny"
-        secondary
-        :title="t('app.header.openFolder')"
-        :aria-label="t('app.header.openFolder')"
-        class="shrink-0"
-        @click="emit('chooseWorkspace')"
-      >
-        <template #icon><NIcon :component="FolderOpenOutline" /></template>
-        <span class="hidden xl:inline">{{ t("app.header.openFolder") }}</span>
-      </NButton>
-      <NButton
-        data-new-tab
-        size="tiny"
-        quaternary
-        :title="t('app.header.newTerminal')"
-        :aria-label="t('app.header.newTerminal')"
-        @click="emit('newTab')"
-      >
-        <template #icon><NIcon :component="AddOutline" /></template>
-      </NButton>
-      <NButton
-        data-new-private-tab
-        size="tiny"
-        quaternary
-        :title="t('app.header.newPrivateTerminal')"
-        :aria-label="t('app.header.newPrivateTerminal')"
-        @click="emit('newPrivateTab')"
-      >
-        <template #icon><NIcon :component="LockClosedOutline" /></template>
-      </NButton>
+      <TooltipTitle :label="t('app.header.sourceControl')">
+        <button
+          type="button"
+          :data-toggle-left-panel="leftPanelOpen"
+          :aria-label="t('app.header.toggleSourceControl')"
+          :class="[
+            'grid h-7 w-7 place-items-center rounded-md text-[12px] transition-colors',
+            leftPanelOpen
+              ? 'bg-accent text-foreground'
+              : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
+          ]"
+          @click="emit('toggleLeftPanel')"
+        >
+          <NIcon :component="GitCommitOutline" :size="15" />
+        </button>
+      </TooltipTitle>
+      <TooltipTitle :label="t('app.header.openFolder')">
+        <NButton
+          data-open-workspace
+          size="tiny"
+          secondary
+          :aria-label="t('app.header.openFolder')"
+          class="shrink-0"
+          @click="emit('chooseWorkspace')"
+        >
+          <template #icon><NIcon :component="FolderOpenOutline" /></template>
+          <span class="hidden xl:inline">{{ t("app.header.openFolder") }}</span>
+        </NButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('app.header.newTerminal')">
+        <NButton
+          data-new-tab
+          size="tiny"
+          quaternary
+          :aria-label="t('app.header.newTerminal')"
+          @click="emit('newTab')"
+        >
+          <template #icon><NIcon :component="AddOutline" /></template>
+        </NButton>
+      </TooltipTitle>
     </div>
 
     <div
@@ -432,21 +416,21 @@ onBeforeUnmount(() => {
               class="size-1.5 shrink-0 rounded-full bg-foreground/70"
             />
           </span>
-          <span
-            v-if="props.tabs.length > 1"
-            role="button"
-            tabindex="-1"
-            :data-close-tab-id="tab.id"
-            class="grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-70 group-hover:hover:opacity-100"
-            :title="t('app.header.closeTab')"
-            :aria-label="t('app.header.closeTab')"
-            @click.stop="emit('closeTab', tab.id)"
-            @pointerdown.stop
-            @keydown.enter.stop.prevent="emit('closeTab', tab.id)"
-            @keydown.space.stop.prevent="emit('closeTab', tab.id)"
-          >
-            <NIcon :component="CloseOutline" :size="11" />
-          </span>
+          <TooltipTitle v-if="props.tabs.length > 1" :label="t('app.header.closeTab')">
+            <span
+              role="button"
+              tabindex="-1"
+              :data-close-tab-id="tab.id"
+              class="grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-70 group-hover:hover:opacity-100"
+              :aria-label="t('app.header.closeTab')"
+              @click.stop="emit('closeTab', tab.id)"
+              @pointerdown.stop
+              @keydown.enter.stop.prevent="emit('closeTab', tab.id)"
+              @keydown.space.stop.prevent="emit('closeTab', tab.id)"
+            >
+              <NIcon :component="CloseOutline" :size="11" />
+            </span>
+          </TooltipTitle>
         </button>
         <div
           data-window-drag-region
@@ -461,54 +445,58 @@ onBeforeUnmount(() => {
       data-header-actions
       class="flex shrink-0 items-center gap-0.5 border-l border-border/60 pl-2"
     >
-      <NButton
-        data-split-row
-        size="tiny"
-        quaternary
-        :disabled="!props.workspaceReady || !canSplit"
-        :title="t('app.header.splitRight')"
-        :aria-label="t('app.header.splitRight')"
-        @click="emit('splitPane', 'row')"
-      >
-        <template #icon><NIcon :component="DuplicateOutline" /></template>
-      </NButton>
-      <NButton
-        data-split-col
-        size="tiny"
-        quaternary
-        :disabled="!props.workspaceReady || !canSplit"
-        :title="t('app.header.splitDown')"
-        :aria-label="t('app.header.splitDown')"
-        @click="emit('splitPane', 'col')"
-      >
-        <template #icon><NIcon :component="ReorderTwoOutline" /></template>
-      </NButton>
+      <TooltipTitle :label="t('app.header.splitRight')">
+        <NButton
+          data-split-row
+          size="tiny"
+          quaternary
+          :disabled="!props.workspaceReady || !canSplit"
+          :aria-label="t('app.header.splitRight')"
+          @click="emit('splitPane', 'row')"
+        >
+          <template #icon><NIcon :component="DuplicateOutline" /></template>
+        </NButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('app.header.splitDown')">
+        <NButton
+          data-split-col
+          size="tiny"
+          quaternary
+          :disabled="!props.workspaceReady || !canSplit"
+          :aria-label="t('app.header.splitDown')"
+          @click="emit('splitPane', 'col')"
+        >
+          <template #icon><NIcon :component="ReorderTwoOutline" /></template>
+        </NButton>
+      </TooltipTitle>
       <div class="mx-0.5 h-4 w-px bg-border/60" />
-      <NButton
-        data-open-settings
-        size="tiny"
-        quaternary
-        :title="t('common.settings')"
-        :aria-label="t('common.settings')"
-        @click="emit('openSettings')"
-      >
-        <template #icon><NIcon :component="SettingsOutline" /></template>
-      </NButton>
-      <button
-        type="button"
-        :data-toggle-right-panel="rightPanelOpen"
-        :title="t('common.explorer')"
-        :aria-label="t('app.header.toggleExplorer')"
-        :class="[
-          'grid h-6 w-6 shrink-0 place-items-center rounded-md transition-colors',
-          rightPanelOpen
-            ? 'bg-accent text-foreground'
-            : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
-        ]"
-        @click="emit('toggleRightPanel')"
-      >
-        <NIcon :component="FolderOpenOutline" :size="14" />
-      </button>
+      <TooltipTitle :label="t('common.settings')">
+        <NButton
+          data-open-settings
+          size="tiny"
+          quaternary
+          :aria-label="t('common.settings')"
+          @click="emit('openSettings')"
+        >
+          <template #icon><NIcon :component="SettingsOutline" /></template>
+        </NButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('common.explorer')">
+        <button
+          type="button"
+          :data-toggle-right-panel="rightPanelOpen"
+          :aria-label="t('app.header.toggleExplorer')"
+          :class="[
+            'grid h-6 w-6 shrink-0 place-items-center rounded-md transition-colors',
+            rightPanelOpen
+              ? 'bg-accent text-foreground'
+              : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
+          ]"
+          @click="emit('toggleRightPanel')"
+        >
+          <NIcon :component="FolderOpenOutline" :size="14" />
+        </button>
+      </TooltipTitle>
       <WindowControls v-if="props.showWindowControls" />
     </div>
 

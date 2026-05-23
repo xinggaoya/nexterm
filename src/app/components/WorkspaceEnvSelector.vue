@@ -2,6 +2,7 @@
 import { DesktopOutline } from "@vicons/ionicons5";
 import { NButton, NDropdown, NIcon, type DropdownOption } from "naive-ui";
 import { computed, onMounted } from "vue";
+import TooltipTitle from "@/components/TooltipTitle.vue";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { t } from "@/modules/i18n/translate";
 import {
@@ -46,16 +47,17 @@ onMounted(() => {
 </script>
 
 <template>
-  <NDropdown trigger="click" :options="options" @select="handleSelect">
-    <NButton
-      size="tiny"
-      quaternary
-      :title="t('app.workspaceEnv.title')"
-      :aria-label="t('app.workspaceEnv.title')"
-      class="max-w-44"
-    >
-      <template #icon><NIcon :component="DesktopOutline" /></template>
-      <span class="truncate">{{ label }}</span>
-    </NButton>
-  </NDropdown>
+  <TooltipTitle :label="t('app.workspaceEnv.title')">
+    <NDropdown trigger="click" :options="options" @select="handleSelect">
+      <NButton
+        size="tiny"
+        quaternary
+        :aria-label="t('app.workspaceEnv.title')"
+        class="max-w-44"
+      >
+        <template #icon><NIcon :component="DesktopOutline" /></template>
+        <span class="truncate">{{ label }}</span>
+      </NButton>
+    </NDropdown>
+  </TooltipTitle>
 </template>

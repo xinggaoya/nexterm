@@ -20,6 +20,9 @@ vi.mock("naive-ui", async () => {
       template:
         '<div><slot /><button v-for="option in options" :key="option.key" :data-option-key="option.key" @click="$emit(\'select\', option.key)">{{ option.label }}</button></div>',
     }),
+    NTooltip: defineComponent({
+      template: "<span><slot name='trigger' /><slot /></span>",
+    }),
   };
 });
 

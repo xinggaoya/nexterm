@@ -10,7 +10,6 @@ export type TerminalTab = {
   cwd?: string;
   paneTree: PaneNode;
   activeLeafId: number;
-  private?: boolean;
 };
 
 export type EditorTab = {

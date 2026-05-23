@@ -7,6 +7,7 @@ import {
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NSpin } from "naive-ui";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t } from "@/modules/i18n/translate";
 import type { WorkspaceFsChangedEvent } from "@/lib/native";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
@@ -514,49 +515,53 @@ onBeforeUnmount(() => {
           {{ rootName || t("common.explorer") }}
         </span>
       </div>
-      <NButton
-        size="tiny"
-        quaternary
-        data-toggle-search
-        :title="t('explorer.searchFilesTitle')"
-        :aria-label="t('explorer.searchFilesTitle')"
-        :disabled="!rootPath"
-        @click="isSearchOpen = !isSearchOpen"
-      >
-        <template #icon><NIcon :component="SearchOutline" /></template>
-      </NButton>
-      <NButton
-        size="tiny"
-        quaternary
-        data-new-file
-        :title="t('explorer.newFile')"
-        :aria-label="t('explorer.newFile')"
-        :disabled="!rootPath"
-        @click="beginCreate(rootPath, 'file')"
-      >
-        <template #icon><NIcon :component="DocumentOutline" /></template>
-      </NButton>
-      <NButton
-        size="tiny"
-        quaternary
-        data-new-folder
-        :title="t('explorer.newFolder')"
-        :aria-label="t('explorer.newFolder')"
-        :disabled="!rootPath"
-        @click="beginCreate(rootPath, 'dir')"
-      >
-        <template #icon><NIcon :component="FolderOutline" /></template>
-      </NButton>
-      <NButton
-        size="tiny"
-        quaternary
-        :title="t('common.refresh')"
-        :aria-label="t('common.refresh')"
-        :disabled="!rootPath"
-        @click="refreshPath()"
-      >
-        <template #icon><NIcon :component="RefreshOutline" /></template>
-      </NButton>
+      <TooltipTitle :label="t('explorer.searchFilesTitle')">
+        <NButton
+          size="tiny"
+          quaternary
+          data-toggle-search
+          :aria-label="t('explorer.searchFilesTitle')"
+          :disabled="!rootPath"
+          @click="isSearchOpen = !isSearchOpen"
+        >
+          <template #icon><NIcon :component="SearchOutline" /></template>
+        </NButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('explorer.newFile')">
+        <NButton
+          size="tiny"
+          quaternary
+          data-new-file
+          :aria-label="t('explorer.newFile')"
+          :disabled="!rootPath"
+          @click="beginCreate(rootPath, 'file')"
+        >
+          <template #icon><NIcon :component="DocumentOutline" /></template>
+        </NButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('explorer.newFolder')">
+        <NButton
+          size="tiny"
+          quaternary
+          data-new-folder
+          :aria-label="t('explorer.newFolder')"
+          :disabled="!rootPath"
+          @click="beginCreate(rootPath, 'dir')"
+        >
+          <template #icon><NIcon :component="FolderOutline" /></template>
+        </NButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('common.refresh')">
+        <NButton
+          size="tiny"
+          quaternary
+          :aria-label="t('common.refresh')"
+          :disabled="!rootPath"
+          @click="refreshPath()"
+        >
+          <template #icon><NIcon :component="RefreshOutline" /></template>
+        </NButton>
+      </TooltipTitle>
     </div>
 
     <div v-if="!rootPath" class="grid min-h-0 flex-1 place-items-center p-4 text-center">

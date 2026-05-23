@@ -14,6 +14,7 @@ import {
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NInput, NSpin, NTag, useDialog } from "naive-ui";
 import { computed, onBeforeUnmount, ref, watch, type TextareaHTMLAttributes } from "vue";
+import TooltipTitle from "@/components/TooltipTitle.vue";
 import {
   native,
   type GitCommitResult,
@@ -479,63 +480,68 @@ onBeforeUnmount(() => {
         <span class="truncate text-[12px] font-semibold">{{ branchLabel }}</span>
       </div>
       <NTag v-if="changedCount > 0" size="small" round>{{ changedCount }}</NTag>
-      <NButton
-        size="tiny"
-        quaternary
-        data-git-fetch
-        :title="t('sourceControl.fetch')"
-        :aria-label="t('sourceControl.fetch')"
-        :loading="busyAction === 'fetch'"
-        :disabled="!repoRoot || (busyAction !== null && busyAction !== 'fetch')"
-        @click="fetchRemote"
-      >
-        <template #icon><NIcon :component="SyncOutline" /></template>
-      </NButton>
-      <NButton
-        size="tiny"
-        quaternary
-        data-git-pull
-        :title="t('sourceControl.pull')"
-        :aria-label="t('sourceControl.pull')"
-        :loading="busyAction === 'pull'"
-        :disabled="!repoRoot || (busyAction !== null && busyAction !== 'pull')"
-        @click="pullRemote"
-      >
-        <template #icon><NIcon :component="ArrowDownOutline" /></template>
-      </NButton>
-      <NButton
-        size="tiny"
-        quaternary
-        data-git-push
-        :title="t('sourceControl.push')"
-        :aria-label="t('sourceControl.push')"
-        :loading="busyAction === 'push'"
-        :disabled="!repoRoot || (busyAction !== null && busyAction !== 'push')"
-        @click="pushRemote"
-      >
-        <template #icon><NIcon :component="ArrowUpOutline" /></template>
-      </NButton>
-      <NButton
-        size="tiny"
-        quaternary
-        :title="t('common.refresh')"
-        :aria-label="t('common.refresh')"
-        :loading="busyAction === 'refresh'"
-        @click="refresh"
-      >
-        <template #icon><NIcon :component="RefreshOutline" /></template>
-      </NButton>
-      <NButton
-        size="tiny"
-        quaternary
-        data-open-history
-        :title="t('common.history')"
-        :aria-label="t('common.history')"
-        :disabled="!repoRoot"
-        @click="openHistory"
-      >
-        <template #icon><NIcon :component="TimeOutline" /></template>
-      </NButton>
+      <TooltipTitle :label="t('sourceControl.fetch')">
+        <NButton
+          size="tiny"
+          quaternary
+          data-git-fetch
+          :aria-label="t('sourceControl.fetch')"
+          :loading="busyAction === 'fetch'"
+          :disabled="!repoRoot || (busyAction !== null && busyAction !== 'fetch')"
+          @click="fetchRemote"
+        >
+          <template #icon><NIcon :component="SyncOutline" /></template>
+        </NButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('sourceControl.pull')">
+        <NButton
+          size="tiny"
+          quaternary
+          data-git-pull
+          :aria-label="t('sourceControl.pull')"
+          :loading="busyAction === 'pull'"
+          :disabled="!repoRoot || (busyAction !== null && busyAction !== 'pull')"
+          @click="pullRemote"
+        >
+          <template #icon><NIcon :component="ArrowDownOutline" /></template>
+        </NButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('sourceControl.push')">
+        <NButton
+          size="tiny"
+          quaternary
+          data-git-push
+          :aria-label="t('sourceControl.push')"
+          :loading="busyAction === 'push'"
+          :disabled="!repoRoot || (busyAction !== null && busyAction !== 'push')"
+          @click="pushRemote"
+        >
+          <template #icon><NIcon :component="ArrowUpOutline" /></template>
+        </NButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('common.refresh')">
+        <NButton
+          size="tiny"
+          quaternary
+          :aria-label="t('common.refresh')"
+          :loading="busyAction === 'refresh'"
+          @click="refresh"
+        >
+          <template #icon><NIcon :component="RefreshOutline" /></template>
+        </NButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('common.history')">
+        <NButton
+          size="tiny"
+          quaternary
+          data-open-history
+          :aria-label="t('common.history')"
+          :disabled="!repoRoot"
+          @click="openHistory"
+        >
+          <template #icon><NIcon :component="TimeOutline" /></template>
+        </NButton>
+      </TooltipTitle>
     </div>
 
     <div v-if="panelState === 'no-root'" class="grid min-h-0 flex-1 place-items-center p-4 text-center">
@@ -586,42 +592,45 @@ onBeforeUnmount(() => {
             <div class="min-w-0 flex-1 truncate text-[11px] font-medium text-muted-foreground">
               {{ t("sourceControl.changes") }} · {{ changedCount }}
             </div>
-            <NButton
-              size="tiny"
-              quaternary
-              data-stage-all
-              :title="t('sourceControl.stageAll')"
-              :aria-label="t('sourceControl.stageAll')"
-              :loading="busyAction === 'stage-all'"
-              :disabled="stageAllPaths.length === 0 || (busyAction !== null && busyAction !== 'stage-all')"
-              @click="stageAll"
-            >
-              <template #icon><NIcon :component="AddOutline" /></template>
-            </NButton>
-            <NButton
-              size="tiny"
-              quaternary
-              data-unstage-all
-              :title="t('sourceControl.unstageAll')"
-              :aria-label="t('sourceControl.unstageAll')"
-              :loading="busyAction === 'unstage-all'"
-              :disabled="unstageAllPaths.length === 0 || (busyAction !== null && busyAction !== 'unstage-all')"
-              @click="unstageAll"
-            >
-              <template #icon><NIcon :component="RemoveOutline" /></template>
-            </NButton>
-            <NButton
-              size="tiny"
-              quaternary
-              data-discard-all
-              :title="t('sourceControl.discardAllUnstaged')"
-              :aria-label="t('sourceControl.discardAllUnstaged')"
-              :loading="busyAction === 'discard-all'"
-              :disabled="discardAllEntries.length === 0 || (busyAction !== null && busyAction !== 'discard-all')"
-              @click="confirmDiscardAll"
-            >
-              <template #icon><NIcon :component="TrashOutline" /></template>
-            </NButton>
+            <TooltipTitle :label="t('sourceControl.stageAll')">
+              <NButton
+                size="tiny"
+                quaternary
+                data-stage-all
+                :aria-label="t('sourceControl.stageAll')"
+                :loading="busyAction === 'stage-all'"
+                :disabled="stageAllPaths.length === 0 || (busyAction !== null && busyAction !== 'stage-all')"
+                @click="stageAll"
+              >
+                <template #icon><NIcon :component="AddOutline" /></template>
+              </NButton>
+            </TooltipTitle>
+            <TooltipTitle :label="t('sourceControl.unstageAll')">
+              <NButton
+                size="tiny"
+                quaternary
+                data-unstage-all
+                :aria-label="t('sourceControl.unstageAll')"
+                :loading="busyAction === 'unstage-all'"
+                :disabled="unstageAllPaths.length === 0 || (busyAction !== null && busyAction !== 'unstage-all')"
+                @click="unstageAll"
+              >
+                <template #icon><NIcon :component="RemoveOutline" /></template>
+              </NButton>
+            </TooltipTitle>
+            <TooltipTitle :label="t('sourceControl.discardAllUnstaged')">
+              <NButton
+                size="tiny"
+                quaternary
+                data-discard-all
+                :aria-label="t('sourceControl.discardAllUnstaged')"
+                :loading="busyAction === 'discard-all'"
+                :disabled="discardAllEntries.length === 0 || (busyAction !== null && busyAction !== 'discard-all')"
+                @click="confirmDiscardAll"
+              >
+                <template #icon><NIcon :component="TrashOutline" /></template>
+              </NButton>
+            </TooltipTitle>
           </div>
           <div
             v-for="entry in entries"
@@ -643,46 +652,46 @@ onBeforeUnmount(() => {
                 {{ stageLabel(entry) }}
               </span>
             </button>
-            <NButton
-              v-if="entry.unstaged"
-              size="tiny"
-              quaternary
-              type="error"
-              :data-discard-file="entry.path"
-              :title="t('sourceControl.discardChanges')"
-              :aria-label="t('sourceControl.discardChanges')"
-              :loading="busyAction === `discard:${entry.path}`"
-              :disabled="busyAction !== null && busyAction !== `discard:${entry.path}`"
-              @click.stop="confirmDiscardFile(entry)"
-            >
-              <template #icon><NIcon :component="TrashOutline" /></template>
-            </NButton>
-            <NButton
-              v-if="entry.checkState === 'checked'"
-              size="tiny"
-              quaternary
-              :data-unstage-file="entry.path"
-              :title="t('sourceControl.unstage')"
-              :aria-label="t('sourceControl.unstage')"
-              :loading="busyAction === `unstage:${entry.path}`"
-              :disabled="busyAction !== null && busyAction !== `unstage:${entry.path}`"
-              @click.stop="unstageFile(entry)"
-            >
-              <template #icon><NIcon :component="RemoveOutline" /></template>
-            </NButton>
-            <NButton
-              v-else
-              size="tiny"
-              quaternary
-              :data-stage-file="entry.path"
-              :title="t('sourceControl.stage')"
-              :aria-label="t('sourceControl.stage')"
-              :loading="busyAction === `stage:${entry.path}`"
-              :disabled="busyAction !== null && busyAction !== `stage:${entry.path}`"
-              @click.stop="stageFile(entry)"
-            >
-              <template #icon><NIcon :component="AddOutline" /></template>
-            </NButton>
+            <TooltipTitle v-if="entry.unstaged" :label="t('sourceControl.discardChanges')">
+              <NButton
+                size="tiny"
+                quaternary
+                type="error"
+                :data-discard-file="entry.path"
+                :aria-label="t('sourceControl.discardChanges')"
+                :loading="busyAction === `discard:${entry.path}`"
+                :disabled="busyAction !== null && busyAction !== `discard:${entry.path}`"
+                @click.stop="confirmDiscardFile(entry)"
+              >
+                <template #icon><NIcon :component="TrashOutline" /></template>
+              </NButton>
+            </TooltipTitle>
+            <TooltipTitle v-if="entry.checkState === 'checked'" :label="t('sourceControl.unstage')">
+              <NButton
+                size="tiny"
+                quaternary
+                :data-unstage-file="entry.path"
+                :aria-label="t('sourceControl.unstage')"
+                :loading="busyAction === `unstage:${entry.path}`"
+                :disabled="busyAction !== null && busyAction !== `unstage:${entry.path}`"
+                @click.stop="unstageFile(entry)"
+              >
+                <template #icon><NIcon :component="RemoveOutline" /></template>
+              </NButton>
+            </TooltipTitle>
+            <TooltipTitle v-else :label="t('sourceControl.stage')">
+              <NButton
+                size="tiny"
+                quaternary
+                :data-stage-file="entry.path"
+                :aria-label="t('sourceControl.stage')"
+                :loading="busyAction === `stage:${entry.path}`"
+                :disabled="busyAction !== null && busyAction !== `stage:${entry.path}`"
+                @click.stop="stageFile(entry)"
+              >
+                <template #icon><NIcon :component="AddOutline" /></template>
+              </NButton>
+            </TooltipTitle>
           </div>
         </div>
       </div>

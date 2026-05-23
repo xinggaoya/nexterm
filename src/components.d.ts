@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    TooltipTitle: typeof import('./components/TooltipTitle.vue')['default']
     WindowControls: typeof import('./components/WindowControls.vue')['default']
   }
 }
