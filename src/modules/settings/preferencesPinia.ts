@@ -7,6 +7,7 @@ import {
   setEditorTheme,
   setExplorerPanelWidth,
   setFileOpenMode,
+  setKeybindings,
   setLanguage,
   setRestoreWindowState,
   setRemoteTerminalEnabled,
@@ -27,6 +28,7 @@ import {
   type Preferences,
   type ThemePref,
 } from "./store";
+import type { CommandId } from "@/modules/commands/types";
 import {
   patchPreferencesSnapshot,
   replacePreferencesSnapshot,
@@ -145,6 +147,17 @@ export const usePreferencesPiniaStore = defineStore("preferences", {
       this.remoteTerminalToken = value;
       patchPreferencesSnapshot("remoteTerminalToken", value);
       await setRemoteTerminalToken(value);
+    },
+    async updateCommandKeybinding(
+      id: CommandId,
+      keybinding: string | null | undefined,
+    ) {
+      const next = { ...this.keybindings };
+      if (keybinding === undefined) delete next[id];
+      else next[id] = keybinding;
+      this.keybindings = next;
+      patchPreferencesSnapshot("keybindings", next);
+      await setKeybindings(next);
     },
     async updateSourceControlPanelWidth(value: number) {
       this.sourceControlPanelWidth = value;

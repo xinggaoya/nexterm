@@ -21,6 +21,27 @@ const invokeMock = vi.hoisted(() =>
   vi.fn(async (command: string, args?: Record<string, unknown>) => {
     if (command === "wsl_home") return "/home/dev";
     if (command === "workspace_authorize") return args?.path ?? null;
+    if (command === "git_resolve_repo") {
+      return {
+        repoRoot: "/repo",
+        branch: "main",
+        upstream: "origin/main",
+        isDetached: false,
+      };
+    }
+    if (command === "fs_search") {
+      return {
+        hits: [
+          {
+            path: "/repo/src/main.ts",
+            rel: "src/main.ts",
+            name: "main.ts",
+            is_dir: false,
+          },
+        ],
+        truncated: false,
+      };
+    }
     return null;
   }),
 );
@@ -356,6 +377,56 @@ describe("MainApp.vue", () => {
         .querySelectorAll("[data-settings-panel]")
         .forEach((node) => node.remove());
     }
+  });
+
+  it("opens the command palette from the header action", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+
+    await wrapper.find("[data-open-command-palette]").trigger("click");
+    await nextTick();
+
+    expect(wrapper.find("[data-command-palette]").exists()).toBe(true);
+    expect(wrapper.find("[data-command-palette]").text()).toContain(
+      "Command Center",
+    );
+  });
+
+  it("opens files from the quick-open keyboard shortcut", async () => {
+    vi.useFakeTimers();
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+    const tabs = useTabsPiniaStore();
+    await nextTick();
+    await flushPromises();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "p",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await nextTick();
+    await wrapper.find("[data-command-palette-input]").setValue("main");
+    await vi.advanceTimersByTimeAsync(200);
+    await flushPromises();
+    await wrapper.find("[data-file-result='/repo/src/main.ts']").trigger("click");
+
+    expect(tabs.tabs.find((tab) => tab.kind === "editor")).toMatchObject({
+      kind: "editor",
+      path: "/repo/src/main.ts",
+      preview: true,
+    });
   });
 
   it("updates terminal tab titles from terminal title events", async () => {

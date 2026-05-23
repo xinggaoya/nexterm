@@ -40,6 +40,7 @@ import {
   type LanguagePref,
   type ThemePref,
 } from "@/modules/settings/store";
+import KeybindingsSection from "./KeybindingsSection.vue";
 
 const prefs = usePreferencesPiniaStore();
 const remoteBusy = ref(false);
@@ -233,6 +234,8 @@ onMounted(() => {
         </NFormItem>
       </NForm>
     </NCard>
+
+    <KeybindingsSection />
 
     <NCard size="small" :title="t('settings.general.terminal')" embedded>
       <NForm label-placement="left" label-width="150" size="small">

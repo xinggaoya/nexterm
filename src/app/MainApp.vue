@@ -32,6 +32,7 @@ import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { dirtyEditorTabs } from "@/modules/tabs/closeGuards";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import { MAX_PANES_PER_TAB } from "@/modules/tabs/tabsTypes";
+import CommandPalette from "@/modules/commands/CommandPalette.vue";
 import {
   getWslHome,
   normalizeWorkspacePath,
@@ -59,6 +60,7 @@ import { leafIds, type SplitDir } from "@/modules/terminal/lib/panes";
 import { buildNaiveThemeOverrides, getNaiveTheme } from "@/modules/theme/naiveTheme";
 import { readAppTokens, type AppTokens } from "@/styles/tokens";
 import SettingsPanel from "@/settings/SettingsPanel.vue";
+import { useWorkbenchCommands } from "./useWorkbenchCommands";
 
 const { t } = useI18n();
 const prefs = usePreferencesPiniaStore();
@@ -418,6 +420,33 @@ function openSettings(tab: SettingsTab = SETTINGS_DEFAULT_TAB) {
   settingsOpen.value = true;
 }
 
+const {
+  commandContext,
+  commandDefinitions,
+  commandPaletteMode,
+  commandPaletteOpen,
+  closeCommandPalette,
+  executeCommandFromPalette,
+  handleGlobalCommandKeydown,
+  openCommandPalette,
+  openFileFromCommandPalette,
+  resolvedCommandKeybindings,
+} = useWorkbenchCommands({
+  t: (key) => t(key),
+  keybindings: computed(() => prefs.keybindings),
+  hasWorkspace,
+  workspaceRoot,
+  leftPanelOpen,
+  rightPanelOpen,
+  workspaceFsEvent,
+  tabs,
+  newTerminalTab,
+  splitActivePane,
+  openFileTab,
+  openSettings,
+  resolveGitRepo: native.gitResolveRepo,
+});
+
 onMounted(() => {
   if (hasTauriInternals()) {
     void prefs.hydrate();
@@ -426,6 +455,7 @@ onMounted(() => {
   }
   colorSchemeQuery?.addEventListener("change", colorSchemeListener);
   window.addEventListener("languagechange", syncLanguage);
+  window.addEventListener("keydown", handleGlobalCommandKeydown);
   if (typeof ResizeObserver === "function") {
     rightSplitResizeObserver = new ResizeObserver(measureRightSplitWidth);
     if (rightSplitHost.value) rightSplitResizeObserver.observe(rightSplitHost.value);
@@ -437,6 +467,7 @@ onMounted(() => {
 onUnmounted(() => {
   colorSchemeQuery?.removeEventListener("change", colorSchemeListener);
   window.removeEventListener("languagechange", syncLanguage);
+  window.removeEventListener("keydown", handleGlobalCommandKeydown);
   rightSplitResizeObserver?.disconnect();
   rightSplitResizeObserver = null;
   window.removeEventListener("resize", measureRightSplitWidth);
@@ -523,6 +554,7 @@ watch([leftPanelOpen, rightPanelOpen], () => {
               @new-tab="newTerminalTab"
               @choose-workspace="chooseWorkspace"
               @split-pane="splitActivePane"
+              @open-command-palette="openCommandPalette"
               @open-settings="openSettings"
               @toggle-left-panel="leftPanelOpen = !leftPanelOpen"
               @toggle-right-panel="rightPanelOpen = !rightPanelOpen"
@@ -693,6 +725,19 @@ watch([leftPanelOpen, rightPanelOpen], () => {
               :workspace-root="workspaceRoot"
               :terminal-cwd="activeCwd"
               @workspace-change="switchWorkspace"
+            />
+
+            <CommandPalette
+              :show="commandPaletteOpen"
+              :mode="commandPaletteMode"
+              :commands="commandDefinitions"
+              :keybindings="resolvedCommandKeybindings"
+              :context="commandContext"
+              :workspace-root="workspaceRoot"
+              :show-hidden="prefs.showHidden"
+              @close="closeCommandPalette"
+              @execute-command="executeCommandFromPalette"
+              @open-file="openFileFromCommandPalette"
             />
 
             <NDrawer
