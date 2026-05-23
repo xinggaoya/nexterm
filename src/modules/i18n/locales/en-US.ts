@@ -23,11 +23,9 @@ const enUS = {
       gitDiff: "Git diff",
       gitHistory: "Git history",
       markdown: "Markdown",
-      newPrivateTerminal: "New private terminal",
       newTerminal: "New terminal",
       openFolder: "Open Folder",
       preview: "Preview",
-      privateTerminal: "Private terminal",
       sourceControl: "Source Control",
       splitDown: "Split down",
       splitRight: "Split right",
@@ -39,7 +37,6 @@ const enUS = {
     status: {
       noWorkspace: "No workspace",
       openFolder: "Open folder",
-      private: "Private",
     },
     workspaceEnv: {
       title: "Workspace environment",

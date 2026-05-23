@@ -8,6 +8,7 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { NButton, NDropdown, NIcon, NInput } from "naive-ui";
 import { computed, ref, watch } from "vue";
+import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t } from "@/modules/i18n/translate";
 import { normalizePreviewUrl, PORT_PRESETS } from "./previewUrl";
 
@@ -107,33 +108,35 @@ defineExpose({ focus });
 <template>
   <div class="shrink-0 border-b border-border/60">
     <div class="flex h-9 items-center gap-1 bg-card/40 px-1.5">
-      <NButton
-        size="tiny"
-        quaternary
-        :title="t('preview.reload')"
-        :aria-label="t('preview.reload')"
-        @click="emit('reload')"
-      >
-        <template #icon><NIcon :component="ReloadOutline" /></template>
-      </NButton>
-
-      <NDropdown
-        trigger="click"
-        :options="portOptions"
-        placement="bottom-start"
-        @select="(key) => void tryPort(Number(key))"
-      >
+      <TooltipTitle :label="t('preview.reload')">
         <NButton
           size="tiny"
           quaternary
-          :title="t('preview.commonPorts')"
-          :aria-label="t('preview.commonPorts')"
+          :aria-label="t('preview.reload')"
+          @click="emit('reload')"
         >
-          <template #icon><NIcon :component="GlobeOutline" /></template>
-          <span class="hidden text-[11px] sm:inline">{{ t("preview.ports") }}</span>
-          <NIcon :component="ChevronDownOutline" :size="12" />
+          <template #icon><NIcon :component="ReloadOutline" /></template>
         </NButton>
-      </NDropdown>
+      </TooltipTitle>
+
+      <TooltipTitle :label="t('preview.commonPorts')">
+        <NDropdown
+          trigger="click"
+          :options="portOptions"
+          placement="bottom-start"
+          @select="(key) => void tryPort(Number(key))"
+        >
+          <NButton
+            size="tiny"
+            quaternary
+            :aria-label="t('preview.commonPorts')"
+          >
+            <template #icon><NIcon :component="GlobeOutline" /></template>
+            <span class="hidden text-[11px] sm:inline">{{ t("preview.ports") }}</span>
+            <NIcon :component="ChevronDownOutline" :size="12" />
+          </NButton>
+        </NDropdown>
+      </TooltipTitle>
 
       <NInput
         ref="inputRef"
@@ -149,16 +152,17 @@ defineExpose({ focus });
         @keydown.esc.prevent="resetDraft"
       />
 
-      <NButton
-        size="tiny"
-        quaternary
-        :disabled="!props.url"
-        :title="t('preview.openInBrowser')"
-        :aria-label="t('preview.openInBrowser')"
-        @click="openExternal"
-      >
-        <template #icon><NIcon :component="OpenOutline" /></template>
-      </NButton>
+      <TooltipTitle :label="t('preview.openInBrowser')">
+        <NButton
+          size="tiny"
+          quaternary
+          :disabled="!props.url"
+          :aria-label="t('preview.openInBrowser')"
+          @click="openExternal"
+        >
+          <template #icon><NIcon :component="OpenOutline" /></template>
+        </NButton>
+      </TooltipTitle>
     </div>
 
     <div

@@ -121,22 +121,6 @@ export const useTabsPiniaStore = defineStore("tabs", {
       this.activeId = tabId;
       return tabId;
     },
-    newPrivateTab(cwd?: string): number {
-      if (!this.initialized) this.init();
-      const tabId = this.nextId++;
-      const leafId = this.nextId++;
-      this.tabs.push({
-        id: tabId,
-        kind: "terminal",
-        title: "private",
-        cwd,
-        paneTree: { kind: "leaf", id: leafId, cwd },
-        activeLeafId: leafId,
-        private: true,
-      });
-      this.activeId = tabId;
-      return tabId;
-    },
     openFileTab(path: string, pin = true): number | null {
       if (!this.initialized) this.init();
       if (pin) {

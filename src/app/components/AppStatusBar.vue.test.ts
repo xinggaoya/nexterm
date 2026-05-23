@@ -12,18 +12,16 @@ vi.mock("./WorkspaceEnvSelector.vue", () => ({
 }));
 
 describe("AppStatusBar.vue", () => {
-  it("renders workspace root, terminal cwd, and private terminal state", () => {
+  it("renders workspace root and terminal cwd", () => {
     const wrapper = mount(AppStatusBar, {
       props: {
         workspaceRoot: "/repo",
         terminalCwd: "/tmp",
-        privateActive: true,
       },
     });
 
     expect(wrapper.text()).toContain("/repo");
     expect(wrapper.text()).toContain("/tmp");
-    expect(wrapper.text()).toContain("Private");
     expect(wrapper.find("[data-workspace-env]").exists()).toBe(true);
     expect(wrapper.find("[data-open-workspace]").exists()).toBe(false);
   });
@@ -33,7 +31,6 @@ describe("AppStatusBar.vue", () => {
       props: {
         workspaceRoot: null,
         terminalCwd: null,
-        privateActive: false,
       },
     });
 
@@ -46,7 +43,6 @@ describe("AppStatusBar.vue", () => {
       props: {
         workspaceRoot: null,
         terminalCwd: null,
-        privateActive: false,
       },
     });
 

@@ -3,6 +3,7 @@ import { CopyOutline, DocumentOutline, OpenOutline, RefreshOutline } from "@vico
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { NButton, NDrawer, NDrawerContent, NIcon, NInput, NSpin, NTag } from "naive-ui";
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import TooltipTitle from "@/components/TooltipTitle.vue";
 import {
   native,
   type GitCommitFileChange,
@@ -251,14 +252,16 @@ onMounted(() => {
         :placeholder="t('gitHistory.filterCommits')"
         clearable
       />
-      <NButton
-        size="tiny"
-        quaternary
-        :title="t('common.refresh')"
-        @click="() => void loadInitial()"
-      >
-        <template #icon><NIcon :component="RefreshOutline" /></template>
-      </NButton>
+      <TooltipTitle :label="t('common.refresh')">
+        <NButton
+          size="tiny"
+          quaternary
+          :aria-label="t('common.refresh')"
+          @click="() => void loadInitial()"
+        >
+          <template #icon><NIcon :component="RefreshOutline" /></template>
+        </NButton>
+      </TooltipTitle>
     </div>
 
     <div
@@ -392,19 +395,31 @@ onMounted(() => {
                 · {{ absoluteTime(selectedCommit.timestampSecs) }}
               </div>
               <div class="mt-2 flex items-center gap-1">
-                <NButton size="tiny" quaternary @click="copySha(selectedCommit.sha)">
-                  <template #icon><NIcon :component="CopyOutline" /></template>
-                  {{ t("gitHistory.copySha") }}
-                </NButton>
-                <NButton
+                <TooltipTitle :label="t('gitHistory.copySha')">
+                  <NButton
+                    size="tiny"
+                    quaternary
+                    :aria-label="t('gitHistory.copySha')"
+                    @click="copySha(selectedCommit.sha)"
+                  >
+                    <template #icon><NIcon :component="CopyOutline" /></template>
+                    {{ t("gitHistory.copySha") }}
+                  </NButton>
+                </TooltipTitle>
+                <TooltipTitle
                   v-if="selectedWebUrl && remoteWeb"
-                  size="tiny"
-                  quaternary
-                  @click="openSelectedRemote"
+                  :label="hostLabel(remoteWeb)"
                 >
-                  <template #icon><NIcon :component="OpenOutline" /></template>
-                  {{ hostLabel(remoteWeb) }}
-                </NButton>
+                  <NButton
+                    size="tiny"
+                    quaternary
+                    :aria-label="hostLabel(remoteWeb)"
+                    @click="openSelectedRemote"
+                  >
+                    <template #icon><NIcon :component="OpenOutline" /></template>
+                    {{ hostLabel(remoteWeb) }}
+                  </NButton>
+                </TooltipTitle>
               </div>
             </div>
 

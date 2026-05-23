@@ -30,9 +30,8 @@ const tabs: Tab[] = [
   {
     id: 3,
     kind: "terminal",
-    title: "private",
-    cwd: "C:\\Users\\me\\secret",
-    private: true,
+    title: "shell",
+    cwd: "C:\\Users\\me\\project",
     paneTree: { kind: "leaf", id: 4 },
     activeLeafId: 4,
   },
@@ -116,7 +115,6 @@ describe("AppHeader.vue", () => {
     });
 
     await wrapper.find("[data-new-tab]").trigger("click");
-    await wrapper.find("[data-new-private-tab]").trigger("click");
     await wrapper.find("[data-open-workspace]").trigger("click");
     await wrapper.find("[data-split-row]").trigger("click");
     await wrapper.find("[data-split-col]").trigger("click");
@@ -125,7 +123,8 @@ describe("AppHeader.vue", () => {
     await wrapper.find("[data-close-tab-id='3']").trigger("click");
 
     expect(wrapper.emitted("newTab")).toHaveLength(1);
-    expect(wrapper.emitted("newPrivateTab")).toHaveLength(1);
+    expect(wrapper.find("[data-new-private-tab]").exists()).toBe(false);
+    expect(wrapper.emitted("newPrivateTab")).toBeUndefined();
     expect(wrapper.emitted("chooseWorkspace")).toHaveLength(1);
     expect(wrapper.emitted("splitPane")).toEqual([[ "row" ], [ "col" ]]);
     expect(wrapper.find("[data-close-active-tab]").exists()).toBe(false);
@@ -134,6 +133,22 @@ describe("AppHeader.vue", () => {
     expect(wrapper.emitted("selectTab")).toEqual([[3]]);
     expect(wrapper.emitted("closeTab")).toEqual([[3]]);
     expect(wrapper.find("[data-window-controls]").exists()).toBe(true);
+  });
+
+  it("wraps toolbar icon actions in Naive tooltip title components", () => {
+    const wrapper = mount(AppHeader, {
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    expect(wrapper.findAllComponents({ name: "TooltipTitle" }).length).toBeGreaterThanOrEqual(7);
+    expect(wrapper.find("[data-new-tab]").attributes("title")).toBeUndefined();
+    expect(wrapper.find("[data-split-row]").attributes("title")).toBeUndefined();
+    expect(wrapper.find("[data-open-settings]").attributes("title")).toBeUndefined();
   });
 
   it("emits pinTab only when double clicking an editor preview tab", async () => {
@@ -164,9 +179,9 @@ describe("AppHeader.vue", () => {
     });
 
     expect(wrapper.find("[data-tab-label='1']").text()).toBe("OpenAI Codex");
-    expect(wrapper.find("[data-tab-label='3']").text()).toBe("secret");
+    expect(wrapper.find("[data-tab-label='3']").text()).toBe("project");
     expect(wrapper.find("[data-tab-icon='terminal']").exists()).toBe(true);
-    expect(wrapper.find("[data-tab-icon='private-terminal']").exists()).toBe(true);
+    expect(wrapper.find("[data-tab-icon='private-terminal']").exists()).toBe(false);
     expect(wrapper.find("[data-tab-icon='editor']").exists()).toBe(true);
     expect(wrapper.find("[data-tab-icon='markdown']").exists()).toBe(true);
     expect(wrapper.find("[data-tab-icon='preview']").exists()).toBe(true);
