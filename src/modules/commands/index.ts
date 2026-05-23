@@ -1,3 +1,4 @@
+export * from "./commandSpecs";
 export * from "./coreCommands";
 export * from "./keybindings";
 export * from "./registry";
