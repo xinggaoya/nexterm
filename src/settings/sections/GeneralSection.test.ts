@@ -62,6 +62,15 @@ describe("GeneralSection.vue", () => {
     );
   });
 
+  it("renders remote terminal controls in the terminal section", () => {
+    const wrapper = mount(GeneralSection, {
+      global: { plugins: [createPinia(), i18n] },
+    });
+
+    expect(wrapper.text()).toContain("Remote terminal");
+    expect(wrapper.text()).toContain("Local and LAN web access");
+  });
+
   it("renders translated labels after switching to Simplified Chinese", async () => {
     await applyLanguagePreference("zh-CN");
 

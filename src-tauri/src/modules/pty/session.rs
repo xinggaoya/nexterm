@@ -60,8 +60,7 @@ impl Transcript {
                 .write_all(bytes)
                 .map_err(|e| format!("write pty transcript: {e}"))?;
         }
-        self.offset
-            .fetch_add(bytes.len() as u64, Ordering::AcqRel);
+        self.offset.fetch_add(bytes.len() as u64, Ordering::AcqRel);
         Ok(start)
     }
 
@@ -82,6 +81,10 @@ impl Transcript {
             total_offset,
             data,
         })
+    }
+
+    pub(crate) fn total_offset(&self) -> u64 {
+        self.offset.load(Ordering::Acquire)
     }
 }
 
@@ -180,7 +183,9 @@ struct ChildKillGuard {
 
 impl ChildKillGuard {
     fn new(killer: Box<dyn ChildKiller + Send + Sync>) -> Self {
-        Self { killer: Some(killer) }
+        Self {
+            killer: Some(killer),
+        }
     }
 
     fn disarm(&mut self) {

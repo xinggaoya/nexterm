@@ -152,11 +152,17 @@ function registerModelOsc(s: Session): (() => void)[] {
     (next) => {
       if (s.lastCwd === next) return;
       s.lastCwd = next;
+      void s.pty?.updateMetadata({ cwd: next }).catch((e) => {
+        console.warn("[nexterm] remote cwd metadata update failed:", e);
+      });
       s.callbacks.onCwd?.(next);
     },
     shellState,
   );
   const title = registerTitleHandler(s.modelTerm, (next) => {
+    void s.pty?.updateMetadata({ title: next }).catch((e) => {
+      console.warn("[nexterm] remote title metadata update failed:", e);
+    });
     s.callbacks.onTitle?.(next);
   });
   return [prompt.dispose, cwd, title];
