@@ -31,7 +31,7 @@ import {
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { dirtyEditorTabs } from "@/modules/tabs/closeGuards";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
-import { MAX_PANES_PER_TAB } from "@/modules/tabs/tabsTypes";
+import { MAX_PANES_PER_TAB, type Tab } from "@/modules/tabs/tabsTypes";
 import CommandPalette from "@/modules/commands/CommandPalette.vue";
 import {
   getWslHome,
@@ -118,7 +118,9 @@ const resolvedTheme = computed(() => {
 });
 const naiveTheme = computed(() => getNaiveTheme(resolvedTheme.value));
 const naiveLocaleConfig = computed(() => getNaiveLocaleConfig(resolvedLocale.value));
-const activeTab = computed(() => tabs.tabs.find((tab) => tab.id === tabs.activeId));
+const activeTab = computed<Tab | null>(
+  () => tabs.tabs.find((tab) => tab.id === tabs.activeId) ?? null,
+);
 const hasWorkspace = computed(() => !!workspaceRootStore.rootPath);
 const activeCwd = computed(() =>
   activeTab.value?.kind === "terminal" ? activeTab.value.cwd ?? null : null,
