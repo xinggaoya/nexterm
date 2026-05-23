@@ -1,21 +1,26 @@
-use std::collections::BTreeSet;
-use std::path::Path;
-use std::sync::{
-    mpsc::{self, Receiver, RecvTimeoutError},
-    Mutex,
-};
-use std::time::Duration;
+mod events;
+mod local;
+mod polling;
+mod wsl;
 
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use std::path::PathBuf;
+use std::sync::{mpsc, Mutex};
+
+use tauri::{AppHandle, State};
 
 use crate::modules::workspace::{
     normalize_host_path, resolve_path, WorkspaceEnv, WorkspaceRegistry,
 };
 
-const WORKSPACE_FS_CHANGED_EVENT: &str = "nexterm://workspace-fs-changed";
-const FS_EVENT_BATCH_DELAY_MS: u64 = 200;
+use self::events::{normalize_frontend_path, run_event_batcher, WorkspaceFsChangedEvent};
+
+#[cfg(test)]
+use self::events::{
+    frontend_path_for_event, is_git_related_path, workspace_fs_event_from_notify,
+    WorkspaceFsEventBatch, MAX_BATCH_EVENT_PATHS,
+};
+#[cfg(test)]
+use self::wsl::{workspace_fs_event_from_wsl_json_line, HelperFailureTracker};
 
 #[derive(Default)]
 pub struct FsWatcherState {
@@ -23,16 +28,35 @@ pub struct FsWatcherState {
 }
 
 struct ActiveWatcher {
-    _watcher: RecommendedWatcher,
-    _batch_thread: std::thread::JoinHandle<()>,
+    key: String,
+    source: Option<ActiveRefreshSource>,
+    event_tx: Option<mpsc::Sender<WorkspaceFsChangedEvent>>,
+    batch_thread: Option<std::thread::JoinHandle<()>>,
 }
 
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WorkspaceFsChangedEvent {
+#[allow(dead_code)]
+enum ActiveRefreshSource {
+    Local(local::LocalRefreshSource),
+    Wsl(wsl::WslRefreshSource),
+    Polling(polling::PollingRefreshSource),
+}
+
+impl Drop for ActiveWatcher {
+    fn drop(&mut self) {
+        self.source.take();
+        self.event_tx.take();
+        if let Some(thread) = self.batch_thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+#[derive(Clone)]
+struct WorkspaceRefreshContext {
+    key: String,
     root_path: String,
-    paths: Vec<String>,
-    git_related: bool,
+    workspace: WorkspaceEnv,
+    local_root: Option<PathBuf>,
 }
 
 #[tauri::command]
@@ -44,8 +68,121 @@ pub fn fs_watch_workspace(
     state: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    let context = build_refresh_context(&root_path, workspace, &registry)?;
+
+    {
+        let active = state.active.lock().expect("fs watcher state poisoned");
+        if active
+            .as_ref()
+            .is_some_and(|watcher| watcher.key == context.key)
+        {
+            return Ok(());
+        }
+    }
+
+    let (event_tx, event_rx) = mpsc::channel();
+    let batch_app = app.clone();
+    let batch_thread = std::thread::spawn(move || run_event_batcher(batch_app, event_rx));
+    let source = start_refresh_source(&context, event_tx.clone());
+
+    let mut active = state.active.lock().expect("fs watcher state poisoned");
+    *active = Some(ActiveWatcher {
+        key: context.key,
+        source: Some(source),
+        event_tx: Some(event_tx),
+        batch_thread: Some(batch_thread),
+    });
+    log::info!("watching workspace refresh source: {}", context.root_path);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn fs_unwatch_workspace(state: State<'_, FsWatcherState>) -> Result<(), String> {
+    let mut active = state.active.lock().expect("fs watcher state poisoned");
+    *active = None;
+    Ok(())
+}
+
+fn build_refresh_context(
+    root_path: &str,
+    workspace: WorkspaceEnv,
+    registry: &WorkspaceRegistry,
+) -> Result<WorkspaceRefreshContext, String> {
+    let root_path = normalize_frontend_path(root_path);
+    let key = workspace_watch_key(&root_path, &workspace);
+
+    if workspace.is_wsl() {
+        ensure_wsl_workspace_authorized(&root_path, &workspace, registry)?;
+        return Ok(WorkspaceRefreshContext {
+            key,
+            root_path,
+            workspace,
+            local_root: None,
+        });
+    }
+
+    let local_root = canonical_authorized_dir(&root_path, &workspace, registry)?;
+    Ok(WorkspaceRefreshContext {
+        key,
+        root_path,
+        workspace,
+        local_root: Some(local_root),
+    })
+}
+
+fn start_refresh_source(
+    context: &WorkspaceRefreshContext,
+    event_tx: mpsc::Sender<WorkspaceFsChangedEvent>,
+) -> ActiveRefreshSource {
+    match &context.workspace {
+        WorkspaceEnv::Local => {
+            let Some(local_root) = context.local_root.clone() else {
+                log::warn!("local workspace has no canonical host root; using polling");
+                return ActiveRefreshSource::Polling(polling::start_polling_refresh(
+                    context.root_path.clone(),
+                    event_tx,
+                    false,
+                ));
+            };
+            match local::start_local_watcher(
+                context.root_path.clone(),
+                local_root,
+                event_tx.clone(),
+            ) {
+                Ok(source) => ActiveRefreshSource::Local(source),
+                Err(error) => {
+                    log::warn!("local workspace watcher unavailable; using polling: {error}");
+                    ActiveRefreshSource::Polling(polling::start_polling_refresh(
+                        context.root_path.clone(),
+                        event_tx,
+                        false,
+                    ))
+                }
+            }
+        }
+        WorkspaceEnv::Wsl { distro } => {
+            match wsl::start_wsl_helper(distro, context.root_path.clone(), event_tx.clone()) {
+                Ok(source) => ActiveRefreshSource::Wsl(source),
+                Err(error) => {
+                    log::warn!("WSL workspace watcher unavailable; using polling: {error}");
+                    ActiveRefreshSource::Polling(polling::start_polling_refresh(
+                        context.root_path.clone(),
+                        event_tx,
+                        true,
+                    ))
+                }
+            }
+        }
+    }
+}
+
+fn canonical_authorized_dir(
+    root_path: &str,
+    workspace: &WorkspaceEnv,
+    registry: &WorkspaceRegistry,
+) -> Result<PathBuf, String> {
     let local_root = normalize_host_path(
-        std::fs::canonicalize(resolve_path(&root_path, &workspace)).map_err(|e| e.to_string())?,
+        std::fs::canonicalize(resolve_path(root_path, workspace)).map_err(|e| e.to_string())?,
     );
     if !local_root.is_dir() {
         return Err(format!(
@@ -59,176 +196,51 @@ pub fn fs_watch_workspace(
             local_root.display()
         ));
     }
-
-    let event_root = normalize_frontend_path(&root_path);
-    let callback_root = event_root.clone();
-    let callback_local_root = local_root.clone();
-    let (event_tx, event_rx) = mpsc::channel();
-    let batch_app = app.clone();
-    let batch_thread = std::thread::spawn(move || run_event_batcher(batch_app, event_rx));
-    let callback_event_tx = event_tx.clone();
-    let mut watcher = notify::recommended_watcher(move |result| match result {
-        Ok(event) => {
-            if let Some(event) =
-                workspace_fs_event_from_notify(&callback_root, &callback_local_root, event)
-            {
-                if callback_event_tx.send(event).is_err() {
-                    log::debug!("workspace watcher batch receiver closed");
-                }
-            }
-        }
-        Err(error) => log::debug!("workspace watcher event failed: {error}"),
-    })
-    .map_err(|e| e.to_string())?;
-    watcher
-        .watch(&local_root, RecursiveMode::Recursive)
-        .map_err(|e| e.to_string())?;
-
-    let mut active = state.active.lock().expect("fs watcher state poisoned");
-    *active = Some(ActiveWatcher {
-        _watcher: watcher,
-        _batch_thread: batch_thread,
-    });
-    log::info!("watching workspace: {}", local_root.display());
-    Ok(())
+    Ok(local_root)
 }
 
-#[tauri::command]
-pub fn fs_unwatch_workspace(state: State<'_, FsWatcherState>) -> Result<(), String> {
-    let mut active = state.active.lock().expect("fs watcher state poisoned");
-    *active = None;
-    Ok(())
-}
-
-#[derive(Default)]
-struct WorkspaceFsEventBatch {
-    root_path: Option<String>,
-    paths: BTreeSet<String>,
-    git_related: bool,
-}
-
-impl WorkspaceFsEventBatch {
-    fn add(&mut self, event: WorkspaceFsChangedEvent) {
-        if self.root_path.is_none() {
-            self.root_path = Some(event.root_path);
-        }
-        self.paths.extend(event.paths);
-        self.git_related |= event.git_related;
-    }
-
-    fn is_empty(&self) -> bool {
-        self.root_path.is_none() && self.paths.is_empty() && !self.git_related
-    }
-
-    fn into_event(self) -> Option<WorkspaceFsChangedEvent> {
-        let root_path = self.root_path?;
-        if self.paths.is_empty() {
-            return None;
-        }
-        Some(WorkspaceFsChangedEvent {
-            root_path,
-            paths: self.paths.into_iter().collect(),
-            git_related: self.git_related,
-        })
-    }
-}
-
-fn run_event_batcher(app: AppHandle, event_rx: Receiver<WorkspaceFsChangedEvent>) {
-    let mut batch = WorkspaceFsEventBatch::default();
-    loop {
-        if batch.is_empty() {
-            match event_rx.recv() {
-                Ok(event) => batch.add(event),
-                Err(_) => break,
-            }
-            continue;
-        }
-
-        match event_rx.recv_timeout(Duration::from_millis(FS_EVENT_BATCH_DELAY_MS)) {
-            Ok(event) => batch.add(event),
-            Err(RecvTimeoutError::Timeout) => flush_workspace_batch(&app, &mut batch),
-            Err(RecvTimeoutError::Disconnected) => {
-                flush_workspace_batch(&app, &mut batch);
-                break;
-            }
-        }
-    }
-}
-
-fn flush_workspace_batch(app: &AppHandle, batch: &mut WorkspaceFsEventBatch) {
-    if let Some(event) = std::mem::take(batch).into_event() {
-        emit_workspace_fs_event(app, event);
-    }
-}
-
-fn emit_workspace_fs_event(app: &AppHandle, event: WorkspaceFsChangedEvent) {
-    let _ = app.emit(WORKSPACE_FS_CHANGED_EVENT, event);
-}
-
-fn workspace_fs_event_from_notify(
+fn ensure_wsl_workspace_authorized(
     root_path: &str,
-    local_root: &Path,
-    event: Event,
-) -> Option<WorkspaceFsChangedEvent> {
-    if matches!(event.kind, EventKind::Access(_)) {
-        return None;
+    workspace: &WorkspaceEnv,
+    registry: &WorkspaceRegistry,
+) -> Result<(), String> {
+    let resolved = resolve_path(root_path, workspace);
+    if registry.is_authorized(&resolved) {
+        return Ok(());
     }
-    let mut paths = Vec::new();
-    let mut git_related = false;
-    for path in event.paths {
-        let normalized = normalize_host_path(path);
-        if is_git_related_path(local_root, &normalized) {
-            git_related = true;
+
+    match std::fs::canonicalize(&resolved) {
+        Ok(path) => {
+            let canonical = normalize_host_path(path);
+            if registry.is_authorized(&canonical) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "workspace is outside the authorized roots: {}",
+                    canonical.display()
+                ))
+            }
         }
-        paths.push(frontend_path_for_event(root_path, local_root, &normalized));
-    }
-    if paths.is_empty() {
-        paths.push(root_path.to_string());
-    }
-    paths.sort();
-    paths.dedup();
-    Some(WorkspaceFsChangedEvent {
-        root_path: root_path.to_string(),
-        paths,
-        git_related,
-    })
-}
-
-fn normalize_frontend_path(path: &str) -> String {
-    let normalized = path.replace('\\', "/");
-    if normalized == "/" {
-        normalized
-    } else {
-        normalized.trim_end_matches('/').to_string()
+        Err(_) => Err(format!(
+            "workspace is outside the authorized roots: {}",
+            resolved.display()
+        )),
     }
 }
 
-fn frontend_path_for_event(root_path: &str, local_root: &Path, path: &Path) -> String {
+fn workspace_watch_key(root_path: &str, workspace: &WorkspaceEnv) -> String {
     let root = normalize_frontend_path(root_path);
-    let Ok(relative) = path.strip_prefix(local_root) else {
-        return path.to_string_lossy().replace('\\', "/");
-    };
-    let rel = relative.to_string_lossy().replace('\\', "/");
-    if rel.is_empty() {
-        root
-    } else if root == "/" {
-        format!("/{rel}")
-    } else {
-        format!("{root}/{rel}")
+    match workspace {
+        WorkspaceEnv::Local => format!("local:{root}"),
+        WorkspaceEnv::Wsl { distro } => format!("wsl:{distro}:{root}"),
     }
-}
-
-fn is_git_related_path(local_root: &Path, path: &Path) -> bool {
-    let relative = path.strip_prefix(local_root).unwrap_or(path);
-    relative
-        .components()
-        .any(|component| component.as_os_str() == std::ffi::OsStr::new(".git"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use notify::{Event, EventKind};
+    use std::path::Path;
 
     #[test]
     fn maps_local_event_paths_to_frontend_paths() {
@@ -289,5 +301,82 @@ mod tests {
         let batch = WorkspaceFsEventBatch::default();
 
         assert!(batch.into_event().is_none());
+    }
+
+    #[test]
+    fn large_workspace_event_batch_downgrades_to_root_refresh() {
+        let mut batch = WorkspaceFsEventBatch::default();
+        batch.add(WorkspaceFsChangedEvent {
+            root_path: "/tmp/repo".to_string(),
+            paths: (0..=MAX_BATCH_EVENT_PATHS)
+                .map(|idx| format!("/tmp/repo/generated/{idx}.ts"))
+                .collect(),
+            git_related: false,
+        });
+
+        let event = batch.into_event().expect("root refresh should emit");
+
+        assert_eq!(event.root_path, "/tmp/repo");
+        assert!(event.paths.is_empty());
+        assert!(!event.git_related);
+    }
+
+    #[test]
+    fn notify_events_without_paths_become_root_refreshes() {
+        let event = workspace_fs_event_from_notify(
+            "/tmp/repo",
+            Path::new("/tmp/repo"),
+            Event::new(EventKind::Modify(notify::event::ModifyKind::Any)),
+        )
+        .expect("notify event should become a workspace event");
+
+        assert_eq!(event.root_path, "/tmp/repo");
+        assert!(event.paths.is_empty());
+    }
+
+    #[test]
+    fn parses_wsl_helper_jsonl_into_workspace_events() {
+        let event = workspace_fs_event_from_wsl_json_line(
+            "/home/dev/repo",
+            r#"{"paths":["/home/dev/repo/src/main.rs","/home/dev/repo/.git/index"],"gitRelated":true}"#,
+        )
+        .expect("valid helper json")
+        .expect("helper event should contain paths");
+
+        assert_eq!(event.root_path, "/home/dev/repo");
+        assert_eq!(
+            event.paths,
+            vec![
+                "/home/dev/repo/.git/index".to_string(),
+                "/home/dev/repo/src/main.rs".to_string(),
+            ]
+        );
+        assert!(event.git_related);
+    }
+
+    #[test]
+    fn helper_failure_tracker_requests_polling_after_repeated_failures() {
+        let mut tracker = HelperFailureTracker::new(3);
+
+        assert!(!tracker.record_failure().should_fallback());
+        assert!(!tracker.record_failure().should_fallback());
+        assert!(tracker.record_failure().should_fallback());
+    }
+
+    #[test]
+    fn workspace_watch_key_separates_local_and_wsl_roots() {
+        assert_eq!(
+            workspace_watch_key("/tmp/repo/", &WorkspaceEnv::Local),
+            "local:/tmp/repo"
+        );
+        assert_eq!(
+            workspace_watch_key(
+                "/tmp/repo",
+                &WorkspaceEnv::Wsl {
+                    distro: "Ubuntu".to_string()
+                }
+            ),
+            "wsl:Ubuntu:/tmp/repo"
+        );
     }
 }

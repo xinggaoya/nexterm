@@ -3,7 +3,7 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { NConfigProvider } from "naive-ui";
 import { createPinia } from "pinia";
 import { nextTick } from "vue";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MainApp from "./MainApp.vue";
 import { i18n, setI18nLanguage } from "@/modules/i18n";
 import { applyTerminalSessionTheme } from "@/modules/terminal";
@@ -12,6 +12,7 @@ import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import {
   currentWorkspaceEnv,
   LOCAL_WORKSPACE,
+  useWorkspaceEnvPiniaStore,
   useWorkspaceRootPiniaStore,
 } from "@/modules/workspace";
 import { setCurrentWorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
@@ -174,6 +175,7 @@ function wrapperCleanup(host: HTMLElement) {
 describe("MainApp.vue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
     windowMock.closeRequestedHandlers.length = 0;
     delete (window as typeof window & { __TAURI_INTERNALS__?: unknown })
       .__TAURI_INTERNALS__;
@@ -181,6 +183,10 @@ describe("MainApp.vue", () => {
     document.body.innerHTML = "";
     setI18nLanguage("en-US");
     setCurrentWorkspaceEnv({ kind: "local" });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("shows the workspace welcome screen before a workspace is opened", () => {
@@ -763,6 +769,67 @@ describe("MainApp.vue", () => {
     expect(wrapper.find("[data-source-fs-event]").text()).toBe(
       "D:/repo/src/main.ts",
     );
+  });
+
+  it("does not run periodic workspace refresh for WSL because backend owns fallback", async () => {
+    vi.useFakeTimers();
+    (window as typeof window & { __TAURI_INTERNALS__?: unknown })
+      .__TAURI_INTERNALS__ = { invoke: vi.fn(async () => null) };
+    const pinia = createPinia();
+    useWorkspaceEnvPiniaStore(pinia).setEnv({ kind: "wsl", distro: "Ubuntu" });
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/home/dev/repo";
+    usePreferencesPiniaStore(pinia).hydrated = true;
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+
+    await flushPromises();
+    await nextTick();
+
+    expect(wrapper.find("[data-explorer-fs-event]").text()).toBe("none");
+    expect(invokeMock).toHaveBeenCalledWith("fs_watch_workspace", {
+      rootPath: "/home/dev/repo",
+      workspace: { kind: "wsl", distro: "Ubuntu" },
+    });
+
+    await vi.advanceTimersByTimeAsync(5000);
+    await nextTick();
+
+    expect(wrapper.find("[data-explorer-fs-event]").text()).toBe("none");
+
+    await wrapper.find("[data-toggle-left-panel]").trigger("click");
+    await nextTick();
+
+    expect(wrapper.find("[data-source-fs-event]").text()).toBe("none");
+    vi.useRealTimers();
+  });
+
+  it("does not run periodic workspace refresh for local workspaces while the watcher is active", async () => {
+    vi.useFakeTimers();
+    (window as typeof window & { __TAURI_INTERNALS__?: unknown })
+      .__TAURI_INTERNALS__ = { invoke: vi.fn(async () => null) };
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "D:/repo";
+    usePreferencesPiniaStore(pinia).hydrated = true;
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+
+    await flushPromises();
+    await nextTick();
+
+    expect(invokeMock).toHaveBeenCalledWith("fs_watch_workspace", {
+      rootPath: "D:/repo",
+      workspace: { kind: "local" },
+    });
+
+    await vi.advanceTimersByTimeAsync(5000);
+    await nextTick();
+
+    expect(wrapper.find("[data-explorer-fs-event]").text()).toBe("none");
+    vi.useRealTimers();
   });
 
 });

@@ -71,7 +71,6 @@ const settingsOpen = ref(false);
 const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
 const PANEL_RESIZE_TRIGGER_SIZE = 6;
 const PANEL_WIDTH_SAVE_DELAY_MS = 250;
-const WORKSPACE_REFRESH_FALLBACK_MS = 5000;
 const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
 const sourceControlPanelWidth = ref(prefs.sourceControlPanelWidth);
 const explorerPanelWidth = ref(prefs.explorerPanelWidth);
@@ -83,8 +82,7 @@ let rightSplitResizeObserver: ResizeObserver | null = null;
 let sourceControlWidthSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let explorerWidthSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let workspaceFsUnlisten: UnlistenFn | null = null;
-let watchedWorkspaceRoot: string | null = null;
-let workspaceRefreshFallbackTimer: ReturnType<typeof setInterval> | null = null;
+let watchedWorkspaceKey: string | null = null;
 const colorSchemeQuery =
   typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: dark)")
@@ -268,35 +266,20 @@ function updateExplorerSplitSize(size: string | number) {
   scheduleExplorerWidthSave(usableWidth - centerWidth);
 }
 
-function emitWorkspaceRefresh(
-  rootPath: string,
-  paths: string[] = [],
-  gitRelated = false,
-) {
-  workspaceFsEvent.value = { rootPath, paths, gitRelated };
-}
-
 function isSameWorkspaceRoot(a: string | null, b: string | null): boolean {
   return !!a && !!b && normalizeWorkspacePath(a) === normalizeWorkspacePath(b);
 }
 
-function stopWorkspaceRefreshFallback() {
-  if (!workspaceRefreshFallbackTimer) return;
-  clearInterval(workspaceRefreshFallbackTimer);
-  workspaceRefreshFallbackTimer = null;
-}
-
-function startWorkspaceRefreshFallback(rootPath: string) {
-  stopWorkspaceRefreshFallback();
-  workspaceRefreshFallbackTimer = setInterval(() => {
-    if (workspaceRoot.value === rootPath) emitWorkspaceRefresh(rootPath, [], true);
-  }, WORKSPACE_REFRESH_FALLBACK_MS);
+function workspaceWatcherKey(rootPath: string | null, env: WorkspaceEnv): string | null {
+  if (!rootPath) return null;
+  const scope = env.kind === "wsl" ? `wsl:${env.distro}` : "local";
+  return `${scope}:${normalizeWorkspacePath(rootPath)}`;
 }
 
 async function restartWorkspaceWatcher(rootPath: string | null) {
-  if (!hasTauriInternals() || watchedWorkspaceRoot === rootPath) return;
-  watchedWorkspaceRoot = rootPath;
-  stopWorkspaceRefreshFallback();
+  const watcherKey = workspaceWatcherKey(rootPath, workspaceEnv.env);
+  if (!hasTauriInternals() || watchedWorkspaceKey === watcherKey) return;
+  watchedWorkspaceKey = watcherKey;
   try {
     await native.fsUnwatchWorkspace();
   } catch (error) {
@@ -306,8 +289,7 @@ async function restartWorkspaceWatcher(rootPath: string | null) {
   try {
     await native.fsWatchWorkspace(rootPath);
   } catch (error) {
-    console.warn("Workspace watcher unavailable; using periodic refresh", error);
-    startWorkspaceRefreshFallback(rootPath);
+    console.warn("Workspace watcher unavailable", error);
   }
 }
 
@@ -460,7 +442,6 @@ onUnmounted(() => {
   window.removeEventListener("resize", measureRightSplitWidth);
   flushSourceControlWidthSave();
   flushExplorerWidthSave();
-  stopWorkspaceRefreshFallback();
   if (workspaceFsUnlisten) {
     workspaceFsUnlisten();
     workspaceFsUnlisten = null;
@@ -477,8 +458,8 @@ watch(
   { immediate: true },
 );
 watch(
-  () => workspaceRootStore.rootPath,
-  (rootPath) => {
+  () => [workspaceRootStore.rootPath, workspaceEnv.env] as const,
+  ([rootPath]) => {
     void restartWorkspaceWatcher(rootPath);
     if (!rootPath) return;
     if (!tabs.initialized || tabs.tabs.length === 0) tabs.init(rootPath);
