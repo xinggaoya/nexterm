@@ -53,6 +53,32 @@ describe("tabs pinia store", () => {
     });
   });
 
+  it("creates task terminal tabs with queued startup input", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init("/repo");
+
+    const id = tabs.newTaskTerminal({
+      cwd: "/repo",
+      command: "pnpm run dev",
+    });
+
+    expect(id).toBe(3);
+    expect(tabs.activeId).toBe(3);
+    expect(tabs.tabs[1]).toMatchObject({
+      id: 3,
+      kind: "terminal",
+      title: "task: pnpm run dev",
+      cwd: "/repo",
+      activeLeafId: 4,
+      paneTree: {
+        kind: "leaf",
+        id: 4,
+        cwd: "/repo",
+        startupInput: "pnpm run dev\r",
+      },
+    });
+  });
+
   it("reorders tabs without changing the active tab identity", () => {
     const tabs = useTabsPiniaStore();
     tabs.init();

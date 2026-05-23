@@ -35,6 +35,7 @@ function focusLeaf(leafId: number) {
       :visible="tabVisible"
       :focused="node.id === activeLeafId"
       :initial-cwd="node.cwd"
+      :startup-input="node.startupInput"
       @search-ready="(leafId, addon) => emit('searchReady', leafId, addon)"
       @cwd="(leafId, cwd) => emit('cwd', leafId, cwd)"
       @title="(leafId, title) => emit('title', leafId, title)"

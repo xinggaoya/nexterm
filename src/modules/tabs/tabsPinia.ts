@@ -63,6 +63,16 @@ function titleFromUrl(url: string): string {
   }
 }
 
+function inputForCommand(command: string): string {
+  return /[\r\n]$/.test(command) ? command : `${command}\r`;
+}
+
+function taskTitle(command: string): string {
+  const normalized = command.trim().replace(/\s+/g, " ");
+  const title = normalized.length > 48 ? `${normalized.slice(0, 45)}...` : normalized;
+  return `task: ${title}`;
+}
+
 export const useTabsPiniaStore = defineStore("tabs", {
   state: (): State => ({
     initialized: false,
@@ -116,6 +126,27 @@ export const useTabsPiniaStore = defineStore("tabs", {
         title: "shell",
         cwd,
         paneTree: { kind: "leaf", id: leafId, cwd },
+        activeLeafId: leafId,
+      });
+      this.activeId = tabId;
+      return tabId;
+    },
+    newTaskTerminal(input: { cwd?: string; command: string }): number {
+      if (!this.initialized) this.init(input.cwd);
+      const tabId = this.nextId++;
+      const leafId = this.nextId++;
+      const startupInput = inputForCommand(input.command);
+      this.tabs.push({
+        id: tabId,
+        kind: "terminal",
+        title: taskTitle(input.command),
+        cwd: input.cwd,
+        paneTree: {
+          kind: "leaf",
+          id: leafId,
+          cwd: input.cwd,
+          startupInput,
+        },
         activeLeafId: leafId,
       });
       this.activeId = tabId;

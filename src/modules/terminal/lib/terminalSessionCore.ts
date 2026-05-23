@@ -52,6 +52,7 @@ type Session = {
   nextOutputOffset: number;
   outputChain: Promise<void>;
   generation: number;
+  pendingWrites: string[];
 };
 
 export type TerminalSessionHandle = {
@@ -100,7 +101,11 @@ configureRendererPool({
   },
 });
 
-function ensureSession(leafId: number, initialCwd?: string): Session {
+function ensureSession(
+  leafId: number,
+  initialCwd?: string,
+  startupInput?: string,
+): Session {
   const existing = sessions.get(leafId);
   if (existing) return existing;
 
@@ -132,6 +137,7 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
     nextOutputOffset: 0,
     outputChain: Promise.resolve(),
     generation: 0,
+    pendingWrites: startupInput ? [startupInput] : [],
   };
   session.modelOscDisposers = registerModelOsc(session);
   sessions.set(leafId, session);
@@ -142,6 +148,17 @@ function ensureSession(leafId: number, initialCwd?: string): Session {
   })();
 
   return session;
+}
+
+function flushPendingWrites(s: Session): void {
+  const pty = s.pty;
+  if (!pty || s.pendingWrites.length === 0) return;
+  const writes = s.pendingWrites.splice(0);
+  for (const data of writes) {
+    void pty.write(data).catch((e) => {
+      console.warn("[nexterm] queued terminal write failed:", e);
+    });
+  }
 }
 
 function registerModelOsc(s: Session): (() => void)[] {
@@ -420,6 +437,7 @@ function attachSession(
         }
         s.pty = pty;
         s.transcriptReader = pty;
+        flushPendingWrites(s);
         if (s.cols > 0 && s.rows > 0) pty.resize(s.cols, s.rows);
       })
       .catch((e) => {
@@ -441,15 +459,17 @@ export function mountTerminalSession({
   leafId,
   container,
   initialCwd,
+  startupInput,
   callbacks,
 }: {
   leafId: number;
   container: HTMLDivElement;
   initialCwd?: string;
+  startupInput?: string;
   callbacks?: TerminalSessionCallbacks;
 }): () => void {
   let cancelled = false;
-  const s = ensureSession(leafId, initialCwd);
+  const s = ensureSession(leafId, initialCwd, startupInput);
   s.ready.then(() => {
     if (cancelled || s.disposed) return;
     attachSession(leafId, container, callbacks ?? {});
@@ -520,6 +540,7 @@ export async function respawnSession(
   }
   s.pty = pty;
   s.transcriptReader = pty;
+  flushPendingWrites(s);
   if (s.cols > 0 && s.rows > 0) pty.resize(s.cols, s.rows);
 }
 
@@ -546,7 +567,13 @@ export function disposeSession(leafId: number): void {
 configureTerminalSessionDisposer(disposeSession);
 
 export function writeTerminalSession(leafId: number, data: string): void {
-  sessions.get(leafId)?.pty?.write(data);
+  const s = sessions.get(leafId);
+  if (!s) return;
+  if (!s.pty) {
+    s.pendingWrites.push(data);
+    return;
+  }
+  void s.pty.write(data);
 }
 
 export function focusTerminalSession(leafId: number): void {

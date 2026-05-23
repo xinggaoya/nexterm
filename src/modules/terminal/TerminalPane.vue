@@ -22,10 +22,12 @@ const props = withDefaults(
     visible: boolean;
     focused?: boolean;
     initialCwd?: string;
+    startupInput?: string;
   }>(),
   {
     focused: true,
     initialCwd: undefined,
+    startupInput: undefined,
   },
 );
 
@@ -50,6 +52,7 @@ onMounted(() => {
     leafId: props.leafId,
     container: container.value,
     initialCwd: props.initialCwd,
+    startupInput: props.startupInput,
     callbacks: {
       onSearchReady: (addon) => emit("searchReady", props.leafId, addon),
       onExit: (code) => emit("exit", props.leafId, code),
