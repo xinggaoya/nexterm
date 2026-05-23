@@ -151,3 +151,25 @@ export async function discoverWorkspaceTasks(
   ]);
   return [...packages, ...cargo, ...make];
 }
+
+export function selectDefaultWorkspaceTask(
+  tasks: readonly WorkspaceTask[],
+): WorkspaceTask | null {
+  const preferredIds = ["package:dev", "package:start", "package:test"];
+  for (const id of preferredIds) {
+    const match = tasks.find((task) => task.id === id);
+    if (match) return match;
+  }
+
+  const firstPackage = tasks.find((task) => task.source === "package");
+  if (firstPackage) return firstPackage;
+
+  const cargoTest = tasks.find((task) => task.id === "cargo:test");
+  if (cargoTest) return cargoTest;
+
+  const cargoCheck = tasks.find((task) => task.id === "cargo:check");
+  if (cargoCheck) return cargoCheck;
+
+  const firstMake = tasks.find((task) => task.source === "make");
+  return firstMake ?? tasks[0] ?? null;
+}
