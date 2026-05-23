@@ -42,9 +42,43 @@ const invokeMock = vi.hoisted(() =>
         truncated: false,
       };
     }
+    if (command === "fs_read_file") {
+      if (args?.path === "/repo/package.json") {
+        const content = JSON.stringify({ scripts: { dev: "vite" } });
+        return { kind: "text", content, size: content.length };
+      }
+      if (args?.path === "/repo/pnpm-lock.yaml") {
+        return { kind: "text", content: "lockfileVersion: '9.0'", size: 22 };
+      }
+      return { kind: "binary", size: 0 };
+    }
+    if (command === "git_status") {
+      return {
+        repoRoot: "/repo",
+        branch: "main",
+        upstream: "origin/main",
+        ahead: 0,
+        behind: 0,
+        isDetached: false,
+        truncated: false,
+        changedFiles: [
+          {
+            path: "src/main.ts",
+            originalPath: null,
+            indexStatus: " ",
+            worktreeStatus: "M",
+            staged: false,
+            unstaged: true,
+            untracked: false,
+            statusLabel: "Modified",
+          },
+        ],
+      };
+    }
     return null;
   }),
 );
+const editorSaveMock = vi.hoisted(() => vi.fn(async () => {}));
 const eventListenMock = vi.hoisted(() => {
   const handlers: Array<(event: { payload: unknown }) => void> = [];
   const listen = vi.fn(
@@ -128,6 +162,10 @@ vi.mock("@/modules/editor/EditorPane.vue", () => ({
   default: {
     props: ["path"],
     emits: ["dirtyChange"],
+    setup(_props: unknown, { expose }: { expose: (api: unknown) => void }) {
+      expose({ save: editorSaveMock });
+      return {};
+    },
     template:
       '<section data-editor-pane>{{ path }}<button data-editor-dirty @click="$emit(\'dirtyChange\', true)">dirty</button></section>',
   },
@@ -426,6 +464,73 @@ describe("MainApp.vue", () => {
       kind: "editor",
       path: "/repo/src/main.ts",
       preview: true,
+    });
+  });
+
+  it("runs the default workspace task from the command palette", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+    const tabs = useTabsPiniaStore();
+    await nextTick();
+
+    await wrapper.find("[data-open-command-palette]").trigger("click");
+    await wrapper.find("[data-command-palette-input]").setValue("run task");
+    await wrapper.find("[data-command-result='tasks.run']").trigger("click");
+    await flushPromises();
+
+    expect(tabs.tabs.find((tab) => tab.id === tabs.activeId)).toMatchObject({
+      kind: "terminal",
+      title: "task: pnpm run dev",
+      cwd: "/repo",
+      paneTree: {
+        kind: "leaf",
+        startupInput: "pnpm run dev\r",
+      },
+    });
+  });
+
+  it("saves the active editor from the command palette", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+    const tabs = useTabsPiniaStore();
+    await nextTick();
+    tabs.openFileTab("/repo/src/main.ts");
+    await nextTick();
+
+    await wrapper.find("[data-open-command-palette]").trigger("click");
+    await wrapper.find("[data-command-palette-input]").setValue("save editor");
+    await wrapper.find("[data-command-result='editor.save']").trigger("click");
+    await flushPromises();
+
+    expect(editorSaveMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stages all eligible Git files from the command palette", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+    await nextTick();
+
+    await wrapper.find("[data-open-command-palette]").trigger("click");
+    await wrapper.find("[data-command-palette-input]").setValue("stage all");
+    await wrapper.find("[data-command-result='git.stageAll']").trigger("click");
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("git_stage", {
+      repoRoot: "/repo",
+      paths: ["src/main.ts"],
+      workspace: currentWorkspaceEnv(),
     });
   });
 

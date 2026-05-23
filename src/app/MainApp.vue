@@ -45,6 +45,7 @@ import UnsavedCloseGuard from "./components/UnsavedCloseGuard.vue";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
 import SourceControlPanel from "@/modules/source-control/SourceControlPanel.vue";
 import EditorPane from "@/modules/editor/EditorPane.vue";
+import { readEditorDocument } from "@/modules/editor/lib/documentService";
 import GitDiffStack from "@/modules/editor/GitDiffStack.vue";
 import GitHistoryStack from "@/modules/git-history/GitHistoryStack.vue";
 import MarkdownStack from "@/modules/markdown/MarkdownStack.vue";
@@ -78,6 +79,7 @@ const sourceControlPanelWidth = ref(prefs.sourceControlPanelWidth);
 const explorerPanelWidth = ref(prefs.explorerPanelWidth);
 const rightSplitHost = ref<HTMLElement | null>(null);
 const closeGuard = ref<InstanceType<typeof UnsavedCloseGuard> | null>(null);
+const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
 const rightSplitWidth = ref(0);
 const workspaceFsEvent = ref<WorkspaceFsChangedEvent | null>(null);
 let rightSplitResizeObserver: ResizeObserver | null = null;
@@ -415,6 +417,15 @@ function requestCloseTab(id: number) {
   tabs.closeTab(id);
 }
 
+async function saveActiveEditor() {
+  await activeEditorPane.value?.save();
+}
+
+async function readWorkspaceTextFile(path: string): Promise<string | null> {
+  const result = await readEditorDocument(path);
+  return result.status === "ready" ? result.content : null;
+}
+
 function openSettings(tab: SettingsTab = SETTINGS_DEFAULT_TAB) {
   activeSettingsTab.value = tab;
   settingsOpen.value = true;
@@ -436,6 +447,7 @@ const {
   keybindings: computed(() => prefs.keybindings),
   hasWorkspace,
   workspaceRoot,
+  activeTab,
   leftPanelOpen,
   rightPanelOpen,
   workspaceFsEvent,
@@ -444,7 +456,16 @@ const {
   splitActivePane,
   openFileTab,
   openSettings,
+  requestCloseTab,
+  saveActiveEditor,
+  readTextFile: readWorkspaceTextFile,
   resolveGitRepo: native.gitResolveRepo,
+  gitStatus: native.gitStatus,
+  gitStage: native.gitStage,
+  gitUnstage: native.gitUnstage,
+  gitFetch: native.gitFetch,
+  gitPullFfOnly: native.gitPullFfOnly,
+  gitPush: native.gitPush,
 });
 
 onMounted(() => {
@@ -683,6 +704,7 @@ watch([leftPanelOpen, rightPanelOpen], () => {
                             :aria-hidden="!isEditorTab"
                           >
                             <EditorPane
+                              ref="activeEditorPane"
                               :path="activeTab.path"
                               @dirty-change="(dirty) => tabs.updateTab(activeTab!.id, { dirty })"
                             />
