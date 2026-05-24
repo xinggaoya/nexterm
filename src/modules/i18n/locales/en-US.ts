@@ -213,6 +213,8 @@ const enUS = {
     stageAll: "Stage all",
     staged: "Staged",
     stagedCount: "{count} staged",
+    truncatedStatusHint:
+      "Status results were truncated. Use the terminal for the full Git status.",
     unknownError: "Unknown source control error",
     unstage: "Unstage",
     unstageAll: "Unstage all",

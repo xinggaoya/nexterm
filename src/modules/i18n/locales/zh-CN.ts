@@ -213,6 +213,7 @@ const zhCN = {
     stageAll: "全部暂存",
     staged: "已暂存",
     stagedCount: "已暂存 {count} 个",
+    truncatedStatusHint: "状态结果已截断。请使用终端查看完整 Git 状态。",
     unknownError: "未知源代码管理错误",
     unstage: "取消暂存",
     unstageAll: "全部取消暂存",
