@@ -47,10 +47,7 @@ export default defineConfig(async ({ mode }) => ({
       process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome120" : "es2022",
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
-      input: {
-        main: path.resolve(__dirname, "index.html"),
-        remote: path.resolve(__dirname, "remote.html"),
-      },
+      input: path.resolve(__dirname, "index.html"),
       output: {
         manualChunks(id: string) {
           if (!id.includes("node_modules")) return;
