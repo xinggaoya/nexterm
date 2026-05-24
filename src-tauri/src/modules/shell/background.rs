@@ -25,6 +25,7 @@ pub struct BackgroundProc {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BackgroundLogResponse {
     pub bytes: String,
     pub next_offset: u64,
@@ -34,6 +35,7 @@ pub struct BackgroundLogResponse {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BackgroundProcInfo {
     pub handle: u32,
     pub command: String,

@@ -21,10 +21,6 @@ import {
   pathsToStage,
   pathsToUnstage,
 } from "@/modules/source-control/sourceControlModel";
-import {
-  discoverWorkspaceTasks,
-  selectDefaultWorkspaceTask,
-} from "@/modules/tasks";
 import type { SplitDir } from "@/modules/terminal/lib/panes";
 import type { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { Tab } from "@/modules/tabs/tabsTypes";
@@ -43,9 +39,9 @@ type WorkbenchCommandOptions = {
   splitActivePane: (dir: SplitDir) => void;
   openFileTab: (path: string, pin: boolean) => void;
   openSettings: () => void;
+  openTaskConsole: () => void | Promise<void>;
   requestCloseTab: (id: number) => void;
   saveActiveEditor: () => void | Promise<void>;
-  readTextFile: (path: string) => Promise<string | null>;
   resolveGitRepo: (root: string) => Promise<GitRepoInfo | null>;
   gitStatus: (repoRoot: string) => Promise<GitStatusSnapshot>;
   gitStage: (repoRoot: string, paths: string[]) => Promise<void>;
@@ -162,15 +158,6 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
     refreshSourceControlFromCommand();
   }
 
-  async function runDefaultWorkspaceTask() {
-    const root = options.workspaceRoot.value;
-    if (!root) return;
-    const tasks = await discoverWorkspaceTasks(root, options.readTextFile);
-    const task = selectDefaultWorkspaceTask(tasks);
-    if (!task) return;
-    options.tabs.newTaskTerminal({ cwd: root, command: task.command });
-  }
-
   async function saveActiveEditorFromCommand() {
     if (options.activeTab.value?.kind !== "editor") return;
     await options.saveActiveEditor();
@@ -194,7 +181,7 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
         closeActiveTabFromCommand();
         return;
       case "tasks.run":
-        await runDefaultWorkspaceTask();
+        await options.openTaskConsole();
         return;
       case "terminal.new":
         options.newTerminalTab();
