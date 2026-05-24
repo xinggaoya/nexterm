@@ -428,4 +428,45 @@ describe("SourceControlPanel.vue", () => {
     expect(native.gitStatus).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
+
+  it("shows a hint when git status results are truncated", async () => {
+    mockSnapshotFiles([
+      file({
+        path: "src/main.ts",
+        worktreeStatus: "M",
+        unstaged: true,
+      }),
+    ]);
+    vi.mocked(native.gitPanelSnapshot).mockResolvedValueOnce({
+      repo: {
+        repoRoot: "/repo",
+        branch: "main",
+        upstream: "origin/main",
+        isDetached: false,
+      },
+      status: {
+        repoRoot: "/repo",
+        branch: "main",
+        upstream: "origin/main",
+        ahead: 0,
+        behind: 0,
+        isDetached: false,
+        truncated: true,
+        changedFiles: [
+          file({
+            path: "src/main.ts",
+            worktreeStatus: "M",
+            unstaged: true,
+          }),
+        ],
+      },
+    });
+
+    const wrapper = mount(SourceControlPanel, {
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    expect(wrapper.text()).toContain("Status results were truncated");
+  });
 });
