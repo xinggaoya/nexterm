@@ -33,6 +33,12 @@ import { dirtyEditorTabs } from "@/modules/tabs/closeGuards";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import { MAX_PANES_PER_TAB, type Tab } from "@/modules/tabs/tabsTypes";
 import CommandPalette from "@/modules/commands/CommandPalette.vue";
+import TaskConsole from "@/modules/tasks/TaskConsole.vue";
+import {
+  createTaskRunStore,
+  discoverWorkspaceTasks,
+  type WorkspaceTask,
+} from "@/modules/tasks";
 import {
   getWslHome,
   normalizeWorkspacePath,
@@ -75,6 +81,7 @@ const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
 const PANEL_RESIZE_TRIGGER_SIZE = 6;
 const PANEL_WIDTH_SAVE_DELAY_MS = 250;
 const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
+const TASK_CONSOLE_HEIGHT = 280;
 const sourceControlPanelWidth = ref(prefs.sourceControlPanelWidth);
 const explorerPanelWidth = ref(prefs.explorerPanelWidth);
 const rightSplitHost = ref<HTMLElement | null>(null);
@@ -82,6 +89,11 @@ const closeGuard = ref<InstanceType<typeof UnsavedCloseGuard> | null>(null);
 const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
 const rightSplitWidth = ref(0);
 const workspaceFsEvent = ref<WorkspaceFsChangedEvent | null>(null);
+const taskConsoleOpen = ref(false);
+const workspaceTasks = ref<WorkspaceTask[]>([]);
+const workspaceTasksLoading = ref(false);
+const workspaceTasksError = ref<string | null>(null);
+const taskRuns = createTaskRunStore();
 let rightSplitResizeObserver: ResizeObserver | null = null;
 let sourceControlWidthSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let explorerWidthSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -121,6 +133,8 @@ const naiveLocaleConfig = computed(() => getNaiveLocaleConfig(resolvedLocale.val
 const activeTab = computed<Tab | null>(
   () => tabs.tabs.find((tab) => tab.id === tabs.activeId) ?? null,
 );
+const taskRunList = computed(() => taskRuns.runs.value);
+const activeTaskRun = computed(() => taskRuns.activeRun.value);
 const hasWorkspace = computed(() => !!workspaceRootStore.rootPath);
 const activeCwd = computed(() =>
   activeTab.value?.kind === "terminal" ? activeTab.value.cwd ?? null : null,
@@ -428,6 +442,55 @@ async function readWorkspaceTextFile(path: string): Promise<string | null> {
   return result.status === "ready" ? result.content : null;
 }
 
+function normalizeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+async function refreshWorkspaceTasks() {
+  const root = workspaceRoot.value;
+  if (!root) {
+    workspaceTasks.value = [];
+    workspaceTasksError.value = null;
+    return;
+  }
+  workspaceTasksLoading.value = true;
+  workspaceTasksError.value = null;
+  try {
+    workspaceTasks.value = await discoverWorkspaceTasks(root, readWorkspaceTextFile);
+  } catch (error) {
+    workspaceTasks.value = [];
+    workspaceTasksError.value = normalizeError(error);
+  } finally {
+    workspaceTasksLoading.value = false;
+  }
+}
+
+async function openTaskConsole() {
+  taskConsoleOpen.value = true;
+  if (workspaceTasks.value.length === 0 && !workspaceTasksLoading.value) {
+    await refreshWorkspaceTasks();
+  }
+}
+
+async function runWorkspaceTask(task: WorkspaceTask) {
+  const root = workspaceRoot.value;
+  if (!root) return;
+  taskConsoleOpen.value = true;
+  await taskRuns.startTask(task, root);
+}
+
+async function runWorkspaceCommand(command: string) {
+  const root = workspaceRoot.value;
+  if (!root) return;
+  taskConsoleOpen.value = true;
+  await taskRuns.runCommand(command, root);
+}
+
+function runTaskInTerminal(input: { command: string; cwd: string }) {
+  tabs.newTaskTerminal(input);
+}
+
 function openSettings(tab: SettingsTab = SETTINGS_DEFAULT_TAB) {
   activeSettingsTab.value = tab;
   settingsOpen.value = true;
@@ -458,9 +521,9 @@ const {
   splitActivePane,
   openFileTab,
   openSettings,
+  openTaskConsole,
   requestCloseTab,
   saveActiveEditor,
-  readTextFile: readWorkspaceTextFile,
   resolveGitRepo: native.gitResolveRepo,
   gitStatus: native.gitStatus,
   gitStage: native.gitStage,
@@ -488,6 +551,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  taskRuns.dispose();
   colorSchemeQuery?.removeEventListener("change", colorSchemeListener);
   window.removeEventListener("languagechange", syncLanguage);
   window.removeEventListener("keydown", handleGlobalCommandKeydown);
@@ -520,6 +584,12 @@ watch(
   },
   { immediate: true },
 );
+
+watch(workspaceRoot, () => {
+  workspaceTasks.value = [];
+  workspaceTasksError.value = null;
+  if (taskConsoleOpen.value) void refreshWorkspaceTasks();
+});
 
 watch(
   () => prefs.sourceControlPanelWidth,
@@ -628,7 +698,8 @@ watch([leftPanelOpen, rightPanelOpen], () => {
                       @drag-end="flushExplorerWidthSave"
                     >
                       <template #1>
-                        <section class="relative h-full min-w-0 bg-background">
+                        <section class="flex h-full min-w-0 flex-col bg-background">
+                          <div class="relative min-h-0 flex-1">
                           <div
                             :class="[
                               'absolute inset-0 px-3 pt-2 pb-2',
@@ -711,6 +782,27 @@ watch([leftPanelOpen, rightPanelOpen], () => {
                               @dirty-change="(dirty) => tabs.updateTab(activeTab!.id, { dirty })"
                             />
                           </div>
+                          </div>
+
+                          <TaskConsole
+                            v-if="taskConsoleOpen"
+                            class="shrink-0"
+                            :style="{ height: `${TASK_CONSOLE_HEIGHT}px` }"
+                            :root-path="workspaceRoot"
+                            :tasks="workspaceTasks"
+                            :runs="taskRunList"
+                            :active-run="activeTaskRun"
+                            :loading-tasks="workspaceTasksLoading"
+                            :task-error="workspaceTasksError"
+                            @close="taskConsoleOpen = false"
+                            @refresh-tasks="refreshWorkspaceTasks"
+                            @run-task="runWorkspaceTask"
+                            @run-command="runWorkspaceCommand"
+                            @select-run="taskRuns.setActiveRun"
+                            @stop-run="(id) => void taskRuns.stopRun(id)"
+                            @rerun="(id) => void taskRuns.rerun(id)"
+                            @run-in-terminal="runTaskInTerminal"
+                          />
                         </section>
                       </template>
                       <template #resize-trigger>
