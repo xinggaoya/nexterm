@@ -1,6 +1,6 @@
 mod modules;
 
-use modules::{fs, git, pty, remote, shell, workspace};
+use modules::{fs, git, pty, shell, workspace};
 use std::sync::Mutex;
 use tauri::State;
 use tauri_plugin_window_state::StateFlags;
@@ -56,7 +56,6 @@ pub fn run() {
         )
         .plugin(tauri_plugin_opener::init())
         .manage(pty::PtyState::default())
-        .manage(remote::RemoteState::default())
         .manage(shell::ShellState::default())
         .manage(fs::watcher::FsWatcherState::default())
         .manage({
@@ -73,11 +72,7 @@ pub fn run() {
             pty::pty_write,
             pty::pty_resize,
             pty::pty_read_transcript,
-            pty::pty_update_metadata,
             pty::pty_close,
-            remote::remote_terminal_status,
-            remote::remote_terminal_start,
-            remote::remote_terminal_stop,
             fs::tree::list_subdirs,
             fs::tree::fs_read_dir,
             fs::file::fs_read_file,

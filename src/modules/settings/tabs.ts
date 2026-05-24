@@ -1,7 +1,17 @@
-export type SettingsTab = "general" | "about";
+export type SettingsTab =
+  | "general"
+  | "appearance"
+  | "editor"
+  | "terminal"
+  | "keybindings"
+  | "about";
 
 export const SETTINGS_TABS: SettingsTab[] = [
   "general",
+  "appearance",
+  "editor",
+  "terminal",
+  "keybindings",
   "about",
 ];
 

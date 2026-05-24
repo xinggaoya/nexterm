@@ -1,7 +1,7 @@
 mod da_filter;
+mod io;
 #[cfg(windows)]
 mod job;
-mod remote;
 mod session;
 pub(crate) mod shell_init;
 
@@ -14,7 +14,6 @@ use serde::Serialize;
 use tauri::ipc::{Channel, Response};
 
 use crate::modules::workspace::{authorize_spawn_cwd, WorkspaceEnv, WorkspaceRegistry};
-pub use remote::PtyRemoteSession;
 use session::Session;
 
 #[derive(Serialize)]
@@ -28,7 +27,6 @@ pub struct PtyTranscriptRead {
 
 pub struct PtyState {
     sessions: RwLock<HashMap<u32, Arc<Session>>>,
-    remote_sessions: RwLock<HashMap<u32, PtyRemoteSession>>,
     // Starts at 1 so freshly-handed-out ids are never 0, which the frontend
     // sometimes treats as "unset". Increments monotonically; never reused.
     next_id: AtomicU32,
@@ -38,7 +36,6 @@ impl Default for PtyState {
     fn default() -> Self {
         Self {
             sessions: RwLock::new(HashMap::new()),
-            remote_sessions: RwLock::new(HashMap::new()),
             next_id: AtomicU32::new(1),
         }
     }
@@ -61,7 +58,6 @@ pub async fn pty_open(
         log::warn!("pty_open: cwd rejected: {e}");
         e
     })?;
-    let remote_cwd = cwd.clone();
     let session = tauri::async_runtime::spawn_blocking(move || {
         session::spawn(cols, rows, cwd, workspace, on_data, on_exit).map(|(s, _)| s)
     })
@@ -76,14 +72,13 @@ pub async fn pty_open(
     })?;
     let id = state.next_id.fetch_add(1, Ordering::Relaxed);
     state.sessions.write().unwrap().insert(id, session);
-    state.register_remote_session(id, remote_cwd, cols, rows);
     log::info!("pty opened id={id} cols={cols} rows={rows}");
     Ok(id)
 }
 
 #[tauri::command]
 pub fn pty_write(state: tauri::State<PtyState>, id: u32, data: String) -> Result<(), String> {
-    state.write_remote_session(id, &data).inspect_err(|e| {
+    state.write_session(id, &data).inspect_err(|e| {
         // EPIPE is expected if the child already exited.
         log::debug!("pty_write id={id} failed: {e}");
     })
@@ -96,11 +91,9 @@ pub fn pty_resize(
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    state
-        .resize_remote_session(id, cols, rows)
-        .inspect_err(|e| {
-            log::warn!("pty_resize id={id} failed: {e}");
-        })
+    state.resize_session(id, cols, rows).inspect_err(|e| {
+        log::warn!("pty_resize id={id} failed: {e}");
+    })
 }
 
 #[tauri::command]
@@ -111,26 +104,15 @@ pub fn pty_read_transcript(
     max_bytes: usize,
 ) -> Result<PtyTranscriptRead, String> {
     state
-        .read_remote_transcript(id, since_offset, max_bytes)
+        .read_transcript(id, since_offset, max_bytes)
         .inspect_err(|_| {
             log::warn!("pty_read_transcript: unknown id={id}");
         })
 }
 
 #[tauri::command]
-pub fn pty_update_metadata(
-    state: tauri::State<PtyState>,
-    id: u32,
-    title: Option<String>,
-    cwd: Option<String>,
-) -> Result<(), String> {
-    state.update_remote_session_metadata(id, title, cwd)
-}
-
-#[tauri::command]
 pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
     let session = state.sessions.write().unwrap().remove(&id);
-    state.unregister_remote_session(id);
     if let Some(s) = session {
         if let Err(e) = s.killer.lock().unwrap().kill() {
             // Non-fatal: the child may already have exited on its own (e.g. the

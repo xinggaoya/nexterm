@@ -6,13 +6,12 @@ fn main() {
 fn configure_wsl_watcher_helper_asset() {
     println!("cargo:rustc-check-cfg=cfg(nexterm_wsl_watcher_helper_asset)");
     println!("cargo:rerun-if-env-changed=NEXTERM_WSL_WATCHER_HELPER");
-    println!("cargo:rerun-if-changed=wsl-watcher-helper/target/x86_64-unknown-linux-musl/release/nexterm-wsl-watcher");
+    println!("cargo:rerun-if-changed=target/x86_64-unknown-linux-musl/release/nexterm-wsl-watcher");
 
     let manifest_dir =
         std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by Cargo");
     let explicit = std::env::var("NEXTERM_WSL_WATCHER_HELPER").ok();
     let default = std::path::Path::new(&manifest_dir)
-        .join("wsl-watcher-helper")
         .join("target")
         .join("x86_64-unknown-linux-musl")
         .join("release")
