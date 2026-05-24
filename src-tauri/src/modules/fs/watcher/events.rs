@@ -114,7 +114,11 @@ impl WorkspaceFsEmissionThrottle {
             return None;
         }
         let elapsed = now.saturating_duration_since(self.last_emitted_at?);
-        (elapsed < self.min_repeated_interval).then_some(self.min_repeated_interval - elapsed)
+        if elapsed < self.min_repeated_interval {
+            Some(self.min_repeated_interval - elapsed)
+        } else {
+            None
+        }
     }
 
     fn record_emit(&mut self, now: Instant, batch: &WorkspaceFsEventBatch) {
@@ -334,6 +338,20 @@ mod tests {
         assert_eq!(
             throttle.delay_for(now + Duration::from_millis(250), &root_batch),
             Some(Duration::from_millis(750))
+        );
+    }
+
+    #[test]
+    fn expired_repeated_batches_do_not_underflow_delay() {
+        let mut throttle = WorkspaceFsEmissionThrottle::new(Duration::from_millis(1_000));
+        let now = Instant::now();
+        let batch = batch_with_paths(&["/tmp/repo/.git/index"]);
+
+        throttle.record_emit(now, &batch);
+
+        assert_eq!(
+            throttle.delay_for(now + Duration::from_millis(1_250), &batch),
+            None
         );
     }
 }

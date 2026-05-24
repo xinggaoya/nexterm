@@ -1,4 +1,5 @@
 mod modules;
+mod panic_report;
 
 use modules::{fs, git, pty, remote, shell, workspace};
 use std::sync::Mutex;
@@ -11,7 +12,13 @@ struct LaunchDir(Mutex<Option<String>>);
 
 #[tauri::command]
 fn get_launch_dir(state: State<'_, LaunchDir>) -> Option<String> {
-    state.0.lock().expect("LaunchDir mutex poisoned").take()
+    match modules::lock::mutex_lock(&state.0, "launch dir") {
+        Ok(mut launch_dir) => launch_dir.take(),
+        Err(error) => {
+            log::error!("{error}");
+            None
+        }
+    }
 }
 
 fn parse_launch_dir() -> Option<String> {
@@ -33,10 +40,11 @@ fn parse_launch_dir() -> Option<String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    panic_report::install_panic_hook();
     workspace::init_launch_cwd();
     let launch_dir = parse_launch_dir();
 
-    tauri::Builder::default()
+    if let Err(error) = tauri::Builder::default()
         // Skip restoring VISIBLE — frontend calls window.show() after first
         // paint so the user never sees a transparent window-shadow flash on
         // Windows/Linux.
@@ -127,5 +135,8 @@ pub fn run() {
             get_launch_dir,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    {
+        log::error!("error while running tauri application: {error}");
+        eprintln!("[nexterm] error while running tauri application: {error}");
+    }
 }

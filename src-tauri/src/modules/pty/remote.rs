@@ -6,6 +6,7 @@ use portable_pty::PtySize;
 use serde::Serialize;
 
 use super::{PtyState, PtyTranscriptRead};
+use crate::modules::lock::{mutex_lock, rwlock_read, rwlock_write};
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,8 +28,14 @@ fn now_ms() -> u64 {
 }
 
 impl PtyState {
-    pub fn register_remote_session(&self, id: u32, cwd: Option<String>, cols: u16, rows: u16) {
-        self.remote_sessions.write().unwrap().insert(
+    pub fn register_remote_session(
+        &self,
+        id: u32,
+        cwd: Option<String>,
+        cols: u16,
+        rows: u16,
+    ) -> Result<(), String> {
+        rwlock_write(&self.remote_sessions, "pty remote sessions")?.insert(
             id,
             PtyRemoteSession {
                 id,
@@ -40,10 +47,12 @@ impl PtyState {
                 total_offset: 0,
             },
         );
+        Ok(())
     }
 
-    pub fn unregister_remote_session(&self, id: u32) {
-        self.remote_sessions.write().unwrap().remove(&id);
+    pub fn unregister_remote_session(&self, id: u32) -> Result<(), String> {
+        rwlock_write(&self.remote_sessions, "pty remote sessions")?.remove(&id);
+        Ok(())
     }
 
     pub fn update_remote_session_metadata(
@@ -52,7 +61,7 @@ impl PtyState {
         title: Option<String>,
         cwd: Option<String>,
     ) -> Result<(), String> {
-        let mut sessions = self.remote_sessions.write().unwrap();
+        let mut sessions = rwlock_write(&self.remote_sessions, "pty remote sessions")?;
         let session = sessions
             .get_mut(&id)
             .ok_or_else(|| format!("unknown pty session: {id}"))?;
@@ -70,23 +79,21 @@ impl PtyState {
         Ok(())
     }
 
-    pub fn remote_sessions(&self) -> Vec<PtyRemoteSession> {
-        let sessions = self.sessions.read().unwrap();
-        let mut items: Vec<PtyRemoteSession> = self
-            .remote_sessions
-            .read()
-            .unwrap()
-            .values()
-            .map(|meta| {
-                let mut item = meta.clone();
-                if let Some(session) = sessions.get(&meta.id) {
-                    item.total_offset = session.transcript.total_offset();
-                }
-                item
-            })
-            .collect();
+    pub fn remote_sessions(&self) -> Result<Vec<PtyRemoteSession>, String> {
+        let sessions = rwlock_read(&self.sessions, "pty sessions")?;
+        let mut items: Vec<PtyRemoteSession> =
+            rwlock_read(&self.remote_sessions, "pty remote sessions")?
+                .values()
+                .map(|meta| {
+                    let mut item = meta.clone();
+                    if let Some(session) = sessions.get(&meta.id) {
+                        item.total_offset = session.transcript.total_offset();
+                    }
+                    item
+                })
+                .collect();
         items.sort_by_key(|item| item.id);
-        items
+        Ok(items)
     }
 
     pub fn read_remote_transcript(
@@ -95,10 +102,7 @@ impl PtyState {
         since_offset: u64,
         max_bytes: usize,
     ) -> Result<PtyTranscriptRead, String> {
-        let session = self
-            .sessions
-            .read()
-            .unwrap()
+        let session = rwlock_read(&self.sessions, "pty sessions")?
             .get(&id)
             .cloned()
             .ok_or_else(|| format!("unknown pty session: {id}"))?;
@@ -112,34 +116,22 @@ impl PtyState {
     }
 
     pub fn write_remote_session(&self, id: u32, data: &str) -> Result<(), String> {
-        let session = self
-            .sessions
-            .read()
-            .unwrap()
+        let session = rwlock_read(&self.sessions, "pty sessions")?
             .get(&id)
             .cloned()
             .ok_or_else(|| format!("unknown pty session: {id}"))?;
-        let result = session
-            .writer
-            .lock()
-            .unwrap()
+        let result = mutex_lock(&session.writer, "pty writer")?
             .write_all(data.as_bytes())
             .map_err(|e| e.to_string());
         result
     }
 
     pub fn resize_remote_session(&self, id: u32, cols: u16, rows: u16) -> Result<(), String> {
-        let session = self
-            .sessions
-            .read()
-            .unwrap()
+        let session = rwlock_read(&self.sessions, "pty sessions")?
             .get(&id)
             .cloned()
             .ok_or_else(|| format!("unknown pty session: {id}"))?;
-        session
-            .master
-            .lock()
-            .unwrap()
+        mutex_lock(&session.master, "pty master")?
             .resize(PtySize {
                 rows,
                 cols,
@@ -147,7 +139,8 @@ impl PtyState {
                 pixel_height: 0,
             })
             .map_err(|e| e.to_string())?;
-        if let Some(meta) = self.remote_sessions.write().unwrap().get_mut(&id) {
+        if let Some(meta) = rwlock_write(&self.remote_sessions, "pty remote sessions")?.get_mut(&id)
+        {
             meta.cols = cols;
             meta.rows = rows;
         }
@@ -163,7 +156,9 @@ mod tests {
     fn remote_session_metadata_can_be_listed_and_updated() {
         let state = PtyState::default();
 
-        state.register_remote_session(7, Some("/tmp/work".into()), 80, 24);
+        state
+            .register_remote_session(7, Some("/tmp/work".into()), 80, 24)
+            .expect("remote register should work");
         state
             .update_remote_session_metadata(
                 7,
@@ -173,6 +168,7 @@ mod tests {
             .unwrap();
 
         let sessions = state.remote_sessions();
+        let sessions = sessions.expect("remote sessions should list");
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].id, 7);
         assert_eq!(sessions[0].title.as_deref(), Some("cargo test"));
@@ -180,7 +176,9 @@ mod tests {
         assert_eq!(sessions[0].cols, 80);
         assert_eq!(sessions[0].rows, 24);
 
-        state.unregister_remote_session(7);
-        assert!(state.remote_sessions().is_empty());
+        state
+            .unregister_remote_session(7)
+            .expect("remote unregister should work");
+        assert!(state.remote_sessions().expect("remote sessions").is_empty());
     }
 }
