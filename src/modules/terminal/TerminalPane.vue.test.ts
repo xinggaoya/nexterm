@@ -35,7 +35,7 @@ describe("TerminalPane.vue", () => {
   });
 
   it("mounts a framework-neutral terminal session for its leaf", () => {
-    mount(TerminalPane, {
+    const wrapper = mount(TerminalPane, {
       global: { plugins: [createPinia()] },
       props: {
         leafId: 42,
@@ -52,6 +52,7 @@ describe("TerminalPane.vue", () => {
       }),
     );
     expect(updateTerminalSessionVisibility).toHaveBeenCalledWith(42, true, true);
+    expect(wrapper.classes()).toContain("nexterm-terminal-scrollbar");
   });
 
   it("emits title updates from the terminal session", () => {
