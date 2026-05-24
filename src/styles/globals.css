@@ -248,6 +248,133 @@ html *::-webkit-scrollbar {
   display: none;
 }
 
+/*
+ * Terminal panes opt back into a compact scroll affordance. xterm 6 exposes a
+ * VS Code style scrollbar, while older renderer paths still use the viewport's
+ * native scrollbar. Keep both scoped so the app-wide hidden-scrollbar policy
+ * stays intact outside terminals.
+ */
+.nexterm-terminal-scrollbar {
+  --nexterm-terminal-scrollbar-size: 8px;
+  --nexterm-terminal-scrollbar-track: transparent;
+  --nexterm-terminal-scrollbar-thumb: color-mix(
+    in oklch,
+    var(--muted-foreground) 36%,
+    transparent
+  );
+  --nexterm-terminal-scrollbar-thumb-hover: color-mix(
+    in oklch,
+    var(--muted-foreground) 56%,
+    transparent
+  );
+  --nexterm-terminal-scrollbar-thumb-active: color-mix(
+    in oklch,
+    var(--foreground) 64%,
+    transparent
+  );
+}
+
+.nexterm-terminal-scrollbar .xterm .xterm-scrollable-element > .scrollbar.vertical {
+  display: block !important;
+  visibility: visible !important;
+  width: var(--nexterm-terminal-scrollbar-size) !important;
+  height: 100% !important;
+  pointer-events: auto !important;
+}
+
+.nexterm-terminal-scrollbar
+  .xterm
+  .xterm-scrollable-element
+  > .scrollbar.vertical.visible {
+  opacity: 0.72 !important;
+}
+
+.nexterm-terminal-scrollbar:hover
+  .xterm
+  .xterm-scrollable-element
+  > .scrollbar.vertical.visible,
+.nexterm-terminal-scrollbar
+  .xterm.focus
+  .xterm-scrollable-element
+  > .scrollbar.vertical.visible {
+  opacity: 0.95 !important;
+}
+
+.nexterm-terminal-scrollbar
+  .xterm
+  .xterm-scrollable-element
+  > .scrollbar.vertical.invisible {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.nexterm-terminal-scrollbar .xterm .xterm-scrollable-element > .scrollbar.horizontal {
+  display: none !important;
+  height: 0 !important;
+  pointer-events: none !important;
+}
+
+.nexterm-terminal-scrollbar
+  .xterm
+  .xterm-scrollable-element
+  > .scrollbar
+  > .slider {
+  border-radius: 999px !important;
+  background: var(--nexterm-terminal-scrollbar-thumb) !important;
+}
+
+.nexterm-terminal-scrollbar
+  .xterm
+  .xterm-scrollable-element
+  > .scrollbar
+  > .slider:hover {
+  background: var(--nexterm-terminal-scrollbar-thumb-hover) !important;
+}
+
+.nexterm-terminal-scrollbar
+  .xterm
+  .xterm-scrollable-element
+  > .scrollbar
+  > .slider.active {
+  background: var(--nexterm-terminal-scrollbar-thumb-active) !important;
+}
+
+.nexterm-terminal-scrollbar .xterm .xterm-viewport,
+.nexterm-terminal-scrollbar .xterm-viewport {
+  scrollbar-width: thin !important;
+  scrollbar-color: var(--nexterm-terminal-scrollbar-thumb)
+    var(--nexterm-terminal-scrollbar-track) !important;
+}
+
+.nexterm-terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar,
+.nexterm-terminal-scrollbar .xterm-viewport::-webkit-scrollbar {
+  width: var(--nexterm-terminal-scrollbar-size) !important;
+  height: var(--nexterm-terminal-scrollbar-size) !important;
+  display: block !important;
+}
+
+.nexterm-terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar-track,
+.nexterm-terminal-scrollbar .xterm-viewport::-webkit-scrollbar-track {
+  background: var(--nexterm-terminal-scrollbar-track) !important;
+}
+
+.nexterm-terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar-thumb,
+.nexterm-terminal-scrollbar .xterm-viewport::-webkit-scrollbar-thumb {
+  min-height: 32px !important;
+  border-radius: 999px !important;
+  background: var(--nexterm-terminal-scrollbar-thumb) !important;
+}
+
+.nexterm-terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover,
+.nexterm-terminal-scrollbar .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: var(--nexterm-terminal-scrollbar-thumb-hover) !important;
+}
+
+.nexterm-terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar-thumb:active,
+.nexterm-terminal-scrollbar .xterm-viewport::-webkit-scrollbar-thumb:active {
+  background: var(--nexterm-terminal-scrollbar-thumb-active) !important;
+}
+
 @keyframes nexterm-collapsible-down {
   from {
     height: 0;

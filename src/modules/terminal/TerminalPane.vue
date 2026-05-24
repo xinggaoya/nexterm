@@ -122,7 +122,7 @@ defineExpose({
 <template>
   <div
     ref="container"
-    class="zoom-exempt h-full w-full"
+    class="nexterm-terminal-scrollbar zoom-exempt h-full w-full"
     :style="{
       visibility: visible ? 'visible' : 'hidden',
       pointerEvents: visible ? 'auto' : 'none',
