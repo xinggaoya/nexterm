@@ -82,6 +82,23 @@ export type GitPanelSnapshot = {
   status: GitStatusSnapshot | null;
 };
 
+export type ShellBgLogResponse = {
+  bytes: string;
+  nextOffset: number;
+  dropped: number;
+  exited: boolean;
+  exitCode: number | null;
+};
+
+export type ShellBgProcInfo = {
+  handle: number;
+  command: string;
+  cwd: string | null;
+  startedAtMs: number;
+  exited: boolean;
+  exitCode: number | null;
+};
+
 export type WorkspaceFsChangedEvent = {
   rootPath: string;
   paths: string[];
@@ -213,6 +230,22 @@ export const native = {
       name: name ?? null,
       workspace: currentWorkspaceEnv(),
     }),
+  shellBgSpawn: (command: string, cwd?: string | null) =>
+    invoke<number>("shell_bg_spawn", {
+      command,
+      cwd: cwd ?? null,
+      workspace: currentWorkspaceEnv(),
+    }),
+  shellBgLogs: (handle: number, sinceOffset: number) =>
+    invoke<ShellBgLogResponse>("shell_bg_logs", {
+      handle,
+      sinceOffset,
+    }),
+  shellBgKill: (handle: number) =>
+    invoke<void>("shell_bg_kill", {
+      handle,
+    }),
+  shellBgList: () => invoke<ShellBgProcInfo[]>("shell_bg_list"),
   fsWatchWorkspace: (rootPath: string) =>
     invoke<void>("fs_watch_workspace", {
       rootPath,

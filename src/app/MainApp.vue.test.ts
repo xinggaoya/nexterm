@@ -52,6 +52,17 @@ const invokeMock = vi.hoisted(() =>
       }
       return { kind: "binary", size: 0 };
     }
+    if (command === "shell_bg_spawn") return 99;
+    if (command === "shell_bg_logs") {
+      return {
+        bytes: "ready\n",
+        nextOffset: 6,
+        dropped: 0,
+        exited: false,
+        exitCode: null,
+      };
+    }
+    if (command === "shell_bg_kill") return null;
     if (command === "git_status") {
       return {
         repoRoot: "/repo",
@@ -467,7 +478,7 @@ describe("MainApp.vue", () => {
     });
   });
 
-  it("runs the default workspace task from the command palette", async () => {
+  it("opens the task console from the command palette and runs discovered tasks in the background", async () => {
     const pinia = createPinia();
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "/repo";
@@ -482,15 +493,18 @@ describe("MainApp.vue", () => {
     await wrapper.find("[data-command-result='tasks.run']").trigger("click");
     await flushPromises();
 
-    expect(tabs.tabs.find((tab) => tab.id === tabs.activeId)).toMatchObject({
-      kind: "terminal",
-      title: "task: pnpm run dev",
+    expect(wrapper.find("[data-task-console]").exists()).toBe(true);
+    expect(wrapper.text()).toContain("pnpm run dev");
+
+    await wrapper.find("[data-run-task='package:dev']").trigger("click");
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("shell_bg_spawn", {
+      command: "pnpm run dev",
       cwd: "/repo",
-      paneTree: {
-        kind: "leaf",
-        startupInput: "pnpm run dev\r",
-      },
+      workspace: currentWorkspaceEnv(),
     });
+    expect(tabs.tabs).toHaveLength(1);
   });
 
   it("saves the active editor from the command palette", async () => {
