@@ -13,6 +13,7 @@ use std::thread;
 use serde::Serialize;
 use tauri::ipc::{Channel, Response};
 
+use crate::modules::lock::{mutex_lock, rwlock_write};
 use crate::modules::workspace::{authorize_spawn_cwd, WorkspaceEnv, WorkspaceRegistry};
 pub use remote::PtyRemoteSession;
 use session::Session;
@@ -75,8 +76,10 @@ pub async fn pty_open(
         e
     })?;
     let id = state.next_id.fetch_add(1, Ordering::Relaxed);
-    state.sessions.write().unwrap().insert(id, session);
-    state.register_remote_session(id, remote_cwd, cols, rows);
+    rwlock_write(&state.sessions, "pty sessions")?.insert(id, session);
+    if let Err(error) = state.register_remote_session(id, remote_cwd, cols, rows) {
+        log::warn!("pty remote session registration failed for id={id}: {error}");
+    }
     log::info!("pty opened id={id} cols={cols} rows={rows}");
     Ok(id)
 }
@@ -129,13 +132,20 @@ pub fn pty_update_metadata(
 
 #[tauri::command]
 pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
-    let session = state.sessions.write().unwrap().remove(&id);
-    state.unregister_remote_session(id);
+    let session = rwlock_write(&state.sessions, "pty sessions")?.remove(&id);
+    if let Err(error) = state.unregister_remote_session(id) {
+        log::warn!("pty remote session unregister failed for id={id}: {error}");
+    }
     if let Some(s) = session {
-        if let Err(e) = s.killer.lock().unwrap().kill() {
-            // Non-fatal: the child may already have exited on its own (e.g. the
-            // user ran `exit`). Log so this isn't invisible during debugging.
-            log::debug!("pty_close: kill id={id} returned {e}");
+        match mutex_lock(&s.killer, "pty killer") {
+            Ok(mut killer) => {
+                if let Err(e) = killer.kill() {
+                    // Non-fatal: the child may already have exited on its own (e.g. the
+                    // user ran `exit`). Log so this isn't invisible during debugging.
+                    log::debug!("pty_close: kill id={id} returned {e}");
+                }
+            }
+            Err(error) => log::warn!("pty_close: {error}"),
         }
         log::info!("pty closed id={id}");
         // Drop the Arc on a detached thread. On Windows `MasterPty`'s Drop
@@ -144,7 +154,7 @@ pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
         // worker thread that handled this command — and on Windows that
         // sometimes manifests as the closed pane refusing to disappear from
         // the React tree because subsequent IPC stalls behind it.
-        thread::Builder::new()
+        if let Err(error) = thread::Builder::new()
             .name(format!("nexterm-pty-drop-{id}"))
             .spawn(move || {
                 let t0 = std::time::Instant::now();
@@ -154,7 +164,9 @@ pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
                     t0.elapsed().as_millis()
                 );
             })
-            .expect("spawn pty drop thread");
+        {
+            log::warn!("spawn pty drop thread failed for id={id}: {error}");
+        }
     } else {
         log::debug!("pty_close: unknown id={id}");
     }

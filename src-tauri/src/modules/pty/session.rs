@@ -12,6 +12,7 @@ use tempfile::{Builder as TempFileBuilder, NamedTempFile};
 
 use super::da_filter::DaFilter;
 use super::shell_init;
+use crate::modules::lock::{condvar_wait_timeout, mutex_lock};
 use crate::modules::workspace::WorkspaceEnv;
 
 // Flusher coalesces a short window after first-byte arrival so we send chunks,
@@ -55,7 +56,7 @@ impl Transcript {
     fn append(&self, bytes: &[u8]) -> Result<u64, String> {
         let start = self.offset.load(Ordering::Acquire);
         {
-            let mut file = self.file.lock().unwrap();
+            let mut file = mutex_lock(&self.file, "pty transcript")?;
             file.as_file_mut()
                 .write_all(bytes)
                 .map_err(|e| format!("write pty transcript: {e}"))?;
@@ -210,7 +211,7 @@ pub fn spawn(
     on_exit: Channel<i32>,
 ) -> Result<(Arc<Session>, PtySize), String> {
     #[cfg(windows)]
-    let _spawn_guard = SPAWN_LOCK.lock().unwrap();
+    let _spawn_guard = mutex_lock(&SPAWN_LOCK, "pty spawn")?;
 
     let pty_system = native_pty_system();
     let size = PtySize {
@@ -297,7 +298,13 @@ pub fn spawn(
                             }
                         };
                         let (lock, cv) = &*pending_r;
-                        let mut g = lock.lock().unwrap();
+                        let mut g = match mutex_lock(lock, "pty pending output") {
+                            Ok(guard) => guard,
+                            Err(error) => {
+                                log::error!("{error}");
+                                break;
+                            }
+                        };
                         if g.bytes.len() + filtered.len() > MAX_PENDING {
                             dropped_bytes += g.bytes.len() as u64;
                             g.clear();
@@ -318,29 +325,46 @@ pub fn spawn(
                 );
             }
         })
-        .expect("spawn pty reader thread");
+        .map_err(|e| format!("spawn pty reader thread: {e}"))?;
 
     let on_data_flush = on_data.clone();
     let pending_f = pending.clone();
     let done_f = done.clone();
-    thread::Builder::new()
+    if let Err(error) = thread::Builder::new()
         .name("nexterm-pty-flusher".into())
         .spawn(move || {
             let (lock, cv) = &*pending_f;
             loop {
                 {
-                    let mut g = lock.lock().unwrap();
+                    let mut g = match mutex_lock(lock, "pty pending output") {
+                        Ok(guard) => guard,
+                        Err(error) => {
+                            log::error!("{error}");
+                            return;
+                        }
+                    };
                     while g.is_empty() {
                         if done_f.load(Ordering::Acquire) {
                             return;
                         }
-                        let (next, _) = cv.wait_timeout(g, FLUSH_MAX_IDLE).unwrap();
-                        g = next;
+                        match condvar_wait_timeout(cv, g, FLUSH_MAX_IDLE, "pty pending output") {
+                            Ok((next, _)) => g = next,
+                            Err(error) => {
+                                log::error!("{error}");
+                                return;
+                            }
+                        }
                     }
                 }
                 // Coalesce a short window so a burst flushes as one chunk.
                 thread::sleep(FLUSH_COALESCE);
-                let frame = lock.lock().unwrap().take_frame();
+                let frame = match mutex_lock(lock, "pty pending output") {
+                    Ok(mut guard) => guard.take_frame(),
+                    Err(error) => {
+                        log::error!("{error}");
+                        break;
+                    }
+                };
                 let Some(frame) = frame else {
                     continue;
                 };
@@ -350,12 +374,17 @@ pub fn spawn(
                 }
             }
         })
-        .expect("spawn pty flusher thread");
+    {
+        if let Ok(mut killer) = mutex_lock(&session.killer, "pty killer") {
+            let _ = killer.kill();
+        }
+        return Err(format!("spawn pty flusher thread: {error}"));
+    }
 
     let on_data_exit = on_data;
     let pending_e = pending;
     let done_e = done;
-    thread::Builder::new()
+    if let Err(error) = thread::Builder::new()
         .name("nexterm-pty-waiter".into())
         .spawn(move || {
             let code = match child.wait() {
@@ -379,7 +408,13 @@ pub fn spawn(
                 log::error!("pty reader thread panicked: {e:?}");
             }
             let (lock, cv) = &*pending_e;
-            let tail = lock.lock().unwrap().take_frame();
+            let tail = match mutex_lock(lock, "pty pending output") {
+                Ok(mut guard) => guard.take_frame(),
+                Err(error) => {
+                    log::error!("{error}");
+                    None
+                }
+            };
             if let Some(tail) = tail {
                 if let Err(e) = on_data_exit.send(Response::new(tail)) {
                     log::debug!("pty final-data send failed (channel closed): {e}");
@@ -391,7 +426,9 @@ pub fn spawn(
                 log::debug!("pty exit send failed (channel closed): {e}");
             }
         })
-        .expect("spawn pty waiter thread");
+    {
+        return Err(format!("spawn pty waiter thread: {error}"));
+    }
 
     Ok((session, size))
 }

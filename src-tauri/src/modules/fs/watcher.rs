@@ -8,6 +8,7 @@ use std::sync::{mpsc, Mutex};
 
 use tauri::{AppHandle, State};
 
+use crate::modules::lock::mutex_lock;
 use crate::modules::workspace::{
     normalize_host_path, resolve_path, WorkspaceEnv, WorkspaceRegistry,
 };
@@ -71,7 +72,7 @@ pub fn fs_watch_workspace(
     let context = build_refresh_context(&root_path, workspace, &registry)?;
 
     {
-        let active = state.active.lock().expect("fs watcher state poisoned");
+        let active = mutex_lock(&state.active, "fs watcher state")?;
         if active
             .as_ref()
             .is_some_and(|watcher| watcher.key == context.key)
@@ -82,10 +83,13 @@ pub fn fs_watch_workspace(
 
     let (event_tx, event_rx) = mpsc::channel();
     let batch_app = app.clone();
-    let batch_thread = std::thread::spawn(move || run_event_batcher(batch_app, event_rx));
+    let batch_thread = std::thread::Builder::new()
+        .name("nexterm-fs-event-batcher".into())
+        .spawn(move || run_event_batcher(batch_app, event_rx))
+        .map_err(|e| format!("spawn workspace event batcher: {e}"))?;
     let source = start_refresh_source(&context, event_tx.clone());
 
-    let mut active = state.active.lock().expect("fs watcher state poisoned");
+    let mut active = mutex_lock(&state.active, "fs watcher state")?;
     *active = Some(ActiveWatcher {
         key: context.key,
         source: Some(source),
@@ -98,7 +102,7 @@ pub fn fs_watch_workspace(
 
 #[tauri::command]
 pub fn fs_unwatch_workspace(state: State<'_, FsWatcherState>) -> Result<(), String> {
-    let mut active = state.active.lock().expect("fs watcher state poisoned");
+    let mut active = mutex_lock(&state.active, "fs watcher state")?;
     *active = None;
     Ok(())
 }

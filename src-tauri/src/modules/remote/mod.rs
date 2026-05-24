@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use tokio::sync::oneshot;
 
+use crate::modules::lock::mutex_lock;
 use crate::modules::pty::{PtyRemoteSession, PtyState};
 
 const BIND_HOST: &str = "0.0.0.0";
@@ -185,13 +186,17 @@ enum RemoteServerMessage {
 
 impl RemoteState {
     fn status(&self) -> RemoteServiceStatus {
-        self.inner
-            .lock()
-            .expect("remote state poisoned")
-            .running
-            .as_ref()
-            .map(|running| RemoteServiceStatus::running(running.port))
-            .unwrap_or_else(RemoteServiceStatus::stopped)
+        match mutex_lock(&self.inner, "remote state") {
+            Ok(runtime) => runtime
+                .running
+                .as_ref()
+                .map(|running| RemoteServiceStatus::running(running.port))
+                .unwrap_or_else(RemoteServiceStatus::stopped),
+            Err(error) => {
+                log::error!("{error}");
+                RemoteServiceStatus::stopped()
+            }
+        }
     }
 
     fn stop_locked(runtime: &mut RemoteRuntime) {
@@ -222,7 +227,7 @@ pub async fn remote_terminal_start(
     }
 
     {
-        let mut runtime = state.inner.lock().expect("remote state poisoned");
+        let mut runtime = mutex_lock(&state.inner, "remote state")?;
         RemoteState::stop_locked(&mut runtime);
     }
 
@@ -254,7 +259,7 @@ pub async fn remote_terminal_start(
         }
     });
 
-    let mut runtime = state.inner.lock().expect("remote state poisoned");
+    let mut runtime = mutex_lock(&state.inner, "remote state")?;
     runtime.running = Some(RunningRemoteServer {
         port: actual_port,
         shutdown: Some(shutdown_tx),
@@ -265,8 +270,10 @@ pub async fn remote_terminal_start(
 
 #[tauri::command]
 pub fn remote_terminal_stop(state: tauri::State<'_, RemoteState>) -> RemoteServiceStatus {
-    let mut runtime = state.inner.lock().expect("remote state poisoned");
-    RemoteState::stop_locked(&mut runtime);
+    match mutex_lock(&state.inner, "remote state") {
+        Ok(mut runtime) => RemoteState::stop_locked(&mut runtime),
+        Err(error) => log::error!("{error}"),
+    }
     RemoteServiceStatus::stopped()
 }
 
@@ -341,7 +348,10 @@ async fn api_terminals(
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
     let pty = state.app.state::<PtyState>();
-    Json(pty.remote_sessions()).into_response()
+    match pty.remote_sessions() {
+        Ok(sessions) => Json(sessions).into_response(),
+        Err(error) => (StatusCode::INTERNAL_SERVER_ERROR, error).into_response(),
+    }
 }
 
 async fn terminal_ws(
@@ -362,12 +372,14 @@ async fn handle_terminal_ws(socket: WebSocket, state: RemoteServerState, id: u32
     let mut next_offset = 0;
     let mut interval = tokio::time::interval(POLL_INTERVAL);
 
-    let session = state
-        .app
-        .state::<PtyState>()
-        .remote_sessions()
-        .into_iter()
-        .find(|session| session.id == id);
+    let sessions = match state.app.state::<PtyState>().remote_sessions() {
+        Ok(sessions) => sessions,
+        Err(message) => {
+            let _ = send_json(&mut sender, &RemoteServerMessage::Error { message }).await;
+            return;
+        }
+    };
+    let session = sessions.into_iter().find(|session| session.id == id);
     let Some(session) = session else {
         let _ = send_json(
             &mut sender,

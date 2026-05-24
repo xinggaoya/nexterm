@@ -12,6 +12,8 @@ use serde::Deserialize;
 #[cfg(any(test, windows))]
 use super::events::normalize_frontend_path;
 use super::events::WorkspaceFsChangedEvent;
+#[cfg(windows)]
+use crate::modules::lock::mutex_lock;
 
 #[cfg(windows)]
 const HELPER_FAILURE_LIMIT: usize = 3;
@@ -255,10 +257,14 @@ fn run_helper_once(
     };
 
     {
-        let mut active = current_child
-            .lock()
-            .expect("WSL watcher child mutex poisoned");
-        *active = Some(child);
+        match mutex_lock(current_child, "WSL watcher child") {
+            Ok(mut active) => *active = Some(child),
+            Err(error) => {
+                log::error!("{error}");
+                let _ = child.kill();
+                return HelperRunResult::Exited;
+            }
+        }
     }
 
     let reader = BufReader::new(stdout);
@@ -326,9 +332,13 @@ fn kill_current_child(current_child: &Arc<Mutex<Option<std::process::Child>>>) {
 
 #[cfg(windows)]
 fn wait_current_child(current_child: &Arc<Mutex<Option<std::process::Child>>>) {
-    let mut child = current_child
-        .lock()
-        .expect("WSL watcher child mutex poisoned");
+    let mut child = match mutex_lock(current_child, "WSL watcher child") {
+        Ok(child) => child,
+        Err(error) => {
+            log::error!("{error}");
+            return;
+        }
+    };
     if let Some(child) = child.as_mut() {
         let _ = child.wait();
     }
@@ -337,10 +347,10 @@ fn wait_current_child(current_child: &Arc<Mutex<Option<std::process::Child>>>) {
 
 #[cfg(windows)]
 fn clear_current_child(current_child: &Arc<Mutex<Option<std::process::Child>>>) {
-    let mut child = current_child
-        .lock()
-        .expect("WSL watcher child mutex poisoned");
-    *child = None;
+    match mutex_lock(current_child, "WSL watcher child") {
+        Ok(mut child) => *child = None,
+        Err(error) => log::error!("{error}"),
+    }
 }
 
 #[cfg(windows)]
