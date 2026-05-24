@@ -272,6 +272,47 @@ describe("MainApp.vue", () => {
     expect(tabs.tabs).toHaveLength(0);
   });
 
+  it("prevents the native webview context menu", () => {
+    mount(MainApp, {
+      global: { plugins: [createPinia(), i18n] },
+    });
+
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("lets component context menu handlers run before preventing the native menu", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const wrapper = mount(MainApp, {
+      attachTo: host,
+      global: { plugins: [createPinia(), i18n] },
+    });
+
+    try {
+      const customHandler = vi.fn();
+      wrapper.element.addEventListener("contextmenu", customHandler);
+
+      const event = new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+      });
+      wrapper.element.dispatchEvent(event);
+
+      expect(customHandler).toHaveBeenCalledTimes(1);
+      expect(event.defaultPrevented).toBe(true);
+    } finally {
+      wrapper.unmount();
+      wrapperCleanup(host);
+    }
+  });
+
   it("opens a workspace from the promoted header action", async () => {
     const pinia = createPinia();
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);

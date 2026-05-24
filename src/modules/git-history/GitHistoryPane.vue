@@ -9,6 +9,7 @@ import {
   type GitCommitFileChange,
   type GitLogEntry,
 } from "@/lib/native";
+import { writeClipboardText } from "@/lib/clipboard";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
 import GraphRail from "./GraphRail.vue";
 import { layoutGraph, type GraphRow } from "./lib/graph";
@@ -212,7 +213,7 @@ function openCommitFile(commit: GitLogEntry, file: GitCommitFileChange) {
 }
 
 function copySha(sha: string) {
-  void navigator.clipboard?.writeText(sha).catch(() => undefined);
+  void writeClipboardText(sha);
 }
 
 function openSelectedRemote() {

@@ -205,6 +205,10 @@ function openSettings(tab: SettingsTab = SETTINGS_DEFAULT_TAB) {
   settingsOpen.value = true;
 }
 
+function preventNativeContextMenu(event: MouseEvent) {
+  event.preventDefault();
+}
+
 const {
   commandContext,
   commandDefinitions,
@@ -248,6 +252,7 @@ onMounted(() => {
   colorSchemeQuery?.addEventListener("change", colorSchemeListener);
   window.addEventListener("languagechange", syncLanguage);
   window.addEventListener("keydown", handleGlobalCommandKeydown);
+  window.addEventListener("contextmenu", preventNativeContextMenu);
   startLayoutObservers();
 });
 
@@ -256,6 +261,7 @@ onUnmounted(() => {
   colorSchemeQuery?.removeEventListener("change", colorSchemeListener);
   window.removeEventListener("languagechange", syncLanguage);
   window.removeEventListener("keydown", handleGlobalCommandKeydown);
+  window.removeEventListener("contextmenu", preventNativeContextMenu);
   stopLayoutObservers();
   stopWorkspaceLifecycle();
 });

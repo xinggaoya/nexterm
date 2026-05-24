@@ -1,4 +1,5 @@
 import { detectMonoFontFamily } from "@/lib/fonts";
+import { readClipboardText, writeClipboardText } from "@/lib/clipboard";
 import { readPreferencesSnapshot } from "@/modules/settings/preferencesSnapshot";
 import { buildTerminalTheme } from "@/styles/terminalTheme";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -136,6 +137,16 @@ function createSlot(): Slot {
     if (leafId === null) return false;
     const bridge = adapter?.resolveLeaf(leafId);
     if (!bridge) return true;
+    if (isTerminalCopyShortcut(event)) {
+      event.preventDefault();
+      if (event.type === "keydown") void copyTerminalSelection(slot.term);
+      return false;
+    }
+    if (isTerminalPasteShortcut(event)) {
+      event.preventDefault();
+      if (event.type === "keydown") void pasteClipboardIntoTerminal(slot.term);
+      return false;
+    }
     const wordNavigation = terminalWordNavigationSequence(event);
     if (wordNavigation) {
       event.preventDefault();
@@ -606,4 +617,34 @@ function isShiftEnter(e: KeyboardEvent): boolean {
   return (
     e.key === "Enter" && e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey
   );
+}
+
+function isTerminalCopyShortcut(e: KeyboardEvent): boolean {
+  return isCtrlShiftKey(e, "c");
+}
+
+function isTerminalPasteShortcut(e: KeyboardEvent): boolean {
+  return isCtrlShiftKey(e, "v");
+}
+
+function isCtrlShiftKey(e: KeyboardEvent, key: "c" | "v"): boolean {
+  return (
+    e.ctrlKey &&
+    e.shiftKey &&
+    !e.altKey &&
+    !e.metaKey &&
+    (e.key.toLowerCase() === key ||
+      e.code.toLowerCase() === `key${key}`)
+  );
+}
+
+async function copyTerminalSelection(term: Terminal): Promise<void> {
+  const selection = term.getSelection();
+  if (!selection) return;
+  await writeClipboardText(selection);
+}
+
+async function pasteClipboardIntoTerminal(term: Terminal): Promise<void> {
+  const text = await readClipboardText();
+  if (text) term.paste(text);
 }

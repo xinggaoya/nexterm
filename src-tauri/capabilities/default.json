@@ -20,6 +20,8 @@
     "core:event:allow-unlisten",
     "opener:default",
     "dialog:allow-open",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
     "log:default",
     "os:default",
     "store:default",
