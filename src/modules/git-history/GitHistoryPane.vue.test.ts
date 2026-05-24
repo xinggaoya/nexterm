@@ -3,6 +3,7 @@ import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import GitHistoryPane from "./GitHistoryPane.vue";
+import { writeClipboardText } from "@/lib/clipboard";
 import { native } from "@/lib/native";
 
 vi.mock("@/lib/native", () => ({
@@ -11,6 +12,10 @@ vi.mock("@/lib/native", () => ({
     gitCommitFiles: vi.fn(),
     gitRemoteUrl: vi.fn(),
   },
+}));
+
+vi.mock("@/lib/clipboard", () => ({
+  writeClipboardText: vi.fn(async () => undefined),
 }));
 
 async function flush() {
@@ -108,5 +113,25 @@ describe("GitHistoryPane.vue", () => {
         },
       ],
     ]);
+  });
+
+  it("copies commit SHAs through the shared clipboard adapter", async () => {
+    const wrapper = mount(GitHistoryPane, {
+      props: {
+        repoRoot: "/repo",
+      },
+    });
+    await flush();
+
+    await wrapper.find("[data-commit-row='abcdef123456']").trigger("click");
+    await flush();
+
+    document
+      .body
+      .querySelector<HTMLButtonElement>("button[aria-label='Copy SHA']")
+      ?.click();
+    await flush();
+
+    expect(writeClipboardText).toHaveBeenCalledWith("abcdef123456");
   });
 });

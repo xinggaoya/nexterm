@@ -255,7 +255,8 @@ html *::-webkit-scrollbar {
  * stays intact outside terminals.
  */
 .nexterm-terminal-scrollbar {
-  --nexterm-terminal-scrollbar-size: 8px;
+  --nexterm-terminal-scrollbar-track-size: 6px;
+  --nexterm-terminal-scrollbar-thumb-size: 4px;
   --nexterm-terminal-scrollbar-track: transparent;
   --nexterm-terminal-scrollbar-thumb: color-mix(
     in oklch,
@@ -277,7 +278,7 @@ html *::-webkit-scrollbar {
 .nexterm-terminal-scrollbar .xterm .xterm-scrollable-element > .scrollbar.vertical {
   display: block !important;
   visibility: visible !important;
-  width: var(--nexterm-terminal-scrollbar-size) !important;
+  width: var(--nexterm-terminal-scrollbar-track-size) !important;
   height: 100% !important;
   pointer-events: auto !important;
 }
@@ -285,8 +286,18 @@ html *::-webkit-scrollbar {
 .nexterm-terminal-scrollbar
   .xterm
   .xterm-scrollable-element
+  > .scrollbar.vertical
+  > .slider {
+  width: var(--nexterm-terminal-scrollbar-thumb-size) !important;
+  left: auto !important;
+  right: 1px !important;
+}
+
+.nexterm-terminal-scrollbar
+  .xterm
+  .xterm-scrollable-element
   > .scrollbar.vertical.visible {
-  opacity: 0.72 !important;
+  opacity: 0.62 !important;
 }
 
 .nexterm-terminal-scrollbar:hover
@@ -297,7 +308,7 @@ html *::-webkit-scrollbar {
   .xterm.focus
   .xterm-scrollable-element
   > .scrollbar.vertical.visible {
-  opacity: 0.95 !important;
+  opacity: 0.9 !important;
 }
 
 .nexterm-terminal-scrollbar
@@ -348,8 +359,8 @@ html *::-webkit-scrollbar {
 
 .nexterm-terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar,
 .nexterm-terminal-scrollbar .xterm-viewport::-webkit-scrollbar {
-  width: var(--nexterm-terminal-scrollbar-size) !important;
-  height: var(--nexterm-terminal-scrollbar-size) !important;
+  width: var(--nexterm-terminal-scrollbar-track-size) !important;
+  height: var(--nexterm-terminal-scrollbar-track-size) !important;
   display: block !important;
 }
 
@@ -360,7 +371,7 @@ html *::-webkit-scrollbar {
 
 .nexterm-terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar-thumb,
 .nexterm-terminal-scrollbar .xterm-viewport::-webkit-scrollbar-thumb {
-  min-height: 32px !important;
+  min-height: 28px !important;
   border-radius: 999px !important;
   background: var(--nexterm-terminal-scrollbar-thumb) !important;
 }
