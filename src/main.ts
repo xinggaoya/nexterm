@@ -14,7 +14,6 @@ import { initLaunchDir, getLaunchDir } from "./lib/launchDir";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "./lib/platform";
 import { hasTauriInternals } from "./lib/tauriRuntime";
 import { usePreferencesPiniaStore } from "./modules/settings/preferencesPinia";
-import { syncRemoteTerminalService } from "./modules/remote/remoteService";
 import { useWorkspaceRootPiniaStore } from "./modules/workspace";
 
 if (USE_CUSTOM_WINDOW_CONTROLS) {
@@ -30,7 +29,6 @@ app.use(i18n);
 
 const prefs = usePreferencesPiniaStore(pinia);
 if (hasTauriInternals()) await prefs.hydrate();
-if (hasTauriInternals()) void syncRemoteTerminalService(prefs);
 await applyLanguagePreference(prefs.language);
 await useWorkspaceRootPiniaStore(pinia).bootstrap(getLaunchDir());
 

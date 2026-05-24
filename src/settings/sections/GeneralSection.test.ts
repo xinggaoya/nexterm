@@ -4,7 +4,9 @@ import { NSelect } from "naive-ui";
 import { createPinia } from "pinia";
 import { beforeEach, describe, expect, it } from "vitest";
 import { applyLanguagePreference, i18n, setI18nLanguage } from "@/modules/i18n";
+import AppearanceSection from "./AppearanceSection.vue";
 import GeneralSection from "./GeneralSection.vue";
+import TerminalSection from "./TerminalSection.vue";
 
 describe("GeneralSection.vue", () => {
   beforeEach(() => {
@@ -12,7 +14,7 @@ describe("GeneralSection.vue", () => {
   });
 
   it("renders language preference options in the appearance section", () => {
-    const wrapper = mount(GeneralSection, {
+    const wrapper = mount(AppearanceSection, {
       global: { plugins: [createPinia(), i18n] },
     });
 
@@ -33,8 +35,17 @@ describe("GeneralSection.vue", () => {
     ]);
   });
 
-  it("renders terminal font family as a preset-only select", () => {
+  it("keeps removed remote terminal controls out of general settings", () => {
     const wrapper = mount(GeneralSection, {
+      global: { plugins: [createPinia(), i18n] },
+    });
+
+    expect(wrapper.text()).not.toContain("Remote terminal");
+    expect(wrapper.text()).not.toContain("Local and LAN web access");
+  });
+
+  it("renders terminal font family as a preset-only select", () => {
+    const wrapper = mount(TerminalSection, {
       global: { plugins: [createPinia(), i18n] },
     });
 
@@ -62,15 +73,6 @@ describe("GeneralSection.vue", () => {
     );
   });
 
-  it("renders remote terminal controls in the terminal section", () => {
-    const wrapper = mount(GeneralSection, {
-      global: { plugins: [createPinia(), i18n] },
-    });
-
-    expect(wrapper.text()).toContain("Remote terminal");
-    expect(wrapper.text()).toContain("Local and LAN web access");
-  });
-
   it("renders translated labels after switching to Simplified Chinese", async () => {
     await applyLanguagePreference("zh-CN");
 
@@ -79,7 +81,7 @@ describe("GeneralSection.vue", () => {
     });
 
     expect(wrapper.text()).toContain("通用");
-    expect(wrapper.text()).toContain("语言");
-    expect(wrapper.text()).toContain("终端");
+    expect(wrapper.text()).toContain("恢复窗口");
+    expect(wrapper.text()).toContain("显示隐藏文件");
   });
 });
