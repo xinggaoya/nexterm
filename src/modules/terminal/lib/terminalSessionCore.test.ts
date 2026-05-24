@@ -15,7 +15,6 @@ const openPtyMock = vi.hoisted(() =>
       totalOffset: 0,
       bytes: new Uint8Array(),
     })),
-    updateMetadata: vi.fn(async () => {}),
   })),
 );
 

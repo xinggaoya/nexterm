@@ -83,10 +83,6 @@ impl Transcript {
             data,
         })
     }
-
-    pub(crate) fn total_offset(&self) -> u64 {
-        self.offset.load(Ordering::Acquire)
-    }
 }
 
 fn read_file_range(path: &Path, start_offset: u64, max_bytes: usize) -> Result<Vec<u8>, String> {
