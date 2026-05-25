@@ -9,18 +9,23 @@ import {
   createTaskRunStore,
   discoverWorkspaceTasks,
   type TaskRun,
+  type TaskRunGroup,
   type WorkspaceTask,
 } from "@/modules/tasks";
+import type { TaskConsoleView } from "@/modules/tasks/taskConsoleTypes";
 
 type TaskRunStoreLike = {
   activeRun: ComputedRef<TaskRun | null> | Ref<TaskRun | null>;
   dispose: () => void;
   rerun: (id: number) => Promise<unknown>;
   runCommand: (command: string, cwd: string) => Promise<unknown>;
+  runGroups: Ref<TaskRunGroup[]>;
   runs: Ref<TaskRun[]>;
   setActiveRun: (id: number) => void;
+  startRunConfiguration: ReturnType<typeof createTaskRunStore>["startRunConfiguration"];
   startTask: (task: WorkspaceTask, cwd: string) => Promise<unknown>;
   stopRun: (id: number) => Promise<unknown>;
+  stopRunGroup: (id: number) => Promise<unknown>;
 };
 
 export type TaskConsoleControllerOptions = {
@@ -40,6 +45,7 @@ export function useTaskConsoleController(options: TaskConsoleControllerOptions) 
   const discoverTasks = options.discoverTasks ?? discoverWorkspaceTasks;
   const taskRuns = options.taskRuns ?? createTaskRunStore();
   const taskConsoleOpen = ref(false);
+  const taskConsoleView = ref<TaskConsoleView>("tasks");
   const workspaceTasks = ref<WorkspaceTask[]>([]);
   const workspaceTasksLoading = ref(false);
   const workspaceTasksError = ref<string | null>(null);
@@ -65,11 +71,16 @@ export function useTaskConsoleController(options: TaskConsoleControllerOptions) 
     }
   }
 
-  async function openTaskConsole() {
+  async function openTaskConsole(view: TaskConsoleView = "tasks") {
     taskConsoleOpen.value = true;
+    taskConsoleView.value = view;
     if (workspaceTasks.value.length === 0 && !workspaceTasksLoading.value) {
       await refreshWorkspaceTasks();
     }
+  }
+
+  function setTaskConsoleView(view: TaskConsoleView) {
+    taskConsoleView.value = view;
   }
 
   function closeTaskConsole() {
@@ -113,7 +124,9 @@ export function useTaskConsoleController(options: TaskConsoleControllerOptions) 
     runTaskInTerminal,
     runWorkspaceCommand,
     runWorkspaceTask,
+    setTaskConsoleView,
     taskConsoleOpen,
+    taskConsoleView,
     taskRunList,
     taskRuns,
     workspaceTasks,

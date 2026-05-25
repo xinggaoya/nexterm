@@ -26,6 +26,7 @@ const tasks: WorkspaceTask[] = [
 const runningRun: TaskRun = {
   id: 1,
   handle: 7,
+  groupId: null,
   task: tasks[0],
   title: "pnpm run dev",
   command: "pnpm run dev",

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createTaskRunStore } from "./taskRunStore";
 import type { WorkspaceTask } from "./taskTypes";
+import type { RunConfiguration } from "@/modules/run-configs";
 
 const task: WorkspaceTask = {
   id: "package:dev",
@@ -94,5 +95,125 @@ describe("task run store", () => {
       status: "running",
     });
     expect(api.shellBgSpawn).toHaveBeenCalledWith("cargo test", "/repo");
+  });
+
+  it("starts and stops all commands in a run configuration as one group", async () => {
+    let nextHandle = 30;
+    const api = {
+      shellBgSpawn: vi.fn(async () => nextHandle++),
+      shellBgLogs: vi.fn(async () => ({
+        bytes: "",
+        nextOffset: 0,
+        dropped: 0,
+        exited: false,
+        exitCode: null,
+      })),
+      shellBgKill: vi.fn(async () => {}),
+    };
+    const config: RunConfiguration = {
+      id: "full-stack",
+      name: "Full Stack",
+      commands: [
+        { id: "web", name: "Vue", command: "pnpm run dev", cwd: "." },
+        {
+          id: "api",
+          name: "Spring Boot",
+          command: "./mvnw spring-boot:run",
+          cwd: "backend",
+        },
+      ],
+    };
+    const store = createTaskRunStore({ api, autoPoll: false, now: () => 3000 });
+
+    const group = await store.startRunConfiguration(config, "/repo");
+
+    expect(api.shellBgSpawn).toHaveBeenNthCalledWith(1, "pnpm run dev", "/repo");
+    expect(api.shellBgSpawn).toHaveBeenNthCalledWith(
+      2,
+      "./mvnw spring-boot:run",
+      "/repo/backend",
+    );
+    expect(group).toMatchObject({
+      configurationId: "full-stack",
+      title: "Full Stack",
+      status: "running",
+      runIds: [1, 2],
+    });
+    expect(store.runGroups.value).toHaveLength(1);
+
+    await store.stopRunGroup(group.id);
+
+    expect(api.shellBgKill).toHaveBeenCalledWith(30);
+    expect(api.shellBgKill).toHaveBeenCalledWith(31);
+    expect(store.runGroups.value[0]).toMatchObject({ status: "stopped" });
+  });
+
+  it("aggregates run configuration group status from child runs", async () => {
+    const logResults = [
+      {
+        bytes: "web ready\n",
+        nextOffset: 10,
+        dropped: 0,
+        exited: true,
+        exitCode: 0,
+      },
+      {
+        bytes: "api failed\n",
+        nextOffset: 11,
+        dropped: 0,
+        exited: true,
+        exitCode: 1,
+      },
+    ];
+    const api = {
+      shellBgSpawn: vi.fn(async () => api.shellBgSpawn.mock.calls.length + 40),
+      shellBgLogs: vi.fn(async () => logResults.shift()!),
+      shellBgKill: vi.fn(async () => {}),
+    };
+    const store = createTaskRunStore({ api, autoPoll: false });
+    const group = await store.startRunConfiguration(
+      {
+        id: "full-stack",
+        name: "Full Stack",
+        commands: [
+          { id: "web", name: "Vue", command: "pnpm run dev" },
+          { id: "api", name: "API", command: "go run ./cmd/api" },
+        ],
+      },
+      "/repo",
+    );
+
+    await store.pollRun(group.runIds[0]);
+    expect(store.runGroups.value[0]).toMatchObject({ status: "running" });
+
+    await store.pollRun(group.runIds[1]);
+    expect(store.runGroups.value[0]).toMatchObject({ status: "failed" });
+  });
+
+  it("reruns configuration groups without corrupting resolved Windows cwd paths", async () => {
+    const api = {
+      shellBgSpawn: vi.fn(async () => api.shellBgSpawn.mock.calls.length + 50),
+      shellBgLogs: vi.fn(),
+      shellBgKill: vi.fn(async () => {}),
+    };
+    const store = createTaskRunStore({ api, autoPoll: false });
+    const group = await store.startRunConfiguration(
+      {
+        id: "windows-stack",
+        name: "Windows Stack",
+        commands: [
+          { id: "api", name: "API", command: "go run ./cmd/api", cwd: "api" },
+        ],
+      },
+      "D:/repo",
+    );
+
+    await store.rerunGroup(group.id);
+
+    expect(api.shellBgSpawn).toHaveBeenNthCalledWith(
+      2,
+      "go run ./cmd/api",
+      "D:/repo/api",
+    );
   });
 });

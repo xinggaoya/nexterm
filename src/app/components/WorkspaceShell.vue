@@ -8,9 +8,14 @@ import FileExplorer from "@/modules/explorer/FileExplorer.vue";
 import GitHistoryStack from "@/modules/git-history/GitHistoryStack.vue";
 import MarkdownStack from "@/modules/markdown/MarkdownStack.vue";
 import PreviewStack from "@/modules/preview/PreviewStack.vue";
+import type {
+  RunConfiguration,
+  RunConfigurationFile,
+} from "@/modules/run-configs";
 import SourceControlPanel from "@/modules/source-control/SourceControlPanel.vue";
-import type { TaskRun } from "@/modules/tasks";
+import type { TaskRun, TaskRunGroup } from "@/modules/tasks";
 import TaskConsole from "@/modules/tasks/TaskConsole.vue";
+import type { TaskConsoleView } from "@/modules/tasks/taskConsoleTypes";
 import type { WorkspaceTask } from "@/modules/tasks/taskTypes";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import TerminalStack from "@/modules/terminal/TerminalStack.vue";
@@ -42,15 +47,35 @@ type TaskConsoleBinding = {
   runWorkspaceCommand: (command: string) => void | Promise<void>;
   runWorkspaceTask: (task: WorkspaceTask) => void | Promise<void>;
   taskConsoleOpen: Ref<boolean>;
+  taskConsoleView: Ref<TaskConsoleView>;
   taskRunList: ComputedRef<TaskRun[]> | Ref<TaskRun[]>;
   taskRuns: {
     rerun: (id: number) => void | Promise<unknown>;
+    runGroups: Ref<TaskRunGroup[]>;
     setActiveRun: (id: number) => void;
+    startRunConfiguration: (
+      configuration: RunConfiguration,
+      workspaceRoot: string,
+    ) => void | Promise<unknown>;
     stopRun: (id: number) => void | Promise<unknown>;
+    stopRunGroup: (id: number) => void | Promise<unknown>;
   };
+  setTaskConsoleView: (view: TaskConsoleView) => void;
   workspaceTasks: Ref<WorkspaceTask[]>;
   workspaceTasksError: Ref<string | null>;
   workspaceTasksLoading: Ref<boolean>;
+};
+
+type RunConfigBinding = {
+  runConfigurations: ComputedRef<RunConfiguration[]> | Ref<RunConfiguration[]>;
+  selectedRunConfigurationId: Ref<string | null>;
+  runConfigurationSaving: Ref<boolean>;
+  runConfigurationError: Ref<string | null>;
+  saveRunConfigurations: (file: RunConfigurationFile) => void | Promise<void>;
+  selectRunConfiguration: (id: string | null) => void;
+  runSelectedConfiguration: () => void | Promise<unknown>;
+  stopSelectedConfiguration: () => void | Promise<void>;
+  activeRunConfigurationGroup: ComputedRef<TaskRunGroup | null> | Ref<TaskRunGroup | null>;
 };
 
 type TabsStoreBinding = {
@@ -77,6 +102,7 @@ const props = defineProps<{
   tabs: Tab[];
   tabsStore: TabsStoreBinding;
   taskConsole: TaskConsoleBinding;
+  runConfigs: RunConfigBinding;
   workspaceFsEvent: WorkspaceFsChangedEvent | null;
   workspaceRoot: string | null;
 }>();
@@ -116,6 +142,14 @@ function setRightSplitHost(element: Element | ComponentPublicInstance | null) {
 
 async function saveActiveEditor() {
   await activeEditorPane.value?.save();
+}
+
+function runConfigurationFromConsole(configuration: RunConfiguration) {
+  if (!props.workspaceRoot) return;
+  void props.taskConsole.taskRuns.startRunConfiguration(
+    configuration,
+    props.workspaceRoot,
+  );
 }
 
 defineExpose({
@@ -255,12 +289,19 @@ defineExpose({
                 class="shrink-0"
                 :style="{ height: `${TASK_CONSOLE_HEIGHT}px` }"
                 :root-path="workspaceRoot"
+                :view="taskConsole.taskConsoleView.value"
                 :tasks="taskConsole.workspaceTasks.value"
                 :runs="taskConsole.taskRunList.value"
                 :active-run="taskConsole.activeTaskRun.value"
                 :loading-tasks="taskConsole.workspaceTasksLoading.value"
                 :task-error="taskConsole.workspaceTasksError.value"
+                :run-configurations="runConfigs.runConfigurations.value"
+                :selected-run-configuration-id="runConfigs.selectedRunConfigurationId.value"
+                :run-configuration-groups="taskConsole.taskRuns.runGroups.value"
+                :run-configuration-saving="runConfigs.runConfigurationSaving.value"
+                :run-configuration-error="runConfigs.runConfigurationError.value"
                 @close="taskConsole.closeTaskConsole"
+                @update-view="taskConsole.setTaskConsoleView"
                 @refresh-tasks="taskConsole.refreshWorkspaceTasks"
                 @run-task="taskConsole.runWorkspaceTask"
                 @run-command="taskConsole.runWorkspaceCommand"
@@ -268,6 +309,10 @@ defineExpose({
                 @stop-run="(id) => void taskConsole.taskRuns.stopRun(id)"
                 @rerun="(id) => void taskConsole.taskRuns.rerun(id)"
                 @run-in-terminal="taskConsole.runTaskInTerminal"
+                @save-run-configurations="(file) => void runConfigs.saveRunConfigurations(file)"
+                @select-run-configuration="runConfigs.selectRunConfiguration"
+                @run-configuration="runConfigurationFromConsole"
+                @stop-run-configuration-group="(id) => void taskConsole.taskRuns.stopRunGroup(id)"
               />
             </section>
           </template>
