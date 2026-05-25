@@ -9,16 +9,18 @@ vi.mock("naive-ui", async () => {
   const { defineComponent } = await vi.importActual<typeof import("vue")>("vue");
   return {
     NButton: defineComponent({
-      template: "<button><slot name='icon' /><slot /></button>",
+      props: ["disabled", "loading"],
+      template:
+        "<button :disabled='disabled' :data-loading='loading ? \"true\" : \"false\"'><slot name='icon' /><slot /></button>",
     }),
     NIcon: defineComponent({
       template: "<span><slot /></span>",
     }),
     NDropdown: defineComponent({
-      props: ["options"],
+      props: ["options", "disabled"],
       emits: ["select"],
       template:
-        '<div><slot /><button v-for="option in options" :key="option.key" :data-option-key="option.key" @click="$emit(\'select\', option.key)">{{ option.label }}</button></div>',
+        '<div><slot /><button v-for="option in options" :key="option.key" :disabled="disabled" :data-option-key="option.key" @click="!disabled && $emit(\'select\', option.key)">{{ option.label }}</button></div>',
     }),
     NTooltip: defineComponent({
       template: "<span><slot name='trigger' /><slot /></span>",
@@ -60,5 +62,26 @@ describe("WorkspaceEnvSelector.vue", () => {
       [{ kind: "wsl", distro: "Debian" }],
     ]);
     expect(store.env).toEqual({ kind: "local" });
+  });
+
+  it("shows an inline switching state and blocks repeat selections", async () => {
+    const store = useWorkspaceEnvPiniaStore();
+    store.distros = [{ name: "Ubuntu", default: true, running: false }];
+
+    const wrapper = mount(WorkspaceEnvSelector, {
+      props: {
+        switching: true,
+        switchingEnv: { kind: "wsl", distro: "Ubuntu" },
+      },
+    });
+
+    const button = wrapper.find("button");
+    expect(button.text()).toContain("Switching to Ubuntu");
+    expect(button.attributes("disabled")).toBeDefined();
+    expect(button.attributes("data-loading")).toBe("true");
+
+    await wrapper.find("[data-option-key='wsl:Ubuntu']").trigger("click");
+
+    expect(wrapper.emitted("select")).toBeUndefined();
   });
 });

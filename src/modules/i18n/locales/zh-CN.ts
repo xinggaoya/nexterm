@@ -89,6 +89,7 @@ const zhCN = {
       openFolder: "打开文件夹",
     },
     workspaceEnv: {
+      switchingTo: "正在切换到 {target}",
       title: "工作区环境",
     },
     welcome: {

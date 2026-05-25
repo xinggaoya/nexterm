@@ -41,6 +41,7 @@ import SettingsPanel from "@/settings/SettingsPanel.vue";
 import { useTaskConsoleController } from "./useTaskConsoleController";
 import { useWorkbenchCommands } from "./useWorkbenchCommands";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
+import { useWindowChromeState } from "./useWindowChromeState";
 import { useWorkspaceLifecycle } from "./useWorkspaceLifecycle";
 
 const { t } = useI18n();
@@ -98,6 +99,7 @@ const canSplitActiveTab = computed(() => {
   return leafIds(tab.paneTree).length < MAX_PANES_PER_TAB;
 });
 const workbenchLayout = useWorkbenchLayout({ prefs });
+useWindowChromeState();
 const {
   leftPanelOpen,
   rightPanelOpen,
@@ -191,6 +193,8 @@ const {
   startWorkspaceLifecycle,
   stopWorkspaceLifecycle,
   switchWorkspace,
+  switchingWorkspaceEnv,
+  workspaceSwitching,
   workspaceFsEvent,
 } = useWorkspaceLifecycle({
   workspaceRoot,
@@ -345,6 +349,8 @@ watch(
             <AppStatusBar
               :workspace-root="workspaceRoot"
               :terminal-cwd="activeCwd"
+              :workspace-switching="workspaceSwitching"
+              :switching-workspace-env="switchingWorkspaceEnv"
               @workspace-change="switchWorkspace"
             />
 

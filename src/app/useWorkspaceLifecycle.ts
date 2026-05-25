@@ -1,6 +1,6 @@
 import { homeDir } from "@tauri-apps/api/path";
 import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
-import { ref, watch, type ComputedRef } from "vue";
+import { computed, ref, watch, type ComputedRef } from "vue";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import {
   native,
@@ -90,6 +90,8 @@ export function useWorkspaceLifecycle(options: WorkspaceLifecycleOptions) {
     (async () => (await homeDir()).replace(/\\/g, "/"));
   const getWslHome = options.getWslHome ?? getDefaultWslHome;
   const workspaceFsEvent = ref<WorkspaceFsChangedEvent | null>(null);
+  const switchingWorkspaceEnv = ref<WorkspaceEnv | null>(null);
+  const workspaceSwitching = computed(() => switchingWorkspaceEnv.value !== null);
   let workspaceFsUnlisten: UnlistenFn | null = null;
   let watchedWorkspaceKey: string | null = null;
 
@@ -183,17 +185,19 @@ export function useWorkspaceLifecycle(options: WorkspaceLifecycleOptions) {
     if (sameWorkspaceEnv(env, options.workspaceEnv.env) && options.workspaceRoot.value) {
       return;
     }
+    if (workspaceSwitching.value) return;
     if (hasDirtyEditors()) return;
 
-    let nextHome: string;
+    switchingWorkspaceEnv.value = env;
     try {
-      nextHome = env.kind === "wsl" ? await getWslHome(env.distro) : await getLocalHome();
+      const nextHome =
+        env.kind === "wsl" ? await getWslHome(env.distro) : await getLocalHome();
+      await openWorkspacePath(nextHome, env);
     } catch (error) {
       showAlert(String(error));
-      return;
+    } finally {
+      switchingWorkspaceEnv.value = null;
     }
-
-    await openWorkspacePath(nextHome, env);
   }
 
   watch(
@@ -218,7 +222,9 @@ export function useWorkspaceLifecycle(options: WorkspaceLifecycleOptions) {
     startWorkspaceLifecycle,
     stopWorkspaceLifecycle,
     switchWorkspace,
+    switchingWorkspaceEnv,
     syncTabsForWorkspace,
+    workspaceSwitching,
     workspaceFsEvent,
   };
 }

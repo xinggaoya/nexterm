@@ -159,6 +159,10 @@ html[data-chrome="borderless"] #root {
   border: 1px solid var(--border);
   background: var(--background);
 }
+html[data-chrome="borderless"][data-window-edge-to-edge="true"] #root {
+  border-radius: 0;
+  border: 0;
+}
 
 /*
  * xterm.js overrides — kept outside @layer so they win against the addon's
