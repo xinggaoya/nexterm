@@ -57,4 +57,32 @@ export const SOURCE_CONTROL_COMMAND_SPECS: CommandSpec[] = [
     defaultKeybinding: null,
     workspaceRequired: true,
   },
+  {
+    id: "git.branch.checkout",
+    titleKey: "commands.items.checkoutBranch",
+    category: "git",
+    defaultKeybinding: null,
+    workspaceRequired: true,
+  },
+  {
+    id: "git.branch.create",
+    titleKey: "commands.items.createBranch",
+    category: "git",
+    defaultKeybinding: null,
+    workspaceRequired: true,
+  },
+  {
+    id: "git.stash.save",
+    titleKey: "commands.items.stashSave",
+    category: "git",
+    defaultKeybinding: null,
+    workspaceRequired: true,
+  },
+  {
+    id: "git.stash.pop",
+    titleKey: "commands.items.stashPop",
+    category: "git",
+    defaultKeybinding: null,
+    workspaceRequired: true,
+  },
 ];

@@ -115,6 +115,62 @@ pub struct GitPushResult {
     pub pushed: bool,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitFetchResult {
+    pub updated_refs: u32,
+    pub pruned_refs: u32,
+    pub summary: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitPullResult {
+    pub files_changed: u32,
+    pub insertions: u32,
+    pub deletions: u32,
+    pub already_up_to_date: bool,
+    pub summary: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitBranchInfo {
+    pub name: String,
+    pub upstream: Option<String>,
+    pub is_current: bool,
+    pub is_remote: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitBranchResult {
+    pub branch: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStashEntry {
+    pub selector: String,
+    pub short_sha: String,
+    pub relative_time: String,
+    pub message: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStashPushOptions {
+    pub message: Option<String>,
+    pub include_untracked: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStashResult {
+    pub stashed: bool,
+    pub message: String,
+}
+
 pub(crate) struct GitOutput {
     pub(crate) stdout: Vec<u8>,
     pub(crate) stderr: Vec<u8>,

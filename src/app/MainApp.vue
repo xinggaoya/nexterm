@@ -25,6 +25,7 @@ import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import { MAX_PANES_PER_TAB, type Tab } from "@/modules/tabs/tabsTypes";
 import CommandPalette from "@/modules/commands/CommandPalette.vue";
+import NotificationBridge from "@/modules/notifications/NotificationBridge.vue";
 import {
   useWorkspaceEnvPiniaStore,
   useWorkspaceRootPiniaStore,
@@ -257,6 +258,12 @@ const {
   gitFetch: native.gitFetch,
   gitPullFfOnly: native.gitPullFfOnly,
   gitPush: native.gitPush,
+  gitBranchList: native.gitBranchList,
+  gitCheckoutBranch: native.gitCheckoutBranch,
+  gitCreateBranch: native.gitCreateBranch,
+  gitStashList: native.gitStashList,
+  gitStashPush: native.gitStashPush,
+  gitStashPop: native.gitStashPop,
 });
 
 onMounted(() => {
@@ -300,6 +307,7 @@ watch(
     <NDialogProvider>
       <NMessageProvider>
         <NNotificationProvider>
+          <NotificationBridge />
           <div class="flex h-screen flex-col overflow-hidden bg-background text-foreground select-none">
             <UnsavedCloseGuard
               ref="closeGuard"

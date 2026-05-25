@@ -21,7 +21,11 @@ export type CommandId =
   | "git.unstageAll"
   | "git.fetch"
   | "git.pull"
-  | "git.push";
+  | "git.push"
+  | "git.branch.checkout"
+  | "git.branch.create"
+  | "git.stash.save"
+  | "git.stash.pop";
 
 export type CommandCategory =
   | "editor"

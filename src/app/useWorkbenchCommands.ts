@@ -1,11 +1,19 @@
 import { computed, ref, type ComputedRef, type Ref } from "vue";
 import { IS_MAC } from "@/lib/platform";
 import type {
+  GitBranchInfo,
+  GitBranchResult,
+  GitFetchResult,
+  GitPullResult,
   GitPushResult,
   GitRepoInfo,
+  GitStashEntry,
+  GitStashPushOptions,
+  GitStashResult,
   GitStatusSnapshot,
   WorkspaceFsChangedEvent,
 } from "@/lib/native";
+import { notifyError, notifyInfo, notifySuccess } from "@/modules/notifications/notificationCenter";
 import {
   CORE_COMMAND_SPECS,
   buildResolvedKeybindings,
@@ -49,9 +57,22 @@ type WorkbenchCommandOptions = {
   gitStatus: (repoRoot: string) => Promise<GitStatusSnapshot>;
   gitStage: (repoRoot: string, paths: string[]) => Promise<void>;
   gitUnstage: (repoRoot: string, paths: string[]) => Promise<void>;
-  gitFetch: (repoRoot: string) => Promise<void>;
-  gitPullFfOnly: (repoRoot: string) => Promise<void>;
+  gitFetch: (repoRoot: string) => Promise<GitFetchResult>;
+  gitPullFfOnly: (repoRoot: string) => Promise<GitPullResult>;
   gitPush: (repoRoot: string) => Promise<GitPushResult>;
+  gitBranchList: (repoRoot: string) => Promise<GitBranchInfo[]>;
+  gitCheckoutBranch: (
+    repoRoot: string,
+    branch: string,
+    remote: boolean,
+  ) => Promise<GitBranchResult>;
+  gitCreateBranch: (repoRoot: string, branch: string) => Promise<GitBranchResult>;
+  gitStashList: (repoRoot: string) => Promise<GitStashEntry[]>;
+  gitStashPush: (
+    repoRoot: string,
+    options: GitStashPushOptions,
+  ) => Promise<GitStashResult>;
+  gitStashPop: (repoRoot: string, selector: string) => Promise<GitStashResult>;
 };
 
 export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
@@ -153,12 +174,68 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
   }
 
   async function runGitRemoteCommand(
-    action: (repoRoot: string) => Promise<unknown>,
+    title: string,
+    action: (repoRoot: string) => Promise<{ summary?: string } | GitPushResult>,
   ) {
+    try {
+      const repo = await resolveCurrentRepo();
+      if (!repo) return;
+      const result = await action(repo.repoRoot);
+      const content =
+        "summary" in result && result.summary
+          ? result.summary
+          : options.t("sourceControl.pushedLatestChanges");
+      notifySuccess(title, content);
+      refreshSourceControlFromCommand();
+    } catch (error) {
+      notifyError(title, error);
+    }
+  }
+
+  async function openBranchWorkflowFromCommand() {
     const repo = await resolveCurrentRepo();
     if (!repo) return;
-    await action(repo.repoRoot);
-    refreshSourceControlFromCommand();
+    options.leftPanelOpen.value = true;
+    notifyInfo(
+      options.t("sourceControl.branches"),
+      options.t("sourceControl.branchCommandHint"),
+    );
+  }
+
+  async function stashSaveFromCommand() {
+    try {
+      const repo = await resolveCurrentRepo();
+      if (!repo) return;
+      const result = await options.gitStashPush(repo.repoRoot, {
+        message: null,
+        includeUntracked: true,
+      });
+      notifySuccess(options.t("sourceControl.stashSaveSuccess"), result.message);
+      refreshSourceControlFromCommand();
+    } catch (error) {
+      notifyError(options.t("sourceControl.stashSaveFailed"), error);
+    }
+  }
+
+  async function stashPopFromCommand() {
+    try {
+      const repo = await resolveCurrentRepo();
+      if (!repo) return;
+      const stashes = await options.gitStashList(repo.repoRoot);
+      const latest = stashes[0];
+      if (!latest) {
+        notifyInfo(
+          options.t("sourceControl.stashPop"),
+          options.t("sourceControl.noStashes"),
+        );
+        return;
+      }
+      const result = await options.gitStashPop(repo.repoRoot, latest.selector);
+      notifySuccess(options.t("sourceControl.stashPopSuccess"), result.message);
+      refreshSourceControlFromCommand();
+    } catch (error) {
+      notifyError(options.t("sourceControl.stashPopFailed"), error);
+    }
   }
 
   async function saveActiveEditorFromCommand() {
@@ -235,13 +312,23 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
         await unstageAllFromCommand();
         return;
       case "git.fetch":
-        await runGitRemoteCommand(options.gitFetch);
+        await runGitRemoteCommand(options.t("sourceControl.fetchSuccess"), options.gitFetch);
         return;
       case "git.pull":
-        await runGitRemoteCommand(options.gitPullFfOnly);
+        await runGitRemoteCommand(options.t("sourceControl.pullSuccess"), options.gitPullFfOnly);
         return;
       case "git.push":
-        await runGitRemoteCommand(options.gitPush);
+        await runGitRemoteCommand(options.t("sourceControl.pushSuccess"), options.gitPush);
+        return;
+      case "git.branch.checkout":
+      case "git.branch.create":
+        await openBranchWorkflowFromCommand();
+        return;
+      case "git.stash.save":
+        await stashSaveFromCommand();
+        return;
+      case "git.stash.pop":
+        await stashPopFromCommand();
         return;
     }
   }

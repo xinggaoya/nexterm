@@ -29,12 +29,21 @@ vi.mock("@/lib/native", () => ({
     gitFetch: vi.fn(),
     gitPullFfOnly: vi.fn(),
     gitPush: vi.fn(),
+    gitBranchList: vi.fn(),
+    gitCheckoutBranch: vi.fn(),
+    gitCreateBranch: vi.fn(),
+    gitStashList: vi.fn(),
+    gitStashPush: vi.fn(),
+    gitStashPop: vi.fn(),
+    gitStashDrop: vi.fn(),
   },
 }));
 
 async function flush() {
-  await Promise.resolve();
-  await nextTick();
+  for (let i = 0; i < 3; i += 1) {
+    await Promise.resolve();
+    await nextTick();
+  }
 }
 
 function file(overrides: Partial<GitChangedFile> & Pick<GitChangedFile, "path">): GitChangedFile {
@@ -93,6 +102,34 @@ describe("SourceControlPanel.vue", () => {
       truncated: false,
       changedFiles: [],
     });
+    vi.mocked(native.gitBranchList).mockResolvedValue([
+      {
+        name: "main",
+        upstream: "origin/main",
+        isCurrent: true,
+        isRemote: false,
+      },
+      {
+        name: "feature/git-ui",
+        upstream: null,
+        isCurrent: false,
+        isRemote: false,
+      },
+      {
+        name: "origin/release",
+        upstream: null,
+        isCurrent: false,
+        isRemote: true,
+      },
+    ]);
+    vi.mocked(native.gitStashList).mockResolvedValue([
+      {
+        selector: "stash@{0}",
+        shortSha: "abcdef1",
+        relativeTime: "2 hours ago",
+        message: "WIP on main: source control",
+      },
+    ]);
   });
 
   afterEach(() => {
@@ -315,8 +352,18 @@ describe("SourceControlPanel.vue", () => {
   });
 
   it("runs fetch pull and push operations then refreshes status", async () => {
-    vi.mocked(native.gitFetch).mockResolvedValue(undefined);
-    vi.mocked(native.gitPullFfOnly).mockResolvedValue(undefined);
+    vi.mocked(native.gitFetch).mockResolvedValue({
+      updatedRefs: 1,
+      prunedRefs: 0,
+      summary: "1 ref updated",
+    });
+    vi.mocked(native.gitPullFfOnly).mockResolvedValue({
+      filesChanged: 3,
+      insertions: 24,
+      deletions: 6,
+      alreadyUpToDate: false,
+      summary: "3 files changed, +24 -6",
+    });
     vi.mocked(native.gitPush).mockResolvedValue({
       remote: "origin",
       branch: "main",
@@ -339,7 +386,64 @@ describe("SourceControlPanel.vue", () => {
     expect(native.gitPullFfOnly).toHaveBeenCalledWith("/repo");
     expect(native.gitPush).toHaveBeenCalledWith("/repo");
     expect(native.gitStatus).toHaveBeenCalledTimes(3);
-    expect(wrapper.text()).toContain("Pushed to origin/main");
+  });
+
+  it("renders branch and stash workflows and runs selected actions", async () => {
+    vi.mocked(native.gitCheckoutBranch).mockResolvedValue({ branch: "feature/git-ui" });
+    vi.mocked(native.gitCreateBranch).mockResolvedValue({ branch: "feature/new" });
+    vi.mocked(native.gitStashPush).mockResolvedValue({
+      stashed: true,
+      message: "Saved working directory",
+    });
+    vi.mocked(native.gitStashPop).mockResolvedValue({
+      stashed: true,
+      message: "Applied stash@{0}",
+    });
+    vi.mocked(native.gitStashDrop).mockResolvedValue({
+      stashed: true,
+      message: "Dropped stash@{0}",
+    });
+
+    const wrapper = mount(SourceControlPanel, {
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    expect(native.gitBranchList).toHaveBeenCalledWith("/repo");
+    expect(native.gitStashList).toHaveBeenCalledWith("/repo");
+    expect(wrapper.text()).toContain("feature/git-ui");
+    expect(wrapper.text()).toContain("WIP on main: source control");
+
+    await wrapper.find("[data-git-stash-save]").trigger("click");
+    await flush();
+    expect(native.gitStashPush).toHaveBeenCalledWith("/repo", {
+      message: null,
+      includeUntracked: true,
+    });
+
+    await wrapper.find("[data-git-branch='feature/git-ui']").trigger("click");
+    await flush();
+    expect(native.gitCheckoutBranch).toHaveBeenCalledWith(
+      "/repo",
+      "feature/git-ui",
+      false,
+    );
+
+    await wrapper.find("[data-git-create-branch-toggle]").trigger("click");
+    await flush();
+    const input = wrapper.find("[data-git-create-branch-input]");
+    await input.setValue("feature/new");
+    await wrapper.find("[data-git-create-branch-submit]").trigger("click");
+    await flush();
+    expect(native.gitCreateBranch).toHaveBeenCalledWith("/repo", "feature/new");
+
+    await wrapper.find("[data-git-stash-pop='stash@{0}']").trigger("click");
+    await flush();
+    expect(native.gitStashPop).toHaveBeenCalledWith("/repo", "stash@{0}");
+
+    await wrapper.find("[data-git-stash-drop='stash@{0}']").trigger("click");
+    await flush();
+    expect(native.gitStashDrop).toHaveBeenCalledWith("/repo", "stash@{0}");
   });
 
   it("refreshes status for workspace file events", async () => {

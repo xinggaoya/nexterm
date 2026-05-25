@@ -2,8 +2,10 @@ use tauri::{AppHandle, Manager};
 
 use crate::modules::git::operations;
 use crate::modules::git::types::{
-    DiscardEntry, GitCommitFileChange, GitCommitResult, GitDiffContentResult, GitDiffResult,
-    GitLogEntry, GitPanelSnapshot, GitPushResult, GitRepoInfo, GitStatusSnapshot,
+    DiscardEntry, GitBranchInfo, GitBranchResult, GitCommitFileChange, GitCommitResult,
+    GitDiffContentResult, GitDiffResult, GitFetchResult, GitLogEntry, GitPanelSnapshot,
+    GitPullResult, GitPushResult, GitRepoInfo, GitStashEntry, GitStashPushOptions, GitStashResult,
+    GitStatusSnapshot,
 };
 use crate::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
 
@@ -159,7 +161,7 @@ pub async fn git_fetch(
     repo_root: String,
     workspace: Option<WorkspaceEnv>,
     app: AppHandle,
-) -> Result<(), String> {
+) -> Result<GitFetchResult, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     blocking(app, move |r| {
         operations::fetch(r, &repo_root, &workspace).map_err(Into::into)
@@ -172,7 +174,7 @@ pub async fn git_pull_ff_only(
     repo_root: String,
     workspace: Option<WorkspaceEnv>,
     app: AppHandle,
-) -> Result<(), String> {
+) -> Result<GitPullResult, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     blocking(app, move |r| {
         operations::pull_ff_only(r, &repo_root, &workspace).map_err(Into::into)
@@ -189,6 +191,103 @@ pub async fn git_push(
     let workspace = WorkspaceEnv::from_option(workspace);
     blocking(app, move |r| {
         operations::push(r, &repo_root, &workspace).map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_branch_list(
+    repo_root: String,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<Vec<GitBranchInfo>, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    blocking(app, move |r| {
+        operations::branch_list(r, &repo_root, &workspace).map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_checkout_branch(
+    repo_root: String,
+    branch: String,
+    remote: bool,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<GitBranchResult, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    blocking(app, move |r| {
+        operations::checkout_branch(r, &repo_root, &branch, remote, &workspace).map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_create_branch(
+    repo_root: String,
+    branch: String,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<GitBranchResult, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    blocking(app, move |r| {
+        operations::create_branch(r, &repo_root, &branch, &workspace).map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_stash_list(
+    repo_root: String,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<Vec<GitStashEntry>, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    blocking(app, move |r| {
+        operations::stash_list(r, &repo_root, &workspace).map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_stash_push(
+    repo_root: String,
+    options: GitStashPushOptions,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<GitStashResult, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    blocking(app, move |r| {
+        operations::stash_push(r, &repo_root, &options, &workspace).map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_stash_pop(
+    repo_root: String,
+    selector: String,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<GitStashResult, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    blocking(app, move |r| {
+        operations::stash_pop(r, &repo_root, &selector, &workspace).map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_stash_drop(
+    repo_root: String,
+    selector: String,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<GitStashResult, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    blocking(app, move |r| {
+        operations::stash_drop(r, &repo_root, &selector, &workspace).map_err(Into::into)
     })
     .await
 }

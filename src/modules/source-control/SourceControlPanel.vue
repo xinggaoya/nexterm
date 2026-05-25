@@ -9,10 +9,12 @@ import {
 import { t } from "@/modules/i18n/translate";
 import SourceControlChangeList from "./SourceControlChangeList.vue";
 import SourceControlCommitBox from "./SourceControlCommitBox.vue";
+import SourceControlGitWorkflows from "./SourceControlGitWorkflows.vue";
 import SourceControlToolbar from "./SourceControlToolbar.vue";
 import type { SourceControlFileEntry } from "./sourceControlModel";
 import { getPrimaryDiffMode } from "./sourceControlModel";
 import { useSourceControlActions } from "./useSourceControlActions";
+import { useSourceControlGitMetadata } from "./useSourceControlGitMetadata";
 import { useSourceControlState } from "./useSourceControlState";
 
 const props = defineProps<{
@@ -41,12 +43,17 @@ const state = useSourceControlState({
   native,
   t,
 });
+const gitMetadata = useSourceControlGitMetadata({
+  repoRoot: state.repoRoot,
+  native,
+});
 const actions = useSourceControlActions({
   state,
   native,
   dialog,
   t,
   emitCommitted: (result) => emit("committed", result),
+  refreshGitMetadata: gitMetadata.refreshGitMetadata,
 });
 
 const {
@@ -64,8 +71,6 @@ const {
   discardAllEntries,
 } = state;
 const {
-  actionMessage,
-  actionError,
   commitMessage,
   commitInputProps,
   canCommit,
@@ -79,6 +84,11 @@ const {
   fetchRemote,
   pullRemote,
   pushRemote,
+  checkoutBranch,
+  createBranch,
+  stashChanges,
+  popStash,
+  dropStash,
   commit,
   handleCommitKeydown,
 } = actions;
@@ -148,6 +158,18 @@ function openHistory() {
       >
         {{ t("sourceControl.truncatedStatusHint") }}
       </div>
+      <SourceControlGitWorkflows
+        :branches="gitMetadata.branches.value"
+        :stashes="gitMetadata.stashes.value"
+        :loading="gitMetadata.loading.value"
+        :busy-action="busyAction"
+        :changed-count="changedCount"
+        @checkout-branch="checkoutBranch"
+        @create-branch="createBranch"
+        @stash-save="() => stashChanges(null)"
+        @stash-pop="popStash"
+        @stash-drop="dropStash"
+      />
       <SourceControlChangeList
         :entries="entries"
         :changed-count="changedCount"
@@ -168,8 +190,6 @@ function openHistory() {
         :staged-count="stagedCount"
         :can-commit="canCommit"
         :busy-action="busyAction"
-        :action-error="actionError"
-        :action-message="actionMessage"
         :input-props="commitInputProps"
         @commit="commit"
         @commit-keydown="handleCommitKeydown"

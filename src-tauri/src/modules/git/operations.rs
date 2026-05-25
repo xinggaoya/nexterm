@@ -2,15 +2,19 @@ use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
 use crate::modules::git::errors::{GitError, Result};
-use crate::modules::git::parser::parse_porcelain_v2;
+use crate::modules::git::parser::{
+    parse_branch_lines, parse_fetch_summary, parse_porcelain_v2, parse_pull_summary,
+    parse_stash_lines,
+};
 use crate::modules::git::process::{
     ensure_git_available, ensure_success, git_show_text, git_stdout_line_opt, git_stdout_lines,
     read_text_file, run_git,
 };
 use crate::modules::git::types::{
-    DiscardEntry, GitCommitFileChange, GitCommitResult, GitDiffContentResult, GitDiffResult,
-    GitLogEntry, GitOutput, GitPanelSnapshot, GitPushResult, GitRepoInfo, GitStatusSnapshot,
-    TextSource, DEFAULT_TIMEOUT_SECS, NETWORK_TIMEOUT_SECS,
+    DiscardEntry, GitBranchInfo, GitBranchResult, GitCommitFileChange, GitCommitResult,
+    GitDiffContentResult, GitDiffResult, GitFetchResult, GitLogEntry, GitOutput, GitPanelSnapshot,
+    GitPullResult, GitPushResult, GitRepoInfo, GitStashEntry, GitStashPushOptions, GitStashResult,
+    GitStatusSnapshot, TextSource, DEFAULT_TIMEOUT_SECS, NETWORK_TIMEOUT_SECS,
 };
 use crate::modules::git::utils::{
     authorized_repo_root, canonical_dir, resolve_within_repo, split_upstream, ResolvedGitDirectory,
@@ -303,12 +307,7 @@ pub fn unstage(
     if !looks_like_no_head(&output) {
         return ensure_success(&output, "git reset failed");
     }
-    let mut rm_args: Vec<OsString> = vec![
-        "rm".into(),
-        "--cached".into(),
-        "-r".into(),
-        "--".into(),
-    ];
+    let mut rm_args: Vec<OsString> = vec!["rm".into(), "--cached".into(), "-r".into(), "--".into()];
     for p in &resolved {
         rm_args.push(p.clone().into());
     }
@@ -455,6 +454,178 @@ pub fn push(
         remote,
         branch,
         pushed: true,
+    })
+}
+
+pub fn branch_list(
+    registry: &WorkspaceRegistry,
+    repo_root: &str,
+    workspace: &WorkspaceEnv,
+) -> Result<Vec<GitBranchInfo>> {
+    let repo_root = authorized_repo_root(registry, repo_root, workspace)?;
+    ensure_git_available(&repo_root.workspace)?;
+    let lines = git_stdout_lines(
+        &repo_root.workspace,
+        &repo_root.git_path,
+        [
+            "for-each-ref",
+            "--format=%(refname:short)%x1f%(HEAD)%x1f%(upstream:short)%x1f%(refname)",
+            "refs/heads",
+            "refs/remotes",
+        ],
+    )?;
+    Ok(parse_branch_lines(&lines.join("\n")))
+}
+
+pub fn checkout_branch(
+    registry: &WorkspaceRegistry,
+    repo_root: &str,
+    branch: &str,
+    remote: bool,
+    workspace: &WorkspaceEnv,
+) -> Result<GitBranchResult> {
+    let repo_root = authorized_repo_root(registry, repo_root, workspace)?;
+    ensure_git_available(&repo_root.workspace)?;
+    let branch = validate_git_name(branch, "branch")?;
+    let args: Vec<OsString> = if remote {
+        vec!["switch".into(), "--track".into(), branch.clone().into()]
+    } else {
+        vec!["switch".into(), branch.clone().into()]
+    };
+    let output = run_git(
+        &repo_root.workspace,
+        Some(&repo_root.git_path),
+        args,
+        DEFAULT_TIMEOUT_SECS,
+    )?;
+    ensure_success(&output, "git switch failed")?;
+    Ok(GitBranchResult { branch })
+}
+
+pub fn create_branch(
+    registry: &WorkspaceRegistry,
+    repo_root: &str,
+    branch: &str,
+    workspace: &WorkspaceEnv,
+) -> Result<GitBranchResult> {
+    let repo_root = authorized_repo_root(registry, repo_root, workspace)?;
+    ensure_git_available(&repo_root.workspace)?;
+    let branch = validate_git_name(branch, "branch")?;
+    let check = run_git(
+        &repo_root.workspace,
+        Some(&repo_root.git_path),
+        [
+            OsStr::new("check-ref-format"),
+            OsStr::new("--branch"),
+            OsStr::new(&branch),
+        ],
+        DEFAULT_TIMEOUT_SECS,
+    )?;
+    ensure_success(&check, "invalid branch name")?;
+    let output = run_git(
+        &repo_root.workspace,
+        Some(&repo_root.git_path),
+        [OsStr::new("switch"), OsStr::new("-c"), OsStr::new(&branch)],
+        DEFAULT_TIMEOUT_SECS,
+    )?;
+    ensure_success(&output, "git switch -c failed")?;
+    Ok(GitBranchResult { branch })
+}
+
+pub fn stash_list(
+    registry: &WorkspaceRegistry,
+    repo_root: &str,
+    workspace: &WorkspaceEnv,
+) -> Result<Vec<GitStashEntry>> {
+    let repo_root = authorized_repo_root(registry, repo_root, workspace)?;
+    ensure_git_available(&repo_root.workspace)?;
+    let lines = git_stdout_lines(
+        &repo_root.workspace,
+        &repo_root.git_path,
+        ["stash", "list", "--format=%gd%x1f%h%x1f%cr%x1f%s"],
+    )?;
+    Ok(parse_stash_lines(&lines.join("\n")))
+}
+
+pub fn stash_push(
+    registry: &WorkspaceRegistry,
+    repo_root: &str,
+    options: &GitStashPushOptions,
+    workspace: &WorkspaceEnv,
+) -> Result<GitStashResult> {
+    let repo_root = authorized_repo_root(registry, repo_root, workspace)?;
+    ensure_git_available(&repo_root.workspace)?;
+    let mut args: Vec<OsString> = vec!["stash".into(), "push".into()];
+    if options.include_untracked {
+        args.push("-u".into());
+    }
+    if let Some(message) = options
+        .message
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+    {
+        args.push("-m".into());
+        args.push(message.into());
+    }
+    let output = run_git(
+        &repo_root.workspace,
+        Some(&repo_root.git_path),
+        args,
+        DEFAULT_TIMEOUT_SECS,
+    )?;
+    ensure_success(&output, "git stash push failed")?;
+    let message = combined_output_text(&output);
+    let stashed = !message.to_ascii_lowercase().contains("no local changes");
+    Ok(GitStashResult {
+        stashed,
+        message: fallback_message(message, "Saved working directory"),
+    })
+}
+
+pub fn stash_pop(
+    registry: &WorkspaceRegistry,
+    repo_root: &str,
+    selector: &str,
+    workspace: &WorkspaceEnv,
+) -> Result<GitStashResult> {
+    run_stash_selector_command(registry, repo_root, "pop", selector, workspace)
+}
+
+pub fn stash_drop(
+    registry: &WorkspaceRegistry,
+    repo_root: &str,
+    selector: &str,
+    workspace: &WorkspaceEnv,
+) -> Result<GitStashResult> {
+    run_stash_selector_command(registry, repo_root, "drop", selector, workspace)
+}
+
+fn run_stash_selector_command(
+    registry: &WorkspaceRegistry,
+    repo_root: &str,
+    action: &'static str,
+    selector: &str,
+    workspace: &WorkspaceEnv,
+) -> Result<GitStashResult> {
+    let repo_root = authorized_repo_root(registry, repo_root, workspace)?;
+    ensure_git_available(&repo_root.workspace)?;
+    let selector = validate_git_name(selector, "stash")?;
+    let output = run_git(
+        &repo_root.workspace,
+        Some(&repo_root.git_path),
+        [
+            OsStr::new("stash"),
+            OsStr::new(action),
+            OsStr::new(&selector),
+        ],
+        DEFAULT_TIMEOUT_SECS,
+    )?;
+    ensure_success(&output, "git stash operation failed")?;
+    let message = combined_output_text(&output);
+    Ok(GitStashResult {
+        stashed: true,
+        message: fallback_message(message, "Updated stash"),
     })
 }
 
@@ -912,7 +1083,7 @@ pub fn fetch(
     registry: &WorkspaceRegistry,
     repo_root: &str,
     workspace: &WorkspaceEnv,
-) -> Result<()> {
+) -> Result<GitFetchResult> {
     let repo_root = authorized_repo_root(registry, repo_root, workspace)?;
     ensure_git_available(&repo_root.workspace)?;
     let output = run_git(
@@ -921,23 +1092,57 @@ pub fn fetch(
         ["fetch", "--prune"],
         NETWORK_TIMEOUT_SECS,
     )?;
-    ensure_success(&output, "git fetch failed")
+    ensure_success(&output, "git fetch failed")?;
+    Ok(parse_fetch_summary(&combined_output_text(&output)))
 }
 
 pub fn pull_ff_only(
     registry: &WorkspaceRegistry,
     repo_root: &str,
     workspace: &WorkspaceEnv,
-) -> Result<()> {
+) -> Result<GitPullResult> {
     let repo_root = authorized_repo_root(registry, repo_root, workspace)?;
     ensure_git_available(&repo_root.workspace)?;
     let output = run_git(
         &repo_root.workspace,
         Some(&repo_root.git_path),
-        ["pull", "--ff-only"],
+        ["pull", "--ff-only", "--stat"],
         NETWORK_TIMEOUT_SECS,
     )?;
-    ensure_success(&output, "git pull --ff-only failed")
+    ensure_success(&output, "git pull --ff-only failed")?;
+    Ok(parse_pull_summary(&combined_output_text(&output)))
+}
+
+fn combined_output_text(output: &GitOutput) -> String {
+    let mut text = String::new();
+    text.push_str(&String::from_utf8_lossy(&output.stdout));
+    if !output.stderr.is_empty() {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(&String::from_utf8_lossy(&output.stderr));
+    }
+    text.trim().to_string()
+}
+
+fn fallback_message(message: String, fallback: &str) -> String {
+    if message.trim().is_empty() {
+        fallback.to_string()
+    } else {
+        message
+    }
+}
+
+fn validate_git_name(input: &str, label: &'static str) -> Result<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty()
+        || trimmed.starts_with('-')
+        || trimmed.contains('\0')
+        || trimmed.chars().any(char::is_control)
+    {
+        return Err(GitError::command("invalid git argument", label));
+    }
+    Ok(trimmed.to_string())
 }
 
 fn nothing_to_commit(output: &GitOutput) -> bool {
