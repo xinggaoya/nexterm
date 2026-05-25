@@ -1,4 +1,6 @@
-use crate::modules::git::types::GitChangedFile;
+use crate::modules::git::types::{
+    GitBranchInfo, GitChangedFile, GitFetchResult, GitPullResult, GitStashEntry,
+};
 
 #[derive(Default)]
 pub struct PorcelainV2 {
@@ -145,9 +147,152 @@ fn status_label(index_status: char, worktree_status: char) -> String {
     }
 }
 
+pub fn parse_pull_summary(output: &str) -> GitPullResult {
+    let already_up_to_date = output.to_ascii_lowercase().contains("already up to date");
+    let mut files_changed = 0;
+    let mut insertions = 0;
+    let mut deletions = 0;
+
+    for line in output.lines() {
+        if !line.contains("changed") {
+            continue;
+        }
+        for part in line.split(',') {
+            let trimmed = part.trim();
+            if trimmed.contains("file changed") || trimmed.contains("files changed") {
+                files_changed = first_number(trimmed);
+            } else if trimmed.contains("insertion") {
+                insertions = first_number(trimmed);
+            } else if trimmed.contains("deletion") {
+                deletions = first_number(trimmed);
+            }
+        }
+    }
+
+    let summary = if already_up_to_date {
+        "Already up to date".to_string()
+    } else if files_changed > 0 || insertions > 0 || deletions > 0 {
+        format!(
+            "{files_changed} {} changed, +{insertions} -{deletions}",
+            plural(files_changed, "file", "files")
+        )
+    } else {
+        "Pulled latest changes".to_string()
+    };
+
+    GitPullResult {
+        files_changed,
+        insertions,
+        deletions,
+        already_up_to_date,
+        summary,
+    }
+}
+
+pub fn parse_fetch_summary(output: &str) -> GitFetchResult {
+    let mut updated_refs = 0;
+    let mut pruned_refs = 0;
+
+    for line in output.lines() {
+        if !line.contains(" -> ") {
+            continue;
+        }
+        if line.contains("[deleted]") {
+            pruned_refs += 1;
+        } else {
+            updated_refs += 1;
+        }
+    }
+
+    let summary = match (updated_refs, pruned_refs) {
+        (0, 0) => "Fetched latest refs".to_string(),
+        (_, 0) => format!(
+            "{updated_refs} {} updated",
+            plural(updated_refs, "ref", "refs")
+        ),
+        (0, _) => format!("{pruned_refs} pruned"),
+        _ => format!(
+            "{updated_refs} {} updated, {pruned_refs} pruned",
+            plural(updated_refs, "ref", "refs")
+        ),
+    };
+
+    GitFetchResult {
+        updated_refs,
+        pruned_refs,
+        summary,
+    }
+}
+
+pub fn parse_branch_lines(output: &str) -> Vec<GitBranchInfo> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split('\x1f');
+            let name = fields.next()?.trim().to_string();
+            let head = fields.next().unwrap_or("").trim();
+            let upstream = fields.next().unwrap_or("").trim();
+            let refname = fields.next().unwrap_or("").trim();
+            if name.is_empty() || refname.ends_with("/HEAD") {
+                return None;
+            }
+            Some(GitBranchInfo {
+                name,
+                upstream: if upstream.is_empty() {
+                    None
+                } else {
+                    Some(upstream.to_string())
+                },
+                is_current: head == "*",
+                is_remote: refname.starts_with("refs/remotes/"),
+            })
+        })
+        .collect()
+}
+
+pub fn parse_stash_lines(output: &str) -> Vec<GitStashEntry> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.splitn(4, '\x1f');
+            let selector = fields.next()?.trim();
+            let short_sha = fields.next().unwrap_or("").trim();
+            let relative_time = fields.next().unwrap_or("").trim();
+            let message = fields.next().unwrap_or("").trim();
+            if selector.is_empty() {
+                return None;
+            }
+            Some(GitStashEntry {
+                selector: selector.to_string(),
+                short_sha: short_sha.to_string(),
+                relative_time: relative_time.to_string(),
+                message: message.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn first_number(input: &str) -> u32 {
+    input
+        .split_ascii_whitespace()
+        .find_map(|part| part.parse().ok())
+        .unwrap_or(0)
+}
+
+fn plural<'a>(count: u32, singular: &'a str, plural: &'a str) -> &'a str {
+    if count == 1 {
+        singular
+    } else {
+        plural
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::parse_porcelain_v2;
+    use super::{
+        parse_branch_lines, parse_fetch_summary, parse_porcelain_v2, parse_pull_summary,
+        parse_stash_lines,
+    };
 
     #[test]
     fn porcelain_v2_parses_branch_and_files() {
@@ -183,5 +328,66 @@ mod tests {
         assert!(parsed.is_detached);
         assert_eq!(parsed.branch, "(detached)");
         assert!(parsed.upstream.is_none());
+    }
+
+    #[test]
+    fn pull_summary_parses_file_and_line_counts() {
+        let summary = parse_pull_summary(
+            "Updating 111..222\nFast-forward\n src/a.rs | 10 +++++-----\n 3 files changed, 24 insertions(+), 6 deletions(-)\n",
+        );
+
+        assert_eq!(summary.files_changed, 3);
+        assert_eq!(summary.insertions, 24);
+        assert_eq!(summary.deletions, 6);
+        assert!(!summary.already_up_to_date);
+        assert_eq!(summary.summary, "3 files changed, +24 -6");
+    }
+
+    #[test]
+    fn pull_summary_marks_already_up_to_date() {
+        let summary = parse_pull_summary("Already up to date.\n");
+
+        assert_eq!(summary.files_changed, 0);
+        assert_eq!(summary.insertions, 0);
+        assert_eq!(summary.deletions, 0);
+        assert!(summary.already_up_to_date);
+        assert_eq!(summary.summary, "Already up to date");
+    }
+
+    #[test]
+    fn fetch_summary_counts_updated_and_pruned_refs() {
+        let summary = parse_fetch_summary(
+            "From github.com:xinggaoya/nexterm\n   111..222  main       -> origin/main\n * [new branch] feature -> origin/feature\n - [deleted]   (none)  -> origin/old\n",
+        );
+
+        assert_eq!(summary.updated_refs, 2);
+        assert_eq!(summary.pruned_refs, 1);
+        assert_eq!(summary.summary, "2 refs updated, 1 pruned");
+    }
+
+    #[test]
+    fn branch_lines_parse_local_and_remote_entries() {
+        let branches = parse_branch_lines(
+            "main\x1f*\x1forigin/main\x1frefs/heads/main\nfeature\x1f \x1f\x1frefs/heads/feature\norigin/release\x1f \x1f\x1frefs/remotes/origin/release\norigin/HEAD\x1f \x1f\x1frefs/remotes/origin/HEAD\n",
+        );
+
+        assert_eq!(branches.len(), 3);
+        assert!(branches[0].is_current);
+        assert!(!branches[0].is_remote);
+        assert_eq!(branches[0].upstream.as_deref(), Some("origin/main"));
+        assert!(branches[2].is_remote);
+        assert_eq!(branches[2].name, "origin/release");
+    }
+
+    #[test]
+    fn stash_lines_parse_selector_sha_and_message() {
+        let stashes = parse_stash_lines(
+            "stash@{0}\x1fabcdef1\x1f2 hours ago\x1fWIP on main: change source control\nstash@{1}\x1f1234567\x1fyesterday\x1fOn feature: saved changes\n",
+        );
+
+        assert_eq!(stashes.len(), 2);
+        assert_eq!(stashes[0].selector, "stash@{0}");
+        assert_eq!(stashes[0].short_sha, "abcdef1");
+        assert_eq!(stashes[0].message, "WIP on main: change source control");
     }
 }

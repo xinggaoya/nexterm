@@ -33,9 +33,14 @@ export type BusyAction =
   | "fetch"
   | "pull"
   | "push"
+  | "branch-create"
+  | "stash-save"
   | `stage:${string}`
   | `unstage:${string}`
-  | `discard:${string}`;
+  | `discard:${string}`
+  | `checkout:${string}`
+  | `stash-pop:${string}`
+  | `stash-drop:${string}`;
 
 export type ReadableRef<T> = {
   readonly value: T;

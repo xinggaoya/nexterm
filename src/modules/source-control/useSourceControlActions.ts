@@ -1,5 +1,16 @@
 import { computed, ref, type TextareaHTMLAttributes } from "vue";
-import type { GitCommitResult, GitDiscardEntry, GitPushResult } from "@/lib/native";
+import type {
+  GitBranchInfo,
+  GitBranchResult,
+  GitCommitResult,
+  GitDiscardEntry,
+  GitFetchResult,
+  GitPullResult,
+  GitPushResult,
+  GitStashPushOptions,
+  GitStashResult,
+} from "@/lib/native";
+import { notifyError, notifySuccess } from "@/modules/notifications/notificationCenter";
 import type { SourceControlFileEntry } from "./sourceControlModel";
 import {
   normalizeError,
@@ -13,9 +24,21 @@ type SourceControlActionNative = {
   gitUnstage: (repoRoot: string, paths: string[]) => Promise<void>;
   gitDiscard: (repoRoot: string, entries: GitDiscardEntry[]) => Promise<void>;
   gitCommit: (repoRoot: string, message: string) => Promise<GitCommitResult>;
-  gitFetch: (repoRoot: string) => Promise<void>;
-  gitPullFfOnly: (repoRoot: string) => Promise<void>;
+  gitFetch: (repoRoot: string) => Promise<GitFetchResult>;
+  gitPullFfOnly: (repoRoot: string) => Promise<GitPullResult>;
   gitPush: (repoRoot: string) => Promise<GitPushResult>;
+  gitCheckoutBranch: (
+    repoRoot: string,
+    branch: string,
+    remote: boolean,
+  ) => Promise<GitBranchResult>;
+  gitCreateBranch: (repoRoot: string, branch: string) => Promise<GitBranchResult>;
+  gitStashPush: (
+    repoRoot: string,
+    options: GitStashPushOptions,
+  ) => Promise<GitStashResult>;
+  gitStashPop: (repoRoot: string, selector: string) => Promise<GitStashResult>;
+  gitStashDrop: (repoRoot: string, selector: string) => Promise<GitStashResult>;
 };
 
 type DialogApi = {
@@ -34,6 +57,7 @@ type SourceControlActionOptions = {
   dialog: DialogApi;
   t: SourceControlTranslate;
   emitCommitted: (result: GitCommitResult) => void;
+  refreshGitMetadata?: () => Promise<void>;
 };
 
 export function useSourceControlActions(options: SourceControlActionOptions) {
@@ -65,6 +89,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
       await run();
     } catch (error) {
       actionError.value = normalizeError(error, options.t);
+      notifyError(options.t(errorTitleForBusy(busy)), actionError.value);
     } finally {
       options.state.busyAction.value = null;
     }
@@ -157,9 +182,11 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const root = options.state.repoRoot.value;
     if (!root) return;
     await runWithBusy("fetch", async () => {
-      await options.native.gitFetch(root);
-      actionMessage.value = options.t("sourceControl.fetchedLatestRefs");
+      const result = await options.native.gitFetch(root);
+      actionMessage.value = result.summary;
+      notifySuccess(options.t("sourceControl.fetchSuccess"), result.summary);
       await options.state.refreshStatus();
+      await options.refreshGitMetadata?.();
     });
   }
 
@@ -167,9 +194,11 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const root = options.state.repoRoot.value;
     if (!root) return;
     await runWithBusy("pull", async () => {
-      await options.native.gitPullFfOnly(root);
-      actionMessage.value = options.t("sourceControl.pulledLatestChanges");
+      const result = await options.native.gitPullFfOnly(root);
+      actionMessage.value = result.summary;
+      notifySuccess(options.t("sourceControl.pullSuccess"), result.summary);
       await options.state.refreshStatus();
+      await options.refreshGitMetadata?.();
     });
   }
 
@@ -181,7 +210,78 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
       actionMessage.value = options.t("sourceControl.pushedTo", {
         target: pushedLabel(result.remote, result.branch),
       });
+      notifySuccess(options.t("sourceControl.pushSuccess"), actionMessage.value);
       await options.state.refreshStatus();
+      await options.refreshGitMetadata?.();
+    });
+  }
+
+  async function checkoutBranch(branch: Pick<GitBranchInfo, "name" | "isRemote">) {
+    const root = options.state.repoRoot.value;
+    if (!root) return;
+    await runWithBusy(`checkout:${branch.name}`, async () => {
+      const result = await options.native.gitCheckoutBranch(root, branch.name, branch.isRemote);
+      const detail = options.t("sourceControl.branchCheckoutDetail", {
+        branch: result.branch,
+      });
+      actionMessage.value = detail;
+      notifySuccess(options.t("sourceControl.branchCheckoutSuccess"), detail);
+      await options.state.reloadCurrent?.();
+      await options.refreshGitMetadata?.();
+    });
+  }
+
+  async function createBranch(branch: string) {
+    const root = options.state.repoRoot.value;
+    const name = branch.trim();
+    if (!root || !name) return;
+    await runWithBusy("branch-create", async () => {
+      const result = await options.native.gitCreateBranch(root, name);
+      const detail = options.t("sourceControl.branchCreateDetail", {
+        branch: result.branch,
+      });
+      actionMessage.value = detail;
+      notifySuccess(options.t("sourceControl.branchCreateSuccess"), detail);
+      await options.state.reloadCurrent?.();
+      await options.refreshGitMetadata?.();
+    });
+  }
+
+  async function stashChanges(message: string | null = null) {
+    const root = options.state.repoRoot.value;
+    if (!root) return;
+    await runWithBusy("stash-save", async () => {
+      const result = await options.native.gitStashPush(root, {
+        message: message?.trim() || null,
+        includeUntracked: true,
+      });
+      actionMessage.value = result.message;
+      notifySuccess(options.t("sourceControl.stashSaveSuccess"), result.message);
+      await options.state.refreshStatus();
+      await options.refreshGitMetadata?.();
+    });
+  }
+
+  async function popStash(selector: string) {
+    const root = options.state.repoRoot.value;
+    if (!root) return;
+    await runWithBusy(`stash-pop:${selector}`, async () => {
+      const result = await options.native.gitStashPop(root, selector);
+      actionMessage.value = result.message;
+      notifySuccess(options.t("sourceControl.stashPopSuccess"), result.message);
+      await options.state.refreshStatus();
+      await options.refreshGitMetadata?.();
+    });
+  }
+
+  async function dropStash(selector: string) {
+    const root = options.state.repoRoot.value;
+    if (!root) return;
+    await runWithBusy(`stash-drop:${selector}`, async () => {
+      const result = await options.native.gitStashDrop(root, selector);
+      actionMessage.value = result.message;
+      notifySuccess(options.t("sourceControl.stashDropSuccess"), result.message);
+      await options.refreshGitMetadata?.();
     });
   }
 
@@ -193,8 +293,10 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
       const result = await options.native.gitCommit(root, message);
       commitMessage.value = "";
       actionMessage.value = result.summary;
+      notifySuccess(options.t("sourceControl.commitSuccess"), result.summary);
       options.emitCommitted(result);
       await options.state.refreshStatus();
+      await options.refreshGitMetadata?.();
     });
   }
 
@@ -220,7 +322,25 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     fetchRemote,
     pullRemote,
     pushRemote,
+    checkoutBranch,
+    createBranch,
+    stashChanges,
+    popStash,
+    dropStash,
     commit,
     handleCommitKeydown,
   };
+}
+
+function errorTitleForBusy(busy: BusyAction): string {
+  if (busy === "fetch") return "sourceControl.fetchFailed";
+  if (busy === "pull") return "sourceControl.pullFailed";
+  if (busy === "push") return "sourceControl.pushFailed";
+  if (busy === "commit") return "sourceControl.commitFailed";
+  if (busy === "branch-create") return "sourceControl.branchCreateFailed";
+  if (busy.startsWith("checkout:")) return "sourceControl.branchCheckoutFailed";
+  if (busy === "stash-save") return "sourceControl.stashSaveFailed";
+  if (busy.startsWith("stash-pop:")) return "sourceControl.stashPopFailed";
+  if (busy.startsWith("stash-drop:")) return "sourceControl.stashDropFailed";
+  return "sourceControl.actionFailed";
 }

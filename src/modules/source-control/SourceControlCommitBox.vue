@@ -9,8 +9,6 @@ const props = defineProps<{
   stagedCount: number;
   canCommit: boolean;
   busyAction: BusyAction | null;
-  actionError: string | null;
-  actionMessage: string | null;
   inputProps: TextareaHTMLAttributes;
 }>();
 
@@ -51,15 +49,6 @@ const message = computed({
       >
         {{ t("common.commit") }}
       </NButton>
-    </div>
-    <div v-if="props.actionError" class="text-[11px] text-destructive">
-      {{ props.actionError }}
-    </div>
-    <div
-      v-else-if="props.actionMessage"
-      class="text-[11px] text-emerald-600 dark:text-emerald-400"
-    >
-      {{ props.actionMessage }}
     </div>
   </div>
 </template>

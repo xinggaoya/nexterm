@@ -54,6 +54,48 @@ export type GitPushResult = {
   pushed: boolean;
 };
 
+export type GitFetchResult = {
+  updatedRefs: number;
+  prunedRefs: number;
+  summary: string;
+};
+
+export type GitPullResult = {
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+  alreadyUpToDate: boolean;
+  summary: string;
+};
+
+export type GitBranchInfo = {
+  name: string;
+  upstream: string | null;
+  isCurrent: boolean;
+  isRemote: boolean;
+};
+
+export type GitBranchResult = {
+  branch: string;
+};
+
+export type GitStashEntry = {
+  selector: string;
+  shortSha: string;
+  relativeTime: string;
+  message: string;
+};
+
+export type GitStashPushOptions = {
+  message: string | null;
+  includeUntracked: boolean;
+};
+
+export type GitStashResult = {
+  stashed: boolean;
+  message: string;
+};
+
 export type GitLogEntry = {
   sha: string;
   shortSha: string;
@@ -178,18 +220,59 @@ export const native = {
       workspace: currentWorkspaceEnv(),
     }),
   gitFetch: (repoRoot: string) =>
-    invoke<void>("git_fetch", {
+    invoke<GitFetchResult>("git_fetch", {
       repoRoot,
       workspace: currentWorkspaceEnv(),
     }),
   gitPullFfOnly: (repoRoot: string) =>
-    invoke<void>("git_pull_ff_only", {
+    invoke<GitPullResult>("git_pull_ff_only", {
       repoRoot,
       workspace: currentWorkspaceEnv(),
     }),
   gitPush: (repoRoot: string) =>
     invoke<GitPushResult>("git_push", {
       repoRoot,
+      workspace: currentWorkspaceEnv(),
+    }),
+  gitBranchList: (repoRoot: string) =>
+    invoke<GitBranchInfo[]>("git_branch_list", {
+      repoRoot,
+      workspace: currentWorkspaceEnv(),
+    }),
+  gitCheckoutBranch: (repoRoot: string, branch: string, remote: boolean) =>
+    invoke<GitBranchResult>("git_checkout_branch", {
+      repoRoot,
+      branch,
+      remote,
+      workspace: currentWorkspaceEnv(),
+    }),
+  gitCreateBranch: (repoRoot: string, branch: string) =>
+    invoke<GitBranchResult>("git_create_branch", {
+      repoRoot,
+      branch,
+      workspace: currentWorkspaceEnv(),
+    }),
+  gitStashList: (repoRoot: string) =>
+    invoke<GitStashEntry[]>("git_stash_list", {
+      repoRoot,
+      workspace: currentWorkspaceEnv(),
+    }),
+  gitStashPush: (repoRoot: string, options: GitStashPushOptions) =>
+    invoke<GitStashResult>("git_stash_push", {
+      repoRoot,
+      options,
+      workspace: currentWorkspaceEnv(),
+    }),
+  gitStashPop: (repoRoot: string, selector: string) =>
+    invoke<GitStashResult>("git_stash_pop", {
+      repoRoot,
+      selector,
+      workspace: currentWorkspaceEnv(),
+    }),
+  gitStashDrop: (repoRoot: string, selector: string) =>
+    invoke<GitStashResult>("git_stash_drop", {
+      repoRoot,
+      selector,
       workspace: currentWorkspaceEnv(),
     }),
   gitLog: (repoRoot: string, options?: { limit?: number; beforeSha?: string }) =>
