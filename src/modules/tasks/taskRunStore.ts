@@ -1,5 +1,6 @@
 import { computed, ref, type Ref } from "vue";
 import { native, type ShellBgLogResponse } from "@/lib/native";
+import type { RunConfiguration } from "@/modules/run-configs";
 import type { WorkspaceTask } from "./taskTypes";
 
 export type TaskRunStatus =
@@ -12,6 +13,7 @@ export type TaskRunStatus =
 export type TaskRun = {
   id: number;
   handle: number | null;
+  groupId: number | null;
   task: WorkspaceTask | null;
   title: string;
   command: string;
@@ -23,6 +25,15 @@ export type TaskRun = {
   logOffset: number;
   droppedBytes: number;
   error: string | null;
+};
+
+export type TaskRunGroup = {
+  id: number;
+  configurationId: string;
+  title: string;
+  status: TaskRunStatus;
+  runIds: number[];
+  startedAtMs: number;
 };
 
 export type TaskRunApi = {
@@ -62,9 +73,11 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const now = options.now ?? Date.now;
   const runs: Ref<TaskRun[]> = ref([]);
+  const runGroups: Ref<TaskRunGroup[]> = ref([]);
   const activeRunId = ref<number | null>(null);
   const timers = new Map<number, ReturnType<typeof setTimeout>>();
   let nextRunId = 1;
+  let nextGroupId = 1;
 
   const activeRun = computed(
     () => runs.value.find((run) => run.id === activeRunId.value) ?? null,
@@ -85,6 +98,41 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
     return runs.value.find((run) => run.id === id) ?? null;
   }
 
+  function findRunGroup(id: number): TaskRunGroup | null {
+    return runGroups.value.find((group) => group.id === id) ?? null;
+  }
+
+  function resolveCommandCwd(workspaceRoot: string, cwd?: string): string {
+    const normalizedRoot = workspaceRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+    const value = cwd?.trim();
+    if (!value || value === ".") return normalizedRoot || "/";
+    const normalizedCwd = value.replace(/\\/g, "/").replace(/^\.\//, "");
+    if (normalizedCwd.startsWith("/") || /^[A-Za-z]:\//.test(normalizedCwd)) {
+      return normalizedCwd;
+    }
+    if (!normalizedRoot) return normalizedCwd;
+    return `${normalizedRoot}${normalizedRoot === "/" ? "" : "/"}${normalizedCwd}`;
+  }
+
+  function aggregateGroupStatus(group: TaskRunGroup): TaskRunStatus {
+    const childRuns = group.runIds
+      .map((id) => findRun(id))
+      .filter((run): run is TaskRun => !!run);
+    if (childRuns.length === 0) return "error";
+    if (childRuns.some((run) => run.status === "running")) return "running";
+    if (childRuns.some((run) => run.status === "error")) return "error";
+    if (childRuns.some((run) => run.status === "failed")) return "failed";
+    if (childRuns.some((run) => run.status === "stopped")) return "stopped";
+    return "succeeded";
+  }
+
+  function updateRunGroupStatus(groupId: number | null) {
+    if (groupId === null) return;
+    const group = findRunGroup(groupId);
+    if (!group) return;
+    group.status = aggregateGroupStatus(group);
+  }
+
   function schedulePoll(id: number) {
     if (!autoPoll || timers.has(id)) return;
     timers.set(
@@ -97,6 +145,7 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
   }
 
   async function startRun(input: {
+    groupId?: number | null;
     task: WorkspaceTask | null;
     title: string;
     command: string;
@@ -106,6 +155,7 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
     const run: TaskRun = {
       id: nextRunId++,
       handle: null,
+      groupId: input.groupId ?? null,
       task: input.task,
       title: input.title,
       command,
@@ -131,6 +181,7 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
       if (stored) {
         stored.status = "error";
         stored.error = normalizeError(error);
+        updateRunGroupStatus(stored.groupId);
       }
     }
 
@@ -169,12 +220,14 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
       if (result.exited) {
         run.exitCode = result.exitCode;
         run.status = result.exitCode === 0 ? "succeeded" : "failed";
+        updateRunGroupStatus(run.groupId);
         return;
       }
       schedulePoll(id);
     } catch (error) {
       run.status = "error";
       run.error = normalizeError(error);
+      updateRunGroupStatus(run.groupId);
     }
   }
 
@@ -184,6 +237,63 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
     if (!run || run.handle === null || run.status !== "running") return;
     await api.shellBgKill(run.handle);
     run.status = "stopped";
+    updateRunGroupStatus(run.groupId);
+  }
+
+  async function startRunConfiguration(
+    configuration: RunConfiguration,
+    workspaceRoot: string,
+  ): Promise<TaskRunGroup> {
+    const group: TaskRunGroup = {
+      id: nextGroupId++,
+      configurationId: configuration.id,
+      title: configuration.name,
+      status: "running",
+      runIds: [],
+      startedAtMs: now(),
+    };
+    runGroups.value = [group, ...runGroups.value];
+
+    for (const command of configuration.commands) {
+      const run = await startRun({
+        groupId: group.id,
+        task: null,
+        title: command.name || command.command,
+        command: command.command,
+        cwd: resolveCommandCwd(workspaceRoot, command.cwd),
+      });
+      group.runIds.push(run.id);
+    }
+    updateRunGroupStatus(group.id);
+    return group;
+  }
+
+  async function stopRunGroup(id: number): Promise<void> {
+    const group = findRunGroup(id);
+    if (!group) return;
+    await Promise.all(group.runIds.map((runId) => stopRun(runId)));
+    group.status = "stopped";
+  }
+
+  async function rerunGroup(id: number): Promise<TaskRunGroup> {
+    const group = findRunGroup(id);
+    if (!group) throw new Error("task run group not found");
+    const childRuns = group.runIds
+      .map((runId) => findRun(runId))
+      .filter((run): run is TaskRun => !!run);
+    return startRunConfiguration(
+      {
+        id: group.configurationId,
+        name: group.title,
+        commands: childRuns.map((run) => ({
+          id: String(run.id),
+          name: run.title,
+          command: run.command,
+          cwd: run.cwd,
+        })),
+      },
+      "",
+    );
   }
 
   async function rerun(id: number): Promise<TaskRun> {
@@ -201,12 +311,16 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
     runs,
     activeRunId,
     activeRun,
+    runGroups,
     setActiveRun,
     startTask,
     runCommand,
+    startRunConfiguration,
     pollRun,
     stopRun,
+    stopRunGroup,
     rerun,
+    rerunGroup,
     dispose,
   };
 }

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
+import { NSelect } from "naive-ui";
 import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AppHeader from "./AppHeader.vue";
@@ -133,6 +134,42 @@ describe("AppHeader.vue", () => {
     expect(wrapper.emitted("selectTab")).toEqual([[3]]);
     expect(wrapper.emitted("closeTab")).toEqual([[3]]);
     expect(wrapper.find("[data-window-controls]").exists()).toBe(true);
+  });
+
+  it("renders project run configuration controls in the toolbar", async () => {
+    const wrapper = mount(AppHeader, {
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        workspaceReady: true,
+        runConfigurations: [
+          {
+            id: "full-stack",
+            name: "Full Stack",
+            commands: [{ id: "web", name: "Vue", command: "pnpm run dev" }],
+          },
+          {
+            id: "rust",
+            name: "Rust",
+            commands: [{ id: "run", name: "Run", command: "cargo run" }],
+          },
+        ],
+        selectedRunConfigurationId: "full-stack",
+        runConfigurationRunning: false,
+      },
+    });
+
+    const select = wrapper.findComponent(NSelect);
+    select.vm.$emit("update:value", "rust");
+    await wrapper.find("[data-run-selected-config]").trigger("click");
+    await wrapper.find("[data-manage-run-configs]").trigger("click");
+
+    expect(wrapper.text()).toContain("Full Stack");
+    expect(wrapper.emitted("selectRunConfiguration")).toEqual([["rust"]]);
+    expect(wrapper.emitted("runSelectedConfiguration")).toHaveLength(1);
+    expect(wrapper.emitted("manageRunConfigurations")).toHaveLength(1);
+    expect(wrapper.find("[data-stop-selected-config]").attributes("disabled")).toBeDefined();
   });
 
   it("wraps toolbar icon actions in Naive tooltip title components", () => {

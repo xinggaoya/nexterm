@@ -40,6 +40,9 @@ type WorkbenchCommandOptions = {
   openFileTab: (path: string, pin: boolean) => void;
   openSettings: () => void;
   openTaskConsole: () => void | Promise<void>;
+  runSelectedConfiguration: () => void | Promise<unknown>;
+  stopSelectedConfiguration: () => void | Promise<void>;
+  manageRunConfigurations: () => void | Promise<void>;
   requestCloseTab: (id: number) => void;
   saveActiveEditor: () => void | Promise<void>;
   resolveGitRepo: (root: string) => Promise<GitRepoInfo | null>;
@@ -182,6 +185,15 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
         return;
       case "tasks.run":
         await options.openTaskConsole();
+        return;
+      case "runConfigs.runSelected":
+        await options.runSelectedConfiguration();
+        return;
+      case "runConfigs.stopSelected":
+        await options.stopSelectedConfiguration();
+        return;
+      case "runConfigs.manage":
+        await options.manageRunConfigurations();
         return;
       case "terminal.new":
         options.newTerminalTab();

@@ -43,6 +43,33 @@ const invokeMock = vi.hoisted(() =>
       };
     }
     if (command === "fs_read_file") {
+      if (args?.path === "/repo/.nexterm/run-configs.json") {
+        const content = JSON.stringify({
+          version: 1,
+          selectedId: "full-stack",
+          configurations: [
+            {
+              id: "full-stack",
+              name: "Full Stack",
+              commands: [
+                {
+                  id: "web",
+                  name: "Vue",
+                  command: "pnpm run dev",
+                  cwd: ".",
+                },
+                {
+                  id: "api",
+                  name: "API",
+                  command: "go run ./cmd/api",
+                  cwd: "api",
+                },
+              ],
+            },
+          ],
+        });
+        return { kind: "text", content, size: content.length };
+      }
       if (args?.path === "/repo/package.json") {
         const content = JSON.stringify({ scripts: { dev: "vite" } });
         return { kind: "text", content, size: content.length };
@@ -456,6 +483,8 @@ describe("MainApp.vue", () => {
         global: { plugins: [pinia, i18n] },
       });
       await nextTick();
+      await flushPromises();
+      invokeMock.mockClear();
 
       expect(document.body.querySelector("[data-settings-panel]")).toBeNull();
 
@@ -551,6 +580,30 @@ describe("MainApp.vue", () => {
       workspace: currentWorkspaceEnv(),
     });
     expect(tabs.tabs).toHaveLength(1);
+  });
+
+  it("runs a project run configuration from the header", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "/repo";
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+    await flushPromises();
+
+    await wrapper.find("[data-run-selected-config]").trigger("click");
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("shell_bg_spawn", {
+      command: "pnpm run dev",
+      cwd: "/repo",
+      workspace: currentWorkspaceEnv(),
+    });
+    expect(invokeMock).toHaveBeenCalledWith("shell_bg_spawn", {
+      command: "go run ./cmd/api",
+      cwd: "/repo/api",
+      workspace: currentWorkspaceEnv(),
+    });
   });
 
   it("saves the active editor from the command palette", async () => {
@@ -653,12 +706,17 @@ describe("MainApp.vue", () => {
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
     workspaceRoot.rootPath = "D:/repo";
     let resolveHome!: (path: string) => void;
-    invokeMock.mockImplementationOnce((command: string) => {
-      expect(command).toBe("wsl_home");
-      return new Promise((resolve) => {
-        resolveHome = resolve;
+    invokeMock
+      .mockImplementationOnce(async (command: string) => {
+        expect(command).toBe("fs_read_file");
+        return { kind: "binary", size: 0 };
+      })
+      .mockImplementationOnce((command: string) => {
+        expect(command).toBe("wsl_home");
+        return new Promise((resolve) => {
+          resolveHome = resolve;
+        });
       });
-    });
     const wrapper = mount(MainApp, {
       global: { plugins: [pinia, i18n] },
     });

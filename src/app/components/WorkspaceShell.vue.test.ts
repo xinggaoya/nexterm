@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
-import { computed, ref } from "vue";
+import { computed, ref, type Ref } from "vue";
 import { describe, expect, it, vi } from "vitest";
-import type { WorkspaceTask } from "@/modules/tasks";
+import type { TaskRunGroup, WorkspaceTask } from "@/modules/tasks";
+import type { TaskConsoleView } from "@/modules/tasks/taskConsoleTypes";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import WorkspaceShell from "./WorkspaceShell.vue";
 
@@ -77,9 +78,23 @@ vi.mock("@/modules/explorer/FileExplorer.vue", () => ({
 
 vi.mock("@/modules/tasks/TaskConsole.vue", () => ({
   default: {
-    props: ["rootPath", "tasks", "runs", "activeRun", "loadingTasks", "taskError"],
+    props: [
+      "rootPath",
+      "view",
+      "tasks",
+      "runs",
+      "activeRun",
+      "loadingTasks",
+      "taskError",
+      "runConfigurations",
+      "selectedRunConfigurationId",
+      "runConfigurationGroups",
+      "runConfigurationSaving",
+      "runConfigurationError",
+    ],
     emits: [
       "close",
+      "updateView",
       "refreshTasks",
       "runTask",
       "runCommand",
@@ -87,6 +102,10 @@ vi.mock("@/modules/tasks/TaskConsole.vue", () => ({
       "stopRun",
       "rerun",
       "runInTerminal",
+      "saveRunConfigurations",
+      "selectRunConfiguration",
+      "runConfiguration",
+      "stopRunConfigurationGroup",
     ],
     template:
       '<section data-task-console><button data-close-task-console @click="$emit(\'close\')" /><button data-refresh-tasks @click="$emit(\'refreshTasks\')" /><button data-run-task @click="$emit(\'runTask\', tasks[0])" /><button data-run-command @click="$emit(\'runCommand\', \'pnpm test\')" /></section>',
@@ -117,6 +136,7 @@ function createLayout() {
 function createTaskConsole(task: WorkspaceTask) {
   return {
     taskConsoleOpen: ref(true),
+    taskConsoleView: ref<TaskConsoleView>("tasks"),
     workspaceTasks: ref([task]),
     taskRunList: ref([]),
     activeTaskRun: ref(null),
@@ -127,11 +147,29 @@ function createTaskConsole(task: WorkspaceTask) {
     runWorkspaceTask: vi.fn(),
     runWorkspaceCommand: vi.fn(),
     runTaskInTerminal: vi.fn(),
+    setTaskConsoleView: vi.fn(),
     taskRuns: {
+      runGroups: ref<TaskRunGroup[]>([]),
       setActiveRun: vi.fn(),
       stopRun: vi.fn(),
       rerun: vi.fn(),
+      startRunConfiguration: vi.fn(),
+      stopRunGroup: vi.fn(),
     },
+  };
+}
+
+function createRunConfigs() {
+  return {
+    runConfigurations: ref([]),
+    selectedRunConfigurationId: ref(null),
+    runConfigurationSaving: ref(false),
+    runConfigurationError: ref(null),
+    activeRunConfigurationGroup: ref(null) as Ref<TaskRunGroup | null>,
+    saveRunConfigurations: vi.fn(),
+    selectRunConfiguration: vi.fn(),
+    runSelectedConfiguration: vi.fn(),
+    stopSelectedConfiguration: vi.fn(),
   };
 }
 
@@ -171,6 +209,7 @@ describe("WorkspaceShell", () => {
         tabs: [terminalTab],
         tabsStore,
         taskConsole,
+        runConfigs: createRunConfigs(),
         workspaceFsEvent: null,
         workspaceRoot: "/repo",
       },
