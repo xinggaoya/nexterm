@@ -87,6 +87,7 @@ const enUS = {
       openFolder: "Open folder",
     },
     workspaceEnv: {
+      switchingTo: "Switching to {target}",
       title: "Workspace environment",
     },
     welcome: {

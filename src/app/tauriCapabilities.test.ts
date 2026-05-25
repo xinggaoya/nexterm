@@ -18,6 +18,18 @@ describe("Tauri window capabilities", () => {
     expect(capability.permissions).toContain("core:window:allow-destroy");
   });
 
+  it("allows querying maximized and fullscreen window state", () => {
+    const capability = JSON.parse(
+      readFileSync(
+        join(repoRoot, "src-tauri", "capabilities", "default.json"),
+        "utf8",
+      ),
+    ) as { permissions?: string[] };
+
+    expect(capability.permissions).toContain("core:window:allow-is-maximized");
+    expect(capability.permissions).toContain("core:window:allow-is-fullscreen");
+  });
+
   it("allows native text clipboard access without browser permissions", () => {
     const capability = JSON.parse(
       readFileSync(

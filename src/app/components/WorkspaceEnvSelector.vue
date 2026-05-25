@@ -12,6 +12,16 @@ import {
 import { useWorkspaceEnvPiniaStore } from "@/modules/workspace/workspaceEnvPinia";
 
 const workspace = useWorkspaceEnvPiniaStore();
+const props = withDefaults(
+  defineProps<{
+    switching?: boolean;
+    switchingEnv?: WorkspaceEnv | null;
+  }>(),
+  {
+    switching: false,
+    switchingEnv: null,
+  },
+);
 const emit = defineEmits<{
   select: [env: WorkspaceEnv];
 }>();
@@ -26,11 +36,21 @@ const options = computed<DropdownOption[]>(() => [
   })),
 ]);
 
-const label = computed(() =>
-  workspace.env.kind === "wsl" ? workspace.env.distro : t("common.local"),
-);
+function envLabel(env: WorkspaceEnv): string {
+  return env.kind === "wsl" ? env.distro : t("common.local");
+}
+
+const label = computed(() => {
+  if (props.switching && props.switchingEnv) {
+    return t("app.workspaceEnv.switchingTo", {
+      target: envLabel(props.switchingEnv),
+    });
+  }
+  return envLabel(workspace.env);
+});
 
 function handleSelect(key: string | number) {
+  if (props.switching) return;
   const value = String(key);
   if (value === "local") {
     emit("select", LOCAL_WORKSPACE);
@@ -48,10 +68,17 @@ onMounted(() => {
 
 <template>
   <TooltipTitle :label="t('app.workspaceEnv.title')">
-    <NDropdown trigger="click" :options="options" @select="handleSelect">
+    <NDropdown
+      trigger="click"
+      :options="options"
+      :disabled="props.switching"
+      @select="handleSelect"
+    >
       <NButton
         size="tiny"
         quaternary
+        :disabled="props.switching"
+        :loading="props.switching"
         :aria-label="t('app.workspaceEnv.title')"
         class="max-w-44"
       >

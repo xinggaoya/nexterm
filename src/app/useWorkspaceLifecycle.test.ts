@@ -1,4 +1,4 @@
-import { computed, reactive } from "vue";
+import { computed, nextTick, reactive } from "vue";
 import { describe, expect, it, vi } from "vitest";
 import type { StoredWorkspace } from "@/modules/settings/store";
 import type { Tab } from "@/modules/tabs/tabsTypes";
@@ -7,6 +7,14 @@ import { useWorkspaceLifecycle } from "./useWorkspaceLifecycle";
 
 const LOCAL: WorkspaceEnv = { kind: "local" };
 const WSL: WorkspaceEnv = { kind: "wsl", distro: "Ubuntu" };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
 
 function stored(path: string, env: WorkspaceEnv = LOCAL): StoredWorkspace {
   return { path, env, openedAt: 1 };
@@ -187,5 +195,95 @@ describe("useWorkspaceLifecycle", () => {
       "/home/dev",
       WSL,
     );
+  });
+
+  it("exposes the target workspace env while a switch is resolving", async () => {
+    const harness = createHarness("/repo");
+    const home = deferred<string>();
+    const lifecycle = useWorkspaceLifecycle({
+      ...harness,
+      workspaceRoot: computed(() => harness.workspaceRootStore.rootPath),
+      t: (key) => key,
+      getWslHome: vi.fn(() => home.promise),
+      hasRuntime: () => false,
+    });
+
+    const switching = lifecycle.switchWorkspace(WSL);
+    await nextTick();
+
+    expect(lifecycle.workspaceSwitching.value).toBe(true);
+    expect(lifecycle.switchingWorkspaceEnv.value).toEqual(WSL);
+    expect(harness.workspaceRootStore.openWorkspace).not.toHaveBeenCalled();
+
+    home.resolve("/home/dev");
+    await switching;
+
+    expect(harness.workspaceRootStore.openWorkspace).toHaveBeenCalledWith(
+      "/home/dev",
+      WSL,
+    );
+    expect(lifecycle.workspaceSwitching.value).toBe(false);
+    expect(lifecycle.switchingWorkspaceEnv.value).toBeNull();
+  });
+
+  it("ignores repeat workspace switch requests while one is already pending", async () => {
+    const harness = createHarness("/repo");
+    const home = deferred<string>();
+    const getWslHome = vi.fn(() => home.promise);
+    const lifecycle = useWorkspaceLifecycle({
+      ...harness,
+      workspaceRoot: computed(() => harness.workspaceRootStore.rootPath),
+      t: (key) => key,
+      alert: vi.fn(),
+      getWslHome,
+      hasRuntime: () => false,
+    });
+
+    const firstSwitch = lifecycle.switchWorkspace(WSL);
+    await nextTick();
+    await lifecycle.switchWorkspace({ kind: "wsl", distro: "Debian" });
+
+    expect(getWslHome).toHaveBeenCalledTimes(1);
+    expect(getWslHome).toHaveBeenCalledWith("Ubuntu");
+    expect(harness.workspaceRootStore.openWorkspace).not.toHaveBeenCalled();
+
+    home.resolve("/home/dev");
+    await firstSwitch;
+
+    expect(harness.workspaceRootStore.openWorkspace).toHaveBeenCalledTimes(1);
+    expect(harness.workspaceRootStore.openWorkspace).toHaveBeenCalledWith(
+      "/home/dev",
+      WSL,
+    );
+  });
+
+  it("does not enter switching state when dirty editors block the switch", async () => {
+    const harness = createHarness("/repo");
+    harness.tabs.initialized = true;
+    harness.tabs.tabs = [
+      {
+        id: 1,
+        kind: "editor",
+        title: "main.ts",
+        path: "/repo/src/main.ts",
+        dirty: true,
+        preview: false,
+      },
+    ];
+    const getWslHome = vi.fn(async () => "/home/dev");
+    const lifecycle = useWorkspaceLifecycle({
+      ...harness,
+      workspaceRoot: computed(() => harness.workspaceRootStore.rootPath),
+      t: (key) => key,
+      alert: vi.fn(),
+      getWslHome,
+      hasRuntime: () => false,
+    });
+
+    await lifecycle.switchWorkspace(WSL);
+
+    expect(getWslHome).not.toHaveBeenCalled();
+    expect(lifecycle.workspaceSwitching.value).toBe(false);
+    expect(lifecycle.switchingWorkspaceEnv.value).toBeNull();
   });
 });

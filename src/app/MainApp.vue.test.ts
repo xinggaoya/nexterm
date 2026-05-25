@@ -216,10 +216,15 @@ vi.mock("@/modules/git-history/GitHistoryStack.vue", () => ({
 
 vi.mock("./components/AppStatusBar.vue", () => ({
   default: {
-    props: ["workspaceRoot", "terminalCwd"],
+    props: [
+      "workspaceRoot",
+      "terminalCwd",
+      "workspaceSwitching",
+      "switchingWorkspaceEnv",
+    ],
     emits: ["workspaceChange"],
     template:
-      '<footer data-status-bar><span>{{ workspaceRoot ?? "No workspace" }}:{{ terminalCwd ?? "no-terminal" }}</span><button data-switch-wsl @click="$emit(\'workspaceChange\', { kind: \'wsl\', distro: \'Ubuntu\' })"></button><button data-switch-local @click="$emit(\'workspaceChange\', { kind: \'local\' })"></button></footer>',
+      '<footer data-status-bar :data-switching="String(workspaceSwitching)" :data-switching-env="switchingWorkspaceEnv?.kind === \'wsl\' ? switchingWorkspaceEnv.distro : (switchingWorkspaceEnv?.kind ?? \'none\')"><span>{{ workspaceRoot ?? "No workspace" }}:{{ terminalCwd ?? "no-terminal" }}</span><button data-switch-wsl @click="$emit(\'workspaceChange\', { kind: \'wsl\', distro: \'Ubuntu\' })"></button><button data-switch-local @click="$emit(\'workspaceChange\', { kind: \'local\' })"></button></footer>',
   },
 }));
 
@@ -640,6 +645,39 @@ describe("MainApp.vue", () => {
     expect(invokeMock).toHaveBeenCalledWith("workspace_authorize", {
       path: "/home/dev",
       workspace: { kind: "wsl", distro: "Ubuntu" },
+    });
+  });
+
+  it("passes workspace switch progress to the status bar while WSL home resolves", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.rootPath = "D:/repo";
+    let resolveHome!: (path: string) => void;
+    invokeMock.mockImplementationOnce((command: string) => {
+      expect(command).toBe("wsl_home");
+      return new Promise((resolve) => {
+        resolveHome = resolve;
+      });
+    });
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+
+    await wrapper.find("[data-switch-wsl]").trigger("click");
+    await nextTick();
+
+    expect(wrapper.find("[data-status-bar]").attributes()).toMatchObject({
+      "data-switching": "true",
+      "data-switching-env": "Ubuntu",
+    });
+
+    resolveHome("/home/dev");
+    await flushPromises();
+    await nextTick();
+
+    expect(wrapper.find("[data-status-bar]").attributes()).toMatchObject({
+      "data-switching": "false",
+      "data-switching-env": "none",
     });
   });
 

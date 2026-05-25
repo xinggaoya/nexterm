@@ -5,9 +5,10 @@ import AppStatusBar from "./AppStatusBar.vue";
 
 vi.mock("./WorkspaceEnvSelector.vue", () => ({
   default: {
+    props: ["switching", "switchingEnv"],
     emits: ["select"],
     template:
-      "<button data-workspace-env @click=\"$emit('select', { kind: 'wsl', distro: 'Ubuntu' })\">Local</button>",
+      "<button data-workspace-env :data-switching='String(switching)' :data-switching-env='switchingEnv?.kind === \"wsl\" ? switchingEnv.distro : (switchingEnv?.kind ?? \"none\")' @click=\"$emit('select', { kind: 'wsl', distro: 'Ubuntu' })\">Local</button>",
   },
 }));
 
@@ -53,4 +54,19 @@ describe("AppStatusBar.vue", () => {
     ]);
   });
 
+  it("passes workspace switching state to the environment selector", () => {
+    const wrapper = mount(AppStatusBar, {
+      props: {
+        workspaceRoot: "/repo",
+        terminalCwd: "/repo",
+        workspaceSwitching: true,
+        switchingWorkspaceEnv: { kind: "wsl", distro: "Ubuntu" },
+      },
+    });
+
+    expect(wrapper.find("[data-workspace-env]").attributes()).toMatchObject({
+      "data-switching": "true",
+      "data-switching-env": "Ubuntu",
+    });
+  });
 });
