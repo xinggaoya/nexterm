@@ -274,6 +274,28 @@ describe("AppHeader.vue", () => {
     expect(wrapper.emitted("reorderTab")).toBeUndefined();
   });
 
+  it("keeps the whole title bar on the default cursor", () => {
+    const wrapper = mount(AppHeader, {
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    const header = wrapper.find("header");
+    const dragRegions = wrapper.findAll("[data-window-drag-region]");
+    const tabButton = wrapper.find("[data-tab-id='1']");
+
+    expect(header.classes()).toContain("app-header");
+    expect(header.classes().join(" ")).not.toMatch(/cursor-(grab|grabbing|pointer)/);
+    for (const region of dragRegions) {
+      expect(region.classes().join(" ")).not.toMatch(/cursor-(grab|grabbing|pointer)/);
+    }
+    expect(tabButton.classes().join(" ")).not.toMatch(/cursor-(grab|grabbing|pointer)/);
+  });
+
   it("emits a reorder request from pointer dragging a tab", async () => {
     const wrapper = mount(AppHeader, {
       props: {

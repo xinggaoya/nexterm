@@ -34,6 +34,31 @@ describe("naive theme bridge", () => {
     expect(overrides.common?.borderRadius).toBe("8px");
   });
 
+  it("uses compact notification sizing", () => {
+    const overrides = buildNaiveThemeOverrides({
+      background: "rgb(10, 10, 10)",
+      foreground: "rgb(250, 250, 250)",
+      card: "rgb(20, 20, 20)",
+      muted: "rgb(32, 32, 32)",
+      "muted-foreground": "rgb(160, 160, 160)",
+      accent: "rgb(48, 48, 48)",
+      "accent-foreground": "rgb(250, 250, 250)",
+      border: "rgb(64, 64, 64)",
+      primary: "rgb(228, 228, 231)",
+      destructive: "rgb(248, 113, 113)",
+      ring: "rgb(113, 113, 122)",
+    });
+
+    expect(overrides.Notification).toMatchObject({
+      width: "300px",
+      padding: "10px 12px",
+      titleFontSize: "13px",
+      descriptionFontSize: "12px",
+      closeSize: "18px",
+      closeIconSize: "14px",
+    });
+  });
+
   it("does not pass oklch tokens through to Naive UI color helpers", () => {
     const overrides = buildNaiveThemeOverrides({
       background: "rgb(255, 255, 255)",

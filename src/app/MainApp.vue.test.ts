@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
-import { NConfigProvider } from "naive-ui";
+import { NConfigProvider, NNotificationProvider } from "naive-ui";
 import { createPinia } from "pinia";
 import { nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -418,6 +418,17 @@ describe("MainApp.vue", () => {
     expect(provider.props("locale")?.name).toBe("zh-CN");
     expect(provider.props("dateLocale")?.name).toBe("zh-CN");
     expect(document.documentElement.lang).toBe("zh-CN");
+  });
+
+  it("places notifications in the lower-right corner", () => {
+    const wrapper = mount(MainApp, {
+      global: { plugins: [createPinia(), i18n] },
+    });
+
+    const provider = wrapper.findComponent(NNotificationProvider);
+
+    expect(provider.props("placement")).toBe("bottom-right");
+    expect(provider.props("containerStyle")).toBe("right: 12px; bottom: 12px;");
   });
 
   it("opens a workspace from the welcome screen and handles terminal tab actions", async () => {

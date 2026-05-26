@@ -53,5 +53,13 @@ export function buildNaiveThemeOverrides(
     Dialog: {
       borderRadius: "8px",
     },
+    Notification: {
+      width: "300px",
+      padding: "10px 12px",
+      titleFontSize: "13px",
+      descriptionFontSize: "12px",
+      closeSize: "18px",
+      closeIconSize: "14px",
+    },
   };
 }
