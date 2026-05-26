@@ -21,6 +21,9 @@ use crate::modules::git::utils::{
 };
 use crate::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
 
+const BRANCH_LIST_FORMAT_ARG: &str =
+    "--format=%(refname:short)%1f%(HEAD)%1f%(upstream:short)%1f%(refname)";
+
 pub fn resolve_repo(
     registry: &WorkspaceRegistry,
     cwd: &str,
@@ -469,7 +472,7 @@ pub fn branch_list(
         &repo_root.git_path,
         [
             "for-each-ref",
-            "--format=%(refname:short)%x1f%(HEAD)%x1f%(upstream:short)%x1f%(refname)",
+            BRANCH_LIST_FORMAT_ARG,
             "refs/heads",
             "refs/remotes",
         ],
@@ -1169,4 +1172,18 @@ fn pathspec(repo_root: &Path, absolute: &Path) -> String {
         .strip_prefix(repo_root)
         .map(|rel| rel.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|_| absolute.to_string_lossy().replace('\\', "/"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BRANCH_LIST_FORMAT_ARG;
+
+    #[test]
+    fn branch_list_format_uses_ref_filter_hex_escape() {
+        let format = BRANCH_LIST_FORMAT_ARG
+            .strip_prefix("--format=")
+            .expect("branch list git arg should set a format");
+        assert!(format.contains("%1f"));
+        assert!(!format.contains("%x1f"));
+    }
 }
