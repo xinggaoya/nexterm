@@ -230,9 +230,9 @@ pub fn parse_branch_lines(output: &str) -> Vec<GitBranchInfo> {
         .filter_map(|line| {
             let mut fields = line.split('\x1f');
             let name = fields.next()?.trim().to_string();
-            let head = fields.next().unwrap_or("").trim();
-            let upstream = fields.next().unwrap_or("").trim();
-            let refname = fields.next().unwrap_or("").trim();
+            let head = fields.next()?.trim();
+            let upstream = fields.next()?.trim();
+            let refname = fields.next()?.trim();
             if name.is_empty() || refname.ends_with("/HEAD") {
                 return None;
             }
@@ -377,6 +377,15 @@ mod tests {
         assert_eq!(branches[0].upstream.as_deref(), Some("origin/main"));
         assert!(branches[2].is_remote);
         assert_eq!(branches[2].name, "origin/release");
+    }
+
+    #[test]
+    fn branch_lines_ignore_unexpanded_format_escape_output() {
+        let branches = parse_branch_lines(
+            "feat/task-console-v1%x1f %x1f%x1frefs/heads/feat/task-console-v1\n",
+        );
+
+        assert!(branches.is_empty());
     }
 
     #[test]
