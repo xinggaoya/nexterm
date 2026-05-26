@@ -327,7 +327,7 @@ onBeforeUnmount(() => {
 <template>
   <header
     :class="[
-      'flex h-11 shrink-0 items-center border-b border-border/60 bg-card',
+      'app-header flex h-11 shrink-0 items-center border-b border-border/60 bg-card',
       IS_MAC ? 'pr-2 pl-22' : 'pr-2 pl-2',
     ]"
   >
@@ -377,7 +377,7 @@ onBeforeUnmount(() => {
     <div
       data-window-drag-region
       :title="t('app.header.dragWindow')"
-      class="mx-1 h-7 w-5 shrink-0 cursor-grab rounded-md transition-colors hover:bg-accent/40 active:cursor-grabbing"
+      class="mx-1 h-7 w-5 shrink-0 rounded-md transition-colors hover:bg-accent/40"
       @pointerdown="startWindowDrag"
     />
 
@@ -393,8 +393,7 @@ onBeforeUnmount(() => {
           :class="[
             'group relative flex h-7 min-w-[5.5rem] max-w-56 flex-[1_1_10rem] items-center justify-between gap-1.5 rounded-md px-2 text-left text-[12px] transition-[background-color,color,box-shadow,opacity]',
             props.tabs.length === 1 ? 'pe-2' : 'pe-1',
-            props.tabs.length > 1 ? 'cursor-grab active:cursor-grabbing' : '',
-            draggingTabId === tab.id ? 'cursor-grabbing opacity-60' : '',
+            draggingTabId === tab.id ? 'opacity-60' : '',
             dropTarget?.id === tab.id && dropTarget.placement === 'before'
               ? 'before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary'
               : '',
@@ -459,7 +458,7 @@ onBeforeUnmount(() => {
         <div
           data-window-drag-region
           :title="t('app.header.dragWindow')"
-          class="h-7 min-w-5 flex-1 cursor-grab rounded-md transition-colors hover:bg-accent/40 active:cursor-grabbing"
+          class="h-7 min-w-5 flex-1 rounded-md transition-colors hover:bg-accent/40"
           @pointerdown="startWindowDrag"
         />
       </div>
@@ -615,3 +614,10 @@ onBeforeUnmount(() => {
     </div>
   </header>
 </template>
+
+<style scoped>
+.app-header,
+.app-header :deep(*) {
+  cursor: default !important;
+}
+</style>

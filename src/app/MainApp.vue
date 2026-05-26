@@ -306,7 +306,10 @@ watch(
   >
     <NDialogProvider>
       <NMessageProvider>
-        <NNotificationProvider>
+        <NNotificationProvider
+          placement="bottom-right"
+          container-style="right: 12px; bottom: 12px;"
+        >
           <NotificationBridge />
           <div class="flex h-screen flex-col overflow-hidden bg-background text-foreground select-none">
             <UnsavedCloseGuard
