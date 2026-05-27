@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
-import { computed, ref, type Ref } from "vue";
+import { computed, ref } from "vue";
 import { describe, expect, it, vi } from "vitest";
 import type { TaskRunGroup, WorkspaceTask } from "@/modules/tasks";
 import type { TaskConsoleView } from "@/modules/tasks/taskConsoleTypes";
@@ -86,11 +86,6 @@ vi.mock("@/modules/tasks/TaskConsole.vue", () => ({
       "activeRun",
       "loadingTasks",
       "taskError",
-      "runConfigurations",
-      "selectedRunConfigurationId",
-      "runConfigurationGroups",
-      "runConfigurationSaving",
-      "runConfigurationError",
     ],
     emits: [
       "close",
@@ -102,10 +97,6 @@ vi.mock("@/modules/tasks/TaskConsole.vue", () => ({
       "stopRun",
       "rerun",
       "runInTerminal",
-      "saveRunConfigurations",
-      "selectRunConfiguration",
-      "runConfiguration",
-      "stopRunConfigurationGroup",
     ],
     template:
       '<section data-task-console><button data-close-task-console @click="$emit(\'close\')" /><button data-refresh-tasks @click="$emit(\'refreshTasks\')" /><button data-run-task @click="$emit(\'runTask\', tasks[0])" /><button data-run-command @click="$emit(\'runCommand\', \'pnpm test\')" /></section>',
@@ -153,23 +144,8 @@ function createTaskConsole(task: WorkspaceTask) {
       setActiveRun: vi.fn(),
       stopRun: vi.fn(),
       rerun: vi.fn(),
-      startRunConfiguration: vi.fn(),
       stopRunGroup: vi.fn(),
     },
-  };
-}
-
-function createRunConfigs() {
-  return {
-    runConfigurations: ref([]),
-    selectedRunConfigurationId: ref(null),
-    runConfigurationSaving: ref(false),
-    runConfigurationError: ref(null),
-    activeRunConfigurationGroup: ref(null) as Ref<TaskRunGroup | null>,
-    saveRunConfigurations: vi.fn(),
-    selectRunConfiguration: vi.fn(),
-    runSelectedConfiguration: vi.fn(),
-    stopSelectedConfiguration: vi.fn(),
   };
 }
 
@@ -209,7 +185,6 @@ describe("WorkspaceShell", () => {
         tabs: [terminalTab],
         tabsStore,
         taskConsole,
-        runConfigs: createRunConfigs(),
         workspaceFsEvent: null,
         workspaceRoot: "/repo",
       },

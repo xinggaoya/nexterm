@@ -39,7 +39,6 @@ import { leafIds, type SplitDir } from "@/modules/terminal/lib/panes";
 import { buildNaiveThemeOverrides, getNaiveTheme } from "@/modules/theme/naiveTheme";
 import { readAppTokens, type AppTokens } from "@/styles/tokens";
 import SettingsPanel from "@/settings/SettingsPanel.vue";
-import { useRunConfigController } from "./useRunConfigController";
 import { useTaskConsoleController } from "./useTaskConsoleController";
 import { useWorkbenchCommands } from "./useWorkbenchCommands";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
@@ -189,11 +188,6 @@ const taskConsole = useTaskConsoleController({
   openTaskTerminal: (input) => tabs.newTaskTerminal(input),
 });
 
-const runConfigs = useRunConfigController({
-  workspaceRoot,
-  taskRuns: taskConsole.taskRuns,
-});
-
 const {
   chooseWorkspace,
   openRecentWorkspace,
@@ -246,9 +240,7 @@ const {
   openFileTab,
   openSettings,
   openTaskConsole: taskConsole.openTaskConsole,
-  runSelectedConfiguration: runConfigs.runSelectedConfiguration,
-  stopSelectedConfiguration: runConfigs.stopSelectedConfiguration,
-  manageRunConfigurations: () => void taskConsole.openTaskConsole("run-configs"),
+
   requestCloseTab,
   saveActiveEditor,
   resolveGitRepo: native.gitResolveRepo,
@@ -269,7 +261,6 @@ const {
 onMounted(() => {
   if (hasTauriInternals()) void prefs.hydrate();
   void startWorkspaceLifecycle();
-  void runConfigs.reloadRunConfigurations();
   colorSchemeQuery?.addEventListener("change", colorSchemeListener);
   window.addEventListener("languagechange", syncLanguage);
   window.addEventListener("keydown", handleGlobalCommandKeydown);
@@ -325,10 +316,6 @@ watch(
               :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
               :left-panel-open="leftPanelOpen"
               :right-panel-open="rightPanelOpen"
-              :run-configurations="runConfigs.runConfigurations.value"
-              :selected-run-configuration-id="runConfigs.selectedRunConfigurationId.value"
-              :run-configuration-running="!!runConfigs.activeRunConfigurationGroup.value"
-              :run-configuration-loading="runConfigs.runConfigurationLoading.value"
               @select-tab="(id) => tabs.setActiveId(id)"
               @close-tab="requestCloseTab"
               @pin-tab="(id) => tabs.pinTab(id)"
@@ -338,10 +325,6 @@ watch(
               @split-pane="splitActivePane"
               @open-command-palette="openCommandPalette"
               @open-settings="openSettings"
-              @select-run-configuration="runConfigs.selectRunConfiguration"
-              @run-selected-configuration="() => void runConfigs.runSelectedConfiguration()"
-              @stop-selected-configuration="() => void runConfigs.stopSelectedConfiguration()"
-              @manage-run-configurations="() => void taskConsole.openTaskConsole('run-configs')"
               @toggle-left-panel="leftPanelOpen = !leftPanelOpen"
               @toggle-right-panel="rightPanelOpen = !rightPanelOpen"
             />
@@ -355,7 +338,6 @@ watch(
                 :tabs="tabs.tabs"
                 :tabs-store="tabs"
                 :task-console="taskConsole"
-                :run-configs="runConfigs"
                 :workspace-fs-event="workspaceFsEvent"
                 :workspace-root="workspaceRoot"
                 @open-file="openFileTab"

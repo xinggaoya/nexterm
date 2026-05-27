@@ -8,13 +8,8 @@ import {
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NInput, NSpin, NTag } from "naive-ui";
 import { computed, ref } from "vue";
-import RunConfigurationManager from "@/modules/run-configs/RunConfigurationManager.vue";
-import type {
-  RunConfiguration,
-  RunConfigurationFile,
-} from "@/modules/run-configs";
 import { t } from "@/modules/i18n/translate";
-import type { TaskRun, TaskRunGroup, TaskRunStatus } from "./taskRunStore";
+import type { TaskRun, TaskRunStatus } from "./taskRunStore";
 import type { TaskConsoleView } from "./taskConsoleTypes";
 import type { WorkspaceTask } from "./taskTypes";
 
@@ -27,21 +22,11 @@ const props = withDefaults(
     loadingTasks?: boolean;
     taskError?: string | null;
     view?: TaskConsoleView;
-    runConfigurations?: RunConfiguration[];
-    selectedRunConfigurationId?: string | null;
-    runConfigurationGroups?: TaskRunGroup[];
-    runConfigurationSaving?: boolean;
-    runConfigurationError?: string | null;
   }>(),
   {
     loadingTasks: false,
     taskError: null,
     view: "tasks",
-    runConfigurations: () => [],
-    selectedRunConfigurationId: null,
-    runConfigurationGroups: () => [],
-    runConfigurationSaving: false,
-    runConfigurationError: null,
   },
 );
 
@@ -55,10 +40,6 @@ const emit = defineEmits<{
   stopRun: [id: number];
   rerun: [id: number];
   runInTerminal: [input: { command: string; cwd: string }];
-  saveRunConfigurations: [file: RunConfigurationFile];
-  selectRunConfiguration: [id: string | null];
-  runConfiguration: [configuration: RunConfiguration];
-  stopRunConfigurationGroup: [id: number];
 }>();
 
 const commandInput = ref("");
@@ -109,21 +90,9 @@ function runInTerminal(run: TaskRun) {
           data-task-console-view-tasks
           @click="emit('updateView', 'tasks')"
         >
-          {{ t("runConfigs.tasksTab") }}
+          {{ t("tasks.tasksTab") }}
         </button>
-        <button
-          type="button"
-          :class="[
-            'h-6 rounded px-2 text-[11px] transition-colors',
-            view === 'run-configs'
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground',
-          ]"
-          data-task-console-view-run-configs
-          @click="emit('updateView', 'run-configs')"
-        >
-          {{ t("runConfigs.configurations") }}
-        </button>
+
       </div>
       <NButton
         size="tiny"
@@ -149,24 +118,7 @@ function runInTerminal(run: TaskRun) {
       </NButton>
     </header>
 
-    <RunConfigurationManager
-      v-if="view === 'run-configs'"
-      class="min-h-0 flex-1"
-      :root-path="rootPath"
-      :tasks="tasks"
-      :configurations="runConfigurations"
-      :selected-id="selectedRunConfigurationId"
-      :groups="runConfigurationGroups"
-      :saving="runConfigurationSaving"
-      :error="runConfigurationError"
-      @save="(file) => emit('saveRunConfigurations', file)"
-      @select="(id) => emit('selectRunConfiguration', id)"
-      @run="(configuration) => emit('runConfiguration', configuration)"
-      @stop-group="(id) => emit('stopRunConfigurationGroup', id)"
-    />
-
     <div
-      v-else
       class="grid min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)]"
     >
       <aside class="min-h-0 border-r border-border/60">

@@ -22,7 +22,6 @@ type TaskRunStoreLike = {
   runGroups: Ref<TaskRunGroup[]>;
   runs: Ref<TaskRun[]>;
   setActiveRun: (id: number) => void;
-  startRunConfiguration: ReturnType<typeof createTaskRunStore>["startRunConfiguration"];
   startTask: (task: WorkspaceTask, cwd: string) => Promise<unknown>;
   stopRun: (id: number) => Promise<unknown>;
   stopRunGroup: (id: number) => Promise<unknown>;
