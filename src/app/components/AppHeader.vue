@@ -27,7 +27,6 @@ import { t } from "@/modules/i18n/translate";
 import type { TabDropPlacement } from "@/modules/tabs/tabsReorder";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import type { SplitDir } from "@/modules/terminal/lib/panes";
-import type { RunConfiguration } from "@/modules/run-configs";
 
 const props = withDefaults(
   defineProps<{
@@ -38,20 +37,14 @@ const props = withDefaults(
     showWindowControls?: boolean;
     leftPanelOpen?: boolean;
     rightPanelOpen?: boolean;
-    runConfigurations?: RunConfiguration[];
-    selectedRunConfigurationId?: string | null;
-    runConfigurationRunning?: boolean;
-    runConfigurationLoading?: boolean;
+
   }>(),
   {
     workspaceReady: true,
     showWindowControls: false,
     leftPanelOpen: false,
     rightPanelOpen: true,
-    runConfigurations: () => [],
-    selectedRunConfigurationId: null,
-    runConfigurationRunning: false,
-    runConfigurationLoading: false,
+
   },
 );
 
@@ -64,10 +57,7 @@ const emit = defineEmits<{
   splitPane: [dir: SplitDir];
   openCommandPalette: [];
   openSettings: [];
-  manageRunConfigurations: [];
-  runSelectedConfiguration: [];
-  selectRunConfiguration: [id: string | null];
-  stopSelectedConfiguration: [];
+
   toggleLeftPanel: [];
   toggleRightPanel: [];
   reorderTab: [sourceId: number, targetId: number, placement: TabDropPlacement];
@@ -102,13 +92,6 @@ const dropTarget = ref<{
 const pointerDrag = ref<PointerDragState | null>(null);
 const suppressedClickTabId = ref<number | null>(null);
 const dragGhost = ref<DragGhostState | null>(null);
-const runConfigurationOptions = computed<SelectOption[]>(() =>
-  props.runConfigurations.map((configuration) => ({
-    label: configuration.name,
-    value: configuration.id,
-  })),
-);
-
 function basename(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : "/";
@@ -492,60 +475,6 @@ onBeforeUnmount(() => {
           <template #icon><NIcon :component="ReorderTwoOutline" /></template>
         </NButton>
       </TooltipTitle>
-      <div class="mx-0.5 h-4 w-px bg-border/60" />
-      <div
-        class="flex min-w-0 items-center gap-1.5"
-        data-run-config-toolbar
-      >
-        <NSelect
-          size="tiny"
-          class="w-36 xl:w-44"
-          :consistent-menu-width="false"
-          :disabled="!props.workspaceReady || props.runConfigurationLoading"
-          :placeholder="t('runConfigs.selectPlaceholder')"
-          :options="runConfigurationOptions"
-          :value="props.selectedRunConfigurationId"
-          data-run-config-select
-          @update:value="(value) => emit('selectRunConfiguration', value as string | null)"
-        />
-        <TooltipTitle :label="t('runConfigs.runSelected')">
-          <NButton
-            data-run-selected-config
-            size="tiny"
-            quaternary
-            :disabled="!props.workspaceReady || !props.selectedRunConfigurationId"
-            :aria-label="t('runConfigs.runSelected')"
-            @click="emit('runSelectedConfiguration')"
-          >
-            <template #icon><NIcon :component="PlayOutline" /></template>
-          </NButton>
-        </TooltipTitle>
-        <TooltipTitle :label="t('runConfigs.stopSelected')">
-          <NButton
-            data-stop-selected-config
-            size="tiny"
-            quaternary
-            :disabled="!props.workspaceReady || !props.runConfigurationRunning"
-            :aria-label="t('runConfigs.stopSelected')"
-            @click="emit('stopSelectedConfiguration')"
-          >
-            <template #icon><NIcon :component="StopOutline" /></template>
-          </NButton>
-        </TooltipTitle>
-        <TooltipTitle :label="t('runConfigs.manage')">
-          <NButton
-            data-manage-run-configs
-            size="tiny"
-            quaternary
-            :disabled="!props.workspaceReady"
-            :aria-label="t('runConfigs.manage')"
-            @click="emit('manageRunConfigurations')"
-          >
-            <template #icon><NIcon :component="OptionsOutline" /></template>
-          </NButton>
-        </TooltipTitle>
-      </div>
-      <div class="mx-0.5 h-4 w-px bg-border/60" />
       <TooltipTitle :label="t('app.header.openCommandCenter')">
         <NButton
           data-open-command-palette

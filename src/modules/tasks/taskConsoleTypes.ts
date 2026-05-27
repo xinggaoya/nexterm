@@ -1,1 +1,1 @@
-export type TaskConsoleView = "tasks" | "run-configs";
+export type TaskConsoleView = "tasks";

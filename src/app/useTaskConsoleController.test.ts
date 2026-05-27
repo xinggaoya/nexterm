@@ -1,6 +1,6 @@
 import { computed, nextTick, ref } from "vue";
 import { describe, expect, it, vi } from "vitest";
-import type { TaskRunGroup, WorkspaceTask } from "@/modules/tasks";
+import type { WorkspaceTask } from "@/modules/tasks";
 import { useTaskConsoleController } from "./useTaskConsoleController";
 
 describe("useTaskConsoleController", () => {
@@ -13,20 +13,11 @@ describe("useTaskConsoleController", () => {
   };
 
   function createTaskRuns() {
-    const group: TaskRunGroup = {
-      id: 1,
-      configurationId: "config",
-      title: "Config",
-      status: "running",
-      runIds: [],
-      startedAtMs: 1000,
-    };
     return {
       runs: ref([]),
       runGroups: ref([]),
       activeRun: ref(null),
       setActiveRun: vi.fn(),
-      startRunConfiguration: vi.fn(async () => group),
       startTask: vi.fn(async () => null),
       runCommand: vi.fn(async () => null),
       stopRun: vi.fn(async () => undefined),
@@ -47,10 +38,10 @@ describe("useTaskConsoleController", () => {
       openTaskTerminal: vi.fn(),
     });
 
-    await controller.openTaskConsole("run-configs");
+    await controller.openTaskConsole();
 
     expect(controller.taskConsoleOpen.value).toBe(true);
-    expect(controller.taskConsoleView.value).toBe("run-configs");
+    expect(controller.taskConsoleView.value).toBe("tasks");
     expect(discoverTasks).toHaveBeenCalledWith("/repo", expect.any(Function));
     expect(controller.workspaceTasks.value).toEqual([task]);
     expect(controller.workspaceTasksError.value).toBeNull();

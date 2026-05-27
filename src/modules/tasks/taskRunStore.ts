@@ -1,6 +1,5 @@
 import { computed, ref, type Ref } from "vue";
 import { native, type ShellBgLogResponse } from "@/lib/native";
-import type { RunConfiguration } from "@/modules/run-configs";
 import type { WorkspaceTask } from "./taskTypes";
 
 export type TaskRunStatus =
@@ -29,7 +28,6 @@ export type TaskRun = {
 
 export type TaskRunGroup = {
   id: number;
-  configurationId: string;
   title: string;
   status: TaskRunStatus;
   runIds: number[];
@@ -77,7 +75,6 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
   const activeRunId = ref<number | null>(null);
   const timers = new Map<number, ReturnType<typeof setTimeout>>();
   let nextRunId = 1;
-  let nextGroupId = 1;
 
   const activeRun = computed(
     () => runs.value.find((run) => run.id === activeRunId.value) ?? null,
@@ -100,18 +97,6 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
 
   function findRunGroup(id: number): TaskRunGroup | null {
     return runGroups.value.find((group) => group.id === id) ?? null;
-  }
-
-  function resolveCommandCwd(workspaceRoot: string, cwd?: string): string {
-    const normalizedRoot = workspaceRoot.replace(/\\/g, "/").replace(/\/+$/, "");
-    const value = cwd?.trim();
-    if (!value || value === ".") return normalizedRoot || "/";
-    const normalizedCwd = value.replace(/\\/g, "/").replace(/^\.\//, "");
-    if (normalizedCwd.startsWith("/") || /^[A-Za-z]:\//.test(normalizedCwd)) {
-      return normalizedCwd;
-    }
-    if (!normalizedRoot) return normalizedCwd;
-    return `${normalizedRoot}${normalizedRoot === "/" ? "" : "/"}${normalizedCwd}`;
   }
 
   function aggregateGroupStatus(group: TaskRunGroup): TaskRunStatus {
@@ -240,60 +225,11 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
     updateRunGroupStatus(run.groupId);
   }
 
-  async function startRunConfiguration(
-    configuration: RunConfiguration,
-    workspaceRoot: string,
-  ): Promise<TaskRunGroup> {
-    const group: TaskRunGroup = {
-      id: nextGroupId++,
-      configurationId: configuration.id,
-      title: configuration.name,
-      status: "running",
-      runIds: [],
-      startedAtMs: now(),
-    };
-    runGroups.value = [group, ...runGroups.value];
-
-    for (const command of configuration.commands) {
-      const run = await startRun({
-        groupId: group.id,
-        task: null,
-        title: command.name || command.command,
-        command: command.command,
-        cwd: resolveCommandCwd(workspaceRoot, command.cwd),
-      });
-      group.runIds.push(run.id);
-    }
-    updateRunGroupStatus(group.id);
-    return group;
-  }
-
   async function stopRunGroup(id: number): Promise<void> {
     const group = findRunGroup(id);
     if (!group) return;
     await Promise.all(group.runIds.map((runId) => stopRun(runId)));
     group.status = "stopped";
-  }
-
-  async function rerunGroup(id: number): Promise<TaskRunGroup> {
-    const group = findRunGroup(id);
-    if (!group) throw new Error("task run group not found");
-    const childRuns = group.runIds
-      .map((runId) => findRun(runId))
-      .filter((run): run is TaskRun => !!run);
-    return startRunConfiguration(
-      {
-        id: group.configurationId,
-        name: group.title,
-        commands: childRuns.map((run) => ({
-          id: String(run.id),
-          name: run.title,
-          command: run.command,
-          cwd: run.cwd,
-        })),
-      },
-      "",
-    );
   }
 
   async function rerun(id: number): Promise<TaskRun> {
@@ -315,12 +251,10 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
     setActiveRun,
     startTask,
     runCommand,
-    startRunConfiguration,
     pollRun,
     stopRun,
     stopRunGroup,
     rerun,
-    rerunGroup,
     dispose,
   };
 }
