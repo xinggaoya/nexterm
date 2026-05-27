@@ -7,18 +7,15 @@ import {
   GitCommitOutline,
   GitCompareOutline,
   GlobeOutline,
-  OptionsOutline,
-  PlayOutline,
   ReorderTwoOutline,
   SearchOutline,
   SettingsOutline,
-  StopOutline,
   TerminalOutline,
   TimeOutline,
 } from "@vicons/ionicons5";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { NButton, NIcon, NSelect, type SelectOption } from "naive-ui";
-import { computed, onBeforeUnmount, ref, type Component } from "vue";
+import { NButton, NIcon } from "naive-ui";
+import { onBeforeUnmount, ref, type Component } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import WindowControls from "@/components/WindowControls.vue";
 import { IS_MAC } from "@/lib/platform";
