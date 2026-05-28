@@ -4,6 +4,7 @@ pub mod mutate;
 pub mod search;
 pub mod tree;
 pub mod watcher;
+pub mod wsl_ops;
 
 use std::path::Path;
 

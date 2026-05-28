@@ -2,6 +2,7 @@ use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
 
+use crate::modules::fs::wsl_ops::{self, WslEntryKind};
 use crate::modules::workspace::{resolve_path, WorkspaceEnv};
 
 #[derive(Serialize)]
@@ -31,13 +32,28 @@ pub fn fs_read_dir(
     workspace: Option<WorkspaceEnv>,
 ) -> Result<Vec<DirEntry>, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&path, &workspace) {
+            let entries = wsl_ops::read_dir(distro, &path)?
+                .into_iter()
+                .map(|entry| DirEntry {
+                    name: entry.name,
+                    kind: entry_kind_from_wsl(entry.kind),
+                    size: entry.size,
+                    mtime: entry.mtime,
+                })
+                .collect();
+            return Ok(filter_and_sort_entries(entries, show_hidden));
+        }
+    }
+
     let root = resolve_path(&path, &workspace);
     let read = std::fs::read_dir(&root).map_err(|e| {
         log::debug!("fs_read_dir({}) failed: {e}", root.display());
         e.to_string()
     })?;
 
-    let mut entries: Vec<DirEntry> = read
+    let entries: Vec<DirEntry> = read
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let name = entry.file_name().into_string().ok()?;
@@ -60,10 +76,6 @@ pub fn fs_read_dir(
                 EntryKind::File
             };
 
-            if name.starts_with('.') && !show_hidden {
-                return None;
-            }
-
             let size = meta.len();
             let mtime = meta
                 .modified()
@@ -81,18 +93,7 @@ pub fn fs_read_dir(
         })
         .collect();
 
-    entries.sort_by(|a, b| {
-        let rank = |k: &EntryKind| match k {
-            EntryKind::Dir => 0,
-            EntryKind::Symlink => 1,
-            EntryKind::File => 2,
-        };
-        rank(&a.kind)
-            .cmp(&rank(&b.kind))
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
-
-    Ok(entries)
+    Ok(filter_and_sort_entries(entries, show_hidden))
 }
 
 /// Lists immediate subdirectories of `path`. Kept for the CwdBreadcrumb.
@@ -106,6 +107,19 @@ pub fn list_subdirs(
     workspace: Option<WorkspaceEnv>,
 ) -> Result<Vec<String>, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&path, &workspace) {
+            let mut dirs: Vec<String> = wsl_ops::read_dir(distro, &path)?
+                .into_iter()
+                .filter(|entry| matches!(entry.kind, WslEntryKind::Dir))
+                .map(|entry| entry.name)
+                .filter(|name| show_hidden || !name.starts_with('.'))
+                .collect();
+            dirs.sort_by_key(|a| a.to_lowercase());
+            return Ok(dirs);
+        }
+    }
+
     let root = resolve_path(&path, &workspace);
     let read = std::fs::read_dir(&root).map_err(|e| {
         log::debug!("list_subdirs({}) read_dir failed: {e}", root.display());
@@ -127,4 +141,69 @@ pub fn list_subdirs(
 
     dirs.sort_by_key(|a| a.to_lowercase());
     Ok(dirs)
+}
+
+fn entry_kind_from_wsl(kind: WslEntryKind) -> EntryKind {
+    match kind {
+        WslEntryKind::File => EntryKind::File,
+        WslEntryKind::Dir => EntryKind::Dir,
+        WslEntryKind::Symlink => EntryKind::Symlink,
+    }
+}
+
+fn filter_and_sort_entries(mut entries: Vec<DirEntry>, show_hidden: bool) -> Vec<DirEntry> {
+    if !show_hidden {
+        entries.retain(|entry| !entry.name.starts_with('.'));
+    }
+    entries.sort_by(|a, b| {
+        let rank = |k: &EntryKind| match k {
+            EntryKind::Dir => 0,
+            EntryKind::Symlink => 1,
+            EntryKind::File => 2,
+        };
+        rank(&a.kind)
+            .cmp(&rank(&b.kind))
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    entries
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filters_hidden_entries_and_sorts_dirs_first() {
+        let entries = filter_and_sort_entries(
+            vec![
+                DirEntry {
+                    name: "z.txt".into(),
+                    kind: EntryKind::File,
+                    size: 0,
+                    mtime: 0,
+                },
+                DirEntry {
+                    name: ".env".into(),
+                    kind: EntryKind::File,
+                    size: 0,
+                    mtime: 0,
+                },
+                DirEntry {
+                    name: "src".into(),
+                    kind: EntryKind::Dir,
+                    size: 0,
+                    mtime: 0,
+                },
+            ],
+            false,
+        );
+
+        assert_eq!(
+            entries
+                .into_iter()
+                .map(|entry| entry.name)
+                .collect::<Vec<_>>(),
+            vec!["src", "z.txt"]
+        );
+    }
 }
