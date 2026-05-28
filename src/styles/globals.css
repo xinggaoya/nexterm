@@ -199,19 +199,6 @@ html[data-chrome="borderless"][data-window-edge-to-edge="true"] #root {
   outline: none !important;
 }
 
-.cm-editor,
-.cm-scroller {
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
-}
-.cm-editor::-webkit-scrollbar,
-.cm-scroller::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  display: none !important;
-}
-
-
 .no-scrollbar {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
@@ -250,6 +237,69 @@ html *::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;
+}
+
+/*
+ * CodeMirror panes need visible native scrollbars so long source lines can be
+ * inspected without selecting and dragging text. Scope the opt-in to editor
+ * hosts so the app-wide hidden-scrollbar policy remains intact elsewhere.
+ */
+.nexterm-editor-scrollbar {
+  --nexterm-editor-scrollbar-track-size: 8px;
+  --nexterm-editor-scrollbar-track: transparent;
+  --nexterm-editor-scrollbar-thumb: color-mix(
+    in oklch,
+    var(--muted-foreground) 34%,
+    transparent
+  );
+  --nexterm-editor-scrollbar-thumb-hover: color-mix(
+    in oklch,
+    var(--muted-foreground) 54%,
+    transparent
+  );
+  --nexterm-editor-scrollbar-thumb-active: color-mix(
+    in oklch,
+    var(--foreground) 62%,
+    transparent
+  );
+}
+
+.nexterm-editor-scrollbar .cm-editor,
+.nexterm-editor-scrollbar .cm-scroller {
+  scrollbar-width: thin !important;
+  scrollbar-color: var(--nexterm-editor-scrollbar-thumb)
+    var(--nexterm-editor-scrollbar-track) !important;
+  -ms-overflow-style: auto !important;
+}
+
+.nexterm-editor-scrollbar .cm-editor::-webkit-scrollbar,
+.nexterm-editor-scrollbar .cm-scroller::-webkit-scrollbar {
+  width: var(--nexterm-editor-scrollbar-track-size) !important;
+  height: var(--nexterm-editor-scrollbar-track-size) !important;
+  display: block !important;
+}
+
+.nexterm-editor-scrollbar .cm-editor::-webkit-scrollbar-track,
+.nexterm-editor-scrollbar .cm-scroller::-webkit-scrollbar-track {
+  background: var(--nexterm-editor-scrollbar-track) !important;
+}
+
+.nexterm-editor-scrollbar .cm-editor::-webkit-scrollbar-thumb,
+.nexterm-editor-scrollbar .cm-scroller::-webkit-scrollbar-thumb {
+  min-width: 28px !important;
+  min-height: 28px !important;
+  border-radius: 999px !important;
+  background: var(--nexterm-editor-scrollbar-thumb) !important;
+}
+
+.nexterm-editor-scrollbar .cm-editor::-webkit-scrollbar-thumb:hover,
+.nexterm-editor-scrollbar .cm-scroller::-webkit-scrollbar-thumb:hover {
+  background: var(--nexterm-editor-scrollbar-thumb-hover) !important;
+}
+
+.nexterm-editor-scrollbar .cm-editor::-webkit-scrollbar-thumb:active,
+.nexterm-editor-scrollbar .cm-scroller::-webkit-scrollbar-thumb:active {
+  background: var(--nexterm-editor-scrollbar-thumb-active) !important;
 }
 
 /*
