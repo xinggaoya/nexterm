@@ -128,6 +128,13 @@ function editorBaseExtensions(language: Extension | null): Extension[] {
       ".cm-scroller": {
         fontSize: "13px",
         lineHeight: "1.55",
+        overflow: "auto",
+      },
+      ".cm-content": {
+        minWidth: "max-content",
+      },
+      ".cm-line": {
+        whiteSpace: "pre",
       },
     }),
     EditorView.updateListener.of((update) => {
@@ -313,7 +320,11 @@ defineExpose({
           class="min-h-0 overflow-hidden"
           :class="sourcePaneClass"
         >
-          <div ref="host" data-editor-host class="h-full min-h-0" />
+          <div
+            ref="host"
+            data-editor-host
+            class="nexterm-editor-scrollbar h-full min-h-0"
+          />
         </div>
         <div
           v-if="markdown"

@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { nextTick } from "vue";
@@ -37,6 +39,38 @@ describe("EditorPane.vue", () => {
     expect(wrapper.find("[data-editor-host]").exists()).toBe(true);
     expect(wrapper.text()).toContain("main.ts");
     expect(wrapper.find("[data-editor-mode-source]").exists()).toBe(false);
+  });
+
+  it("configures CodeMirror for horizontal scrolling on long lines", async () => {
+    vi.mocked(readEditorDocument).mockResolvedValueOnce({
+      status: "ready",
+      content: `const value = "${"x".repeat(240)}";`,
+      size: 257,
+    });
+
+    const wrapper = mount(EditorPane, {
+      global: { plugins: [createPinia()] },
+      props: { path: "/repo/src/main.ts" },
+    });
+    await flush();
+
+    expect(wrapper.find("[data-editor-host]").classes()).toContain(
+      "nexterm-editor-scrollbar",
+    );
+    expect(wrapper.find(".cm-scroller").exists()).toBe(true);
+    expect(wrapper.find(".cm-content").exists()).toBe(true);
+    expect(wrapper.find(".cm-line").exists()).toBe(true);
+  });
+
+  it("declares the CodeMirror theme needed for horizontal scrolling", () => {
+    const source = readFileSync(
+      join(process.cwd(), "src/modules/editor/EditorPane.vue"),
+      "utf8",
+    );
+
+    expect(source).toContain('overflow: "auto"');
+    expect(source).toContain('minWidth: "max-content"');
+    expect(source).toContain('whiteSpace: "pre"');
   });
 
   it("offers source, split, and preview modes for markdown files", async () => {

@@ -136,7 +136,7 @@ onBeforeUnmount(destroyEditor);
     <div
       ref="host"
       :data-git-diff-host="props.testId === 'git-diff-host' ? '' : undefined"
-      class="h-full min-h-0"
+      class="nexterm-editor-scrollbar h-full min-h-0"
     />
   </div>
 </template>
