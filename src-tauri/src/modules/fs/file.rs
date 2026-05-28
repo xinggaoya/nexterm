@@ -6,6 +6,7 @@ use serde::Serialize;
 use tauri::Emitter;
 use tempfile::NamedTempFile;
 
+use crate::modules::fs::wsl_ops::{self, WslEntryKind};
 use crate::modules::workspace::{normalize_host_path, resolve_path, WorkspaceEnv};
 
 const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
@@ -46,6 +47,20 @@ pub struct FileStat {
 #[tauri::command]
 pub fn fs_read_file(path: String, workspace: Option<WorkspaceEnv>) -> Result<ReadResult, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&path, &workspace) {
+            let stat = wsl_ops::stat_path(distro, &path)?;
+            if stat.size > MAX_READ_BYTES {
+                return Ok(ReadResult::TooLarge {
+                    size: stat.size,
+                    limit: MAX_READ_BYTES,
+                });
+            }
+            let bytes = wsl_ops::read_file(distro, &path)?;
+            return Ok(bytes_to_read_result(bytes, stat.size));
+        }
+    }
+
     let p = resolve_path(&path, &workspace);
     let meta = std::fs::metadata(&p).map_err(|e| {
         log::debug!("fs_read_file stat({}) failed: {e}", p.display());
@@ -65,16 +80,20 @@ pub fn fs_read_file(path: String, workspace: Option<WorkspaceEnv>) -> Result<Rea
         e.to_string()
     })?;
 
+    Ok(bytes_to_read_result(bytes, size))
+}
+
+fn bytes_to_read_result(bytes: Vec<u8>, size: u64) -> ReadResult {
     // Null-byte sniff on the first chunk. Not perfect (misses UTF-16 BOM
     // cases) but catches the common "this is a PNG" mistake cheaply.
     let sniff_len = bytes.len().min(BINARY_SNIFF_BYTES);
     if bytes[..sniff_len].contains(&0) {
-        return Ok(ReadResult::Binary { size });
+        return ReadResult::Binary { size };
     }
 
     match String::from_utf8(bytes) {
-        Ok(content) => Ok(ReadResult::Text { content, size }),
-        Err(_) => Ok(ReadResult::Binary { size }),
+        Ok(content) => ReadResult::Text { content, size },
+        Err(_) => ReadResult::Binary { size },
     }
 }
 
@@ -136,6 +155,17 @@ pub fn fs_canonicalize(path: String, workspace: Option<WorkspaceEnv>) -> Result<
 #[tauri::command]
 pub fn fs_stat(path: String, workspace: Option<WorkspaceEnv>) -> Result<FileStat, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&path, &workspace) {
+            let stat = wsl_ops::stat_path(distro, &path)?;
+            return Ok(FileStat {
+                size: stat.size,
+                mtime: stat.mtime,
+                kind: stat_kind_from_wsl(stat.kind),
+            });
+        }
+    }
+
     let p = resolve_path(&path, &workspace);
     let meta = std::fs::metadata(&p).map_err(|e| e.to_string())?;
     let kind = if meta.is_dir() {
@@ -156,6 +186,14 @@ pub fn fs_stat(path: String, workspace: Option<WorkspaceEnv>) -> Result<FileStat
         mtime,
         kind,
     })
+}
+
+fn stat_kind_from_wsl(kind: WslEntryKind) -> StatKind {
+    match kind {
+        WslEntryKind::File => StatKind::File,
+        WslEntryKind::Dir => StatKind::Dir,
+        WslEntryKind::Symlink => StatKind::Symlink,
+    }
 }
 
 #[cfg(all(test, unix))]
@@ -188,5 +226,29 @@ mod tests {
         assert_eq!(std::fs::read(&target).unwrap(), b"payload");
         // The pre-staged symlink target must not have been written through.
         assert_eq!(std::fs::read(&outside).unwrap(), b"untouched");
+    }
+}
+
+#[cfg(test)]
+mod read_result_tests {
+    use super::*;
+
+    #[test]
+    fn maps_utf8_bytes_to_text_result() {
+        match bytes_to_read_result(b"hello".to_vec(), 5) {
+            ReadResult::Text { content, size } => {
+                assert_eq!(content, "hello");
+                assert_eq!(size, 5);
+            }
+            _ => panic!("expected text result"),
+        }
+    }
+
+    #[test]
+    fn maps_nul_bytes_to_binary_result() {
+        match bytes_to_read_result(vec![b'a', 0, b'b'], 3) {
+            ReadResult::Binary { size } => assert_eq!(size, 3),
+            _ => panic!("expected binary result"),
+        }
     }
 }

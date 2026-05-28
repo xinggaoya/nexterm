@@ -48,13 +48,14 @@ vi.mock("@/modules/git-history/GitHistoryStack.vue", () => ({
 
 vi.mock("@/modules/editor/EditorPane.vue", () => ({
   default: {
-    props: ["path"],
+    props: ["path", "fsEvent"],
     emits: ["dirtyChange"],
     setup(_props: unknown, { expose }: { expose: (api: unknown) => void }) {
       expose({ save: vi.fn(async () => undefined) });
       return {};
     },
-    template: '<section data-editor-pane>{{ path }}</section>',
+    template:
+      '<section data-editor-pane>{{ path }}<span data-editor-fs-event>{{ fsEvent?.paths?.join("|") ?? "none" }}</span></section>',
   },
 }));
 
@@ -158,6 +159,14 @@ describe("WorkspaceShell", () => {
     paneTree: { kind: "leaf", id: 2, cwd: "/repo" },
     activeLeafId: 2,
   };
+  const editorTab: Tab = {
+    id: 3,
+    kind: "editor",
+    title: "main.ts",
+    path: "/repo/src/main.ts",
+    dirty: false,
+    preview: false,
+  };
   const task: WorkspaceTask = {
     id: "package:test",
     title: "pnpm test",
@@ -190,6 +199,36 @@ describe("WorkspaceShell", () => {
       },
     });
     return { tabsStore, taskConsole, wrapper };
+  }
+
+  function mountEditorShell() {
+    const tabsStore = {
+      tabs: [editorTab],
+      activeId: 3,
+      focusPane: vi.fn(),
+      setLeafCwd: vi.fn(),
+      setLeafTitle: vi.fn(),
+      updateTab: vi.fn(),
+      openCommitFileDiffTab: vi.fn(),
+    };
+    const taskConsole = createTaskConsole(task);
+    const wrapper = mount(WorkspaceShell, {
+      props: {
+        activeTab: editorTab,
+        activeId: 3,
+        layout: createLayout(),
+        tabs: [editorTab],
+        tabsStore,
+        taskConsole,
+        workspaceFsEvent: {
+          rootPath: "/repo",
+          paths: ["/repo/src/main.ts"],
+          gitRelated: false,
+        },
+        workspaceRoot: "/repo",
+      },
+    });
+    return { wrapper };
   }
 
   it("renders workspace panels and forwards terminal stack events to the tabs store", async () => {
@@ -228,5 +267,12 @@ describe("WorkspaceShell", () => {
     expect(taskConsole.refreshWorkspaceTasks).toHaveBeenCalled();
     expect(taskConsole.runWorkspaceTask).toHaveBeenCalledWith(task);
     expect(taskConsole.runWorkspaceCommand).toHaveBeenCalledWith("pnpm test");
+  });
+
+  it("passes workspace file events to the active editor", () => {
+    const { wrapper } = mountEditorShell();
+
+    expect(wrapper.find("[data-editor-pane]").exists()).toBe(true);
+    expect(wrapper.find("[data-editor-fs-event]").text()).toBe("/repo/src/main.ts");
   });
 });

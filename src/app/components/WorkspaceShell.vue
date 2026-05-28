@@ -248,6 +248,7 @@ defineExpose({
                   <EditorPane
                     ref="activeEditorPane"
                     :path="activeTab.path"
+                    :fs-event="workspaceFsEvent"
                     @dirty-change="
                       (dirty) => tabsStore.updateTab(activeTab!.id, { dirty })
                     "

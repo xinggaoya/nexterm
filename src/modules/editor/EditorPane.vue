@@ -15,6 +15,7 @@ import { NSpin } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import type { WorkspaceFsChangedEvent } from "@/lib/native";
 import type { EditorViewMode } from "./editorTypes";
 import EditorStatusBar from "./EditorStatusBar.vue";
 import EditorToolbar from "./EditorToolbar.vue";
@@ -35,6 +36,7 @@ import { EDITOR_THEME_EXT } from "./lib/themes";
 
 const props = defineProps<{
   path: string;
+  fsEvent?: WorkspaceFsChangedEvent | null;
 }>();
 
 const emit = defineEmits<{
@@ -203,6 +205,37 @@ async function load() {
   }
 }
 
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function fsEventTouchesPath(event: WorkspaceFsChangedEvent, path: string): boolean {
+  const current = normalizePath(path);
+  if (event.paths.length === 0) {
+    const root = normalizePath(event.rootPath);
+    return current === root || current.startsWith(`${root}/`);
+  }
+  return event.paths.some((eventPath) => normalizePath(eventPath) === current);
+}
+
+async function reloadExternalChange() {
+  if (dirty.value) return;
+  const currentPath = props.path;
+  const result = await readEditorDocument(currentPath);
+  if (props.path !== currentPath || dirty.value) return;
+  doc.value = result;
+  if (result.status === "ready") {
+    savedContent.value = result.content;
+    buffer.value = result.content;
+    setDirty(false);
+    await mountEditor(result.content);
+  } else {
+    savedContent.value = "";
+    buffer.value = "";
+    destroyEditor();
+  }
+}
+
 async function save() {
   if (!dirty.value) return;
   await writeEditorDocument(props.path, buffer.value);
@@ -236,6 +269,14 @@ function setContentForTest(content: string) {
 }
 
 watch(() => props.path, () => void load(), { immediate: true });
+
+watch(
+  () => props.fsEvent,
+  (event) => {
+    if (!event || !fsEventTouchesPath(event, props.path)) return;
+    void reloadExternalChange();
+  },
+);
 
 watch(
   () => prefs.editorTheme,

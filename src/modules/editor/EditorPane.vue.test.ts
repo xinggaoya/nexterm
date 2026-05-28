@@ -145,4 +145,70 @@ describe("EditorPane.vue", () => {
       "const value = 2;",
     );
   });
+
+  it("reloads external file changes when the editor is clean", async () => {
+    vi.mocked(readEditorDocument)
+      .mockResolvedValueOnce({
+        status: "ready",
+        content: "const value = 1;",
+        size: 16,
+      })
+      .mockResolvedValueOnce({
+        status: "ready",
+        content: "const value = 2;",
+        size: 16,
+      });
+
+    const wrapper = mount(EditorPane, {
+      global: { plugins: [createPinia()] },
+      props: {
+        path: "/repo/src/main.ts",
+        fsEvent: null,
+      },
+    });
+    await flush();
+
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/src/main.ts"],
+        gitRelated: false,
+      },
+    });
+    await flush();
+
+    expect(readEditorDocument).toHaveBeenCalledTimes(2);
+    expect(wrapper.find(".cm-content").text()).toContain("const value = 2;");
+  });
+
+  it("does not overwrite dirty editor content on external changes", async () => {
+    vi.mocked(readEditorDocument).mockResolvedValueOnce({
+      status: "ready",
+      content: "const value = 1;",
+      size: 16,
+    });
+
+    const wrapper = mount(EditorPane, {
+      global: { plugins: [createPinia()] },
+      props: {
+        path: "/repo/src/main.ts",
+        fsEvent: null,
+      },
+    });
+    await flush();
+
+    wrapper.vm.setContentForTest("const local = true;");
+    await nextTick();
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/src/main.ts"],
+        gitRelated: false,
+      },
+    });
+    await flush();
+
+    expect(readEditorDocument).toHaveBeenCalledTimes(1);
+    expect(wrapper.find(".cm-content").text()).toContain("const local = true;");
+  });
 });
