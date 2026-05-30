@@ -16,6 +16,7 @@ import {
   createTerminalOptions,
   focusSlot,
   getSlotForLeaf,
+  refreshSlotLayout,
   releaseSlot,
   setSlotFocused,
   configureRendererPool,
@@ -474,14 +475,23 @@ export function updateTerminalSessionVisibility(
 ): void {
   const s = sessions.get(leafId);
   if (!s) return;
+  const wasVisible = s.visibleNow;
   s.visibleNow = visible;
   s.focusedNow = focused;
   if (visible) {
+    const hadSlot = s.hasSlot;
     if (s.container && !s.hasSlot) bindLeafToSlot(leafId, s);
+    if (!wasVisible || !hadSlot) {
+      refreshSlotLayout(leafId, {
+        forcePty: true,
+        kickPty: isAltScreen(s.modelTerm) && !s.shellExited,
+        focus: focused,
+      });
+    }
     setSlotFocused(leafId, focused);
     if (focused) focusSlot(leafId);
-  } else if (s.hasSlot) {
-    unbindLeafFromSlot(leafId, s);
+  } else {
+    setSlotFocused(leafId, false);
   }
 }
 

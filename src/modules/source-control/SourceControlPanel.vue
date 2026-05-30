@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { NSpin, useDialog } from "naive-ui";
-import { toRef, watch } from "vue";
+import { computed, ref, toRef, watch } from "vue";
 import {
   native,
-  type GitChangedFile,
   type GitCommitResult,
+  type GitDiscardEntry,
   type WorkspaceFsChangedEvent,
 } from "@/lib/native";
 import { t } from "@/modules/i18n/translate";
@@ -12,8 +12,17 @@ import SourceControlChangeList from "./SourceControlChangeList.vue";
 import SourceControlCommitBox from "./SourceControlCommitBox.vue";
 import SourceControlGitWorkflows from "./SourceControlGitWorkflows.vue";
 import SourceControlToolbar from "./SourceControlToolbar.vue";
-import type { SourceControlFileEntry } from "./sourceControlModel";
-import { getPrimaryDiffMode } from "./sourceControlModel";
+import type {
+  SourceControlFileEntry,
+  SourceControlGroupId,
+} from "./sourceControlModel";
+import {
+  discardEntriesForEntries,
+  getPrimaryDiffMode,
+  pathsToStage,
+  pathsToUnstage,
+} from "./sourceControlModel";
+import type { GitDecorationMap } from "./gitDecorations";
 import { useSourceControlActions } from "./useSourceControlActions";
 import { useSourceControlGitMetadata } from "./useSourceControlGitMetadata";
 import { useSourceControlState } from "./useSourceControlState";
@@ -24,6 +33,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  decorationsChange: [decorations: GitDecorationMap];
   openDiff: [
     input: {
       repoRoot: string;
@@ -35,7 +45,6 @@ const emit = defineEmits<{
   ];
   openHistory: [input: { repoRoot: string; branch: string | null }];
   committed: [result: GitCommitResult];
-  gitStatusChanged: [files: GitChangedFile[]];
 }>();
 
 const dialog = useDialog();
@@ -79,12 +88,9 @@ const {
   refresh,
   stageFile,
   unstageFile,
-  stageAll,
-  unstageAll,
-  stageEntries,
-  unstageEntries,
+  stagePaths,
+  unstagePaths,
   confirmDiscardFile,
-  confirmDiscardAll,
   confirmDiscardEntries,
   fetchRemote,
   pullRemote,
@@ -97,6 +103,38 @@ const {
   commit,
   handleCommitKeydown,
 } = actions;
+
+const selectedKeys = ref<Set<string>>(new Set());
+const selectedEntries = computed(() =>
+  entries.value.filter((entry) => selectedKeys.value.has(entry.key)),
+);
+const effectiveStagePaths = computed(() => {
+  const selected = pathsToStage(selectedEntries.value);
+  return selected.length > 0 ? selected : stageAllPaths.value;
+});
+const effectiveUnstagePaths = computed(() => {
+  const selected = pathsToUnstage(selectedEntries.value);
+  return selected.length > 0 ? selected : unstageAllPaths.value;
+});
+const effectiveDiscardEntries = computed<GitDiscardEntry[]>(() => {
+  const selected = discardEntriesForEntries(selectedEntries.value);
+  return selected.length > 0 ? selected : discardAllEntries.value;
+});
+
+watch(entries, (next) => {
+  const valid = new Set(next.map((entry) => entry.key));
+  selectedKeys.value = new Set(
+    Array.from(selectedKeys.value).filter((key) => valid.has(key)),
+  );
+});
+
+watch(
+  state.gitDecorations,
+  (decorations) => {
+    emit("decorationsChange", decorations);
+  },
+  { immediate: true },
+);
 
 function openDiff(entry: SourceControlFileEntry) {
   const root = repoRoot.value;
@@ -119,13 +157,33 @@ function openHistory() {
   });
 }
 
-watch(
-  status,
-  (value) => {
-    emit("gitStatusChanged", value?.changedFiles ?? []);
-  },
-  { immediate: true },
-);
+function toggleEntrySelected(entry: SourceControlFileEntry, selected: boolean) {
+  const next = new Set(selectedKeys.value);
+  if (selected) next.add(entry.key);
+  else next.delete(entry.key);
+  selectedKeys.value = next;
+}
+
+function setGroupSelected(group: SourceControlGroupId, selected: boolean) {
+  const next = new Set(selectedKeys.value);
+  for (const entry of entries.value.filter((item) => item.group === group)) {
+    if (selected) next.add(entry.key);
+    else next.delete(entry.key);
+  }
+  selectedKeys.value = next;
+}
+
+async function stageEffective() {
+  await stagePaths(effectiveStagePaths.value);
+}
+
+async function unstageEffective() {
+  await unstagePaths(effectiveUnstagePaths.value);
+}
+
+function confirmDiscardEffective() {
+  confirmDiscardEntries(effectiveDiscardEntries.value);
+}
 </script>
 
 <template>
@@ -185,21 +243,21 @@ watch(
       />
       <SourceControlChangeList
         :entries="entries"
+        :selected-keys="Array.from(selectedKeys)"
         :changed-count="changedCount"
-        :stage-all-paths="stageAllPaths"
-        :unstage-all-paths="unstageAllPaths"
-        :discard-all-entries="discardAllEntries"
+        :stage-all-paths="effectiveStagePaths"
+        :unstage-all-paths="effectiveUnstagePaths"
+        :discard-all-entries="effectiveDiscardEntries"
         :busy-action="busyAction"
         @open-diff="openDiff"
         @stage-file="stageFile"
         @unstage-file="unstageFile"
         @confirm-discard-file="confirmDiscardFile"
-        @stage-all="stageAll"
-        @unstage-all="unstageAll"
-        @confirm-discard-all="confirmDiscardAll"
-        @stage-selected="stageEntries"
-        @unstage-selected="unstageEntries"
-        @confirm-discard-selected="confirmDiscardEntries"
+        @toggle-entry-selected="toggleEntrySelected"
+        @set-group-selected="setGroupSelected"
+        @stage-all="stageEffective"
+        @unstage-all="unstageEffective"
+        @confirm-discard-all="confirmDiscardEffective"
       />
       <SourceControlCommitBox
         v-model="commitMessage"

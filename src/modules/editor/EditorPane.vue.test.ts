@@ -8,6 +8,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import EditorPane from "./EditorPane.vue";
 import { readEditorDocument, writeEditorDocument } from "./lib/documentService";
 
+const dialogWarningMock = vi.hoisted(() => vi.fn());
+
+vi.mock("naive-ui", async () => {
+  const actual = await vi.importActual<typeof import("naive-ui")>("naive-ui");
+  return {
+    ...actual,
+    useDialog: () => ({
+      warning: dialogWarningMock,
+    }),
+  };
+});
+
 vi.mock("./lib/documentService", () => ({
   readEditorDocument: vi.fn(),
   writeEditorDocument: vi.fn(),
@@ -21,6 +33,7 @@ async function flush() {
 describe("EditorPane.vue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dialogWarningMock.mockReset();
     vi.mocked(readEditorDocument).mockResolvedValue({
       status: "ready",
       content: "const value = 1;",
@@ -210,5 +223,51 @@ describe("EditorPane.vue", () => {
 
     expect(readEditorDocument).toHaveBeenCalledTimes(1);
     expect(wrapper.find(".cm-content").text()).toContain("const local = true;");
+    expect(wrapper.find("[data-editor-external-change]").exists()).toBe(true);
+  });
+
+  it("confirms before saving over an external disk change", async () => {
+    vi.mocked(readEditorDocument).mockResolvedValueOnce({
+      status: "ready",
+      content: "const value = 1;",
+      size: 16,
+    });
+    dialogWarningMock.mockImplementation((options) => {
+      void options.onPositiveClick();
+    });
+
+    const wrapper = mount(EditorPane, {
+      global: { plugins: [createPinia()] },
+      props: {
+        path: "/repo/src/main.ts",
+        fsEvent: null,
+      },
+    });
+    await flush();
+
+    wrapper.vm.setContentForTest("const local = true;");
+    await nextTick();
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/src/main.ts"],
+        gitRelated: false,
+      },
+    });
+    await flush();
+
+    await wrapper.vm.save();
+    await flush();
+
+    expect(dialogWarningMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Overwrite disk changes?",
+        positiveText: "Save",
+      }),
+    );
+    expect(writeEditorDocument).toHaveBeenCalledWith(
+      "/repo/src/main.ts",
+      "const local = true;",
+    );
   });
 });

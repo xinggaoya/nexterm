@@ -7,11 +7,14 @@ const props = defineProps<{
   fileName: string;
   languageLabel: string;
   dirty: boolean;
+  externalChangePending: boolean;
   isMarkdown: boolean;
   mode: EditorViewMode;
 }>();
 
 const emit = defineEmits<{
+  dismissExternalChange: [];
+  reloadExternalChange: [];
   save: [];
   modeChange: [mode: EditorViewMode];
 }>();
@@ -29,6 +32,29 @@ const emit = defineEmits<{
     </div>
 
     <div class="flex shrink-0 items-center gap-2">
+      <div
+        v-if="props.externalChangePending"
+        class="flex max-w-64 items-center gap-1 rounded border border-amber-500/35 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-200"
+        data-editor-external-change
+      >
+        <span class="truncate">{{ t("editor.externalChangePending") }}</span>
+        <NButton
+          size="tiny"
+          quaternary
+          data-editor-reload-external
+          @click="emit('reloadExternalChange')"
+        >
+          {{ t("editor.reloadFromDisk") }}
+        </NButton>
+        <NButton
+          size="tiny"
+          quaternary
+          data-editor-dismiss-external
+          @click="emit('dismissExternalChange')"
+        >
+          {{ t("common.cancel") }}
+        </NButton>
+      </div>
       <NButtonGroup v-if="props.isMarkdown" size="tiny" data-editor-mode-controls>
         <NButton
           data-editor-mode-source

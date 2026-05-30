@@ -2,8 +2,8 @@
 import {
   ArrowDownOutline,
   ArrowUpOutline,
-  EllipsisHorizontalOutline,
   GitBranchOutline,
+  GitNetworkOutline,
   RefreshOutline,
   SyncOutline,
   TimeOutline,
@@ -31,55 +31,31 @@ const emit = defineEmits<{
   openHistory: [];
 }>();
 
-const gitActionOptions = computed<DropdownOption[]>(() => [
+const remoteOptions = computed<DropdownOption[]>(() => [
   {
     key: "fetch",
     label: t("sourceControl.fetch"),
     icon: () => h(NIcon, null, { default: () => h(SyncOutline) }),
-    disabled:
-      !props.repoRoot ||
-      (props.busyAction !== null && props.busyAction !== "fetch"),
+    disabled: !props.repoRoot || props.busyAction !== null,
   },
   {
     key: "pull",
     label: t("sourceControl.pull"),
     icon: () => h(NIcon, null, { default: () => h(ArrowDownOutline) }),
-    disabled:
-      !props.repoRoot ||
-      (props.busyAction !== null && props.busyAction !== "pull"),
+    disabled: !props.repoRoot || props.busyAction !== null,
   },
   {
     key: "push",
     label: t("sourceControl.push"),
     icon: () => h(NIcon, null, { default: () => h(ArrowUpOutline) }),
-    disabled:
-      !props.repoRoot ||
-      (props.busyAction !== null && props.busyAction !== "push"),
-  },
-  { key: "divider", type: "divider" },
-  {
-    key: "history",
-    label: t("sourceControl.openHistory"),
-    icon: () => h(NIcon, null, { default: () => h(TimeOutline) }),
-    disabled: !props.repoRoot,
+    disabled: !props.repoRoot || props.busyAction !== null,
   },
 ]);
 
-function handleGitActionSelect(key: string | number) {
-  switch (key) {
-    case "fetch":
-      emit("fetch");
-      break;
-    case "pull":
-      emit("pull");
-      break;
-    case "push":
-      emit("push");
-      break;
-    case "history":
-      emit("openHistory");
-      break;
-  }
+function handleRemoteSelect(key: string | number) {
+  if (key === "fetch") emit("fetch");
+  if (key === "pull") emit("pull");
+  if (key === "push") emit("push");
 }
 </script>
 
@@ -91,6 +67,23 @@ function handleGitActionSelect(key: string | number) {
         <span class="truncate text-[12px] font-semibold">{{ props.branchLabel }}</span>
       </div>
       <NTag v-if="props.changedCount > 0" size="small" round>{{ props.changedCount }}</NTag>
+      <NDropdown
+        trigger="click"
+        placement="bottom-end"
+        :options="remoteOptions"
+        @select="handleRemoteSelect"
+      >
+        <NButton
+          size="tiny"
+          quaternary
+          data-git-remote-actions
+          :aria-label="t('sourceControl.remoteActions')"
+          :loading="props.busyAction === 'fetch' || props.busyAction === 'pull' || props.busyAction === 'push'"
+          :disabled="!props.repoRoot"
+        >
+          <template #icon><NIcon :component="GitNetworkOutline" /></template>
+        </NButton>
+      </NDropdown>
       <TooltipTitle :label="t('common.refresh')">
         <NButton
           size="tiny"
@@ -102,24 +95,17 @@ function handleGitActionSelect(key: string | number) {
           <template #icon><NIcon :component="RefreshOutline" /></template>
         </NButton>
       </TooltipTitle>
-      <TooltipTitle :label="t('sourceControl.gitActions')">
-        <NDropdown
-          trigger="click"
-          placement="bottom-end"
-          :options="gitActionOptions"
-          @select="handleGitActionSelect"
+      <TooltipTitle :label="t('common.history')">
+        <NButton
+          size="tiny"
+          quaternary
+          data-open-history
+          :aria-label="t('common.history')"
+          :disabled="!props.repoRoot"
+          @click="emit('openHistory')"
         >
-          <NButton
-            size="tiny"
-            quaternary
-            data-git-actions
-            :aria-label="t('sourceControl.gitActions')"
-            :loading="props.busyAction === 'fetch' || props.busyAction === 'pull' || props.busyAction === 'push'"
-            :disabled="!props.repoRoot"
-          >
-            <template #icon><NIcon :component="EllipsisHorizontalOutline" /></template>
-          </NButton>
-        </NDropdown>
+          <template #icon><NIcon :component="TimeOutline" /></template>
+        </NButton>
       </TooltipTitle>
     </div>
 
