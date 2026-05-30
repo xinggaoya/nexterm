@@ -11,7 +11,7 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
-import { NSpin } from "naive-ui";
+import { NSpin, useDialog } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
@@ -44,6 +44,7 @@ const emit = defineEmits<{
   saved: [];
 }>();
 
+const dialog = useDialog();
 const prefs = usePreferencesPiniaStore();
 const host = ref<HTMLDivElement | null>(null);
 const view = shallowRef<EditorView | null>(null);
@@ -51,6 +52,7 @@ const doc = ref<EditorDocumentState>({ status: "loading" });
 const savedContent = ref("");
 const buffer = ref("");
 const dirty = ref(false);
+const externalChangePending = ref(false);
 const mode = ref<EditorViewMode>("source");
 const line = ref(1);
 const column = ref(1);
@@ -101,6 +103,27 @@ function destroyEditor() {
   view.value?.destroy();
   view.value = null;
   if (host.value) host.value.innerHTML = "";
+}
+
+function replaceEditorContent(content: string) {
+  const current = view.value;
+  if (!current) return false;
+  const selection = current.state.selection;
+  const scroller = current.scrollDOM;
+  const scrollTop = scroller.scrollTop;
+  const scrollLeft = scroller.scrollLeft;
+  const wasFocused = current.hasFocus;
+  current.dispatch({
+    changes: { from: 0, to: current.state.doc.length, insert: content },
+    selection,
+    scrollIntoView: false,
+  });
+  requestAnimationFrame(() => {
+    scroller.scrollTop = scrollTop;
+    scroller.scrollLeft = scrollLeft;
+    if (wasFocused) current.focus();
+  });
+  return true;
 }
 
 function updateCursorInfo(state: EditorState) {
@@ -190,6 +213,7 @@ async function mountEditor(content: string) {
 async function load() {
   destroyEditor();
   doc.value = { status: "loading" };
+  externalChangePending.value = false;
   mode.value = isMarkdownPath(props.path) ? "split" : "source";
   line.value = 1;
   column.value = 1;
@@ -219,16 +243,22 @@ function fsEventTouchesPath(event: WorkspaceFsChangedEvent, path: string): boole
 }
 
 async function reloadExternalChange() {
-  if (dirty.value) return;
+  if (dirty.value) {
+    externalChangePending.value = true;
+    return;
+  }
   const currentPath = props.path;
   const result = await readEditorDocument(currentPath);
   if (props.path !== currentPath || dirty.value) return;
   doc.value = result;
+  externalChangePending.value = false;
   if (result.status === "ready") {
-    savedContent.value = result.content;
     buffer.value = result.content;
+    savedContent.value = result.content;
     setDirty(false);
-    await mountEditor(result.content);
+    if (!replaceEditorContent(result.content)) {
+      await mountEditor(result.content);
+    }
   } else {
     savedContent.value = "";
     buffer.value = "";
@@ -236,12 +266,48 @@ async function reloadExternalChange() {
   }
 }
 
-async function save() {
+async function forceReloadExternalChange() {
+  const currentPath = props.path;
+  externalChangePending.value = false;
+  const result = await readEditorDocument(currentPath);
+  if (props.path !== currentPath) return;
+  doc.value = result;
+  setDirty(false);
+  if (result.status === "ready") {
+    buffer.value = result.content;
+    savedContent.value = result.content;
+    if (!replaceEditorContent(result.content)) {
+      await mountEditor(result.content);
+    }
+  } else {
+    savedContent.value = "";
+    buffer.value = "";
+    destroyEditor();
+  }
+}
+
+async function saveConfirmed() {
   if (!dirty.value) return;
   await writeEditorDocument(props.path, buffer.value);
   savedContent.value = buffer.value;
+  externalChangePending.value = false;
   setDirty(false);
   emit("saved");
+}
+
+async function save() {
+  if (!dirty.value) return;
+  if (!externalChangePending.value) {
+    await saveConfirmed();
+    return;
+  }
+  dialog.warning({
+    title: t("editor.externalChangeSaveTitle"),
+    content: t("editor.externalChangeSaveContent"),
+    positiveText: t("editor.save"),
+    negativeText: t("common.cancel"),
+    onPositiveClick: () => void saveConfirmed(),
+  });
 }
 
 function focus() {
@@ -303,8 +369,11 @@ defineExpose({
       :file-name="fileName"
       :language-label="languageLabel"
       :dirty="dirty"
+      :external-change-pending="externalChangePending"
       :is-markdown="markdown"
       :mode="mode"
+      @dismiss-external-change="externalChangePending = false"
+      @reload-external-change="() => void forceReloadExternalChange()"
       @save="() => void save()"
       @mode-change="setMode"
     />

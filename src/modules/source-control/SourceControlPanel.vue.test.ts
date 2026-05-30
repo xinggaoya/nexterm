@@ -1,16 +1,34 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
-import { nextTick } from "vue";
+import { h, nextTick, type VNodeChild } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SourceControlPanel from "./SourceControlPanel.vue";
 import { native, type GitChangedFile } from "@/lib/native";
 
 const dialogConfirmMock = vi.hoisted(() => vi.fn());
+const dropdownSelectMock = vi.hoisted(() => vi.fn());
 
 vi.mock("naive-ui", async () => {
   const actual = await vi.importActual<typeof import("naive-ui")>("naive-ui");
   return {
     ...actual,
+    NDropdown: {
+      props: ["options", "trigger", "placement"],
+      emits: ["select"],
+      setup(
+        _props: { options: Array<{ key: string }> },
+        {
+          emit,
+          slots,
+        }: {
+          emit: (event: string, key: string) => void;
+          slots: { default?: () => VNodeChild };
+        },
+      ) {
+        dropdownSelectMock.mockImplementation((key: string) => emit("select", key));
+        return () => h("div", { "data-dropdown-mock": "" }, slots.default?.() ?? []);
+      },
+    },
     useDialog: () => ({
       warning: dialogConfirmMock,
     }),
@@ -84,6 +102,7 @@ describe("SourceControlPanel.vue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dialogConfirmMock.mockReset();
+    dropdownSelectMock.mockReset();
     vi.mocked(native.workspaceAuthorize).mockResolvedValue("/repo");
     mockSnapshotFiles([
       file({
@@ -370,16 +389,16 @@ describe("SourceControlPanel.vue", () => {
       pushed: true,
     });
 
-    const wrapper = mount(SourceControlPanel, {
+    mount(SourceControlPanel, {
       props: { rootPath: "/repo" },
     });
     await flush();
 
-    await wrapper.find("[data-git-fetch]").trigger("click");
+    dropdownSelectMock("fetch");
     await flush();
-    await wrapper.find("[data-git-pull]").trigger("click");
+    dropdownSelectMock("pull");
     await flush();
-    await wrapper.find("[data-git-push]").trigger("click");
+    dropdownSelectMock("push");
     await flush();
 
     expect(native.gitFetch).toHaveBeenCalledWith("/repo");

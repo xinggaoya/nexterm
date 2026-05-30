@@ -3,11 +3,13 @@ import {
   ArrowDownOutline,
   ArrowUpOutline,
   GitBranchOutline,
+  GitNetworkOutline,
   RefreshOutline,
   SyncOutline,
   TimeOutline,
 } from "@vicons/ionicons5";
-import { NButton, NIcon, NTag } from "naive-ui";
+import { NButton, NDropdown, NIcon, NTag, type DropdownOption } from "naive-ui";
+import { computed, h } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import type { GitStatusSnapshot } from "@/lib/native";
 import { t } from "@/modules/i18n/translate";
@@ -28,6 +30,33 @@ const emit = defineEmits<{
   refresh: [];
   openHistory: [];
 }>();
+
+const remoteOptions = computed<DropdownOption[]>(() => [
+  {
+    key: "fetch",
+    label: t("sourceControl.fetch"),
+    icon: () => h(NIcon, null, { default: () => h(SyncOutline) }),
+    disabled: !props.repoRoot || props.busyAction !== null,
+  },
+  {
+    key: "pull",
+    label: t("sourceControl.pull"),
+    icon: () => h(NIcon, null, { default: () => h(ArrowDownOutline) }),
+    disabled: !props.repoRoot || props.busyAction !== null,
+  },
+  {
+    key: "push",
+    label: t("sourceControl.push"),
+    icon: () => h(NIcon, null, { default: () => h(ArrowUpOutline) }),
+    disabled: !props.repoRoot || props.busyAction !== null,
+  },
+]);
+
+function handleRemoteSelect(key: string | number) {
+  if (key === "fetch") emit("fetch");
+  if (key === "pull") emit("pull");
+  if (key === "push") emit("push");
+}
 </script>
 
 <template>
@@ -38,45 +67,23 @@ const emit = defineEmits<{
         <span class="truncate text-[12px] font-semibold">{{ props.branchLabel }}</span>
       </div>
       <NTag v-if="props.changedCount > 0" size="small" round>{{ props.changedCount }}</NTag>
-      <TooltipTitle :label="t('sourceControl.fetch')">
+      <NDropdown
+        trigger="click"
+        placement="bottom-end"
+        :options="remoteOptions"
+        @select="handleRemoteSelect"
+      >
         <NButton
           size="tiny"
           quaternary
-          data-git-fetch
-          :aria-label="t('sourceControl.fetch')"
-          :loading="props.busyAction === 'fetch'"
-          :disabled="!props.repoRoot || (props.busyAction !== null && props.busyAction !== 'fetch')"
-          @click="emit('fetch')"
+          data-git-remote-actions
+          :aria-label="t('sourceControl.remoteActions')"
+          :loading="props.busyAction === 'fetch' || props.busyAction === 'pull' || props.busyAction === 'push'"
+          :disabled="!props.repoRoot"
         >
-          <template #icon><NIcon :component="SyncOutline" /></template>
+          <template #icon><NIcon :component="GitNetworkOutline" /></template>
         </NButton>
-      </TooltipTitle>
-      <TooltipTitle :label="t('sourceControl.pull')">
-        <NButton
-          size="tiny"
-          quaternary
-          data-git-pull
-          :aria-label="t('sourceControl.pull')"
-          :loading="props.busyAction === 'pull'"
-          :disabled="!props.repoRoot || (props.busyAction !== null && props.busyAction !== 'pull')"
-          @click="emit('pull')"
-        >
-          <template #icon><NIcon :component="ArrowDownOutline" /></template>
-        </NButton>
-      </TooltipTitle>
-      <TooltipTitle :label="t('sourceControl.push')">
-        <NButton
-          size="tiny"
-          quaternary
-          data-git-push
-          :aria-label="t('sourceControl.push')"
-          :loading="props.busyAction === 'push'"
-          :disabled="!props.repoRoot || (props.busyAction !== null && props.busyAction !== 'push')"
-          @click="emit('push')"
-        >
-          <template #icon><NIcon :component="ArrowUpOutline" /></template>
-        </NButton>
-      </TooltipTitle>
+      </NDropdown>
       <TooltipTitle :label="t('common.refresh')">
         <NButton
           size="tiny"

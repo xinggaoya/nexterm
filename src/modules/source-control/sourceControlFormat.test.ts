@@ -13,10 +13,13 @@ const t = (key: string) => `t:${key}`;
 function entry(overrides: Partial<SourceControlFileEntry>): SourceControlFileEntry {
   return {
     key: "src/main.ts",
+    group: "changes",
     path: "src/main.ts",
     originalPath: null,
     statusCode: "M",
     statusLabel: "Modified",
+    statusKind: "modified",
+    diffMode: "-",
     checkState: "unchecked",
     staged: false,
     unstaged: true,

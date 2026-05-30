@@ -1,4 +1,5 @@
 import { joinPath, type DirEntry } from "./fileTreeService";
+import type { GitPathDecoration } from "@/modules/source-control";
 
 export type ChildrenState =
   | { status: "idle" }
@@ -22,6 +23,7 @@ export type FileTreeRow =
       isDir: boolean;
       isExpanded: boolean;
       depth: number;
+      gitDecoration?: GitPathDecoration;
     }
   | {
       kind: "rename";
@@ -30,6 +32,7 @@ export type FileTreeRow =
       name: string;
       isDir: boolean;
       depth: number;
+      gitDecoration?: GitPathDecoration;
     }
   | {
       kind: "pending";
@@ -51,12 +54,14 @@ export function buildFileTreeRows({
   expanded,
   pendingCreate,
   renaming,
+  gitDecorations,
 }: {
   rootPath: string;
   nodes: FileTreeState;
   expanded: Set<string>;
   pendingCreate: PendingCreate | null;
   renaming: string | null;
+  gitDecorations?: Map<string, GitPathDecoration>;
 }): { rows: FileTreeRow[]; entryIndexByPath: Map<string, number> } {
   const rows: FileTreeRow[] = [];
   const entryIndexByPath = new Map<string, number>();
@@ -76,6 +81,7 @@ export function buildFileTreeRows({
           name: entry.name,
           isDir,
           depth,
+          gitDecoration: gitDecorations?.get(path),
         });
       } else {
         entryIndexByPath.set(path, rows.length);
@@ -87,6 +93,7 @@ export function buildFileTreeRows({
           isDir,
           isExpanded,
           depth,
+          gitDecoration: gitDecorations?.get(path),
         });
       }
 

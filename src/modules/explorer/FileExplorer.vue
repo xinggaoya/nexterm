@@ -11,6 +11,7 @@ import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t } from "@/modules/i18n/translate";
 import type { WorkspaceFsChangedEvent } from "@/lib/native";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import type { GitDecorationMap } from "@/modules/source-control";
 import ExplorerContextMenu, {
   type ExplorerContextMenuTarget,
 } from "./ExplorerContextMenu.vue";
@@ -45,6 +46,7 @@ type InFlightLoad = {
 const props = defineProps<{
   rootPath: string | null;
   fsEvent?: WorkspaceFsChangedEvent | null;
+  gitDecorations?: GitDecorationMap;
 }>();
 
 const emit = defineEmits<{
@@ -89,6 +91,7 @@ const treeSnapshot = computed(() => {
     expanded: expanded.value,
     pendingCreate: pendingCreate.value,
     renaming: renaming.value,
+    gitDecorations: props.gitDecorations,
   });
 });
 

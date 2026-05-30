@@ -3,6 +3,7 @@ import { ChevronForwardOutline } from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
 import { computed } from "vue";
 import { t } from "@/modules/i18n/translate";
+import type { SourceControlStatusKind } from "@/modules/source-control";
 import InlineTreeInput from "./InlineTreeInput.vue";
 import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
 import type { FileTreeRow } from "./lib/fileTreeRows";
@@ -33,6 +34,17 @@ const emit = defineEmits<{
 
 const paddingLeft = computed(() => `${6 + props.row.depth * 12}px`);
 const statusPaddingLeft = computed(() => `${24 + props.row.depth * 12}px`);
+const decoration = computed(() =>
+  props.row.kind === "entry" || props.row.kind === "rename"
+    ? props.row.gitDecoration
+    : undefined,
+);
+const decorationClass = computed(() =>
+  decoration.value ? statusTextClass(decoration.value.statusKind) : "",
+);
+const decorationDotClass = computed(() =>
+  decoration.value ? statusDotClass(decoration.value.statusKind) : "",
+);
 
 const iconUrl = computed(() => {
   const row = props.row;
@@ -61,6 +73,36 @@ function handleContextMenu(event: MouseEvent) {
   const row = props.row;
   if (row.kind !== "entry" && row.kind !== "rename") return;
   emit("rowContext", { row, x: event.clientX, y: event.clientY });
+}
+
+function statusTextClass(statusKind: SourceControlStatusKind): string {
+  switch (statusKind) {
+    case "added":
+    case "untracked":
+      return "text-emerald-600 dark:text-emerald-300";
+    case "deleted":
+    case "conflict":
+      return "text-red-600 dark:text-red-300";
+    case "renamed":
+      return "text-sky-600 dark:text-sky-300";
+    default:
+      return "text-amber-600 dark:text-amber-300";
+  }
+}
+
+function statusDotClass(statusKind: SourceControlStatusKind): string {
+  switch (statusKind) {
+    case "added":
+    case "untracked":
+      return "bg-emerald-500";
+    case "deleted":
+    case "conflict":
+      return "bg-red-500";
+    case "renamed":
+      return "bg-sky-500";
+    default:
+      return "bg-amber-500";
+  }
 }
 </script>
 
@@ -107,7 +149,16 @@ function handleContextMenu(event: MouseEvent) {
       data-explorer-entry-icon
       class="size-4 shrink-0"
     />
-    <span class="min-w-0 flex-1 truncate">{{ row.name }}</span>
+    <span :class="['min-w-0 flex-1 truncate', decorationClass]">{{ row.name }}</span>
+    <span
+      v-if="decoration"
+      :class="[
+        'size-1.5 shrink-0 rounded-full',
+        decorationDotClass,
+        decoration.hasDescendantChanges ? 'opacity-70' : 'opacity-100',
+      ]"
+      data-explorer-git-decoration
+    />
   </button>
 
   <div
