@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, type ComponentPublicInstance, type ComputedRef, type Ref } from "vue";
 import { NSplit } from "naive-ui";
-import type { WorkspaceFsChangedEvent } from "@/lib/native";
+import type { GitChangedFile, WorkspaceFsChangedEvent } from "@/lib/native";
 import EditorPane from "@/modules/editor/EditorPane.vue";
 import GitDiffStack from "@/modules/editor/GitDiffStack.vue";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
@@ -102,6 +102,7 @@ const emit = defineEmits<{
 }>();
 
 const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
+const gitChangedFiles = ref<GitChangedFile[]>([]);
 
 function isActiveKind(kind: Tab["kind"]): boolean {
   return props.activeTab?.kind === kind;
@@ -149,6 +150,7 @@ defineExpose({
         :fs-event="workspaceFsEvent"
         @open-diff="(input) => emit('open-source-diff', input)"
         @open-history="(input) => emit('open-source-history', input)"
+        @git-status-changed="(files) => (gitChangedFiles = files)"
       />
     </template>
     <template #resize-trigger>
@@ -290,6 +292,7 @@ defineExpose({
               v-show="layout.rightPanelOpen.value"
               :root-path="workspaceRoot"
               :fs-event="workspaceFsEvent"
+              :git-changed-files="gitChangedFiles"
               @open-file="(path, pin) => emit('open-file', path, pin)"
               @open-markdown-preview="(path) => emit('open-markdown-preview', path)"
             />
