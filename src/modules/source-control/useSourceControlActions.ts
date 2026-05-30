@@ -178,6 +178,45 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     });
   }
 
+  async function stageEntries(entries: SourceControlFileEntry[]) {
+    const root = options.state.repoRoot.value;
+    const paths = entries.filter((entry) => entry.unstaged).map((entry) => entry.path);
+    if (!root || paths.length === 0) return;
+    await runWithBusy("stage-all", async () => {
+      await options.native.gitStage(root, paths);
+      await options.state.refreshStatus();
+    });
+  }
+
+  async function unstageEntries(entries: SourceControlFileEntry[]) {
+    const root = options.state.repoRoot.value;
+    const paths = entries.filter((entry) => entry.staged).map((entry) => entry.path);
+    if (!root || paths.length === 0) return;
+    await runWithBusy("unstage-all", async () => {
+      await options.native.gitUnstage(root, paths);
+      await options.state.refreshStatus();
+    });
+  }
+
+  function confirmDiscardEntries(entries: SourceControlFileEntry[]) {
+    const discardable = entries.filter((entry) => entry.unstaged);
+    if (discardable.length === 0 || options.state.busyAction.value) return;
+    const discardEntriesInput = discardable.map((entry) => ({
+      path: entry.path,
+      untracked: entry.untracked,
+    }));
+    options.dialog.warning({
+      title: options.t("sourceControl.discardTitle"),
+      content: options.t("sourceControl.discardManyContent", {
+        count: discardEntriesInput.length,
+        changeWord: discardEntriesInput.length === 1 ? "change" : "changes",
+      }),
+      positiveText: options.t("sourceControl.discard"),
+      negativeText: options.t("common.cancel"),
+      onPositiveClick: () => discardEntries(discardEntriesInput, "discard-all"),
+    });
+  }
+
   async function fetchRemote() {
     const root = options.state.repoRoot.value;
     if (!root) return;
@@ -317,8 +356,11 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     unstageFile,
     stageAll,
     unstageAll,
+    stageEntries,
+    unstageEntries,
     confirmDiscardFile,
     confirmDiscardAll,
+    confirmDiscardEntries,
     fetchRemote,
     pullRemote,
     pushRemote,

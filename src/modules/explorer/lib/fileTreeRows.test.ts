@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildFileTreeRows, type FileTreeState } from "./fileTreeRows";
+import {
+  buildFileTreeRows,
+  buildGitToneIndex,
+  type FileTreeState,
+} from "./fileTreeRows";
 
 describe("file tree rows", () => {
   it("builds visible rows for expanded folders and state rows", () => {
@@ -41,6 +45,7 @@ describe("file tree rows", () => {
         isDir: true,
         isExpanded: true,
         depth: 0,
+        gitTone: null,
       },
       {
         kind: "pending",
@@ -56,6 +61,7 @@ describe("file tree rows", () => {
         isDir: false,
         isExpanded: false,
         depth: 1,
+        gitTone: null,
       },
       {
         kind: "entry",
@@ -65,6 +71,7 @@ describe("file tree rows", () => {
         isDir: true,
         isExpanded: true,
         depth: 1,
+        gitTone: null,
       },
       {
         kind: "status",
@@ -80,6 +87,7 @@ describe("file tree rows", () => {
         name: "README.md",
         isDir: false,
         depth: 0,
+        gitTone: null,
       },
     ]);
     expect(entryIndexByPath.get("/repo/src")).toBe(0);
@@ -107,6 +115,72 @@ describe("file tree rows", () => {
       depth: 1,
       tone: "muted",
       message: "Loading...",
+    });
+  });
+
+  it("indexes git tones for files and parent folders", () => {
+    const index = buildGitToneIndex("/repo", [
+      {
+        path: "src/main.ts",
+        originalPath: null,
+        indexStatus: " ",
+        worktreeStatus: "M",
+        staged: false,
+        unstaged: true,
+        untracked: false,
+        statusLabel: "Modified",
+      },
+      {
+        path: "src/new.ts",
+        originalPath: null,
+        indexStatus: " ",
+        worktreeStatus: "?",
+        staged: false,
+        unstaged: true,
+        untracked: true,
+        statusLabel: "Untracked",
+      },
+    ]);
+
+    expect(index.get("/repo/src/main.ts")).toBe("modified");
+    expect(index.get("/repo/src/new.ts")).toBe("added");
+    expect(index.get("/repo/src")).toBe("added");
+  });
+
+  it("adds git tones to visible rows", () => {
+    const { rows } = buildFileTreeRows({
+      rootPath: "/repo",
+      nodes: {
+        "/repo": {
+          status: "loaded",
+          entries: [{ name: "src", kind: "dir", size: 0, mtime: 1 }],
+        },
+        "/repo/src": {
+          status: "loaded",
+          entries: [{ name: "main.ts", kind: "file", size: 100, mtime: 2 }],
+        },
+      },
+      expanded: new Set(["/repo/src"]),
+      pendingCreate: null,
+      renaming: null,
+      gitChangedFiles: [
+        {
+          path: "src/main.ts",
+          originalPath: null,
+          indexStatus: " ",
+          worktreeStatus: "M",
+          staged: false,
+          unstaged: true,
+          untracked: false,
+          statusLabel: "Modified",
+        },
+      ],
+    });
+
+    expect(rows[0]).toMatchObject({ path: "/repo/src", gitTone: "modified" });
+    expect(rows[1]).toMatchObject({
+      path: "/repo/src/main.ts",
+      gitTone: "modified",
     });
   });
 });

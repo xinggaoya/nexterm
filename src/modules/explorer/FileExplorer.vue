@@ -6,10 +6,10 @@ import {
   SearchOutline,
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NSpin } from "naive-ui";
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t } from "@/modules/i18n/translate";
-import type { WorkspaceFsChangedEvent } from "@/lib/native";
+import type { GitChangedFile, WorkspaceFsChangedEvent } from "@/lib/native";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import ExplorerContextMenu, {
   type ExplorerContextMenuTarget,
@@ -41,10 +41,21 @@ type InFlightLoad = {
   rerun: boolean;
   silent: boolean;
 };
+type VirtualRow = {
+  row: VisibleTreeRow;
+  top: number;
+};
+
+const TREE_ROW_HEIGHT = 24;
+const TREE_OVERSCAN_ROWS = 8;
+const TREE_REFRESH_DELAY_MS = 240;
+const TREE_BULK_REFRESH_DELAY_MS = 420;
+const TREE_BULK_EVENT_PATH_THRESHOLD = 48;
 
 const props = defineProps<{
   rootPath: string | null;
   fsEvent?: WorkspaceFsChangedEvent | null;
+  gitChangedFiles?: GitChangedFile[];
 }>();
 
 const emit = defineEmits<{
@@ -63,9 +74,13 @@ const selectedPath = ref<string | null>(null);
 const isSearchOpen = ref(false);
 const isSearchActive = ref(false);
 const menu = ref<ExplorerContextMenuTarget | null>(null);
+const treeScrollHost = ref<HTMLElement | null>(null);
+const treeScrollTop = ref(0);
+const treeViewportHeight = ref(0);
 let fsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 const pendingFsEventPaths = new Set<string>();
 const inFlightLoads = new Map<string, InFlightLoad>();
+let resizeObserver: ResizeObserver | null = null;
 
 const rootName = computed(() => {
   if (!props.rootPath) return "";
@@ -89,10 +104,30 @@ const treeSnapshot = computed(() => {
     expanded: expanded.value,
     pendingCreate: pendingCreate.value,
     renaming: renaming.value,
+    gitChangedFiles: props.gitChangedFiles ?? [],
   });
 });
 
 const rows = computed(() => treeSnapshot.value.rows);
+const totalTreeHeight = computed(() => rows.value.length * TREE_ROW_HEIGHT);
+const visibleTreeRows = computed<VirtualRow[]>(() => {
+  const allRows = rows.value;
+  if (allRows.length === 0) return [];
+  const viewportHeight = treeViewportHeight.value || 480;
+  const start = Math.max(
+    0,
+    Math.floor(treeScrollTop.value / TREE_ROW_HEIGHT) - TREE_OVERSCAN_ROWS,
+  );
+  const end = Math.min(
+    allRows.length,
+    Math.ceil((treeScrollTop.value + viewportHeight) / TREE_ROW_HEIGHT) +
+      TREE_OVERSCAN_ROWS,
+  );
+  return allRows.slice(start, end).map((row, index) => ({
+    row,
+    top: (start + index) * TREE_ROW_HEIGHT,
+  }));
+});
 const entryIndexByPath = computed(() => treeSnapshot.value.entryIndexByPath);
 const entryPaths = computed(() =>
   rows.value.flatMap((row) => (row.kind === "entry" ? [row.path] : [])),
@@ -244,6 +279,11 @@ function scheduleTreeRefresh(event: WorkspaceFsChangedEvent) {
   for (const path of event.paths.length > 0 ? event.paths : [props.rootPath]) {
     pendingFsEventPaths.add(path);
   }
+  const delay =
+    pendingFsEventPaths.size > TREE_BULK_EVENT_PATH_THRESHOLD ||
+    event.paths.length === 0
+      ? TREE_BULK_REFRESH_DELAY_MS
+      : TREE_REFRESH_DELAY_MS;
   if (fsRefreshTimer) clearTimeout(fsRefreshTimer);
   fsRefreshTimer = setTimeout(() => {
     fsRefreshTimer = null;
@@ -253,7 +293,19 @@ function scheduleTreeRefresh(event: WorkspaceFsChangedEvent) {
     for (const path of refreshTargetsForPaths(paths)) {
       void loadChildren(path, { silent: true });
     }
-  }, 180);
+  }, delay);
+}
+
+function updateTreeViewport() {
+  const host = treeScrollHost.value;
+  if (!host) return;
+  treeScrollTop.value = host.scrollTop;
+  treeViewportHeight.value = host.clientHeight;
+}
+
+function handleTreeScroll() {
+  closeMenu();
+  updateTreeViewport();
 }
 
 function toggleDir(path: string) {
@@ -382,6 +434,24 @@ function moveSelection(index: number) {
   if (paths.length === 0) return;
   const clamped = Math.max(0, Math.min(paths.length - 1, index));
   selectedPath.value = paths[clamped];
+  void nextTick(() => scrollSelectedPathIntoView());
+}
+
+function scrollSelectedPathIntoView() {
+  const host = treeScrollHost.value;
+  const selected = selectedPath.value;
+  if (!host || !selected) return;
+  const rowIndex = entryIndexByPath.value.get(selected);
+  if (rowIndex === undefined) return;
+  const rowTop = rowIndex * TREE_ROW_HEIGHT;
+  const rowBottom = rowTop + TREE_ROW_HEIGHT;
+  if (rowTop < host.scrollTop) {
+    host.scrollTop = rowTop;
+    updateTreeViewport();
+  } else if (rowBottom > host.scrollTop + host.clientHeight) {
+    host.scrollTop = rowBottom - host.clientHeight;
+    updateTreeViewport();
+  }
 }
 
 function handleKeydown(event: KeyboardEvent) {
@@ -449,6 +519,7 @@ watch(
     isSearchOpen.value = false;
     isSearchActive.value = false;
     closeMenu();
+    treeScrollTop.value = 0;
     if (rootPath) void loadChildren(rootPath);
   },
   { immediate: true },
@@ -479,10 +550,22 @@ watch(rows, () => {
   if (selectedPath.value && !entryIndexByPath.value.has(selectedPath.value)) {
     selectedPath.value = null;
   }
+  void nextTick(() => updateTreeViewport());
+});
+
+watch(treeScrollHost, (host, previous) => {
+  if (previous && resizeObserver) resizeObserver.unobserve(previous);
+  if (!host) return;
+  updateTreeViewport();
+  if (typeof ResizeObserver === "undefined") return;
+  resizeObserver ??= new ResizeObserver(updateTreeViewport);
+  resizeObserver.observe(host);
 });
 
 onBeforeUnmount(() => {
   clearScheduledTreeRefresh();
+  resizeObserver?.disconnect();
+  resizeObserver = null;
 });
 </script>
 
@@ -580,19 +663,13 @@ onBeforeUnmount(() => {
       />
 
       <div
+        ref="treeScrollHost"
         v-show="!isSearchActive"
-        class="min-h-0 flex-1 overflow-y-auto py-1"
-        @scroll.passive="closeMenu"
+        class="min-h-0 flex-1 overflow-y-auto"
+        data-file-tree-scroll
+        @scroll.passive="handleTreeScroll"
         @contextmenu.prevent="openRootMenu"
       >
-        <FileTreeRow
-          v-if="pendingAtRoot"
-          :row="pendingAtRoot"
-          :selected="false"
-          @commit-create="commitCreate"
-          @cancel-create="cancelCreate"
-        />
-
         <div
           v-if="rootState?.status === 'loading'"
           class="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground"
@@ -606,20 +683,45 @@ onBeforeUnmount(() => {
         >
           {{ rootState.message }}
         </div>
-        <div v-else-if="rootState?.status === 'loaded'" class="space-y-0.5 px-1">
-          <FileTreeRow
-            v-for="row in rows"
-            :key="row.key"
-            :row="row"
-            :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPath === row.path"
-            @entry-click="handleEntryClick"
-            @begin-rename="beginRename"
-            @commit-rename="commitRename"
-            @cancel-rename="cancelRename"
-            @commit-create="commitCreate"
-            @cancel-create="cancelCreate"
-            @row-context="handleRowContext"
-          />
+        <div
+          v-else-if="rootState?.status === 'loaded'"
+          class="relative px-1 py-1"
+          :style="{ height: `${totalTreeHeight + (pendingAtRoot ? TREE_ROW_HEIGHT : 0) + 8}px` }"
+          data-file-tree-virtual
+        >
+          <div
+            v-if="pendingAtRoot"
+            class="absolute inset-x-1"
+            :style="{ top: '4px', height: `${TREE_ROW_HEIGHT}px` }"
+          >
+            <FileTreeRow
+              :row="pendingAtRoot"
+              :selected="false"
+              @commit-create="commitCreate"
+              @cancel-create="cancelCreate"
+            />
+          </div>
+          <div
+            v-for="item in visibleTreeRows"
+            :key="item.row.key"
+            class="absolute inset-x-1"
+            :style="{
+              top: `${item.top + (pendingAtRoot ? TREE_ROW_HEIGHT : 0) + 4}px`,
+              height: `${TREE_ROW_HEIGHT}px`,
+            }"
+          >
+            <FileTreeRow
+              :row="item.row"
+              :selected="item.row.kind !== 'status' && item.row.kind !== 'pending' && selectedPath === item.row.path"
+              @entry-click="handleEntryClick"
+              @begin-rename="beginRename"
+              @commit-rename="commitRename"
+              @cancel-rename="cancelRename"
+              @commit-create="commitCreate"
+              @cancel-create="cancelCreate"
+              @row-context="handleRowContext"
+            />
+          </div>
         </div>
       </div>
     </template>

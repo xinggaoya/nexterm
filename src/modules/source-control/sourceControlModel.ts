@@ -1,7 +1,14 @@
 import type { GitChangedFile, GitDiscardEntry } from "@/lib/native";
+import {
+  gitToneForChangedFile,
+  gitToneForStatusCode,
+  normalizeGitStatusCode,
+  type GitChangeTone,
+} from "@/lib/gitStatus";
 
 export type DiffMode = "+" | "-";
 export type CheckState = "checked" | "indeterminate" | "unchecked";
+export type SourceControlGroup = GitChangeTone;
 
 export type SourceControlFileEntry = {
   key: string;
@@ -9,35 +16,18 @@ export type SourceControlFileEntry = {
   originalPath: string | null;
   statusCode: string;
   statusLabel: string;
+  group: SourceControlGroup;
   checkState: CheckState;
   staged: boolean;
   unstaged: boolean;
   untracked: boolean;
 };
 
-function normalizeStatusCode(status: string): string {
-  const code = status.trim().toUpperCase();
-  switch (code) {
-    case "?":
-      return "U";
-    case "A":
-    case "M":
-    case "D":
-    case "U":
-      return code;
-    case "R":
-    case "C":
-      return "R";
-    default:
-      return code || "M";
-  }
-}
-
 function statusCodeForMode(mode: DiffMode, file: GitChangedFile): string {
   if (mode === "-" && file.untracked) return "U";
   const primary = mode === "+" ? file.indexStatus : file.worktreeStatus;
   const fallback = mode === "+" ? file.worktreeStatus : file.indexStatus;
-  return normalizeStatusCode(primary !== " " ? primary : fallback);
+  return normalizeGitStatusCode(primary !== " " ? primary : fallback);
 }
 
 function checkStateForFile(file: GitChangedFile): CheckState {
@@ -56,12 +46,15 @@ export function buildSourceControlEntries(
     if (seen.has(file.path)) continue;
     seen.add(file.path);
     const mode = file.unstaged ? "-" : "+";
+    const statusCode = statusCodeForMode(mode, file);
+    const statusTone = gitToneForStatusCode(statusCode);
     entries.push({
       key: file.path,
       path: file.path,
       originalPath: file.originalPath,
-      statusCode: statusCodeForMode(mode, file),
+      statusCode,
       statusLabel: file.statusLabel,
+      group: statusTone === "other" ? gitToneForChangedFile(file) : statusTone,
       checkState: checkStateForFile(file),
       staged: file.staged,
       unstaged: file.unstaged,
@@ -70,6 +63,28 @@ export function buildSourceControlEntries(
   }
 
   return entries;
+}
+
+export const SOURCE_CONTROL_GROUP_ORDER: SourceControlGroup[] = [
+  "modified",
+  "added",
+  "deleted",
+  "renamed",
+  "other",
+];
+
+export type SourceControlEntryGroup = {
+  key: SourceControlGroup;
+  entries: SourceControlFileEntry[];
+};
+
+export function groupSourceControlEntries(
+  entries: SourceControlFileEntry[],
+): SourceControlEntryGroup[] {
+  return SOURCE_CONTROL_GROUP_ORDER.map((key) => ({
+    key,
+    entries: entries.filter((entry) => entry.group === key),
+  })).filter((group) => group.entries.length > 0);
 }
 
 export function getPrimaryDiffMode(entry: SourceControlFileEntry): DiffMode {

@@ -2,12 +2,14 @@
 import {
   ArrowDownOutline,
   ArrowUpOutline,
+  EllipsisHorizontalOutline,
   GitBranchOutline,
   RefreshOutline,
   SyncOutline,
   TimeOutline,
 } from "@vicons/ionicons5";
-import { NButton, NIcon, NTag } from "naive-ui";
+import { NButton, NDropdown, NIcon, NTag, type DropdownOption } from "naive-ui";
+import { computed, h } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import type { GitStatusSnapshot } from "@/lib/native";
 import { t } from "@/modules/i18n/translate";
@@ -28,6 +30,57 @@ const emit = defineEmits<{
   refresh: [];
   openHistory: [];
 }>();
+
+const gitActionOptions = computed<DropdownOption[]>(() => [
+  {
+    key: "fetch",
+    label: t("sourceControl.fetch"),
+    icon: () => h(NIcon, null, { default: () => h(SyncOutline) }),
+    disabled:
+      !props.repoRoot ||
+      (props.busyAction !== null && props.busyAction !== "fetch"),
+  },
+  {
+    key: "pull",
+    label: t("sourceControl.pull"),
+    icon: () => h(NIcon, null, { default: () => h(ArrowDownOutline) }),
+    disabled:
+      !props.repoRoot ||
+      (props.busyAction !== null && props.busyAction !== "pull"),
+  },
+  {
+    key: "push",
+    label: t("sourceControl.push"),
+    icon: () => h(NIcon, null, { default: () => h(ArrowUpOutline) }),
+    disabled:
+      !props.repoRoot ||
+      (props.busyAction !== null && props.busyAction !== "push"),
+  },
+  { key: "divider", type: "divider" },
+  {
+    key: "history",
+    label: t("sourceControl.openHistory"),
+    icon: () => h(NIcon, null, { default: () => h(TimeOutline) }),
+    disabled: !props.repoRoot,
+  },
+]);
+
+function handleGitActionSelect(key: string | number) {
+  switch (key) {
+    case "fetch":
+      emit("fetch");
+      break;
+    case "pull":
+      emit("pull");
+      break;
+    case "push":
+      emit("push");
+      break;
+    case "history":
+      emit("openHistory");
+      break;
+  }
+}
 </script>
 
 <template>
@@ -38,45 +91,6 @@ const emit = defineEmits<{
         <span class="truncate text-[12px] font-semibold">{{ props.branchLabel }}</span>
       </div>
       <NTag v-if="props.changedCount > 0" size="small" round>{{ props.changedCount }}</NTag>
-      <TooltipTitle :label="t('sourceControl.fetch')">
-        <NButton
-          size="tiny"
-          quaternary
-          data-git-fetch
-          :aria-label="t('sourceControl.fetch')"
-          :loading="props.busyAction === 'fetch'"
-          :disabled="!props.repoRoot || (props.busyAction !== null && props.busyAction !== 'fetch')"
-          @click="emit('fetch')"
-        >
-          <template #icon><NIcon :component="SyncOutline" /></template>
-        </NButton>
-      </TooltipTitle>
-      <TooltipTitle :label="t('sourceControl.pull')">
-        <NButton
-          size="tiny"
-          quaternary
-          data-git-pull
-          :aria-label="t('sourceControl.pull')"
-          :loading="props.busyAction === 'pull'"
-          :disabled="!props.repoRoot || (props.busyAction !== null && props.busyAction !== 'pull')"
-          @click="emit('pull')"
-        >
-          <template #icon><NIcon :component="ArrowDownOutline" /></template>
-        </NButton>
-      </TooltipTitle>
-      <TooltipTitle :label="t('sourceControl.push')">
-        <NButton
-          size="tiny"
-          quaternary
-          data-git-push
-          :aria-label="t('sourceControl.push')"
-          :loading="props.busyAction === 'push'"
-          :disabled="!props.repoRoot || (props.busyAction !== null && props.busyAction !== 'push')"
-          @click="emit('push')"
-        >
-          <template #icon><NIcon :component="ArrowUpOutline" /></template>
-        </NButton>
-      </TooltipTitle>
       <TooltipTitle :label="t('common.refresh')">
         <NButton
           size="tiny"
@@ -88,17 +102,24 @@ const emit = defineEmits<{
           <template #icon><NIcon :component="RefreshOutline" /></template>
         </NButton>
       </TooltipTitle>
-      <TooltipTitle :label="t('common.history')">
-        <NButton
-          size="tiny"
-          quaternary
-          data-open-history
-          :aria-label="t('common.history')"
-          :disabled="!props.repoRoot"
-          @click="emit('openHistory')"
+      <TooltipTitle :label="t('sourceControl.gitActions')">
+        <NDropdown
+          trigger="click"
+          placement="bottom-end"
+          :options="gitActionOptions"
+          @select="handleGitActionSelect"
         >
-          <template #icon><NIcon :component="TimeOutline" /></template>
-        </NButton>
+          <NButton
+            size="tiny"
+            quaternary
+            data-git-actions
+            :aria-label="t('sourceControl.gitActions')"
+            :loading="props.busyAction === 'fetch' || props.busyAction === 'pull' || props.busyAction === 'push'"
+            :disabled="!props.repoRoot"
+          >
+            <template #icon><NIcon :component="EllipsisHorizontalOutline" /></template>
+          </NButton>
+        </NDropdown>
       </TooltipTitle>
     </div>
 

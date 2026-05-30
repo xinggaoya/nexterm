@@ -80,6 +80,8 @@ export function useSourceControlState(options: SourceControlStateOptions) {
   const busyAction = ref<BusyAction | null>(null);
   const requestId = ref(0);
   const pendingAutoRefresh = ref(false);
+  let statusRefreshInFlight: Promise<void> | null = null;
+  let pendingStatusRefresh = false;
   let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   const entries = computed(() =>
@@ -135,19 +137,47 @@ export function useSourceControlState(options: SourceControlStateOptions) {
       await loadSnapshot(options.rootPath.value);
       return;
     }
+    if (statusRefreshInFlight) {
+      pendingStatusRefresh = true;
+      await statusRefreshInFlight;
+      return;
+    }
+
+    const currentId = ++requestId.value;
+    const refresh = (async () => {
+      try {
+        const next = await options.native.gitStatus(root);
+        if (currentId !== requestId.value) return;
+        status.value = next;
+        repo.value = {
+          repoRoot: next.repoRoot,
+          branch: next.branch,
+          upstream: next.upstream,
+          isDetached: next.isDetached,
+        };
+        panelState.value = "ready";
+      } catch (error) {
+        if (currentId !== requestId.value) return;
+        errorMessage.value = normalizeError(error, options.t);
+        panelState.value = "error";
+      }
+    })();
+
+    statusRefreshInFlight = refresh;
     try {
-      const next = await options.native.gitStatus(root);
-      status.value = next;
-      repo.value = {
-        repoRoot: next.repoRoot,
-        branch: next.branch,
-        upstream: next.upstream,
-        isDetached: next.isDetached,
-      };
-      panelState.value = "ready";
-    } catch (error) {
-      errorMessage.value = normalizeError(error, options.t);
-      panelState.value = "error";
+      await refresh;
+    } finally {
+      if (statusRefreshInFlight === refresh) {
+        statusRefreshInFlight = null;
+      }
+      if (pendingStatusRefresh) {
+        pendingStatusRefresh = false;
+        if (busyAction.value) {
+          pendingAutoRefresh.value = true;
+        } else {
+          await refreshStatus();
+        }
+      }
     }
   }
 
@@ -191,7 +221,7 @@ export function useSourceControlState(options: SourceControlStateOptions) {
 
   watch(options.fsEvent, (event) => {
     if (!event || !isSameRoot(event.rootPath, options.rootPath.value)) return;
-    scheduleAutoRefresh();
+    scheduleAutoRefresh(event.gitRelated ? 80 : 650);
   });
 
   watch(busyAction, (value) => {

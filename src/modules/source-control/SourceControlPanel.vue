@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { NSpin, useDialog } from "naive-ui";
-import { toRef } from "vue";
+import { toRef, watch } from "vue";
 import {
   native,
+  type GitChangedFile,
   type GitCommitResult,
   type WorkspaceFsChangedEvent,
 } from "@/lib/native";
@@ -34,6 +35,7 @@ const emit = defineEmits<{
   ];
   openHistory: [input: { repoRoot: string; branch: string | null }];
   committed: [result: GitCommitResult];
+  gitStatusChanged: [files: GitChangedFile[]];
 }>();
 
 const dialog = useDialog();
@@ -79,8 +81,11 @@ const {
   unstageFile,
   stageAll,
   unstageAll,
+  stageEntries,
+  unstageEntries,
   confirmDiscardFile,
   confirmDiscardAll,
+  confirmDiscardEntries,
   fetchRemote,
   pullRemote,
   pushRemote,
@@ -113,6 +118,14 @@ function openHistory() {
     branch: status.value?.branch ?? null,
   });
 }
+
+watch(
+  status,
+  (value) => {
+    emit("gitStatusChanged", value?.changedFiles ?? []);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -184,6 +197,9 @@ function openHistory() {
         @stage-all="stageAll"
         @unstage-all="unstageAll"
         @confirm-discard-all="confirmDiscardAll"
+        @stage-selected="stageEntries"
+        @unstage-selected="unstageEntries"
+        @confirm-discard-selected="confirmDiscardEntries"
       />
       <SourceControlCommitBox
         v-model="commitMessage"

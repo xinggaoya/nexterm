@@ -62,7 +62,7 @@ vi.mock("@/modules/editor/EditorPane.vue", () => ({
 vi.mock("@/modules/source-control/SourceControlPanel.vue", () => ({
   default: {
     props: ["rootPath", "fsEvent"],
-    emits: ["openDiff", "openHistory"],
+    emits: ["openDiff", "openHistory", "gitStatusChanged"],
     template:
       '<aside data-source-control><button data-open-diff @click="$emit(\'openDiff\', { repoRoot: \'/repo\', path: \'src/main.ts\', mode: \'-\', originalPath: null, title: \'main.ts\' })" /><button data-open-history @click="$emit(\'openHistory\', { repoRoot: \'/repo\', branch: \'main\' })" /></aside>',
   },
@@ -70,7 +70,7 @@ vi.mock("@/modules/source-control/SourceControlPanel.vue", () => ({
 
 vi.mock("@/modules/explorer/FileExplorer.vue", () => ({
   default: {
-    props: ["rootPath", "fsEvent"],
+    props: ["rootPath", "fsEvent", "gitChangedFiles"],
     emits: ["openFile", "openMarkdownPreview"],
     template:
       '<aside data-file-explorer><button data-open-file @click="$emit(\'openFile\', \'/repo/src/main.ts\', false)" /><button data-open-markdown @click="$emit(\'openMarkdownPreview\', \'/repo/README.md\')" /></aside>',
