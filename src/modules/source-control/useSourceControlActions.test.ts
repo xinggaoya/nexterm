@@ -18,6 +18,7 @@ function entry(overrides: Partial<SourceControlFileEntry>): SourceControlFileEnt
     originalPath: null,
     statusCode: "M",
     statusLabel: "Modified",
+    group: "modified",
     checkState: "unchecked",
     staged: false,
     unstaged: true,

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { mount } from "@vue/test-utils";
+import { mount, type VueWrapper } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SourceControlPanel from "./SourceControlPanel.vue";
@@ -44,6 +44,15 @@ async function flush() {
     await Promise.resolve();
     await nextTick();
   }
+}
+
+async function selectGitAction(wrapper: VueWrapper, key: string) {
+  const dropdown = wrapper
+    .findAllComponents({ name: "Dropdown" })
+    .find((item) => item.props("options")?.some?.((option: { key?: string }) => option.key === key));
+  if (!dropdown) throw new Error(`Git action dropdown not found for ${key}`);
+  dropdown.vm.$emit("select", key);
+  await flush();
 }
 
 function file(overrides: Partial<GitChangedFile> & Pick<GitChangedFile, "path">): GitChangedFile {
@@ -148,7 +157,7 @@ describe("SourceControlPanel.vue", () => {
     expect(wrapper.text()).toContain("src/main.ts");
 
     await wrapper.find("[data-source-file='src/main.ts']").trigger("click");
-    await wrapper.find("[data-open-history]").trigger("click");
+    await selectGitAction(wrapper, "history");
 
     expect(wrapper.emitted("openDiff")).toEqual([
       [
@@ -288,6 +297,88 @@ describe("SourceControlPanel.vue", () => {
     ]);
   });
 
+  it("groups changes and supports selected bulk actions", async () => {
+    vi.mocked(native.gitStage).mockResolvedValue(undefined);
+    vi.mocked(native.gitUnstage).mockResolvedValue(undefined);
+    vi.mocked(native.gitDiscard).mockResolvedValue(undefined);
+    const changedFiles = [
+      file({
+        path: "src/staged.ts",
+        indexStatus: "M",
+        staged: true,
+      }),
+      file({
+        path: "src/unstaged.ts",
+        worktreeStatus: "M",
+        unstaged: true,
+      }),
+      file({
+        path: "src/new.ts",
+        worktreeStatus: "?",
+        unstaged: true,
+        untracked: true,
+        statusLabel: "Untracked",
+      }),
+      file({
+        path: "src/deleted.ts",
+        worktreeStatus: "D",
+        unstaged: true,
+        statusLabel: "Deleted",
+      }),
+    ];
+    mockSnapshotFiles(changedFiles);
+    vi.mocked(native.gitStatus).mockResolvedValue({
+      repoRoot: "/repo",
+      branch: "main",
+      upstream: "origin/main",
+      ahead: 1,
+      behind: 0,
+      isDetached: false,
+      truncated: false,
+      changedFiles,
+    });
+    dialogConfirmMock.mockImplementation((options) => {
+      void options.onPositiveClick();
+    });
+
+    const wrapper = mount(SourceControlPanel, {
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    expect(wrapper.find("[data-source-group='modified']").exists()).toBe(true);
+    expect(wrapper.find("[data-source-group='added']").exists()).toBe(true);
+    expect(wrapper.find("[data-source-group='deleted']").exists()).toBe(true);
+
+    await wrapper
+      .find("[data-source-select='src/unstaged.ts']")
+      .trigger("click");
+    await wrapper.find("[data-stage-all]").trigger("click");
+    await flush();
+
+    expect(native.gitStage).toHaveBeenCalledWith("/repo", ["src/unstaged.ts"]);
+
+    await wrapper.find("[data-clear-selection]").trigger("click");
+    await wrapper
+      .find("[data-source-select='src/staged.ts']")
+      .trigger("click");
+    await wrapper.find("[data-unstage-all]").trigger("click");
+    await flush();
+
+    expect(native.gitUnstage).toHaveBeenCalledWith("/repo", ["src/staged.ts"]);
+
+    await wrapper.find("[data-clear-selection]").trigger("click");
+    await wrapper
+      .find("[data-source-select='src/new.ts']")
+      .trigger("click");
+    await wrapper.find("[data-discard-all]").trigger("click");
+    await flush();
+
+    expect(native.gitDiscard).toHaveBeenCalledWith("/repo", [
+      { path: "src/new.ts", untracked: true },
+    ]);
+  });
+
   it("confirms before discarding single files and all unstaged changes", async () => {
     vi.mocked(native.gitDiscard).mockResolvedValue(undefined);
     const discardFiles = [
@@ -375,12 +466,9 @@ describe("SourceControlPanel.vue", () => {
     });
     await flush();
 
-    await wrapper.find("[data-git-fetch]").trigger("click");
-    await flush();
-    await wrapper.find("[data-git-pull]").trigger("click");
-    await flush();
-    await wrapper.find("[data-git-push]").trigger("click");
-    await flush();
+    await selectGitAction(wrapper, "fetch");
+    await selectGitAction(wrapper, "pull");
+    await selectGitAction(wrapper, "push");
 
     expect(native.gitFetch).toHaveBeenCalledWith("/repo");
     expect(native.gitPullFfOnly).toHaveBeenCalledWith("/repo");
@@ -461,7 +549,7 @@ describe("SourceControlPanel.vue", () => {
         gitRelated: false,
       },
     });
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(650);
     await flush();
 
     expect(native.gitStatus).toHaveBeenCalledTimes(1);
@@ -484,7 +572,7 @@ describe("SourceControlPanel.vue", () => {
         gitRelated: true,
       },
     });
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(650);
     await flush();
 
     expect(native.gitStatus).toHaveBeenCalledTimes(1);
@@ -516,7 +604,7 @@ describe("SourceControlPanel.vue", () => {
         gitRelated: false,
       },
     });
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(650);
     await flush();
 
     expect(native.gitStatus).not.toHaveBeenCalled();
@@ -526,7 +614,7 @@ describe("SourceControlPanel.vue", () => {
     await flush();
     expect(native.gitStatus).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(80);
+    await vi.advanceTimersByTimeAsync(650);
     await flush();
 
     expect(native.gitStatus).toHaveBeenCalledTimes(2);

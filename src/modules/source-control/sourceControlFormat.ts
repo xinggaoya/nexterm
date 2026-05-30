@@ -1,4 +1,5 @@
 import type { SourceControlFileEntry } from "./sourceControlModel";
+import { gitToneForStatusCode, type GitChangeTone } from "@/lib/gitStatus";
 
 export type SourceControlTone = "default" | "success" | "warning" | "error" | "info";
 export type SourceControlTranslate = (
@@ -27,18 +28,25 @@ export function isSameRoot(a: string | null, b: string | null): boolean {
 }
 
 export function statusTone(code: string): SourceControlTone {
-  switch (code) {
-    case "A":
+  switch (gitToneForStatusCode(code)) {
+    case "added":
       return "success";
-    case "M":
+    case "modified":
       return "warning";
-    case "D":
+    case "deleted":
       return "error";
-    case "R":
+    case "renamed":
       return "info";
     default:
       return "default";
   }
+}
+
+export function sourceControlGroupLabel(
+  group: GitChangeTone,
+  t: SourceControlTranslate,
+): string {
+  return t(`sourceControl.groups.${group}`);
 }
 
 export function stageLabel(

@@ -48,6 +48,24 @@ const iconUrl = computed(() => {
   return fileIconUrl(row.name);
 });
 
+const gitToneClass = computed(() => {
+  if (props.row.kind !== "entry" && props.row.kind !== "rename") return "";
+  switch (props.row.gitTone) {
+    case "added":
+      return "text-emerald-600 dark:text-emerald-400";
+    case "modified":
+      return "text-amber-600 dark:text-amber-300";
+    case "deleted":
+      return "text-red-600 dark:text-red-400";
+    case "renamed":
+      return "text-sky-600 dark:text-sky-400";
+    case "other":
+      return "text-violet-600 dark:text-violet-400";
+    default:
+      return "";
+  }
+});
+
 function handleEntryClick() {
   if (props.row.kind === "entry") emit("entryClick", props.row);
 }
@@ -107,7 +125,15 @@ function handleContextMenu(event: MouseEvent) {
       data-explorer-entry-icon
       class="size-4 shrink-0"
     />
-    <span class="min-w-0 flex-1 truncate">{{ row.name }}</span>
+    <span
+      :class="[
+        'min-w-0 flex-1 truncate',
+        gitToneClass,
+      ]"
+      :data-explorer-git-tone="row.gitTone || undefined"
+    >
+      {{ row.name }}
+    </span>
   </button>
 
   <div

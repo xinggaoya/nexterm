@@ -88,7 +88,7 @@ describe("useSourceControlState", () => {
       gitRelated: false,
     };
     await nextTick();
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(650);
     await flush();
 
     expect(native.gitStatus).not.toHaveBeenCalled();
@@ -99,5 +99,52 @@ describe("useSourceControlState", () => {
     await flush();
 
     expect(native.gitStatus).toHaveBeenCalledWith("/repo");
+  });
+
+  it("coalesces overlapping status refreshes and keeps the latest result", async () => {
+    const rootPath = ref<string | null>("/repo");
+    const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
+    const native = createNative();
+    const deferred: Array<(status: GitStatusSnapshot) => void> = [];
+    native.gitStatus.mockImplementation(
+      () =>
+        new Promise<GitStatusSnapshot>((resolve) => {
+          deferred.push(resolve);
+        }),
+    );
+
+    const state = useSourceControlState({
+      rootPath,
+      fsEvent,
+      native,
+      t: (key) => key,
+    });
+    await flush();
+    native.gitStatus.mockClear();
+
+    const first = state.refreshStatus();
+    const second = state.refreshStatus();
+
+    expect(native.gitStatus).toHaveBeenCalledTimes(1);
+
+    deferred[0]({
+      ...readyStatus,
+      branch: "first",
+      changedFiles: [],
+    });
+    await second;
+
+    await vi.waitFor(() => {
+      expect(native.gitStatus).toHaveBeenCalledTimes(2);
+    });
+    deferred[1]({
+      ...readyStatus,
+      branch: "second",
+      changedFiles: [],
+    });
+    await first;
+    await flush();
+
+    expect(state.branchLabel.value).toBe("second");
   });
 });

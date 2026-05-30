@@ -20,6 +20,7 @@ import {
   setSlotFocused,
   configureRendererPool,
 } from "./rendererPool";
+import { scheduleTerminalWrite } from "./terminalOutputScheduler";
 
 export type TerminalSessionCallbacks = {
   onSearchReady?: (addon: SearchAddon) => void;
@@ -297,16 +298,7 @@ function writeToTerminal(
   term: Terminal,
   data: string | Uint8Array,
 ): Promise<void> {
-  if (typeof data !== "string" && data.length === 0) return Promise.resolve();
-  if (typeof data === "string" && data.length === 0) return Promise.resolve();
-  return new Promise((resolve) => {
-    try {
-      term.write(data, () => resolve());
-    } catch (e) {
-      console.warn("[nexterm] terminal write failed:", e);
-      resolve();
-    }
-  });
+  return scheduleTerminalWrite(term, data);
 }
 
 async function openPtyForSession(

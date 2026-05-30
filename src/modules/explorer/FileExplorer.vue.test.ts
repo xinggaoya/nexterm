@@ -114,6 +114,45 @@ describe("FileExplorer.vue", () => {
     expect(wrapper.emitted("openFile")).toEqual([["/repo/README.md", false]]);
   });
 
+  it("renders git tones for changed files and parent folders", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: {
+        rootPath: "/repo",
+        gitChangedFiles: [
+          {
+            path: "src/main.ts",
+            originalPath: null,
+            indexStatus: " ",
+            worktreeStatus: "M",
+            staged: false,
+            unstaged: true,
+            untracked: false,
+            statusLabel: "Modified",
+          },
+        ],
+      },
+    });
+    await flush();
+
+    expect(
+      wrapper
+        .find("[data-explorer-row-path='/repo/src'] [data-explorer-git-tone]")
+        .attributes("data-explorer-git-tone"),
+    ).toBe("modified");
+
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+
+    expect(
+      wrapper
+        .find(
+          "[data-explorer-row-path='/repo/src/main.ts'] [data-explorer-git-tone]",
+        )
+        .attributes("data-explorer-git-tone"),
+    ).toBe("modified");
+  });
+
   it("expands folders and renders loaded children", async () => {
     const wrapper = mount(FileExplorer, {
       global: { plugins: [createPinia()] },
@@ -362,7 +401,7 @@ describe("FileExplorer.vue", () => {
         gitRelated: false,
       },
     });
-    await vi.advanceTimersByTimeAsync(180);
+    await vi.advanceTimersByTimeAsync(240);
     await flush();
 
     expect(readFileTreeDir).toHaveBeenCalledTimes(1);
@@ -409,7 +448,7 @@ describe("FileExplorer.vue", () => {
         gitRelated: false,
       },
     });
-    await vi.advanceTimersByTimeAsync(180);
+    await vi.advanceTimersByTimeAsync(240);
     await flush();
 
     expect(wrapper.text()).toContain("main.ts");
@@ -464,7 +503,7 @@ describe("FileExplorer.vue", () => {
         gitRelated: false,
       },
     });
-    await vi.advanceTimersByTimeAsync(180);
+    await vi.advanceTimersByTimeAsync(240);
     await flush();
 
     await wrapper.setProps({
@@ -474,7 +513,7 @@ describe("FileExplorer.vue", () => {
         gitRelated: false,
       },
     });
-    await vi.advanceTimersByTimeAsync(180);
+    await vi.advanceTimersByTimeAsync(240);
     await flush();
 
     expect(readFileTreeDir).toHaveBeenCalledTimes(1);

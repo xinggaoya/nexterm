@@ -153,7 +153,7 @@ vi.mock("@/modules/terminal", () => ({
 
 vi.mock("@/modules/explorer/FileExplorer.vue", () => ({
   default: {
-    props: ["rootPath", "fsEvent"],
+    props: ["rootPath", "fsEvent", "gitChangedFiles"],
     emits: ["openFile"],
     template:
       '<aside data-file-explorer>{{ rootPath ?? "none" }}<span data-explorer-fs-event>{{ fsEvent?.paths?.join("|") ?? "none" }}</span><button data-open-file @click="$emit(\'openFile\', \'/repo/src/main.ts\', false)">open</button><button data-open-other-file @click="$emit(\'openFile\', \'/repo/src/other.ts\', false)">other</button></aside>',
@@ -163,7 +163,7 @@ vi.mock("@/modules/explorer/FileExplorer.vue", () => ({
 vi.mock("@/modules/source-control/SourceControlPanel.vue", () => ({
   default: {
     props: ["rootPath", "fsEvent"],
-    emits: ["openDiff", "openHistory"],
+    emits: ["openDiff", "openHistory", "gitStatusChanged"],
     template:
       '<aside data-source-control>{{ rootPath ?? "none" }}<span data-source-fs-event>{{ fsEvent?.paths?.join("|") ?? "none" }}</span><button data-open-source-diff @click="$emit(\'openDiff\', { repoRoot: \'/repo\', path: \'src/main.ts\', mode: \'-\', originalPath: null, title: \'main.ts\' })">diff</button><button data-open-source-history @click="$emit(\'openHistory\', { repoRoot: \'/repo\', branch: \'main\' })">history</button></aside>',
   },
