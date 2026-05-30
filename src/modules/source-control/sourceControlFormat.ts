@@ -1,4 +1,5 @@
 import type { SourceControlFileEntry } from "./sourceControlModel";
+import type { SourceControlStatusKind } from "./sourceControlModel";
 
 export type SourceControlTone = "default" | "success" | "warning" | "error" | "info";
 export type SourceControlTranslate = (
@@ -38,6 +39,56 @@ export function statusTone(code: string): SourceControlTone {
       return "info";
     default:
       return "default";
+  }
+}
+
+export function statusClass(statusKind: SourceControlStatusKind): string {
+  switch (statusKind) {
+    case "added":
+    case "untracked":
+      return "text-emerald-600 dark:text-emerald-300";
+    case "deleted":
+    case "conflict":
+      return "text-red-600 dark:text-red-300";
+    case "renamed":
+      return "text-sky-600 dark:text-sky-300";
+    default:
+      return "text-amber-600 dark:text-amber-300";
+  }
+}
+
+export function statusDotClass(statusKind: SourceControlStatusKind): string {
+  switch (statusKind) {
+    case "added":
+    case "untracked":
+      return "bg-emerald-500";
+    case "deleted":
+    case "conflict":
+      return "bg-red-500";
+    case "renamed":
+      return "bg-sky-500";
+    default:
+      return "bg-amber-500";
+  }
+}
+
+export function statusKindLabel(
+  statusKind: SourceControlStatusKind,
+  t: SourceControlTranslate,
+): string {
+  switch (statusKind) {
+    case "added":
+      return t("sourceControl.statusAdded");
+    case "deleted":
+      return t("sourceControl.statusDeleted");
+    case "renamed":
+      return t("sourceControl.statusRenamed");
+    case "conflict":
+      return t("sourceControl.statusConflict");
+    case "untracked":
+      return t("sourceControl.statusUntracked");
+    default:
+      return t("sourceControl.statusModified");
   }
 }
 

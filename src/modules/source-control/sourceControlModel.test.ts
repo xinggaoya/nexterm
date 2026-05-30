@@ -3,6 +3,7 @@ import {
   buildSourceControlEntries,
   discardEntriesForEntries,
   getPrimaryDiffMode,
+  groupSourceControlEntries,
   pathsToStage,
   pathsToUnstage,
 } from "./sourceControlModel";
@@ -47,21 +48,30 @@ describe("source control model", () => {
 
     expect(entries).toEqual([
       expect.objectContaining({
+        key: "staged:src/main.ts",
+        group: "staged",
         path: "src/main.ts",
         checkState: "checked",
         statusCode: "M",
+        statusKind: "modified",
         staged: true,
       }),
       expect.objectContaining({
+        key: "changes:src/app.vue",
+        group: "changes",
         path: "src/app.vue",
         checkState: "unchecked",
         statusCode: "M",
+        statusKind: "modified",
         unstaged: true,
       }),
       expect.objectContaining({
+        key: "changes:src/new.ts",
+        group: "changes",
         path: "src/new.ts",
         checkState: "unchecked",
         statusCode: "U",
+        statusKind: "untracked",
         untracked: true,
       }),
     ]);
@@ -72,6 +82,35 @@ describe("source control model", () => {
 
     expect(getPrimaryDiffMode(entries[0])).toBe("+");
     expect(getPrimaryDiffMode(entries[1])).toBe("-");
+  });
+
+  it("groups staged and unstaged entries by source-control section", () => {
+    const entries = buildSourceControlEntries([
+      ...files,
+      {
+        path: "src/mixed.ts",
+        originalPath: null,
+        indexStatus: "M",
+        worktreeStatus: "M",
+        staged: true,
+        unstaged: true,
+        untracked: false,
+        statusLabel: "Modified",
+      },
+    ]);
+
+    const groups = groupSourceControlEntries(entries);
+
+    expect(groups.map((group) => group.id)).toEqual(["staged", "changes"]);
+    expect(groups[0].entries.map((entry) => entry.key)).toEqual([
+      "staged:src/main.ts",
+      "staged:src/mixed.ts",
+    ]);
+    expect(groups[1].entries.map((entry) => entry.key)).toEqual([
+      "changes:src/app.vue",
+      "changes:src/mixed.ts",
+      "changes:src/new.ts",
+    ]);
   });
 
   it("selects eligible paths for bulk stage, unstage, and discard", () => {

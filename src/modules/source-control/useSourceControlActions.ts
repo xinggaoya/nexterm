@@ -129,12 +129,32 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     });
   }
 
+  async function stagePaths(paths: string[]) {
+    const root = options.state.repoRoot.value;
+    const unique = Array.from(new Set(paths));
+    if (!root || unique.length === 0) return;
+    await runWithBusy("stage-selected", async () => {
+      await options.native.gitStage(root, unique);
+      await options.state.refreshStatus();
+    });
+  }
+
   async function unstageAll() {
     const root = options.state.repoRoot.value;
     const paths = options.state.unstageAllPaths.value;
     if (!root || paths.length === 0) return;
     await runWithBusy("unstage-all", async () => {
       await options.native.gitUnstage(root, paths);
+      await options.state.refreshStatus();
+    });
+  }
+
+  async function unstagePaths(paths: string[]) {
+    const root = options.state.repoRoot.value;
+    const unique = Array.from(new Set(paths));
+    if (!root || unique.length === 0) return;
+    await runWithBusy("unstage-selected", async () => {
+      await options.native.gitUnstage(root, unique);
       await options.state.refreshStatus();
     });
   }
@@ -175,6 +195,23 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
       positiveText: options.t("sourceControl.discard"),
       negativeText: options.t("common.cancel"),
       onPositiveClick: () => discardEntries(entries, "discard-all"),
+    });
+  }
+
+  function confirmDiscardEntries(entries: GitDiscardEntry[]) {
+    const unique = Array.from(
+      new Map(entries.map((entry) => [entry.path, entry])).values(),
+    );
+    if (unique.length === 0 || options.state.busyAction.value) return;
+    options.dialog.warning({
+      title: options.t("sourceControl.discardTitle"),
+      content: options.t("sourceControl.discardManyContent", {
+        count: unique.length,
+        changeWord: unique.length === 1 ? "change" : "changes",
+      }),
+      positiveText: options.t("sourceControl.discard"),
+      negativeText: options.t("common.cancel"),
+      onPositiveClick: () => discardEntries(unique, "discard-selected"),
     });
   }
 
@@ -316,9 +353,12 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     stageFile,
     unstageFile,
     stageAll,
+    stagePaths,
     unstageAll,
+    unstagePaths,
     confirmDiscardFile,
     confirmDiscardAll,
+    confirmDiscardEntries,
     fetchRemote,
     pullRemote,
     pushRemote,

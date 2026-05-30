@@ -30,6 +30,18 @@ describe("file tree rows", () => {
       expanded: new Set(["/repo/src", "/repo/src/broken"]),
       pendingCreate: { parentPath: "/repo/src", kind: "file" },
       renaming: "/repo/README.md",
+      gitDecorations: new Map([
+        [
+          "/repo/src/main.ts",
+          {
+            statusKind: "modified",
+            staged: false,
+            unstaged: true,
+            hasDescendantChanges: false,
+            count: 1,
+          },
+        ],
+      ]),
     });
 
     expect(rows).toEqual([
@@ -56,6 +68,13 @@ describe("file tree rows", () => {
         isDir: false,
         isExpanded: false,
         depth: 1,
+        gitDecoration: {
+          statusKind: "modified",
+          staged: false,
+          unstaged: true,
+          hasDescendantChanges: false,
+          count: 1,
+        },
       },
       {
         kind: "entry",
@@ -99,6 +118,7 @@ describe("file tree rows", () => {
       expanded: new Set(["/repo/src"]),
       pendingCreate: null,
       renaming: null,
+      gitDecorations: undefined,
     });
 
     expect(rows[1]).toEqual({
