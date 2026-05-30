@@ -6,10 +6,23 @@ const clipboardMocks = vi.hoisted(() => ({
   readClipboardText: vi.fn(),
   writeClipboardText: vi.fn(),
 }));
+const resizeObserverMocks = vi.hoisted(
+  () =>
+    [] as Array<{
+      callback: ResizeObserverCallback;
+      observe: ReturnType<typeof vi.fn>;
+      disconnect: ReturnType<typeof vi.fn>;
+    }>,
+);
 
 type MockTerminal = {
+  cols: number;
+  rows: number;
+  buffer: { active: { type: string } };
   selection: string;
   pasted: string[];
+  refreshes: Array<[number, number]>;
+  resize(cols: number, rows: number): void;
   keyHandler: ((event: KeyboardEvent) => boolean) | null;
 };
 
@@ -72,6 +85,7 @@ vi.mock("@xterm/xterm", () => ({
     buffer = { active: { type: "normal" } };
     selection = "";
     pasted: string[] = [];
+    refreshes: Array<[number, number]> = [];
     keyHandler: ((event: KeyboardEvent) => boolean) | null = null;
     private dataHandler: ((data: string) => void) | null = null;
 
@@ -88,6 +102,9 @@ vi.mock("@xterm/xterm", () => ({
     resize(cols: number, rows: number) {
       this.cols = cols;
       this.rows = rows;
+    }
+    refresh(start: number, end: number) {
+      this.refreshes.push([start, end]);
     }
     write(_data: string | Uint8Array, callback?: () => void) {
       callback?.();
@@ -110,11 +127,18 @@ vi.mock("@xterm/xterm", () => ({
 }));
 
 function installBrowserMocks() {
+  resizeObserverMocks.length = 0;
   Object.defineProperty(globalThis, "ResizeObserver", {
     configurable: true,
     value: class {
+      callback: ResizeObserverCallback;
       observe = vi.fn();
+      unobserve = vi.fn();
       disconnect = vi.fn();
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+        resizeObserverMocks.push(this);
+      }
     },
   });
   Object.defineProperty(window, "requestAnimationFrame", {
@@ -133,13 +157,15 @@ function installBrowserMocks() {
 async function mountBoundTerminal() {
   const rendererPool = await import("./rendererPool");
   const writes: string[] = [];
+  const resizes: Array<[number, number]> = [];
+  const kicks: Array<[number, number]> = [];
   rendererPool.configureRendererPool({
     resolveLeaf: (leafId) =>
       leafId === 7
         ? {
             writeToPty: (data) => writes.push(data),
-            resizePty: vi.fn(),
-            kickPty: vi.fn(),
+            resizePty: (cols, rows) => resizes.push([cols, rows]),
+            kickPty: (cols, rows) => kicks.push([cols, rows]),
           }
         : null,
     evictLeaf: vi.fn(),
@@ -147,8 +173,9 @@ async function mountBoundTerminal() {
   });
 
   const container = document.createElement("div");
+  setElementSize(container, 800, 400);
   document.body.appendChild(container);
-  rendererPool.acquireSlot({
+  const slot = rendererPool.acquireSlot({
     leafId: 7,
     container,
     snapshot: null,
@@ -163,7 +190,18 @@ async function mountBoundTerminal() {
 
   const term = terminalInstances[0];
   if (!term?.keyHandler) throw new Error("terminal key handler was not attached");
-  return { term, writes };
+  return { rendererPool, container, slot, term, writes, resizes, kicks };
+}
+
+function setElementSize(el: HTMLElement, width: number, height: number): void {
+  Object.defineProperty(el, "clientWidth", {
+    configurable: true,
+    value: width,
+  });
+  Object.defineProperty(el, "clientHeight", {
+    configurable: true,
+    value: height,
+  });
 }
 
 function terminalKey(
@@ -249,4 +287,67 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     });
     expect(term.pasted).toEqual([]);
   });
+
+  it("keeps the renderer bound when the same leaf is acquired again", async () => {
+    const { rendererPool, container, term, resizes } = await mountBoundTerminal();
+    term.resize(100, 30);
+
+    const slot = rendererPool.acquireSlot({
+      leafId: 7,
+      container,
+      snapshot: "ignored snapshot",
+      altScreen: false,
+      shellExited: false,
+      searchQuery: null,
+      cols: 100,
+      rows: 30,
+      registerOsc: () => [],
+      onSearchReady: vi.fn(),
+    });
+
+    expect(slot.term).toBe(term);
+    expect(terminalInstances).toHaveLength(1);
+    expect(lastItem(term.refreshes)).toEqual([0, 29]);
+    expect(lastItem(resizes)).toEqual([100, 30]);
+  });
+
+  it("syncs PTY size on the next animation frame when the container resizes", async () => {
+    const { container, term, resizes } = await mountBoundTerminal();
+    term.resize(120, 32);
+    setElementSize(container, 960, 480);
+
+    const observer = lastItem(resizeObserverMocks)!;
+    observer.callback([], observer as unknown as ResizeObserver);
+
+    expect(lastItem(resizes)).toEqual([120, 32]);
+    expect(lastItem(term.refreshes)).toEqual([0, 31]);
+  });
+
+  it("ignores zero-sized resize observations", async () => {
+    const { container, term, resizes } = await mountBoundTerminal();
+    const count = resizes.length;
+    term.resize(10, 5);
+    setElementSize(container, 0, 0);
+
+    const observer = lastItem(resizeObserverMocks)!;
+    observer.callback([], observer as unknown as ResizeObserver);
+
+    expect(resizes).toHaveLength(count);
+  });
+
+  it("kicks alt-screen terminals after layout recovery", async () => {
+    const { rendererPool, term, kicks } = await mountBoundTerminal();
+    term.buffer.active.type = "alternate";
+
+    rendererPool.refreshSlotLayout(7, {
+      forcePty: true,
+      kickPty: true,
+    });
+
+    expect(lastItem(kicks)).toEqual([term.cols, term.rows]);
+  });
 });
+
+function lastItem<T>(items: T[]): T | undefined {
+  return items[items.length - 1];
+}
