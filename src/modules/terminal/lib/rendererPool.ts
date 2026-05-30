@@ -11,8 +11,6 @@ import { Terminal } from "@xterm/xterm";
 import { terminalWordNavigationSequence } from "./keymap";
 
 export const POOL_MAX_SIZE = 5;
-const FIT_DEBOUNCE_MS = 8;
-const PTY_RESIZE_DEBOUNCE_MS = 256;
 
 export type SlotAdapter = {
   resolveLeaf(leafId: number): LeafBridge | null;
@@ -36,13 +34,13 @@ export type Slot = {
   readonly fitAddon: FitAddon;
   readonly searchAddon: SearchAddon;
   readonly host: HTMLDivElement;
+  container: HTMLDivElement | null;
   webglAddon: WebglAddon | null;
   webglCanvases: HTMLCanvasElement[];
   currentLeafId: number | null;
   oscDisposers: (() => void)[];
   observer: ResizeObserver | null;
-  fitTimer: ReturnType<typeof setTimeout> | null;
-  ptyTimer: ReturnType<typeof setTimeout> | null;
+  fitRaf: number | null;
   unhideRaf: number | null;
   lastCols: number;
   lastRows: number;
@@ -115,13 +113,13 @@ function createSlot(): Slot {
     fitAddon,
     searchAddon,
     host,
+    container: null,
     webglAddon: null,
     webglCanvases: [],
     currentLeafId: null,
     oscDisposers: [],
     observer: null,
-    fitTimer: null,
-    ptyTimer: null,
+    fitRaf: null,
     unhideRaf: null,
     lastCols: term.cols,
     lastRows: term.rows,
@@ -249,6 +247,7 @@ export function acquireSlot(params: AcquireParams): Slot {
 
 function bindSlot(slot: Slot, p: AcquireParams): void {
   slot.currentLeafId = p.leafId;
+  slot.container = p.container;
   slot.lastUsedAt = performance.now();
 
   cancelPendingUnhide(slot);
@@ -289,15 +288,11 @@ function bindSlot(slot: Slot, p: AcquireParams): void {
   slot.oscDisposers = p.registerOsc(slot.term);
 
   setupResizeObserver(slot, p);
-  slot.fitAddon.fit();
-  slot.lastCols = slot.term.cols;
-  slot.lastRows = slot.term.rows;
-  slot.lastW = p.container.clientWidth;
-  slot.lastH = p.container.clientHeight;
-  if (slot.lastCols !== p.cols || slot.lastRows !== p.rows) {
-    // resizePty updates session.cols/rows + pty backend; no separate scope call.
-    adapter?.resolveLeaf(p.leafId)?.resizePty(slot.lastCols, slot.lastRows);
-  }
+  recoverSlotLayout(slot, p.leafId, {
+    forcePty: true,
+    kickPty: p.altScreen && !p.shellExited,
+    focus: adapter?.isLeafFocused(p.leafId) ?? false,
+  });
 
   if (p.searchQuery) {
     try {
@@ -306,10 +301,6 @@ function bindSlot(slot: Slot, p: AcquireParams): void {
   }
 
   applyCursorBlinkOnSlot(slot, adapter?.isLeafFocused(p.leafId) ?? false);
-
-  if (p.altScreen && !p.shellExited) {
-    adapter?.resolveLeaf(p.leafId)?.kickPty(slot.term.cols, slot.term.rows);
-  }
 
   scheduleUnhide(slot);
 
@@ -338,55 +329,125 @@ function cancelPendingUnhide(slot: Slot): void {
 
 function rewireSlot(slot: Slot, p: AcquireParams): void {
   slot.lastUsedAt = performance.now();
+  slot.container = p.container;
   if (slot.host.parentNode !== p.container) {
     p.container.appendChild(slot.host);
   }
   setupResizeObserver(slot, p);
-  slot.fitAddon.fit();
-  slot.lastW = p.container.clientWidth;
-  slot.lastH = p.container.clientHeight;
-  if (slot.term.cols !== p.cols || slot.term.rows !== p.rows) {
-    adapter?.resolveLeaf(p.leafId)?.resizePty(slot.term.cols, slot.term.rows);
-  }
-  slot.lastCols = slot.term.cols;
-  slot.lastRows = slot.term.rows;
+  recoverSlotLayout(slot, p.leafId, {
+    forcePty: true,
+    kickPty: p.altScreen && !p.shellExited,
+    focus: adapter?.isLeafFocused(p.leafId) ?? false,
+  });
   p.onSearchReady(slot.searchAddon);
 }
 
 function setupResizeObserver(slot: Slot, p: AcquireParams): void {
   slot.observer?.disconnect();
-  if (slot.fitTimer) clearTimeout(slot.fitTimer);
-  if (slot.ptyTimer) clearTimeout(slot.ptyTimer);
-  slot.fitTimer = null;
-  slot.ptyTimer = null;
+  cancelPendingFit(slot);
 
   const container = p.container;
-  const flushPty = () => {
-    slot.ptyTimer = null;
-    if (slot.currentLeafId !== p.leafId) return;
-    if (slot.term.cols === slot.lastCols && slot.term.rows === slot.lastRows)
-      return;
-    slot.lastCols = slot.term.cols;
-    slot.lastRows = slot.term.rows;
-    adapter?.resolveLeaf(p.leafId)?.resizePty(slot.lastCols, slot.lastRows);
-  };
 
   slot.observer = new ResizeObserver(() => {
-    if (slot.fitTimer) clearTimeout(slot.fitTimer);
-    slot.fitTimer = setTimeout(() => {
-      slot.fitTimer = null;
+    scheduleFit(slot, p.leafId, () => {
       if (slot.currentLeafId !== p.leafId) return;
       const w = container.clientWidth;
       const h = container.clientHeight;
+      if (!isUsableLayout(w, h)) return;
       if (w === slot.lastW && h === slot.lastH) return;
-      slot.lastW = w;
-      slot.lastH = h;
-      slot.fitAddon.fit();
-      if (slot.ptyTimer) clearTimeout(slot.ptyTimer);
-      slot.ptyTimer = setTimeout(flushPty, PTY_RESIZE_DEBOUNCE_MS);
-    }, FIT_DEBOUNCE_MS);
+      recoverSlotLayout(slot, p.leafId);
+    });
   });
   slot.observer.observe(container);
+}
+
+function scheduleFit(slot: Slot, leafId: number, fn?: () => void): void {
+  if (slot.fitRaf !== null) return;
+  slot.fitRaf = requestAnimationFrame(() => {
+    slot.fitRaf = null;
+    if (fn) fn();
+    else recoverSlotLayout(slot, leafId);
+  });
+}
+
+function cancelPendingFit(slot: Slot): void {
+  if (slot.fitRaf !== null) {
+    cancelAnimationFrame(slot.fitRaf);
+    slot.fitRaf = null;
+  }
+}
+
+type RecoverLayoutOptions = {
+  forcePty?: boolean;
+  kickPty?: boolean;
+  focus?: boolean;
+};
+
+export function refreshSlotLayout(
+  leafId: number,
+  options: RecoverLayoutOptions = {},
+): boolean {
+  const slot = slots.find((s) => s.currentLeafId === leafId);
+  if (!slot) return false;
+  return recoverSlotLayout(slot, leafId, options);
+}
+
+function recoverSlotLayout(
+  slot: Slot,
+  leafId: number,
+  options: RecoverLayoutOptions = {},
+): boolean {
+  if (slot.currentLeafId !== leafId) return false;
+  const container = slot.container;
+  if (!container) return false;
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  if (!isUsableLayout(w, h)) return false;
+
+  slot.lastW = w;
+  slot.lastH = h;
+  safeFit(slot);
+  const resized = syncPtySize(slot, leafId, options.forcePty ?? false);
+  refreshTerminal(slot);
+
+  const bridge = adapter?.resolveLeaf(leafId);
+  if (options.kickPty && bridge && slot.term.cols > 0 && slot.term.rows > 0) {
+    bridge.kickPty(slot.term.cols, slot.term.rows);
+  }
+  if (options.focus) slot.term.focus();
+  return resized;
+}
+
+function safeFit(slot: Slot): void {
+  try {
+    slot.fitAddon.fit();
+  } catch (e) {
+    console.warn("[nexterm] terminal fit failed:", e);
+  }
+}
+
+function syncPtySize(slot: Slot, leafId: number, force: boolean): boolean {
+  const cols = slot.term.cols;
+  const rows = slot.term.rows;
+  if (cols <= 0 || rows <= 0) return false;
+  if (!force && cols === slot.lastCols && rows === slot.lastRows) return false;
+  slot.lastCols = cols;
+  slot.lastRows = rows;
+  adapter?.resolveLeaf(leafId)?.resizePty(cols, rows);
+  return true;
+}
+
+function refreshTerminal(slot: Slot): void {
+  if (slot.term.rows <= 0) return;
+  try {
+    slot.term.refresh(0, slot.term.rows - 1);
+  } catch (e) {
+    console.warn("[nexterm] terminal refresh failed:", e);
+  }
+}
+
+function isUsableLayout(width: number, height: number): boolean {
+  return width > 0 && height > 0;
 }
 
 export type SerializeOutput = {
@@ -419,10 +480,7 @@ function detachSlotFromLeaf(slot: Slot): void {
 
   slot.observer?.disconnect();
   slot.observer = null;
-  if (slot.fitTimer) clearTimeout(slot.fitTimer);
-  if (slot.ptyTimer) clearTimeout(slot.ptyTimer);
-  slot.fitTimer = null;
-  slot.ptyTimer = null;
+  cancelPendingFit(slot);
 
   cancelPendingUnhide(slot);
   slot.host.style.visibility = "";
@@ -432,6 +490,7 @@ function detachSlotFromLeaf(slot: Slot): void {
   }
 
   slot.currentLeafId = null;
+  slot.container = null;
   slot.lastUsedAt = performance.now();
 }
 
@@ -538,12 +597,8 @@ export function applyFontSize(size: number): void {
   for (const slot of slots) {
     if (slot.term.options.fontSize === size) continue;
     slot.term.options.fontSize = size;
-    slot.fitAddon.fit();
     if (slot.currentLeafId !== null) {
-      slot.lastCols = slot.term.cols;
-      slot.lastRows = slot.term.rows;
-      const bridge = adapter?.resolveLeaf(slot.currentLeafId);
-      bridge?.resizePty(slot.term.cols, slot.term.rows);
+      recoverSlotLayout(slot, slot.currentLeafId, { forcePty: true });
     }
   }
 }
@@ -552,7 +607,7 @@ export function applyLetterSpacing(spacing: number): void {
   for (const slot of slots) {
     if (slot.term.options.letterSpacing === spacing) continue;
     slot.term.options.letterSpacing = spacing;
-    slot.fitAddon.fit();
+    if (slot.currentLeafId !== null) recoverSlotLayout(slot, slot.currentLeafId);
   }
 }
 
@@ -561,12 +616,8 @@ export function applyFontFamily(family: string): void {
   for (const slot of slots) {
     if (slot.term.options.fontFamily === resolved) continue;
     slot.term.options.fontFamily = resolved;
-    slot.fitAddon.fit();
     if (slot.currentLeafId !== null) {
-      slot.lastCols = slot.term.cols;
-      slot.lastRows = slot.term.rows;
-      const bridge = adapter?.resolveLeaf(slot.currentLeafId);
-      bridge?.resizePty(slot.term.cols, slot.term.rows);
+      recoverSlotLayout(slot, slot.currentLeafId, { forcePty: true });
     }
   }
 }
