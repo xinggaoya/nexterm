@@ -48,83 +48,32 @@ describe("source control model", () => {
 
     expect(entries).toEqual([
       expect.objectContaining({
+        key: "staged:src/main.ts",
+        group: "staged",
         path: "src/main.ts",
         checkState: "checked",
         statusCode: "M",
-        group: "modified",
+        statusKind: "modified",
         staged: true,
       }),
       expect.objectContaining({
+        key: "changes:src/app.vue",
+        group: "changes",
         path: "src/app.vue",
         checkState: "unchecked",
         statusCode: "M",
-        group: "modified",
+        statusKind: "modified",
         unstaged: true,
       }),
       expect.objectContaining({
+        key: "changes:src/new.ts",
+        group: "changes",
         path: "src/new.ts",
         checkState: "unchecked",
         statusCode: "U",
-        group: "added",
+        statusKind: "untracked",
         untracked: true,
       }),
-    ]);
-  });
-
-  it("groups entries by git change category in display order", () => {
-    const entries = buildSourceControlEntries([
-      {
-        path: "src/delete.ts",
-        originalPath: null,
-        indexStatus: " ",
-        worktreeStatus: "D",
-        staged: false,
-        unstaged: true,
-        untracked: false,
-        statusLabel: "Deleted",
-      },
-      {
-        path: "src/new.ts",
-        originalPath: null,
-        indexStatus: " ",
-        worktreeStatus: "?",
-        staged: false,
-        unstaged: true,
-        untracked: true,
-        statusLabel: "Untracked",
-      },
-      {
-        path: "src/rename.ts",
-        originalPath: "src/old.ts",
-        indexStatus: "R",
-        worktreeStatus: " ",
-        staged: true,
-        unstaged: false,
-        untracked: false,
-        statusLabel: "Renamed",
-      },
-      {
-        path: "src/main.ts",
-        originalPath: null,
-        indexStatus: " ",
-        worktreeStatus: "M",
-        staged: false,
-        unstaged: true,
-        untracked: false,
-        statusLabel: "Modified",
-      },
-    ]);
-
-    expect(
-      groupSourceControlEntries(entries).map((group) => ({
-        key: group.key,
-        paths: group.entries.map((entry) => entry.path),
-      })),
-    ).toEqual([
-      { key: "modified", paths: ["src/main.ts"] },
-      { key: "added", paths: ["src/new.ts"] },
-      { key: "deleted", paths: ["src/delete.ts"] },
-      { key: "renamed", paths: ["src/rename.ts"] },
     ]);
   });
 
@@ -133,6 +82,35 @@ describe("source control model", () => {
 
     expect(getPrimaryDiffMode(entries[0])).toBe("+");
     expect(getPrimaryDiffMode(entries[1])).toBe("-");
+  });
+
+  it("groups staged and unstaged entries by source-control section", () => {
+    const entries = buildSourceControlEntries([
+      ...files,
+      {
+        path: "src/mixed.ts",
+        originalPath: null,
+        indexStatus: "M",
+        worktreeStatus: "M",
+        staged: true,
+        unstaged: true,
+        untracked: false,
+        statusLabel: "Modified",
+      },
+    ]);
+
+    const groups = groupSourceControlEntries(entries);
+
+    expect(groups.map((group) => group.id)).toEqual(["staged", "changes"]);
+    expect(groups[0].entries.map((entry) => entry.key)).toEqual([
+      "staged:src/main.ts",
+      "staged:src/mixed.ts",
+    ]);
+    expect(groups[1].entries.map((entry) => entry.key)).toEqual([
+      "changes:src/app.vue",
+      "changes:src/mixed.ts",
+      "changes:src/new.ts",
+    ]);
   });
 
   it("selects eligible paths for bulk stage, unstage, and discard", () => {

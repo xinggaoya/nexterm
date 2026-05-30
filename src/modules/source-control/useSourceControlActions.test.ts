@@ -14,11 +14,13 @@ vi.mock("@/modules/notifications/notificationCenter", () => ({
 function entry(overrides: Partial<SourceControlFileEntry>): SourceControlFileEntry {
   return {
     key: "src/main.ts",
+    group: "changes",
     path: "src/main.ts",
     originalPath: null,
     statusCode: "M",
     statusLabel: "Modified",
-    group: "modified",
+    statusKind: "modified",
+    diffMode: "-",
     checkState: "unchecked",
     staged: false,
     unstaged: true,
@@ -36,6 +38,7 @@ function createState(): SourceControlRuntimeState {
     busyAction: ref(null),
     repoRoot: ref("/repo"),
     entries,
+    gitDecorations: computed(() => new Map()),
     stagedCount: computed(() => entries.value.filter((item) => item.staged).length),
     stageAllPaths: computed(() =>
       entries.value.filter((item) => item.unstaged).map((item) => item.path),

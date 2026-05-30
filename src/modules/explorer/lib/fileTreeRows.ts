@@ -1,10 +1,5 @@
-import {
-  gitToneForChangedFile,
-  strongerGitTone,
-  type GitChangeTone,
-} from "@/lib/gitStatus";
-import type { GitChangedFile } from "@/lib/native";
 import { joinPath, type DirEntry } from "./fileTreeService";
+import type { GitPathDecoration } from "@/modules/source-control";
 
 export type ChildrenState =
   | { status: "idle" }
@@ -28,7 +23,7 @@ export type FileTreeRow =
       isDir: boolean;
       isExpanded: boolean;
       depth: number;
-      gitTone: GitChangeTone | null;
+      gitDecoration?: GitPathDecoration;
     }
   | {
       kind: "rename";
@@ -37,7 +32,7 @@ export type FileTreeRow =
       name: string;
       isDir: boolean;
       depth: number;
-      gitTone: GitChangeTone | null;
+      gitDecoration?: GitPathDecoration;
     }
   | {
       kind: "pending";
@@ -59,18 +54,17 @@ export function buildFileTreeRows({
   expanded,
   pendingCreate,
   renaming,
-  gitChangedFiles = [],
+  gitDecorations,
 }: {
   rootPath: string;
   nodes: FileTreeState;
   expanded: Set<string>;
   pendingCreate: PendingCreate | null;
   renaming: string | null;
-  gitChangedFiles?: GitChangedFile[];
+  gitDecorations?: Map<string, GitPathDecoration>;
 }): { rows: FileTreeRow[]; entryIndexByPath: Map<string, number> } {
   const rows: FileTreeRow[] = [];
   const entryIndexByPath = new Map<string, number>();
-  const gitToneByPath = buildGitToneIndex(rootPath, gitChangedFiles);
 
   const walk = (parent: string, depth: number) => {
     const node = nodes[parent];
@@ -87,7 +81,7 @@ export function buildFileTreeRows({
           name: entry.name,
           isDir,
           depth,
-          gitTone: gitToneByPath.get(path) ?? null,
+          gitDecoration: gitDecorations?.get(path),
         });
       } else {
         entryIndexByPath.set(path, rows.length);
@@ -99,7 +93,7 @@ export function buildFileTreeRows({
           isDir,
           isExpanded,
           depth,
-          gitTone: gitToneByPath.get(path) ?? null,
+          gitDecoration: gitDecorations?.get(path),
         });
       }
 
@@ -137,39 +131,4 @@ export function buildFileTreeRows({
 
   walk(rootPath, 0);
   return { rows, entryIndexByPath };
-}
-
-function normalizePath(path: string): string {
-  return path.replace(/\\/g, "/").replace(/\/+$/, "");
-}
-
-function changedFileAbsolutePath(rootPath: string, path: string): string {
-  const normalized = normalizePath(path);
-  if (normalized.startsWith("/")) return normalized;
-  return `${normalizePath(rootPath)}/${normalized}`;
-}
-
-export function buildGitToneIndex(
-  rootPath: string,
-  gitChangedFiles: GitChangedFile[],
-): Map<string, GitChangeTone> {
-  const index = new Map<string, GitChangeTone>();
-  const normalizedRoot = normalizePath(rootPath);
-
-  for (const file of gitChangedFiles) {
-    const tone = gitToneForChangedFile(file);
-    const path = changedFileAbsolutePath(normalizedRoot, file.path);
-    index.set(path, strongerGitTone(index.get(path) ?? null, tone)!);
-
-    let cursor = path;
-    while (cursor !== normalizedRoot) {
-      const slash = cursor.lastIndexOf("/");
-      if (slash <= 0) break;
-      cursor = cursor.slice(0, slash);
-      if (cursor.length < normalizedRoot.length) break;
-      index.set(cursor, strongerGitTone(index.get(cursor) ?? null, tone)!);
-    }
-  }
-
-  return index;
 }

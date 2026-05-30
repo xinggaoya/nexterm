@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, type ComponentPublicInstance, type ComputedRef, type Ref } from "vue";
 import { NSplit } from "naive-ui";
-import type { GitChangedFile, WorkspaceFsChangedEvent } from "@/lib/native";
+import type { WorkspaceFsChangedEvent } from "@/lib/native";
 import EditorPane from "@/modules/editor/EditorPane.vue";
 import GitDiffStack from "@/modules/editor/GitDiffStack.vue";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
@@ -9,6 +9,7 @@ import GitHistoryStack from "@/modules/git-history/GitHistoryStack.vue";
 import MarkdownStack from "@/modules/markdown/MarkdownStack.vue";
 import PreviewStack from "@/modules/preview/PreviewStack.vue";
 import SourceControlPanel from "@/modules/source-control/SourceControlPanel.vue";
+import type { GitDecorationMap } from "@/modules/source-control";
 import type { TaskRun, TaskRunGroup } from "@/modules/tasks";
 import TaskConsole from "@/modules/tasks/TaskConsole.vue";
 import type { TaskConsoleView } from "@/modules/tasks/taskConsoleTypes";
@@ -102,7 +103,7 @@ const emit = defineEmits<{
 }>();
 
 const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
-const gitChangedFiles = ref<GitChangedFile[]>([]);
+const gitDecorations = ref<GitDecorationMap>(new Map());
 
 function isActiveKind(kind: Tab["kind"]): boolean {
   return props.activeTab?.kind === kind;
@@ -118,6 +119,10 @@ function isActiveGitDiff(): boolean {
 function setRightSplitHost(element: Element | ComponentPublicInstance | null) {
   props.layout.rightSplitHost.value =
     element instanceof HTMLElement ? element : null;
+}
+
+function setGitDecorations(decorations: GitDecorationMap) {
+  gitDecorations.value = decorations;
 }
 
 async function saveActiveEditor() {
@@ -148,9 +153,9 @@ defineExpose({
         v-show="layout.leftPanelOpen.value"
         :root-path="workspaceRoot"
         :fs-event="workspaceFsEvent"
+        @decorations-change="setGitDecorations"
         @open-diff="(input) => emit('open-source-diff', input)"
         @open-history="(input) => emit('open-source-history', input)"
-        @git-status-changed="(files) => (gitChangedFiles = files)"
       />
     </template>
     <template #resize-trigger>
@@ -292,7 +297,7 @@ defineExpose({
               v-show="layout.rightPanelOpen.value"
               :root-path="workspaceRoot"
               :fs-event="workspaceFsEvent"
-              :git-changed-files="gitChangedFiles"
+              :git-decorations="gitDecorations"
               @open-file="(path, pin) => emit('open-file', path, pin)"
               @open-markdown-preview="(path) => emit('open-markdown-preview', path)"
             />

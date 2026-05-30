@@ -21,6 +21,7 @@ import {
   pathsToUnstage,
   type SourceControlFileEntry,
 } from "./sourceControlModel";
+import { buildGitDecorationMap, type GitDecorationMap } from "./gitDecorations";
 import { isSameRoot, normalizeError, type SourceControlTranslate } from "./sourceControlFormat";
 
 export type PanelState = "idle" | "loading" | "no-root" | "no-repo" | "ready" | "error";
@@ -30,6 +31,9 @@ export type BusyAction =
   | "stage-all"
   | "unstage-all"
   | "discard-all"
+  | "stage-selected"
+  | "unstage-selected"
+  | "discard-selected"
   | "fetch"
   | "pull"
   | "push"
@@ -50,6 +54,7 @@ export type SourceControlRuntimeState = {
   busyAction: Ref<BusyAction | null>;
   repoRoot: ReadableRef<string | null>;
   entries: ReadableRef<SourceControlFileEntry[]>;
+  gitDecorations: ReadableRef<GitDecorationMap>;
   stagedCount: ReadableRef<number>;
   stageAllPaths: ReadableRef<string[]>;
   unstageAllPaths: ReadableRef<string[]>;
@@ -88,6 +93,9 @@ export function useSourceControlState(options: SourceControlStateOptions) {
     buildSourceControlEntries(status.value?.changedFiles ?? []),
   );
   const repoRoot = computed(() => status.value?.repoRoot ?? repo.value?.repoRoot ?? null);
+  const gitDecorations = computed(() =>
+    buildGitDecorationMap(repoRoot.value, status.value?.changedFiles ?? []),
+  );
   const branchLabel = computed(() => {
     const current = status.value ?? repo.value;
     if (!current) return options.t("app.header.sourceControl");
@@ -241,6 +249,7 @@ export function useSourceControlState(options: SourceControlStateOptions) {
     errorMessage,
     busyAction,
     entries: entries as ComputedRef<SourceControlFileEntry[]>,
+    gitDecorations: gitDecorations as ComputedRef<GitDecorationMap>,
     repoRoot,
     branchLabel,
     stagedCount,
