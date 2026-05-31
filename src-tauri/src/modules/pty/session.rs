@@ -353,7 +353,20 @@ pub fn spawn(
                     }
                 }
                 // Coalesce a short window so a burst flushes as one chunk.
-                thread::sleep(FLUSH_COALESCE);
+                // Skip the sleep when data is already large to avoid adding
+                // latency to high-throughput streams.
+                let pending_len = {
+                    match mutex_lock(lock, "pty pending output") {
+                        Ok(g) => g.bytes.len(),
+                        Err(error) => {
+                            log::error!("{error}");
+                            break;
+                        }
+                    }
+                };
+                if pending_len < 32 * 1024 {
+                    thread::sleep(FLUSH_COALESCE);
+                }
                 let frame = match mutex_lock(lock, "pty pending output") {
                     Ok(mut guard) => guard.take_frame(),
                     Err(error) => {

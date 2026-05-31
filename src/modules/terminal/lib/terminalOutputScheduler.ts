@@ -60,8 +60,15 @@ async function flushQueue(
     while (queue.pending.length > 0) {
       const batch = queue.pending.splice(0);
       const segments = coalesceWrites(batch.map((item) => item.data));
+      // Fire-and-forget: xterm buffers writes internally, no need to await
+      // each segment's callback. This allows multiple PTY chunks to merge
+      // within a single RAF frame instead of one-chunk-per-frame.
       for (const segment of segments) {
-        await writeSegment(term, segment);
+        try {
+          term.write(segment);
+        } catch (e) {
+          console.warn("[nexterm] terminal write failed:", e);
+        }
       }
       for (const item of batch) item.resolve();
     }
@@ -69,17 +76,6 @@ async function flushQueue(
     queue.flushing = false;
     if (queue.pending.length > 0) scheduleFlush(term, queue);
   }
-}
-
-function writeSegment(term: Terminal, data: TerminalWriteData): Promise<void> {
-  return new Promise((resolve) => {
-    try {
-      term.write(data, () => resolve());
-    } catch (e) {
-      console.warn("[nexterm] terminal write failed:", e);
-      resolve();
-    }
-  });
 }
 
 function coalesceWrites(parts: TerminalWriteData[]): TerminalWriteData[] {
