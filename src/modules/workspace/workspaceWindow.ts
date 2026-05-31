@@ -1,4 +1,5 @@
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { IS_LINUX, IS_WINDOWS } from "@/lib/platform";
 import type { WorkspaceSelection } from "./workspaceRootPinia";
 
 const WORKSPACE_WINDOW_PREFIX = "workspace";
@@ -31,5 +32,8 @@ export function openWorkspaceInNewWindow(selection: WorkspaceSelection): Webview
     titleBarStyle: "overlay",
     hiddenTitle: true,
     visible: false,
+    // Windows/Linux: hide system decorations, use custom title bar
+    ...(IS_WINDOWS && { decorations: false, transparent: true, shadow: false }),
+    ...(IS_LINUX && { decorations: false, transparent: true }),
   });
 }
