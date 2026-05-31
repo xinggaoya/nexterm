@@ -87,6 +87,9 @@ export function createTerminalOptions() {
     cursorStyle: "bar" as const,
     cursorInactiveStyle: "outline" as const,
     scrollback: prefs.terminalScrollback,
+    smoothScrollDuration: 125,
+    scrollSensitivity: 1,
+    fastScrollSensitivity: 5,
     allowProposedApi: true,
   };
 }
@@ -403,12 +406,13 @@ function recoverSlotLayout(
   const w = container.clientWidth;
   const h = container.clientHeight;
   if (!isUsableLayout(w, h)) return false;
-
   slot.lastW = w;
   slot.lastH = h;
   safeFit(slot);
   const resized = syncPtySize(slot, leafId, options.forcePty ?? false);
-  refreshTerminal(slot);
+  // Only force a full repaint when the terminal dimensions actually changed.
+  // xterm handles repaint internally after fit() when dimensions are stable.
+  if (resized) refreshTerminal(slot);
 
   const bridge = adapter?.resolveLeaf(leafId);
   if (options.kickPty && bridge && slot.term.cols > 0 && slot.term.rows > 0) {

@@ -216,7 +216,7 @@ async function processPtyChunk(
     startOffset = s.nextOutputOffset;
   }
 
-  await writeSessionBytes(leafId, s, generation, bytes);
+  writeSessionBytes(leafId, s, generation, bytes);
   s.nextOutputOffset = startOffset + bytes.length;
 }
 
@@ -260,46 +260,34 @@ async function fillTranscriptGap(
     }
 
     const wanted = Math.min(bytes.length, targetOffset - cursor);
-    await writeSessionBytes(leafId, s, generation, bytes.subarray(0, wanted));
+    writeSessionBytes(leafId, s, generation, bytes.subarray(0, wanted));
     cursor += wanted;
     s.nextOutputOffset = cursor;
   }
 }
 
-async function writeSessionBytes(
+function writeSessionBytes(
   leafId: number,
   s: Session,
   generation: number,
   bytes: Uint8Array,
-): Promise<void> {
+): void {
   if (bytes.length === 0 || s.disposed || s.generation !== generation) return;
+
+  // Fire-and-forget: scheduleTerminalWrite queues data for the next RAF
+  // flush. Awaiting it would stall the outputChain to one chunk per frame.
+  // By not awaiting, multiple PTY chunks merge within a single RAF frame
+  // via coalesceWrites in the output scheduler.
+  writeToTerminal(s.modelTerm, bytes);
 
   const slot = getSlotForLeaf(leafId);
   if (slot && slot.currentLeafId === leafId) {
-    await Promise.all([
-      writeToTerminal(s.modelTerm, bytes),
-      writeToTerminal(slot.term, bytes),
-    ]);
-    return;
-  }
-
-  await writeToTerminal(s.modelTerm, bytes);
-  const currentSlot = getSlotForLeaf(leafId);
-  if (
-    currentSlot &&
-    currentSlot.currentLeafId === leafId &&
-    !s.disposed &&
-    s.generation === generation
-  ) {
-    await writeToTerminal(currentSlot.term, bytes);
+    writeToTerminal(slot.term, bytes);
   }
 }
 
-function writeToTerminal(
-  term: Terminal,
-  data: string | Uint8Array,
-): Promise<void> {
-  return scheduleTerminalWrite(term, data);
+function writeToTerminal(term: Terminal, data: string | Uint8Array): void {
+  scheduleTerminalWrite(term, data);
 }
 
 async function openPtyForSession(
