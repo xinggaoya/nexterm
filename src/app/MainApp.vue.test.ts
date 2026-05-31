@@ -253,6 +253,21 @@ vi.mock("./components/WorkspaceWelcome.vue", () => ({
       '<section data-workspace-welcome><span>{{ error ?? "welcome" }}</span><button data-welcome-open @click="$emit(\'chooseWorkspace\')">open</button><button v-if="recentWorkspaces.length" data-open-recent @click="$emit(\'openRecent\', recentWorkspaces[0])">recent</button><button data-welcome-wsl @click="$emit(\'workspaceEnvChange\', { kind: \'wsl\', distro: \'Ubuntu\' })">wsl</button></section>',
   },
 }));
+vi.mock("@/lib/platform", () => ({
+  IS_MAC: false,
+  IS_LINUX: false,
+  IS_WINDOWS: true,
+  USE_CUSTOM_WINDOW_CONTROLS: true,
+  MOD_KEY: "Ctrl",
+  MOD_PROP: "ctrl" as const,
+  CTRL_KEY: "Ctrl",
+  ALT_KEY: "Alt",
+  SHIFT_KEY: "Shift",
+  TAB_KEY: "Tab",
+  ENTER_KEY: "Enter",
+  KEY_SEP: "+",
+  fmtShortcut: (...parts: string[]) => parts.join("+"),
+}));
 
 function wrapperCleanup(host: HTMLElement) {
   document.body
@@ -432,6 +447,9 @@ describe("MainApp.vue", () => {
       visible: false,
       titleBarStyle: "overlay",
       hiddenTitle: true,
+      decorations: false,
+      transparent: true,
+      shadow: false,
     });
     expect(instance.options.url).toMatch(/^index\.html\?/);
     expect(instance.options.url).toContain("workspaceEnv=wsl");
