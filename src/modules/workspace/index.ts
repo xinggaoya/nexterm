@@ -11,5 +11,8 @@ export { useWorkspaceEnvPiniaStore } from "./workspaceEnvPinia";
 export {
   RECENT_WORKSPACE_LIMIT,
   normalizeWorkspacePath,
+  type LaunchWorkspace,
+  type WorkspaceSelection,
   useWorkspaceRootPiniaStore,
 } from "./workspaceRootPinia";
+export { openWorkspaceInNewWindow } from "./workspaceWindow";

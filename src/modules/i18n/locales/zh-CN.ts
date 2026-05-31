@@ -94,6 +94,11 @@ const zhCN = {
       noWorkspace: "未打开工作区",
       openFolder: "打开文件夹",
     },
+    workspaceOpen: {
+      currentWindow: "在当前窗口打开",
+      newWindow: "在新窗口打开",
+      title: "选择打开方式",
+    },
     workspaceEnv: {
       switchingTo: "正在切换到 {target}",
       title: "工作区环境",
