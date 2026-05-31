@@ -3,10 +3,12 @@
   "identifier": "default",
   "description": "Capability for the main window",
   "windows": [
-    "main"
+    "main",
+    "workspace-*"
   ],
   "permissions": [
     "core:default",
+    "core:webview:allow-create-webview-window",
     "core:window:allow-start-dragging",
     "core:window:allow-close",
     "core:window:allow-destroy",

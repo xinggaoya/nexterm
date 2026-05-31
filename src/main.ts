@@ -10,7 +10,7 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import MainApp from "./app/MainApp.vue";
 import { applyLanguagePreference, i18n } from "./modules/i18n";
-import { initLaunchDir, getLaunchDir } from "./lib/launchDir";
+import { initLaunchDir, getLaunchWorkspace } from "./lib/launchDir";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "./lib/platform";
 import { hasTauriInternals } from "./lib/tauriRuntime";
 import { usePreferencesPiniaStore } from "./modules/settings/preferencesPinia";
@@ -30,7 +30,7 @@ app.use(i18n);
 const prefs = usePreferencesPiniaStore(pinia);
 if (hasTauriInternals()) await prefs.hydrate();
 await applyLanguagePreference(prefs.language);
-await useWorkspaceRootPiniaStore(pinia).bootstrap(getLaunchDir());
+await useWorkspaceRootPiniaStore(pinia).bootstrap(getLaunchWorkspace());
 
 app.mount("#root");
 

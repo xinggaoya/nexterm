@@ -114,6 +114,19 @@ const windowMock = vi.hoisted(() => {
     },
   };
 });
+const webviewWindowMock = vi.hoisted(() => ({
+  instances: [] as Array<{ label: string; options: Record<string, unknown>; once: ReturnType<typeof vi.fn> }>,
+  WebviewWindow: vi.fn(function WebviewWindow(
+    this: { label: string; options: Record<string, unknown>; once: ReturnType<typeof vi.fn> },
+    label: string,
+    options: Record<string, unknown>,
+  ) {
+    this.label = label;
+    this.options = options;
+    this.once = vi.fn(async () => vi.fn());
+    webviewWindowMock.instances.push(this);
+  }),
+}));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
@@ -132,6 +145,10 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => windowMock.currentWindow,
+}));
+
+vi.mock("@tauri-apps/api/webviewWindow", () => ({
+  WebviewWindow: webviewWindowMock.WebviewWindow,
 }));
 
 vi.mock("@/components/WindowControls.vue", () => ({
@@ -255,6 +272,7 @@ describe("MainApp.vue", () => {
     delete (window as typeof window & { __TAURI_INTERNALS__?: unknown })
       .__TAURI_INTERNALS__;
     eventListenMock.handlers.length = 0;
+    webviewWindowMock.instances.length = 0;
     document.body.innerHTML = "";
     setI18nLanguage("en-US");
     setCurrentWorkspaceEnv({ kind: "local" });
@@ -318,12 +336,38 @@ describe("MainApp.vue", () => {
     }
   });
 
-  it("opens a workspace from the promoted header action", async () => {
+  it("shows the workspace target chooser from the promoted header action", async () => {
     const pinia = createPinia();
     const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
-    workspaceRoot.chooseWorkspace = vi.fn(async () => {
-      workspaceRoot.rootPath = "/repo";
-      return { path: "/repo", env: LOCAL_WORKSPACE, openedAt: 1 };
+    workspaceRoot.pickWorkspaceDirectory = vi.fn(async () => ({
+      path: "/repo",
+      env: LOCAL_WORKSPACE,
+    }));
+
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+
+    await wrapper.find("[data-open-workspace]").trigger("click");
+    await flushPromises();
+    await nextTick();
+
+    expect(workspaceRoot.pickWorkspaceDirectory).toHaveBeenCalledTimes(1);
+    expect(document.body.querySelector("[data-workspace-open-choice-path]")?.textContent)
+      .toContain("/repo");
+    expect(wrapper.find("[data-terminal-stack]").exists()).toBe(false);
+  });
+
+  it("opens a picked header workspace in the current window after target selection", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.pickWorkspaceDirectory = vi.fn(async () => ({
+      path: "/repo",
+      env: LOCAL_WORKSPACE,
+    }));
+    workspaceRoot.openWorkspace = vi.fn(async (path: string) => {
+      workspaceRoot.rootPath = path;
+      return { path, env: LOCAL_WORKSPACE, openedAt: 1 };
     });
 
     const wrapper = mount(MainApp, {
@@ -334,8 +378,65 @@ describe("MainApp.vue", () => {
     await flushPromises();
     await nextTick();
 
-    expect(workspaceRoot.chooseWorkspace).toHaveBeenCalledTimes(1);
+    expect(document.body.querySelector("[data-workspace-open-choice-path]")?.textContent)
+      .toContain("/repo");
+
+    document
+      .body
+      .querySelector<HTMLElement>("[data-open-workspace-current]")
+      ?.click();
+    await flushPromises();
+    await nextTick();
+
+    expect(workspaceRoot.openWorkspace).toHaveBeenCalledWith(
+      "/repo",
+      LOCAL_WORKSPACE,
+    );
+    expect(webviewWindowMock.WebviewWindow).not.toHaveBeenCalled();
     expect(wrapper.find("[data-terminal-stack]").text()).toBe("1:1");
+  });
+
+  it("opens a picked WSL workspace in a new window after target selection", async () => {
+    const pinia = createPinia();
+    const env = { kind: "wsl" as const, distro: "Ubuntu" };
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.pickWorkspaceDirectory = vi.fn(async () => ({
+      path: "/home/dev/repo",
+      env,
+    }));
+    workspaceRoot.openWorkspace = vi.fn(async (path: string) => {
+      workspaceRoot.rootPath = path;
+      return { path, env, openedAt: 1 };
+    });
+
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+
+    await wrapper.find("[data-open-workspace]").trigger("click");
+    await flushPromises();
+    await nextTick();
+
+    document
+      .body
+      .querySelector<HTMLElement>("[data-open-workspace-new-window]")
+      ?.click();
+    await flushPromises();
+
+    expect(workspaceRoot.openWorkspace).not.toHaveBeenCalled();
+    expect(webviewWindowMock.WebviewWindow).toHaveBeenCalledTimes(1);
+    const instance = webviewWindowMock.instances[0];
+    expect(instance.label).toMatch(/^workspace-/);
+    expect(instance.options).toMatchObject({
+      title: "Nexterm",
+      visible: false,
+      titleBarStyle: "overlay",
+      hiddenTitle: true,
+    });
+    expect(instance.options.url).toMatch(/^index\.html\?/);
+    expect(instance.options.url).toContain("workspaceEnv=wsl");
+    expect(instance.options.url).toContain("wslDistro=Ubuntu");
+    expect(instance.options.url).toContain("workspacePath=%2Fhome%2Fdev%2Frepo");
   });
 
   it("keeps preinitialized workspace root available on first render", async () => {

@@ -92,6 +92,11 @@ const enUS = {
       noWorkspace: "No workspace",
       openFolder: "Open folder",
     },
+    workspaceOpen: {
+      currentWindow: "Current window",
+      newWindow: "New window",
+      title: "Choose how to open",
+    },
     workspaceEnv: {
       switchingTo: "Switching to {target}",
       title: "Workspace environment",
