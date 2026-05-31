@@ -32,6 +32,13 @@ type OpenOptions = {
   persist?: boolean;
 };
 
+export type WorkspaceSelection = {
+  path: string;
+  env: WorkspaceEnv;
+};
+
+export type LaunchWorkspace = WorkspaceSelection;
+
 function normalizeError(error: unknown): string {
   if (typeof error === "string") return error;
   if (error && typeof error === "object" && "message" in error) {
@@ -141,17 +148,23 @@ export const useWorkspaceRootPiniaStore = defineStore("workspace-root", {
     error: null,
   }),
   actions: {
-    async bootstrap(explicitLaunchDir?: string | null): Promise<void> {
+    async bootstrap(explicitLaunch?: string | LaunchWorkspace | null): Promise<void> {
       if (this.hydrated) return;
       const prefs = await loadPreferences().catch(() => DEFAULT_PREFERENCES);
       this.recentWorkspaces = normalizeRecentWorkspaces(prefs.recentWorkspaces);
       this.lastWorkspace = normalizeStoredWorkspace(prefs.lastWorkspace);
 
-      const explicit = explicitLaunchDir
-        ? normalizeWorkspacePath(explicitLaunchDir)
-        : null;
+      const explicit =
+        typeof explicitLaunch === "string"
+          ? { path: normalizeWorkspacePath(explicitLaunch), env: LOCAL_WORKSPACE }
+          : explicitLaunch
+            ? {
+                path: normalizeWorkspacePath(explicitLaunch.path),
+                env: explicitLaunch.env,
+              }
+            : null;
       const candidate = explicit
-        ? { path: explicit, env: LOCAL_WORKSPACE, openedAt: Date.now() }
+        ? { ...explicit, openedAt: Date.now() }
         : this.lastWorkspace;
 
       if (candidate) {
@@ -208,13 +221,22 @@ export const useWorkspaceRootPiniaStore = defineStore("workspace-root", {
         this.loading = false;
       }
     },
-    async chooseWorkspace(): Promise<StoredWorkspace | null> {
+    async pickWorkspaceDirectory(): Promise<WorkspaceSelection | null> {
       const env = useWorkspaceEnvPiniaStore().env;
       const selected = await selectWorkspaceDirectory(
         dialogDefaultPath(this.rootPath, env),
       );
       if (!selected) return null;
-      return this.openWorkspace(selected, envForSelectedDirectory(selected, env));
+      const path = normalizeWorkspacePath(selected);
+      return {
+        path,
+        env: envForSelectedDirectory(path, env),
+      };
+    },
+    async chooseWorkspace(): Promise<StoredWorkspace | null> {
+      const selected = await this.pickWorkspaceDirectory();
+      if (!selected) return null;
+      return this.openWorkspace(selected.path, selected.env);
     },
     clearWorkspace() {
       this.rootPath = null;

@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import {
+  BrowsersOutline,
+  DesktopOutline,
+  FolderOpenOutline,
+} from "@vicons/ionicons5";
+import {
   NConfigProvider,
   NDialogProvider,
   NDrawer,
   NDrawerContent,
+  NIcon,
   NMessageProvider,
+  NModal,
   NNotificationProvider,
 } from "naive-ui";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
@@ -27,8 +34,10 @@ import { MAX_PANES_PER_TAB, type Tab } from "@/modules/tabs/tabsTypes";
 import CommandPalette from "@/modules/commands/CommandPalette.vue";
 import NotificationBridge from "@/modules/notifications/NotificationBridge.vue";
 import {
+  openWorkspaceInNewWindow,
   useWorkspaceEnvPiniaStore,
   useWorkspaceRootPiniaStore,
+  type WorkspaceSelection,
 } from "@/modules/workspace";
 import WorkspaceWelcome from "./components/WorkspaceWelcome.vue";
 import UnsavedCloseGuard from "./components/UnsavedCloseGuard.vue";
@@ -51,6 +60,7 @@ const tabs = useTabsPiniaStore();
 const workspaceEnv = useWorkspaceEnvPiniaStore();
 const workspaceRootStore = useWorkspaceRootPiniaStore();
 const settingsOpen = ref(false);
+const workspaceOpenChoice = ref<WorkspaceSelection | null>(null);
 const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
 const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
 const closeGuard = ref<InstanceType<typeof UnsavedCloseGuard> | null>(null);
@@ -191,6 +201,7 @@ const taskConsole = useTaskConsoleController({
 const {
   chooseWorkspace,
   openRecentWorkspace,
+  openWorkspacePath,
   startWorkspaceLifecycle,
   stopWorkspaceLifecycle,
   switchWorkspace,
@@ -204,6 +215,38 @@ const {
   tabs,
   t: (key) => t(key),
 });
+
+function selectedWorkspaceLabel(selection: WorkspaceSelection): string {
+  return selection.env.kind === "wsl"
+    ? `WSL · ${selection.env.distro}`
+    : t("common.local");
+}
+
+async function chooseWorkspaceOpenTarget() {
+  try {
+    const selection = await workspaceRootStore.pickWorkspaceDirectory();
+    workspaceOpenChoice.value = selection;
+  } catch (error) {
+    window.alert(String(error));
+  }
+}
+
+async function openSelectedWorkspaceInCurrentWindow() {
+  const selection = workspaceOpenChoice.value;
+  workspaceOpenChoice.value = null;
+  if (!selection) return;
+  await openWorkspacePath(selection.path, selection.env);
+}
+
+function openSelectedWorkspaceInNewWindow() {
+  const selection = workspaceOpenChoice.value;
+  workspaceOpenChoice.value = null;
+  if (!selection) return;
+  const webview = openWorkspaceInNewWindow(selection);
+  void webview.once("tauri://error", (event) => {
+    window.alert(String(event.payload));
+  });
+}
 
 function openSettings(tab: SettingsTab = SETTINGS_DEFAULT_TAB) {
   activeSettingsTab.value = tab;
@@ -321,7 +364,7 @@ watch(
               @pin-tab="(id) => tabs.pinTab(id)"
               @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement)"
               @new-tab="newTerminalTab"
-              @choose-workspace="chooseWorkspace"
+              @choose-workspace="chooseWorkspaceOpenTarget"
               @split-pane="splitActivePane"
               @open-command-palette="openCommandPalette"
               @open-settings="openSettings"
@@ -378,6 +421,64 @@ watch(
               @execute-command="executeCommandFromPalette"
               @open-file="openFileFromCommandPalette"
             />
+
+            <NModal
+              :show="!!workspaceOpenChoice"
+              preset="card"
+              :title="t('app.workspaceOpen.title')"
+              :bordered="false"
+              :auto-focus="false"
+              :mask-closable="true"
+              class="max-w-[420px]"
+              @update:show="(show) => { if (!show) workspaceOpenChoice = null; }"
+            >
+              <div v-if="workspaceOpenChoice" class="space-y-4">
+                <div
+                  data-workspace-open-choice-path
+                  class="rounded-md border border-border/70 bg-muted/40 px-3 py-2"
+                >
+                  <div class="flex min-w-0 items-center gap-2 text-[12px] text-muted-foreground">
+                    <NIcon :component="FolderOpenOutline" class="shrink-0" />
+                    <span class="truncate">{{ selectedWorkspaceLabel(workspaceOpenChoice) }}</span>
+                  </div>
+                  <div class="mt-1 truncate text-[13px] text-foreground">
+                    {{ workspaceOpenChoice.path }}
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    data-open-workspace-current
+                    class="flex min-h-20 items-center gap-3 rounded-md border border-border/70 bg-card px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    @click="openSelectedWorkspaceInCurrentWindow"
+                  >
+                    <span class="grid size-8 shrink-0 place-items-center rounded-md bg-accent text-foreground">
+                      <NIcon :component="DesktopOutline" :size="17" />
+                    </span>
+                    <span class="min-w-0">
+                      <span class="block text-[13px] font-medium text-foreground">
+                        {{ t("app.workspaceOpen.currentWindow") }}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    data-open-workspace-new-window
+                    class="flex min-h-20 items-center gap-3 rounded-md border border-border/70 bg-card px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    @click="openSelectedWorkspaceInNewWindow"
+                  >
+                    <span class="grid size-8 shrink-0 place-items-center rounded-md bg-accent text-foreground">
+                      <NIcon :component="BrowsersOutline" :size="17" />
+                    </span>
+                    <span class="min-w-0">
+                      <span class="block text-[13px] font-medium text-foreground">
+                        {{ t("app.workspaceOpen.newWindow") }}
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </NModal>
 
             <NDrawer
               v-model:show="settingsOpen"
