@@ -14,6 +14,7 @@ use std::time::Duration;
 use serde::Serialize;
 use shared_child::SharedChild;
 
+use crate::modules::lock::{rwlock_read, rwlock_write};
 use crate::modules::process::suppress_command_window;
 #[cfg(windows)]
 use crate::modules::workspace::validate_wsl_distro_name;
@@ -189,7 +190,7 @@ pub fn shell_session_open(
     };
     let session = Arc::new(ShellSession::new(initial, workspace));
     let id = state.next_session_id.fetch_add(1, Ordering::Relaxed);
-    state.sessions.write().unwrap().insert(id, session);
+    rwlock_write(&state.sessions, "shell sessions")?.insert(id, session);
     Ok(id)
 }
 
@@ -203,10 +204,7 @@ pub async fn shell_session_run(
     timeout_secs: Option<u64>,
     workspace: Option<WorkspaceEnv>,
 ) -> Result<SessionRunOutput, String> {
-    let session = state
-        .sessions
-        .read()
-        .unwrap()
+    let session = rwlock_read(&state.sessions, "shell sessions")?
         .get(&id)
         .cloned()
         .ok_or_else(|| "no shell session".to_string())?;
@@ -226,7 +224,7 @@ pub async fn shell_session_run(
 
 #[tauri::command]
 pub fn shell_session_close(state: tauri::State<ShellState>, id: u32) -> Result<(), String> {
-    state.sessions.write().unwrap().remove(&id);
+    rwlock_write(&state.sessions, "shell sessions")?.remove(&id);
     Ok(())
 }
 
@@ -242,7 +240,7 @@ pub fn shell_bg_spawn(
     authorize_spawn_cwd(&registry, cwd.as_deref(), &workspace)?;
     let proc = background::spawn(command, cwd, workspace)?;
     let id = state.next_bg_id.fetch_add(1, Ordering::Relaxed);
-    state.bg.write().unwrap().insert(id, proc);
+    rwlock_write(&state.bg, "background processes")?.insert(id, proc);
     Ok(id)
 }
 
@@ -252,10 +250,7 @@ pub fn shell_bg_logs(
     handle: u32,
     since_offset: Option<u64>,
 ) -> Result<BackgroundLogResponse, String> {
-    let proc = state
-        .bg
-        .read()
-        .unwrap()
+    let proc = rwlock_read(&state.bg, "background processes")?
         .get(&handle)
         .cloned()
         .ok_or_else(|| "no background handle".to_string())?;
@@ -264,7 +259,10 @@ pub fn shell_bg_logs(
 
 #[tauri::command]
 pub fn shell_bg_kill(state: tauri::State<ShellState>, handle: u32) -> Result<(), String> {
-    if let Some(proc) = state.bg.read().unwrap().get(&handle).cloned() {
+    if let Some(proc) = rwlock_read(&state.bg, "background processes")?
+        .get(&handle)
+        .cloned()
+    {
         proc.kill();
     }
     Ok(())
@@ -272,7 +270,7 @@ pub fn shell_bg_kill(state: tauri::State<ShellState>, handle: u32) -> Result<(),
 
 #[tauri::command]
 pub fn shell_bg_list(state: tauri::State<ShellState>) -> Result<Vec<BackgroundProcInfo>, String> {
-    let map = state.bg.read().unwrap();
+    let map = rwlock_read(&state.bg, "background processes")?;
     let mut out = Vec::with_capacity(map.len());
     for (id, p) in map.iter() {
         out.push(p.info(*id));
