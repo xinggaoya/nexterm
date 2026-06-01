@@ -25,4 +25,51 @@ describe("markdown renderer", () => {
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
   });
+
+  it("strips javascript: and data: from link hrefs but keeps the visible text", () => {
+    const html = renderMarkdownToHtml(
+      "[click](javascript:alert(1)) and [pdf](data:text/html,<script>alert(1)</script>)",
+    );
+
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toContain("data:text/html");
+    expect(html).toContain("click");
+    expect(html).toContain("pdf");
+    // The dangerous hrefs must not be emitted as anchor attributes.
+    expect(html).not.toMatch(/href="[^"]*(?:javascript|data):/i);
+  });
+
+  it("rejects hrefs whose scheme is hidden behind leading whitespace or control bytes", () => {
+    // Real-world browsers historically stripped leading whitespace and C0
+    // control bytes before evaluating a scheme, so `\tjavascript:` and
+    // `  javascript:` both resolve to `javascript:`. We must reject them
+    // even though the URL string contains literal control characters.
+    const html = renderMarkdownToHtml("[boom](\tjavascript:alert(1))");
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toMatch(/href="[^"]*javascript:/i);
+  });
+
+  it("drops unknown schemes (file:, ssh:) and refuses them as anchors", () => {
+    const html = renderMarkdownToHtml("[local](file:///etc/passwd) and [ssh](ssh://host)");
+    expect(html).not.toMatch(/href="[^"]*file:/i);
+    expect(html).not.toMatch(/href="[^"]*ssh:/i);
+    expect(html).toContain("local");
+    expect(html).toContain("ssh");
+  });
+
+  it("preserves safe http/https/mailto anchors with rel and target hardening", () => {
+    const html = renderMarkdownToHtml(
+      "[docs](https://example.com) and [mail](mailto:a@b.co)",
+    );
+    expect(html).toContain('href="https://example.com"');
+    expect(html).toContain('href="mailto:a@b.co"');
+    expect(html).toContain('rel="noopener noreferrer"');
+    expect(html).toContain('target="_blank"');
+  });
+
+  it("replaces image tags whose src is a dangerous scheme with a safe placeholder", () => {
+    const html = renderMarkdownToHtml("![evil](javascript:alert(1))");
+    expect(html).not.toMatch(/src="[^"]*javascript:/i);
+    expect(html).toContain("blocked: unsafe image source");
+  });
 });
