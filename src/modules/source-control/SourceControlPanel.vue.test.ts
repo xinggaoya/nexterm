@@ -480,7 +480,7 @@ describe("SourceControlPanel.vue", () => {
         gitRelated: false,
       },
     });
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(2000);
     await flush();
 
     expect(native.gitStatus).toHaveBeenCalledTimes(1);
@@ -535,7 +535,7 @@ describe("SourceControlPanel.vue", () => {
         gitRelated: false,
       },
     });
-    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(2000);
     await flush();
 
     expect(native.gitStatus).not.toHaveBeenCalled();
