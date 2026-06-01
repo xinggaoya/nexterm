@@ -6,7 +6,7 @@ import {
   setRecentWorkspaces,
   type StoredWorkspace,
 } from "@/modules/settings/store";
-import { authorizeWorkspace } from "./workspaceNative";
+import { authorizeWorkspace, getWslHome } from "./workspaceNative";
 import { selectWorkspaceDirectory } from "./workspaceDialog";
 import {
   LOCAL_WORKSPACE,
@@ -102,6 +102,12 @@ function isUncPath(path: string): boolean {
 
 function isWslUncPath(path: string): boolean {
   return /^\/\/wsl(?:\.localhost|\$)\//i.test(path);
+}
+
+function wslHomeToUnc(distro: string, linuxPath: string): string {
+  const normalized = linuxPath.replace(/\\/g, "/");
+  const tail = normalized.replace(/^\/+/, "");
+  return `\\\\wsl.localhost\\${distro}\\${tail.replace(/\//g, "\\")}`;
 }
 
 function dialogDefaultPath(
@@ -232,6 +238,37 @@ export const useWorkspaceRootPiniaStore = defineStore("workspace-root", {
         path,
         env: envForSelectedDirectory(path, env),
       };
+    },
+    async pickWorkspaceDirectoryForEnv(
+      env: WorkspaceEnv,
+    ): Promise<WorkspaceSelection | null> {
+      const defaultPath = await this.resolveDialogDefaultPath(env);
+      const selected = await selectWorkspaceDirectory(defaultPath);
+      if (!selected) return null;
+      const path = normalizeWorkspacePath(selected);
+      return {
+        path,
+        env: envForSelectedDirectory(path, env),
+      };
+    },
+    async resolveDialogDefaultPath(env: WorkspaceEnv): Promise<string | undefined> {
+      if (env.kind === "local") {
+        return dialogDefaultPath(this.rootPath, env);
+      }
+      const recent = this.recentWorkspaces.find(
+        (item) => item.env.kind === "wsl" && item.env.distro === env.distro,
+      );
+      if (recent) {
+        return recent.path.startsWith("/")
+          ? wslHomeToUnc(env.distro, recent.path)
+          : recent.path;
+      }
+      try {
+        const home = await getWslHome(env.distro);
+        return wslHomeToUnc(env.distro, home);
+      } catch {
+        return undefined;
+      }
     },
     async chooseWorkspace(): Promise<StoredWorkspace | null> {
       const selected = await this.pickWorkspaceDirectory();

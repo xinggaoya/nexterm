@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import {
   AlertCircleOutline,
+  DesktopOutline,
   FolderOpenOutline,
+  ServerOutline,
   TimeOutline,
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NSpin } from "naive-ui";
+import { computed, onMounted } from "vue";
 import WorkspaceEnvSelector from "./WorkspaceEnvSelector.vue";
+import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { t } from "@/modules/i18n/translate";
 import type { StoredWorkspace } from "@/modules/settings/store";
-import type { WorkspaceEnv } from "@/modules/workspace";
+import {
+  LOCAL_WORKSPACE,
+  useWorkspaceEnvPiniaStore,
+  type WorkspaceEnv,
+} from "@/modules/workspace";
 
 const props = defineProps<{
   recentWorkspaces: StoredWorkspace[];
@@ -22,6 +30,11 @@ const emit = defineEmits<{
   workspaceEnvChange: [env: WorkspaceEnv];
 }>();
 
+const workspaceEnv = useWorkspaceEnvPiniaStore();
+
+const distros = computed(() => workspaceEnv.distros ?? []);
+const distrosLoading = computed(() => workspaceEnv.loading);
+
 function basename(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : path;
@@ -30,6 +43,14 @@ function basename(path: string): string {
 function envLabel(env: WorkspaceEnv): string {
   return env.kind === "wsl" ? env.distro : t("common.local");
 }
+
+function openEnv(env: WorkspaceEnv) {
+  emit("workspaceEnvChange", env);
+}
+
+onMounted(() => {
+  if (hasTauriInternals()) void workspaceEnv.refreshDistros();
+});
 </script>
 
 <template>
@@ -61,6 +82,28 @@ function envLabel(env: WorkspaceEnv): string {
           >
             <template #icon><NIcon :component="FolderOpenOutline" /></template>
             {{ t("app.welcome.openFolder") }}
+          </NButton>
+          <NButton
+            size="medium"
+            secondary
+            data-open-workspace-local
+            :loading="props.loading"
+            @click="openEnv(LOCAL_WORKSPACE)"
+          >
+            <template #icon><NIcon :component="DesktopOutline" /></template>
+            {{ t("app.welcome.openInLocal") }}
+          </NButton>
+          <NButton
+            v-for="distro in distros"
+            :key="`open-wsl-${distro.name}`"
+            size="medium"
+            secondary
+            :data-open-workspace-wsl="distro.name"
+            :loading="distrosLoading"
+            @click="openEnv({ kind: 'wsl', distro: distro.name })"
+          >
+            <template #icon><NIcon :component="ServerOutline" /></template>
+            {{ t("app.welcome.openInWsl", { distro: distro.name }) }}
           </NButton>
         </div>
 

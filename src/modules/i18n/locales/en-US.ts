@@ -79,6 +79,12 @@ const enUS = {
       newTerminal: "New terminal",
       openCommandCenter: "Open command center",
       openFolder: "Open Folder",
+      openFolderMenu: {
+        browseIn: "Browse folder in {env}…",
+        openHomeCurrent: "Open {env} home (current window)",
+        openHomeNew: "Open {env} home (new window)",
+        wslDistro: "WSL: {distro}",
+      },
       preview: "Preview",
       sourceControl: "Source Control",
       splitActions: "Split pane",
@@ -105,6 +111,8 @@ const enUS = {
     welcome: {
       noRecentWorkspaces: "No recent workspaces",
       openFolder: "Open Folder",
+      openInLocal: "Open local home",
+      openInWsl: "Open WSL · {distro}",
       opening: "Opening...",
       recentWorkspaces: "Recent Workspaces",
     },

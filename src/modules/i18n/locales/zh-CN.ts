@@ -81,6 +81,12 @@ const zhCN = {
       newTerminal: "新建终端",
       openCommandCenter: "打开命令中心",
       openFolder: "打开文件夹",
+      openFolderMenu: {
+        browseIn: "在 {env} 中浏览文件夹…",
+        openHomeCurrent: "打开 {env} home (当前窗口)",
+        openHomeNew: "打开 {env} home (新窗口)",
+        wslDistro: "WSL：{distro}",
+      },
       preview: "预览",
       sourceControl: "源代码管理",
       splitActions: "拆分布局",
@@ -107,6 +113,8 @@ const zhCN = {
     welcome: {
       noRecentWorkspaces: "没有最近工作区",
       openFolder: "打开文件夹",
+      openInLocal: "打开本机 home",
+      openInWsl: "打开 WSL · {distro}",
       opening: "正在打开...",
       recentWorkspaces: "最近工作区",
     },

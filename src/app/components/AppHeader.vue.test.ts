@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
+import { createPinia } from "pinia";
 import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AppHeader from "./AppHeader.vue";
 import type { Tab } from "@/modules/tabs/tabsTypes";
-
 const windowApi = vi.hoisted(() => ({
   startDragging: vi.fn(),
 }));
@@ -38,6 +38,9 @@ vi.mock("naive-ui", async () => {
       ],
       template:
         "<button :disabled='disabled'><slot name='icon' /><slot /></button>",
+    }),
+    NButtonGroup: defineComponent({
+      template: "<div data-n-button-group><slot /></div>",
     }),
     NIcon: defineComponent({
       props: ["component", "size", "color", "depth", "wrapperDisplay"],
@@ -158,13 +161,14 @@ describe("AppHeader.vue", () => {
 
   it("emits workbench actions from toolbar controls", async () => {
     const wrapper = mount(AppHeader, {
-      props: {
-        tabs,
-        activeId: 1,
-        canSplit: true,
-        showWindowControls: true,
-      },
-    });
+          global: { plugins: [createPinia()] },
+          props: {
+            tabs,
+            activeId: 1,
+            canSplit: true,
+            showWindowControls: true,
+          },
+        });
 
     await wrapper.find("[data-new-tab]").trigger("click");
     await wrapper.find("[data-open-workspace]").trigger("click");
@@ -189,13 +193,14 @@ describe("AppHeader.vue", () => {
 
   it("wraps toolbar icon actions in Naive tooltip title components", () => {
     const wrapper = mount(AppHeader, {
-      props: {
-        tabs,
-        activeId: 1,
-        canSplit: true,
-        showWindowControls: false,
-      },
-    });
+          global: { plugins: [createPinia()] },
+          props: {
+            tabs,
+            activeId: 1,
+            canSplit: true,
+            showWindowControls: false,
+          },
+        });
 
     const tooltipTitles = wrapper.findAllComponents({ name: "TooltipTitle" });
 
@@ -208,13 +213,14 @@ describe("AppHeader.vue", () => {
 
   it("shows the terminal icon on the new-terminal button", () => {
     const wrapper = mount(AppHeader, {
-      props: {
-        tabs,
-        activeId: 1,
-        canSplit: true,
-        showWindowControls: false,
-      },
-    });
+          global: { plugins: [createPinia()] },
+          props: {
+            tabs,
+            activeId: 1,
+            canSplit: true,
+            showWindowControls: false,
+          },
+        });
 
     const newTabButton = wrapper.find("[data-new-tab]");
 
@@ -225,13 +231,14 @@ describe("AppHeader.vue", () => {
 
   it("opens a dropdown with row and col options for the split button", () => {
     const wrapper = mount(AppHeader, {
-      props: {
-        tabs,
-        activeId: 1,
-        canSplit: true,
-        showWindowControls: false,
-      },
-    });
+          global: { plugins: [createPinia()] },
+          props: {
+            tabs,
+            activeId: 1,
+            canSplit: true,
+            showWindowControls: false,
+          },
+        });
 
     expect(wrapper.find("[data-split-actions]").exists()).toBe(true);
     expect(wrapper.find("[data-split-row]").exists()).toBe(true);
@@ -240,13 +247,14 @@ describe("AppHeader.vue", () => {
 
   it("emits pinTab only when double clicking an editor preview tab", async () => {
     const wrapper = mount(AppHeader, {
-      props: {
-        tabs,
-        activeId: 6,
-        canSplit: true,
-        showWindowControls: false,
-      },
-    });
+          global: { plugins: [createPinia()] },
+          props: {
+            tabs,
+            activeId: 6,
+            canSplit: true,
+            showWindowControls: false,
+          },
+        });
 
     await wrapper.find("[data-tab-id='6']").trigger("dblclick");
     await wrapper.find("[data-tab-id='5']").trigger("dblclick");
@@ -257,13 +265,14 @@ describe("AppHeader.vue", () => {
 
   it("renders tab icons and terminal labels from the current project directory", () => {
     const wrapper = mount(AppHeader, {
-      props: {
-        tabs,
-        activeId: 1,
-        canSplit: true,
-        showWindowControls: false,
-      },
-    });
+          global: { plugins: [createPinia()] },
+          props: {
+            tabs,
+            activeId: 1,
+            canSplit: true,
+            showWindowControls: false,
+          },
+        });
 
     expect(wrapper.find("[data-tab-label='1']").text()).toBe("OpenAI Codex");
     expect(wrapper.find("[data-tab-label='3']").text()).toBe("project");
@@ -279,13 +288,14 @@ describe("AppHeader.vue", () => {
 
   it("disables split actions when the active tab cannot split", () => {
     const wrapper = mount(AppHeader, {
-      props: {
-        tabs,
-        activeId: 1,
-        canSplit: false,
-        showWindowControls: false,
-      },
-    });
+          global: { plugins: [createPinia()] },
+          props: {
+            tabs,
+            activeId: 1,
+            canSplit: false,
+            showWindowControls: false,
+          },
+        });
 
     expect(wrapper.find("[data-split-row]").attributes("disabled")).toBeDefined();
     expect(wrapper.find("[data-split-col]").attributes("disabled")).toBeDefined();
@@ -294,13 +304,14 @@ describe("AppHeader.vue", () => {
 
   it("uses non-button drag regions for moving the window", () => {
     const wrapper = mount(AppHeader, {
-      props: {
-        tabs,
-        activeId: 1,
-        canSplit: true,
-        showWindowControls: false,
-      },
-    });
+          global: { plugins: [createPinia()] },
+          props: {
+            tabs,
+            activeId: 1,
+            canSplit: true,
+            showWindowControls: false,
+          },
+        });
 
     const header = wrapper.find("header");
     const dragRegion = wrapper.find("[data-window-drag-region]");
@@ -326,13 +337,14 @@ describe("AppHeader.vue", () => {
 
   it("keeps the whole title bar on the default cursor", () => {
     const wrapper = mount(AppHeader, {
-      props: {
-        tabs,
-        activeId: 1,
-        canSplit: true,
-        showWindowControls: false,
-      },
-    });
+          global: { plugins: [createPinia()] },
+          props: {
+            tabs,
+            activeId: 1,
+            canSplit: true,
+            showWindowControls: false,
+          },
+        });
 
     const header = wrapper.find("header");
     const dragRegions = wrapper.findAll("[data-window-drag-region]");
@@ -348,13 +360,14 @@ describe("AppHeader.vue", () => {
 
   it("emits a reorder request from pointer dragging a tab", async () => {
     const wrapper = mount(AppHeader, {
-      props: {
-        tabs,
-        activeId: 1,
-        canSplit: true,
-        showWindowControls: false,
-      },
-    });
+          global: { plugins: [createPinia()] },
+          props: {
+            tabs,
+            activeId: 1,
+            canSplit: true,
+            showWindowControls: false,
+          },
+        });
     const source = wrapper.find("[data-tab-id='1']");
     const target = wrapper.find("[data-tab-id='5']");
     vi.spyOn(target.element, "getBoundingClientRect").mockReturnValue({
@@ -419,23 +432,24 @@ describe("AppHeader.vue", () => {
 
   it("keeps tab labels truncated inside adaptive tab widths", () => {
     const wrapper = mount(AppHeader, {
-      props: {
-        tabs: [
-          {
-            id: 1,
-            kind: "editor",
-            title: "a-very-long-file-name-that-should-not-overflow-the-title-bar.ts",
-            path: "/repo/src/a-very-long-file-name-that-should-not-overflow-the-title-bar.ts",
-            dirty: false,
-            preview: false,
+          global: { plugins: [createPinia()] },
+          props: {
+            tabs: [
+              {
+                id: 1,
+                kind: "editor",
+                title: "a-very-long-file-name-that-should-not-overflow-the-title-bar.ts",
+                path: "/repo/src/a-very-long-file-name-that-should-not-overflow-the-title-bar.ts",
+                dirty: false,
+                preview: false,
+              },
+              ...tabs,
+            ],
+            activeId: 1,
+            canSplit: true,
+            showWindowControls: false,
           },
-          ...tabs,
-        ],
-        activeId: 1,
-        canSplit: true,
-        showWindowControls: false,
-      },
-    });
+        });
 
     const tabButton = wrapper.find("[data-tab-id='1']");
 
@@ -444,5 +458,113 @@ describe("AppHeader.vue", () => {
     expect(tabButton.classes()).toContain("flex-[1_1_10rem]");
     expect(tabButton.classes()).not.toContain("shrink-0");
     expect(wrapper.find("[data-tab-label='1']").classes()).toContain("truncate");
+  });
+
+  it("renders a dropdown menu button next to the open-folder button", () => {
+    const wrapper = mount(AppHeader, {
+      global: { plugins: [createPinia()] },
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    expect(wrapper.find("[data-open-workspace]").exists()).toBe(true);
+    expect(wrapper.find("[data-open-workspace-menu]").exists()).toBe(true);
+  });
+
+  it("emits chooseWorkspaceInEnv when the local browse option is selected", async () => {
+    const wrapper = mount(AppHeader, {
+      global: { plugins: [createPinia()] },
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    await wrapper.find("[data-option-key='browse:local']").trigger("click");
+
+    expect(wrapper.emitted("chooseWorkspaceInEnv")).toEqual([
+      [{ kind: "local" }],
+    ]);
+  });
+
+  it("emits chooseWorkspaceInEnv with the WSL distro for WSL browse options", async () => {
+    const pinia = createPinia();
+    const { useWorkspaceEnvPiniaStore } = await import(
+      "@/modules/workspace/workspaceEnvPinia"
+    );
+    const envStore = useWorkspaceEnvPiniaStore(pinia);
+    envStore.distros = [
+      { name: "Ubuntu-22.04", default: true, running: true },
+    ];
+    const wrapper = mount(AppHeader, {
+      global: { plugins: [pinia] },
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+    await nextTick();
+
+    await wrapper
+      .find("[data-option-key='browse:wsl:Ubuntu-22.04']")
+      .trigger("click");
+
+    expect(wrapper.emitted("chooseWorkspaceInEnv")).toEqual([
+      [{ kind: "wsl", distro: "Ubuntu-22.04" }],
+    ]);
+  });
+
+  it("emits openEnvHomeCurrent for the selected env", async () => {
+    const pinia = createPinia();
+    const { useWorkspaceEnvPiniaStore } = await import(
+      "@/modules/workspace/workspaceEnvPinia"
+    );
+    const envStore = useWorkspaceEnvPiniaStore(pinia);
+    envStore.distros = [{ name: "Debian", default: false, running: false }];
+    const wrapper = mount(AppHeader, {
+      global: { plugins: [pinia] },
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+    await nextTick();
+
+    await wrapper
+      .find("[data-option-key='home-current:wsl:Debian']")
+      .trigger("click");
+
+    expect(wrapper.emitted("openEnvHomeCurrent")).toEqual([
+      [{ kind: "wsl", distro: "Debian" }],
+    ]);
+  });
+  it("emits openEnvHomeNew for the selected env", async () => {
+    const wrapper = mount(AppHeader, {
+      global: { plugins: [createPinia()] },
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    await wrapper
+      .find("[data-option-key='home-new:local']")
+      .trigger("click");
+
+    expect(wrapper.emitted("openEnvHomeNew")).toEqual([
+      [{ kind: "local" }],
+    ]);
   });
 });
