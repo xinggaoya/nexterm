@@ -30,6 +30,20 @@ const showXfoHint = computed(() =>
   props.url ? !isLocalPreviewUrl(props.url) : false,
 );
 
+// `allow-scripts` + `allow-same-origin` together effectively disable the
+// sandbox: the iframe is treated as same-origin and the script can reach the
+// parent origin's storage. That is the right default for *local* previews
+// (so the dev server's own cookies / localStorage keep working), but for any
+// remote URL it would let an XSS payload read and exfiltrate the user's
+// localhost data. Drop `allow-same-origin` (and a couple of related flags
+// that only matter with it) for any non-local URL.
+const sandboxAttrs = computed(() => {
+  if (isLocalPreviewUrl(props.url)) {
+    return "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads";
+  }
+  return "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox";
+});
+
 function clearSuspendTimer() {
   if (suspendTimer === null) return;
   clearTimeout(suspendTimer);
@@ -111,7 +125,7 @@ defineExpose<PreviewPaneHandle>({
         :src="props.url"
         :title="t('preview.preview')"
         class="h-full w-full border-0"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
+        :sandbox="sandboxAttrs"
         referrerPolicy="no-referrer"
         allow="clipboard-read; clipboard-write; fullscreen"
       />

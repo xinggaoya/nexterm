@@ -34,6 +34,7 @@ type Session = {
   pty: PtySession | null;
   transcriptReader: PtySession | null;
   ptyOpening: boolean;
+  ptyFailed: boolean;
   initialCwd: string | undefined;
   lastCwd: string | null;
   pendingExit: number | null;
@@ -55,7 +56,13 @@ type Session = {
   outputChain: Promise<void>;
   generation: number;
   pendingWrites: string[];
+  pendingWriteBytes: number;
 };
+
+// Cap on how much user-typed input we buffer while the PTY is not yet
+// attached. The bound is in bytes (UTF-16 code units) rather than entries
+// because a long paste can be a single entry that runs into the megabytes.
+const PENDING_WRITES_BYTE_LIMIT = 256 * 1024;
 
 export type TerminalSessionHandle = {
   write: (data: string) => void;
@@ -119,6 +126,7 @@ function ensureSession(
     pty: null,
     transcriptReader: null,
     ptyOpening: false,
+    ptyFailed: false,
     initialCwd,
     lastCwd: null,
     pendingExit: null,
@@ -140,6 +148,7 @@ function ensureSession(
     outputChain: Promise.resolve(),
     generation: 0,
     pendingWrites: startupInput ? [startupInput] : [],
+    pendingWriteBytes: startupInput ? startupInput.length : 0,
   };
   session.modelOscDisposers = registerModelOsc(session);
   sessions.set(leafId, session);
@@ -156,11 +165,17 @@ function flushPendingWrites(s: Session): void {
   const pty = s.pty;
   if (!pty || s.pendingWrites.length === 0) return;
   const writes = s.pendingWrites.splice(0);
+  s.pendingWriteBytes = 0;
   for (const data of writes) {
     void pty.write(data).catch((e) => {
       console.warn("[nexterm] queued terminal write failed:", e);
     });
   }
+}
+
+function dropPendingWrites(s: Session): void {
+  s.pendingWrites.length = 0;
+  s.pendingWriteBytes = 0;
 }
 
 function registerModelOsc(s: Session): (() => void)[] {
@@ -412,12 +427,28 @@ function attachSession(
         }
         s.pty = pty;
         s.transcriptReader = pty;
+        s.ptyFailed = false;
         flushPendingWrites(s);
         if (s.cols > 0 && s.rows > 0) pty.resize(s.cols, s.rows);
       })
       .catch((e) => {
         s.ptyOpening = false;
-        console.error("[nexterm] openPty failed:", e);
+        s.ptyFailed = true;
+        // Without dropping the queued writes, every keystroke the user
+        // typed while the open was in flight would sit in memory forever
+        // (the PTY is gone and nothing will ever drain the queue). Drop
+        // them now and surface the error via the onExit channel so the
+        // UI can offer "respawn" or show an inline failure state.
+        const queuedCount = s.pendingWrites.length;
+        const queuedBytes = s.pendingWriteBytes;
+        dropPendingWrites(s);
+        console.error(
+          `[nexterm] openPty failed for leaf ${leafId} (dropped ${queuedCount} queued writes / ${queuedBytes} bytes):`,
+          e,
+        );
+        s.pendingExit = -1;
+        s.shellExited = true;
+        s.callbacks.onExit?.(-1);
       });
   }
 }
@@ -497,7 +528,9 @@ export async function respawnSession(
   s.outputChain = Promise.resolve();
   s.nextOutputOffset = 0;
   s.shellExited = false;
+  s.ptyFailed = false;
   s.pendingExit = null;
+  dropPendingWrites(s);
   resetModel(s);
 
   const slot = getSlotForLeaf(leafId);
@@ -553,8 +586,30 @@ configureTerminalSessionDisposer(disposeSession);
 export function writeTerminalSession(leafId: number, data: string): void {
   const s = sessions.get(leafId);
   if (!s) return;
+  if (s.ptyFailed || s.shellExited) {
+    // The PTY is gone for good — don't accumulate input the shell can never
+    // see. A single warning per session is enough to surface the problem
+    // without spamming the console on every keystroke.
+    console.warn(
+      `[nexterm] dropping terminal input for leaf ${leafId}: PTY unavailable`,
+    );
+    return;
+  }
   if (!s.pty) {
+    if (s.pendingWriteBytes + data.length > PENDING_WRITES_BYTE_LIMIT) {
+      console.warn(
+        `[nexterm] pending terminal input exceeded ${PENDING_WRITES_BYTE_LIMIT} bytes; dropping oldest entries`,
+      );
+      while (
+        s.pendingWriteBytes + data.length > PENDING_WRITES_BYTE_LIMIT &&
+        s.pendingWrites.length > 0
+      ) {
+        const removed = s.pendingWrites.shift();
+        if (removed) s.pendingWriteBytes -= removed.length;
+      }
+    }
     s.pendingWrites.push(data);
+    s.pendingWriteBytes += data.length;
     return;
   }
   void s.pty.write(data);
