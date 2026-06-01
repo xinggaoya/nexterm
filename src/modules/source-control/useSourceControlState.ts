@@ -3,6 +3,7 @@ import {
   getCurrentInstance,
   onBeforeUnmount,
   ref,
+  shallowRef,
   watch,
   type ComputedRef,
   type Ref,
@@ -93,9 +94,7 @@ export function useSourceControlState(options: SourceControlStateOptions) {
     buildSourceControlEntries(status.value?.changedFiles ?? []),
   );
   const repoRoot = computed(() => status.value?.repoRoot ?? repo.value?.repoRoot ?? null);
-  const gitDecorations = computed(() =>
-    buildGitDecorationMap(repoRoot.value, status.value?.changedFiles ?? []),
-  );
+  const gitDecorations = shallowRef<GitDecorationMap>(new Map());
   const branchLabel = computed(() => {
     const current = status.value ?? repo.value;
     if (!current) return options.t("app.header.sourceControl");
@@ -129,6 +128,10 @@ export function useSourceControlState(options: SourceControlStateOptions) {
       if (currentId !== requestId.value) return;
       repo.value = snapshot.repo;
       status.value = snapshot.status;
+      gitDecorations.value = buildGitDecorationMap(
+        snapshot.status?.repoRoot ?? null,
+        snapshot.status?.changedFiles ?? [],
+      );
       panelState.value = snapshot.repo && snapshot.status ? "ready" : "no-repo";
     } catch (error) {
       if (currentId !== requestId.value) return;
@@ -156,6 +159,22 @@ export function useSourceControlState(options: SourceControlStateOptions) {
       try {
         const next = await options.native.gitStatus(root);
         if (currentId !== requestId.value) return;
+
+        // Only rebuild git decorations if changed files actually differ.
+        // This avoids triggering downstream reactive updates when the
+        // file tree has not changed, which would cause unnecessary
+        // rebuilds in the file explorer.
+        const prevFiles = status.value?.changedFiles ?? [];
+        const nextFiles = next.changedFiles;
+        const filesChanged =
+          prevFiles.length !== nextFiles.length ||
+          prevFiles.some(
+            (f, i) =>
+              f.path !== nextFiles[i].path ||
+              f.staged !== nextFiles[i].staged ||
+              f.unstaged !== nextFiles[i].unstaged,
+          );
+
         status.value = next;
         repo.value = {
           repoRoot: next.repoRoot,
@@ -163,6 +182,9 @@ export function useSourceControlState(options: SourceControlStateOptions) {
           upstream: next.upstream,
           isDetached: next.isDetached,
         };
+        if (filesChanged) {
+          gitDecorations.value = buildGitDecorationMap(next.repoRoot, nextFiles);
+        }
         panelState.value = "ready";
       } catch (error) {
         if (currentId !== requestId.value) return;
@@ -229,7 +251,9 @@ export function useSourceControlState(options: SourceControlStateOptions) {
 
   watch(options.fsEvent, (event) => {
     if (!event || !isSameRoot(event.rootPath, options.rootPath.value)) return;
-    scheduleAutoRefresh(event.gitRelated ? 80 : 650);
+    // Git-related events get fast refresh; non-git events use a longer delay
+    // to avoid unnecessary git status calls during heavy file I/O.
+    scheduleAutoRefresh(event.gitRelated ? 80 : 2000);
   });
 
   watch(busyAction, (value) => {
@@ -249,7 +273,7 @@ export function useSourceControlState(options: SourceControlStateOptions) {
     errorMessage,
     busyAction,
     entries: entries as ComputedRef<SourceControlFileEntry[]>,
-    gitDecorations: gitDecorations as ComputedRef<GitDecorationMap>,
+    gitDecorations: gitDecorations as Ref<GitDecorationMap>,
     repoRoot,
     branchLabel,
     stagedCount,

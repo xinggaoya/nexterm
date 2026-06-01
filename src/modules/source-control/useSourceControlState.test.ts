@@ -88,7 +88,7 @@ describe("useSourceControlState", () => {
       gitRelated: false,
     };
     await nextTick();
-    await vi.advanceTimersByTimeAsync(650);
+    await vi.advanceTimersByTimeAsync(2000);
     await flush();
 
     expect(native.gitStatus).not.toHaveBeenCalled();

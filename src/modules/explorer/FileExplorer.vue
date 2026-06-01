@@ -6,7 +6,7 @@ import {
   SearchOutline,
 } from "@vicons/ionicons5";
 import { NButton, NIcon, NSpin } from "naive-ui";
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t } from "@/modules/i18n/translate";
 import type { WorkspaceFsChangedEvent } from "@/lib/native";
@@ -19,7 +19,9 @@ import ExplorerSearch from "./ExplorerSearch.vue";
 import FileTreeRow from "./FileTreeRow.vue";
 import {
   buildFileTreeRows,
+  updateFileTreeRows,
   type FileTreeRow as VisibleTreeRow,
+  type FileTreeSnapshot,
   type FileTreeState,
   type PendingCreate,
 } from "./lib/fileTreeRows";
@@ -57,8 +59,8 @@ const emit = defineEmits<{
 }>();
 
 const prefs = usePreferencesPiniaStore();
-const nodes = ref<FileTreeState>({});
-const expanded = ref<Set<string>>(new Set());
+const nodes = reactive<FileTreeState>({});
+const expanded = reactive(new Set<string>());
 const pendingCreate = ref<PendingCreate | null>(null);
 const renaming = ref<string | null>(null);
 const selectedPath = ref<string | null>(null);
@@ -75,25 +77,47 @@ const rootName = computed(() => {
 });
 
 const rootState = computed(() =>
-  props.rootPath ? nodes.value[props.rootPath] : undefined,
+  props.rootPath ? nodes[props.rootPath] : undefined,
 );
 
-const treeSnapshot = computed(() => {
+const emptySnapshot: FileTreeSnapshot = {
+  rows: [] as VisibleTreeRow[],
+  entryIndexByPath: new Map<string, number>(),
+};
+
+const treeSnapshot = shallowRef<FileTreeSnapshot>(emptySnapshot);
+
+function rebuildTreeSnapshot() {
   if (!props.rootPath) {
-    return {
-      rows: [] as VisibleTreeRow[],
-      entryIndexByPath: new Map<string, number>(),
-    };
+    treeSnapshot.value = emptySnapshot;
+    return;
   }
-  return buildFileTreeRows({
+  treeSnapshot.value = buildFileTreeRows({
     rootPath: props.rootPath,
-    nodes: nodes.value,
-    expanded: expanded.value,
+    nodes,
+    expanded,
     pendingCreate: pendingCreate.value,
     renaming: renaming.value,
     gitDecorations: props.gitDecorations,
   });
-});
+}
+
+function patchTreeSnapshot(changedPaths: string[]) {
+  if (!props.rootPath) {
+    treeSnapshot.value = emptySnapshot;
+    return;
+  }
+  const result = updateFileTreeRows(treeSnapshot.value, changedPaths, {
+    nodes,
+    expanded,
+    pendingCreate: pendingCreate.value,
+    renaming: renaming.value,
+    gitDecorations: props.gitDecorations,
+  });
+  if (result !== treeSnapshot.value) {
+    treeSnapshot.value = result;
+  }
+}
 
 const rows = computed(() => treeSnapshot.value.rows);
 const entryIndexByPath = computed(() => treeSnapshot.value.entryIndexByPath);
@@ -127,7 +151,7 @@ function normalizeError(error: unknown): string {
 }
 
 async function loadChildren(path: string, options: LoadChildrenOptions = {}) {
-  const current = nodes.value[path];
+  const current = nodes[path];
   const silent = options.silent === true && current?.status === "loaded";
   const active = inFlightLoads.get(path);
   if (active) {
@@ -138,16 +162,20 @@ async function loadChildren(path: string, options: LoadChildrenOptions = {}) {
 
   inFlightLoads.set(path, { rerun: false, silent });
   if (!silent) {
-    nodes.value = { ...nodes.value, [path]: { status: "loading" } };
+    nodes[path] = { status: "loading" };
+    rebuildTreeSnapshot();
   }
   try {
     const entries = await readFileTreeDir(path, prefs.showHidden);
-    nodes.value = { ...nodes.value, [path]: { status: "loaded", entries } };
+    nodes[path] = { status: "loaded", entries };
+    if (silent) {
+      patchTreeSnapshot([path]);
+    } else {
+      rebuildTreeSnapshot();
+    }
   } catch (error) {
-    nodes.value = {
-      ...nodes.value,
-      [path]: { status: "error", message: normalizeError(error) },
-    };
+    nodes[path] = { status: "error", message: normalizeError(error) };
+    rebuildTreeSnapshot();
   } finally {
     const finished = inFlightLoads.get(path);
     inFlightLoads.delete(path);
@@ -198,7 +226,7 @@ function refreshTargetsForPaths(paths: string[]): string[] {
   if (!props.rootPath) return [];
   const root = normalizePath(props.rootPath);
   const refreshablePaths = new Map<string, string>();
-  for (const [path, state] of Object.entries(nodes.value)) {
+  for (const [path, state] of Object.entries(nodes)) {
     if (isRefreshableState(state)) {
       refreshablePaths.set(normalizePath(path), path);
     }
@@ -260,12 +288,11 @@ function scheduleTreeRefresh(event: WorkspaceFsChangedEvent) {
 }
 
 function toggleDir(path: string) {
-  const next = new Set(expanded.value);
-  const isOpen = next.has(path);
-  if (isOpen) next.delete(path);
-  else next.add(path);
-  expanded.value = next;
-  if (!isOpen && (!nodes.value[path] || nodes.value[path].status === "error")) {
+  const isOpen = expanded.has(path);
+  if (isOpen) expanded.delete(path);
+  else expanded.add(path);
+  rebuildTreeSnapshot();
+  if (!isOpen && (!nodes[path] || nodes[path].status === "error")) {
     void loadChildren(path);
   }
 }
@@ -286,13 +313,15 @@ function beginCreate(parentPath: string | null, kind: "file" | "dir") {
   renaming.value = null;
   pendingCreate.value = { parentPath, kind };
   if (props.rootPath && parentPath !== props.rootPath) {
-    expanded.value = new Set(expanded.value).add(parentPath);
+    expanded.add(parentPath);
   }
-  if (!nodes.value[parentPath]) void loadChildren(parentPath);
+  rebuildTreeSnapshot();
+  if (!nodes[parentPath]) void loadChildren(parentPath);
 }
 
 function cancelCreate() {
   pendingCreate.value = null;
+  rebuildTreeSnapshot();
 }
 
 async function commitCreate(name: string) {
@@ -301,6 +330,7 @@ async function commitCreate(name: string) {
   const trimmed = name.trim();
   if (!trimmed) {
     pendingCreate.value = null;
+    rebuildTreeSnapshot();
     return;
   }
   const path = joinPath(pending.parentPath, trimmed);
@@ -309,6 +339,7 @@ async function commitCreate(name: string) {
     await loadChildren(pending.parentPath);
   } finally {
     pendingCreate.value = null;
+    rebuildTreeSnapshot();
   }
 }
 
@@ -316,10 +347,12 @@ function beginRename(path: string) {
   closeMenu();
   pendingCreate.value = null;
   renaming.value = path;
+  rebuildTreeSnapshot();
 }
 
 function cancelRename() {
   renaming.value = null;
+  rebuildTreeSnapshot();
 }
 
 async function commitRename(newName: string) {
@@ -330,6 +363,7 @@ async function commitRename(newName: string) {
   const oldName = basename(from);
   if (!trimmed || trimmed === oldName) {
     renaming.value = null;
+    rebuildTreeSnapshot();
     return;
   }
   const to = joinPath(parent, trimmed);
@@ -340,6 +374,7 @@ async function commitRename(newName: string) {
     await loadChildren(parent);
   } finally {
     renaming.value = null;
+    rebuildTreeSnapshot();
   }
 }
 
@@ -444,14 +479,15 @@ watch(
   () => props.rootPath,
   (rootPath) => {
     clearScheduledTreeRefresh();
-    nodes.value = {};
-    expanded.value = new Set();
+    Object.keys(nodes).forEach((k) => delete nodes[k]);
+    expanded.clear();
     pendingCreate.value = null;
     renaming.value = null;
     selectedPath.value = null;
     isSearchOpen.value = false;
     isSearchActive.value = false;
     closeMenu();
+    rebuildTreeSnapshot();
     if (rootPath) void loadChildren(rootPath);
   },
   { immediate: true },
@@ -461,7 +497,7 @@ watch(
   () => prefs.showHidden,
   () => {
     if (!props.rootPath) return;
-    const loadedPaths = Object.entries(nodes.value)
+    const loadedPaths = Object.entries(nodes)
       .filter(([, state]) => state.status === "loaded")
       .map(([path]) => path);
     for (const path of loadedPaths.length > 0 ? loadedPaths : [props.rootPath]) {
@@ -477,6 +513,10 @@ watch(
     scheduleTreeRefresh(event);
   },
 );
+
+watch(() => props.gitDecorations, () => {
+  rebuildTreeSnapshot();
+});
 
 watch(rows, () => {
   if (selectedPath.value && !entryIndexByPath.value.has(selectedPath.value)) {
