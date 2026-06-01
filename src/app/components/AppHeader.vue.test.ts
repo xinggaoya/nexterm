@@ -17,6 +17,58 @@ vi.mock("@/components/WindowControls.vue", () => ({
   default: { template: "<div data-window-controls />" },
 }));
 
+vi.mock("naive-ui", async () => {
+  const { defineComponent } = await vi.importActual<typeof import("vue")>("vue");
+  return {
+    NButton: defineComponent({
+      props: [
+        "size",
+        "secondary",
+        "quaternary",
+        "disabled",
+        "type",
+        "ghost",
+        "dashed",
+        "block",
+        "round",
+        "circle",
+        "text",
+        "color",
+        "focusable",
+      ],
+      template:
+        "<button :disabled='disabled'><slot name='icon' /><slot /></button>",
+    }),
+    NIcon: defineComponent({
+      props: ["component", "size", "color", "depth", "wrapperDisplay"],
+      template:
+        "<span :data-icon-name='component && component.name'><slot /></span>",
+    }),
+    NDropdown: defineComponent({
+      props: {
+        options: { type: Array, default: () => [] },
+        disabled: { type: Boolean, default: false },
+        placement: { type: String, default: "" },
+        trigger: { type: String, default: "click" },
+        show: { type: Boolean, default: undefined },
+        renderIcon: { type: Function, default: undefined },
+        animated: { type: [Boolean, Object], default: true },
+        arrow: { type: Boolean, default: false },
+        displayDirective: { type: String, default: "" },
+        to: { type: [String, Object], default: undefined },
+        x: { type: Number, default: undefined },
+        y: { type: Number, default: undefined },
+      },
+      emits: ["select", "clickoutside", "update:show"],
+      template:
+        '<div data-n-dropdown><slot /><button v-for="option in options" :key="option.key" :disabled="disabled" :data-option-key="option.key" :data-split-row="option.key === \'row\' ? \'\' : null" :data-split-col="option.key === \'col\' ? \'\' : null" @click="!disabled && $emit(\'select\', option.key)">{{ option.label }}</button></div>',
+    }),
+    NTooltip: defineComponent({
+      template: "<span><slot name='trigger' /><slot /></span>",
+    }),
+  };
+});
+
 const tabs: Tab[] = [
   {
     id: 1,
@@ -145,10 +197,45 @@ describe("AppHeader.vue", () => {
       },
     });
 
-    expect(wrapper.findAllComponents({ name: "TooltipTitle" }).length).toBeGreaterThanOrEqual(5);
+    const tooltipTitles = wrapper.findAllComponents({ name: "TooltipTitle" });
+
+    expect(tooltipTitles.length).toBeGreaterThanOrEqual(5);
     expect(wrapper.find("[data-new-tab]").attributes("title")).toBeUndefined();
     expect(wrapper.find("[data-split-row]").attributes("title")).toBeUndefined();
+    expect(wrapper.find("[data-split-actions]").attributes("title")).toBeUndefined();
     expect(wrapper.find("[data-open-settings]").attributes("title")).toBeUndefined();
+  });
+
+  it("shows the terminal icon on the new-terminal button", () => {
+    const wrapper = mount(AppHeader, {
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    const newTabButton = wrapper.find("[data-new-tab]");
+
+    expect(newTabButton.exists()).toBe(true);
+    expect(newTabButton.find("[data-icon-name='TerminalOutline']").exists()).toBe(true);
+    expect(newTabButton.find("[data-icon-name='AddOutline']").exists()).toBe(false);
+  });
+
+  it("opens a dropdown with row and col options for the split button", () => {
+    const wrapper = mount(AppHeader, {
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    expect(wrapper.find("[data-split-actions]").exists()).toBe(true);
+    expect(wrapper.find("[data-split-row]").exists()).toBe(true);
+    expect(wrapper.find("[data-split-col]").exists()).toBe(true);
   });
 
   it("emits pinTab only when double clicking an editor preview tab", async () => {

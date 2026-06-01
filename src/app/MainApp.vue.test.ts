@@ -269,6 +269,25 @@ vi.mock("@/lib/platform", () => ({
   fmtShortcut: (...parts: string[]) => parts.join("+"),
 }));
 
+vi.mock("naive-ui", async () => {
+  const actual = await vi.importActual<typeof import("naive-ui")>("naive-ui");
+  const { defineComponent } = await vi.importActual<typeof import("vue")>("vue");
+  return {
+    ...actual,
+    NDropdown: defineComponent({
+      props: {
+        options: { type: Array, default: () => [] },
+        disabled: { type: Boolean, default: false },
+        placement: { type: String, default: "" },
+        trigger: { type: String, default: "click" },
+      },
+      emits: ["select"],
+      template:
+        '<div data-n-dropdown><slot /><button v-for="option in options" :key="option.key" :disabled="disabled" :data-option-key="option.key" :data-split-row="option.key === \'row\' ? \'\' : null" :data-split-col="option.key === \'col\' ? \'\' : null" @click="!disabled && $emit(\'select\', option.key)">{{ option.label }}</button></div>',
+    }),
+  };
+});
+
 function wrapperCleanup(host: HTMLElement) {
   document.body
     .querySelectorAll("[data-settings-panel]")
