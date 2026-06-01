@@ -3,11 +3,14 @@ use std::path::Path;
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
-use tauri::Emitter;
+use tauri::State;
 use tempfile::NamedTempFile;
 
 use crate::modules::fs::wsl_ops::{self, WslEntryKind};
-use crate::modules::workspace::{normalize_host_path, resolve_path, WorkspaceEnv};
+use crate::modules::fs::watcher::{emit_workspace_fs_changed, FsWatcherState};
+use crate::modules::workspace::{
+    normalize_host_path, resolve_path, WorkspaceEnv, WorkspaceRegistry,
+};
 
 const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
@@ -97,13 +100,6 @@ fn bytes_to_read_result(bytes: Vec<u8>, size: u64) -> ReadResult {
     }
 }
 
-#[derive(Serialize, Clone)]
-struct FileWrittenEvent {
-    path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    source: Option<String>,
-}
-
 /// Atomic write via O_EXCL tempfile in the target's parent, then rename.
 /// The random suffix is what blocks pre-staged symlink attacks.
 fn write_atomic(target: &Path, content: &[u8]) -> std::io::Result<()> {
@@ -122,8 +118,8 @@ pub fn fs_write_file(
     path: String,
     content: String,
     workspace: Option<WorkspaceEnv>,
-    source: Option<String>,
-    app: tauri::AppHandle,
+    registry: State<'_, WorkspaceRegistry>,
+    watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     let target = resolve_path(&path, &workspace);
@@ -133,13 +129,15 @@ pub fn fs_write_file(
         e.to_string()
     })?;
 
-    let _ = app.emit(
-        "fs:file-written",
-        FileWrittenEvent {
-            path: path.clone(),
-            source,
-        },
-    );
+    // Proactively notify the active watcher so the file explorer and the
+    // source-control panel refresh immediately, instead of waiting for the
+    // OS-level `notify` round-trip. We mark `git_related = true` because
+    // any tracked file write can affect `git status` output; the
+    // back-end batcher's 1s repeated-signature throttle absorbs the
+    // double-fire from the OS notify callback.
+    if let Some(root) = registry.longest_authorized_root(&target) {
+        emit_workspace_fs_changed(&watcher, &root, vec![path.clone()], true);
+    }
 
     Ok(())
 }

@@ -1,3 +1,4 @@
+import { isSameWorkspaceRoot, normalizeWorkspacePath } from "@/modules/workspace";
 import type { SourceControlFileEntry } from "./sourceControlModel";
 import type { SourceControlStatusKind } from "./sourceControlModel";
 
@@ -19,12 +20,10 @@ export function normalizeError(
   return t("sourceControl.unknownError");
 }
 
-export function normalizePath(path: string): string {
-  return path.replace(/\\/g, "/").replace(/\/+$/, "");
-}
+export { normalizeWorkspacePath as normalizePath };
 
 export function isSameRoot(a: string | null, b: string | null): boolean {
-  return !!a && !!b && normalizePath(a) === normalizePath(b);
+  return isSameWorkspaceRoot(a, b);
 }
 
 export function statusTone(code: string): SourceControlTone {

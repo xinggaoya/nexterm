@@ -49,6 +49,5 @@ export async function writeEditorDocument(
     path,
     content,
     workspace: currentWorkspaceEnv(),
-    source: "editor",
   });
 }

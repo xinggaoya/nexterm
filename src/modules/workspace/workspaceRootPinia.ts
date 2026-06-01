@@ -14,10 +14,10 @@ import {
   type WorkspaceEnv,
 } from "./workspaceEnvSnapshot";
 import { useWorkspaceEnvPiniaStore } from "./workspaceEnvPinia";
-import { normalizeWorkspacePath } from "./workspacePath";
+import { normalizeWorkspacePath, isSameWorkspaceRoot } from "./workspacePath";
 
 export const RECENT_WORKSPACE_LIMIT = 10;
-export { normalizeWorkspacePath };
+export { normalizeWorkspacePath, isSameWorkspaceRoot };
 
 type State = {
   hydrated: boolean;

@@ -11,6 +11,7 @@ import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t } from "@/modules/i18n/translate";
 import type { WorkspaceFsChangedEvent } from "@/lib/native";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import { isSameWorkspaceRoot, normalizeWorkspacePath } from "@/modules/workspace";
 import type { GitDecorationMap } from "@/modules/source-control";
 import ExplorerContextMenu, {
   type ExplorerContextMenuTarget,
@@ -189,12 +190,8 @@ function refreshPath(path: string | null = props.rootPath) {
   if (path) void loadChildren(path);
 }
 
-function normalizePath(path: string): string {
-  return path.replace(/\\/g, "/").replace(/\/+$/, "");
-}
-
 function isSameRoot(a: string | null, b: string | null): boolean {
-  return !!a && !!b && normalizePath(a) === normalizePath(b);
+  return isSameWorkspaceRoot(a, b);
 }
 
 function isRefreshableState(state: FileTreeState[string] | undefined): boolean {
@@ -224,18 +221,18 @@ function nearestRefreshableAncestor(
 
 function refreshTargetsForPaths(paths: string[]): string[] {
   if (!props.rootPath) return [];
-  const root = normalizePath(props.rootPath);
+  const root = normalizeWorkspacePath(props.rootPath);
   const refreshablePaths = new Map<string, string>();
   for (const [path, state] of Object.entries(nodes)) {
     if (isRefreshableState(state)) {
-      refreshablePaths.set(normalizePath(path), path);
+      refreshablePaths.set(normalizeWorkspacePath(path), path);
     }
   }
 
   const targets = new Set<string>();
   let sawRelevantPath = false;
   for (const rawPath of paths.length > 0 ? paths : [props.rootPath]) {
-    const path = normalizePath(rawPath);
+    const path = normalizeWorkspacePath(rawPath);
     if (!isPathWithinRoot(path, root)) continue;
     sawRelevantPath = true;
 

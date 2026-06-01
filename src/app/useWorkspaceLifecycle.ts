@@ -12,6 +12,7 @@ import { dirtyEditorTabs } from "@/modules/tabs/closeGuards";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import {
   getWslHome as getDefaultWslHome,
+  isSameWorkspaceRoot,
   normalizeWorkspacePath,
   type WorkspaceEnv,
 } from "@/modules/workspace";
@@ -60,10 +61,6 @@ export type WorkspaceLifecycleOptions = {
   native?: WorkspaceNativeLike;
 };
 
-function isSameWorkspaceRoot(a: string | null, b: string | null): boolean {
-  return !!a && !!b && normalizeWorkspacePath(a) === normalizeWorkspacePath(b);
-}
-
 function workspaceWatcherKey(
   rootPath: string | null,
   env: WorkspaceEnv,
@@ -89,11 +86,26 @@ export function useWorkspaceLifecycle(options: WorkspaceLifecycleOptions) {
     options.getLocalHome ??
     (async () => (await homeDir()).replace(/\\/g, "/"));
   const getWslHome = options.getWslHome ?? getDefaultWslHome;
-  const workspaceFsEvent = ref<WorkspaceFsChangedEvent | null>(null);
   const switchingWorkspaceEnv = ref<WorkspaceEnv | null>(null);
   const workspaceSwitching = computed(() => switchingWorkspaceEnv.value !== null);
   let workspaceFsUnlisten: UnlistenFn | null = null;
   let watchedWorkspaceKey: string | null = null;
+  // Monotonically increasing counter for received FS events. We pair it
+  // with a snapshot of the latest payload so consumers watching
+  // `workspaceFsEvent` always see a fresh object reference (Vue's `watch`
+  // would otherwise skip notifications when two payloads are deeply equal,
+  // and a single-value ref would lose bursts because the second payload
+  // overwrites the first before subscribers process it).
+  const fsEventVersion = ref(0);
+  const fsEventPayload = ref<WorkspaceFsChangedEvent | null>(null);
+  const workspaceFsEvent = computed<WorkspaceFsChangedEvent | null>(() => {
+    if (fsEventVersion.value === 0 || !fsEventPayload.value) return null;
+    return fsEventPayload.value;
+  });
+  // Serialize watcher (re)starts so a second invocation can't early-return
+  // while the first one is still awaiting `fsUnwatchWorkspace` /
+  // `fsWatchWorkspace` on the backend.
+  let watcherRestartInFlight: Promise<void> | null = null;
 
   function hasDirtyEditors(): boolean {
     if (dirtyEditorTabs(options.tabs.tabs).length > 0) {
@@ -113,20 +125,40 @@ export function useWorkspaceLifecycle(options: WorkspaceLifecycleOptions) {
   }
 
   async function restartWorkspaceWatcher(rootPath: string | null) {
+    if (!runtimeAvailable()) return;
     const watcherKey = workspaceWatcherKey(rootPath, options.workspaceEnv.env);
-    if (!runtimeAvailable() || watchedWorkspaceKey === watcherKey) return;
-    watchedWorkspaceKey = watcherKey;
-    try {
-      await workspaceNative.fsUnwatchWorkspace();
-    } catch (error) {
-      console.warn("Failed to stop workspace watcher", error);
-    }
-    if (!rootPath) return;
-    try {
-      await workspaceNative.fsWatchWorkspace(rootPath);
-    } catch (error) {
-      console.warn("Workspace watcher unavailable", error);
-    }
+    // If a previous restart is still in flight, chain onto it so the order
+    // of `fsUnwatchWorkspace` + `fsWatchWorkspace` calls is preserved. We
+    // intentionally do NOT early-return based on `watchedWorkspaceKey`
+    // alone, because a quick A→B→A sequence needs the second A request to
+    // re-watch after B's teardown completes.
+    const prior = watcherRestartInFlight ?? Promise.resolve();
+    const next = prior
+      .then(async () => {
+        // Re-evaluate inside the chain: a later request may have already
+        // advanced `watchedWorkspaceKey` past ours; skip the redundant
+        // unwatch+watch in that case.
+        if (watchedWorkspaceKey === watcherKey) return;
+        watchedWorkspaceKey = watcherKey;
+        try {
+          await workspaceNative.fsUnwatchWorkspace();
+        } catch (error) {
+          console.warn("Failed to stop workspace watcher", error);
+        }
+        if (!rootPath) return;
+        try {
+          await workspaceNative.fsWatchWorkspace(rootPath);
+        } catch (error) {
+          console.warn("Workspace watcher unavailable", error);
+        }
+      })
+      .catch((error) => {
+        console.warn("Workspace watcher restart failed", error);
+      });
+    watcherRestartInFlight = next.finally(() => {
+      if (watcherRestartInFlight === next) watcherRestartInFlight = null;
+    });
+    return watcherRestartInFlight;
   }
 
   async function listenWorkspaceFsChanges() {
@@ -134,7 +166,10 @@ export function useWorkspaceLifecycle(options: WorkspaceLifecycleOptions) {
     workspaceFsUnlisten = await listenFn(WORKSPACE_FS_CHANGED_EVENT, (event) => {
       const rootPath = options.workspaceRoot.value;
       if (!isSameWorkspaceRoot(event.payload.rootPath, rootPath)) return;
-      workspaceFsEvent.value = event.payload;
+      // Reassign both refs in a microtask so back-to-back events never get
+      // collapsed by Vue's reactivity batching into a single update.
+      fsEventPayload.value = event.payload;
+      fsEventVersion.value += 1;
     });
   }
 

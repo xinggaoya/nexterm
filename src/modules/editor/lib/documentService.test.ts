@@ -62,14 +62,13 @@ describe("editor document service", () => {
     });
   });
 
-  it("writes editor documents with editor source metadata", async () => {
+  it("writes editor documents with the local workspace env", async () => {
     await writeEditorDocument("/repo/a.ts", "next");
 
     expect(invoke).toHaveBeenCalledWith("fs_write_file", {
       path: "/repo/a.ts",
       content: "next",
       workspace: LOCAL_WORKSPACE,
-      source: "editor",
     });
   });
 });
