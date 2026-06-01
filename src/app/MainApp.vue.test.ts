@@ -111,20 +111,41 @@ const windowMock = vi.hoisted(() => {
         return vi.fn();
       }),
       startDragging: vi.fn(async () => {}),
+      innerSize: vi.fn(async () => ({ width: 1200, height: 800 })),
+      outerPosition: vi.fn(async () => ({ x: 100, y: 100 })),
     },
   };
 });
 const webviewWindowMock = vi.hoisted(() => ({
-  instances: [] as Array<{ label: string; options: Record<string, unknown>; once: ReturnType<typeof vi.fn> }>,
+  instances: [] as Array<{
+    label: string;
+    options: Record<string, unknown>;
+    setFocus: ReturnType<typeof vi.fn>;
+    unminimize: ReturnType<typeof vi.fn>;
+    once: ReturnType<typeof vi.fn>;
+  }>,
+  existingByLabel: new Map<string, unknown>(),
   WebviewWindow: vi.fn(function WebviewWindow(
-    this: { label: string; options: Record<string, unknown>; once: ReturnType<typeof vi.fn> },
+    this: {
+      label: string;
+      options: Record<string, unknown>;
+      setFocus: ReturnType<typeof vi.fn>;
+      unminimize: ReturnType<typeof vi.fn>;
+      once: ReturnType<typeof vi.fn>;
+    },
     label: string,
     options: Record<string, unknown>,
   ) {
     this.label = label;
     this.options = options;
+    this.setFocus = vi.fn(async () => {});
+    this.unminimize = vi.fn(async () => {});
     this.once = vi.fn(async () => vi.fn());
     webviewWindowMock.instances.push(this);
+    webviewWindowMock.existingByLabel.set(label, this);
+  }),
+  getByLabel: vi.fn(async (label: string) => {
+    return webviewWindowMock.existingByLabel.get(label) ?? null;
   }),
 }));
 
@@ -148,7 +169,9 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 
 vi.mock("@tauri-apps/api/webviewWindow", () => ({
-  WebviewWindow: webviewWindowMock.WebviewWindow,
+  WebviewWindow: Object.assign(webviewWindowMock.WebviewWindow, {
+    getByLabel: webviewWindowMock.getByLabel,
+  }),
 }));
 
 vi.mock("@/components/WindowControls.vue", () => ({
@@ -307,6 +330,7 @@ describe("MainApp.vue", () => {
       .__TAURI_INTERNALS__;
     eventListenMock.handlers.length = 0;
     webviewWindowMock.instances.length = 0;
+    webviewWindowMock.existingByLabel.clear();
     document.body.innerHTML = "";
     setI18nLanguage("en-US");
     setCurrentWorkspaceEnv({ kind: "local" });
@@ -456,24 +480,31 @@ describe("MainApp.vue", () => {
       .querySelector<HTMLElement>("[data-open-workspace-new-window]")
       ?.click();
     await flushPromises();
+    await nextTick();
 
     expect(workspaceRoot.openWorkspace).not.toHaveBeenCalled();
     expect(webviewWindowMock.WebviewWindow).toHaveBeenCalledTimes(1);
     const instance = webviewWindowMock.instances[0];
-    expect(instance.label).toMatch(/^workspace-/);
+    expect(instance.label).toMatch(/^workspace-[0-9a-f]{8}$/);
     expect(instance.options).toMatchObject({
       title: "Nexterm",
       visible: false,
+      center: true,
       titleBarStyle: "overlay",
       hiddenTitle: true,
       decorations: false,
       transparent: true,
       shadow: false,
+      width: 1200,
+      height: 800,
+      minWidth: 420,
+      minHeight: 280,
     });
     expect(instance.options.url).toMatch(/^index\.html\?/);
     expect(instance.options.url).toContain("workspaceEnv=wsl");
     expect(instance.options.url).toContain("wslDistro=Ubuntu");
     expect(instance.options.url).toContain("workspacePath=%2Fhome%2Fdev%2Frepo");
+    expect(windowMock.currentWindow.innerSize).toHaveBeenCalled();
   });
 
   it("keeps preinitialized workspace root available on first render", async () => {
@@ -518,6 +549,57 @@ describe("MainApp.vue", () => {
         .querySelector("[data-workspace-open-choice-path]")
         ?.textContent ?? "",
     ).toContain("/home/dev/repo");
+  });
+
+  it("focuses an existing workspace window instead of creating a new one", async () => {
+    const pinia = createPinia();
+    const env = { kind: "wsl" as const, distro: "Ubuntu" };
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    let pickCount = 0;
+    workspaceRoot.pickWorkspaceDirectory = vi.fn(async () => {
+      pickCount += 1;
+      return { path: "/home/dev/repo", env };
+    });
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+
+    // First request creates the new window.
+    await wrapper.find("[data-open-workspace]").trigger("click");
+    await flushPromises();
+    await nextTick();
+    document
+      .body
+      .querySelector<HTMLElement>("[data-open-workspace-new-window]")
+      ?.click();
+    await flushPromises();
+    await nextTick();
+
+    expect(pickCount).toBe(1);
+    expect(webviewWindowMock.WebviewWindow).toHaveBeenCalledTimes(1);
+    const firstInstance = webviewWindowMock.instances[0];
+    const firstLabel = firstInstance.label;
+    expect(firstLabel).toMatch(/^workspace-[0-9a-f]{8}$/);
+
+    // Re-open via the workspace chooser so workspaceOpenChoice gets repopulated.
+    await wrapper.find("[data-open-workspace]").trigger("click");
+    await flushPromises();
+    await nextTick();
+    document
+      .body
+      .querySelector<HTMLElement>("[data-open-workspace-new-window]")
+      ?.click();
+    await flushPromises();
+    await nextTick();
+
+    expect(pickCount).toBe(2);
+    // Re-opening the same workspace must NOT spawn a second window.
+    expect(webviewWindowMock.WebviewWindow).toHaveBeenCalledTimes(1);
+    // The existing instance should have been refocused and unminimized.
+    expect(firstInstance.setFocus).toHaveBeenCalled();
+    expect(firstInstance.unminimize).toHaveBeenCalled();
+    // The label is stable across both invocations so window-state can persist.
+    expect(webviewWindowMock.instances[0].label).toBe(firstLabel);
   });
 
   it("refreshes terminal themes after syncing app theme tokens", async () => {

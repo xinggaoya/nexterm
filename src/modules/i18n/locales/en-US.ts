@@ -130,6 +130,9 @@ const enUS = {
       minimize: "Minimize",
       restore: "Restore",
     },
+    deepLink: {
+      openFailed: "Could not open the workspace from the {scheme} link.",
+    },
   },
   settings: {
     tabs: {
