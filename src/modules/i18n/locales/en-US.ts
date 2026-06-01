@@ -81,6 +81,7 @@ const enUS = {
       openFolder: "Open Folder",
       preview: "Preview",
       sourceControl: "Source Control",
+      splitActions: "Split pane",
       splitDown: "Split down",
       splitRight: "Split right",
       terminal: "Terminal",

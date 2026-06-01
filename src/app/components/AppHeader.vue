@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import {
-  AddOutline,
   CloseOutline,
   DuplicateOutline,
   FolderOpenOutline,
   GitCommitOutline,
   GitCompareOutline,
   GlobeOutline,
+  ReorderFourOutline,
   ReorderTwoOutline,
   SearchOutline,
   SettingsOutline,
@@ -14,8 +14,8 @@ import {
   TimeOutline,
 } from "@vicons/ionicons5";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { NButton, NIcon } from "naive-ui";
-import { onBeforeUnmount, ref, type Component } from "vue";
+import { NButton, NDropdown, NIcon, type DropdownOption } from "naive-ui";
+import { computed, h, onBeforeUnmount, ref, type Component, type VNode } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import WindowControls from "@/components/WindowControls.vue";
 import { IS_MAC } from "@/lib/platform";
@@ -299,6 +299,23 @@ async function startWindowDrag(event: PointerEvent) {
   }
 }
 
+function handleSplitSelect(key: string | number) {
+  const dir: SplitDir = key === "col" ? "col" : "row";
+  emit("splitPane", dir);
+}
+
+const splitOptions = computed<DropdownOption[]>(() => [
+  { key: "row", label: t("app.header.splitRight") },
+  { key: "col", label: t("app.header.splitDown") },
+]);
+
+function renderSplitOptionIcon(option: DropdownOption): VNode {
+  return h(NIcon, { size: 14 }, {
+    default: () =>
+      h(option.key === "col" ? ReorderTwoOutline : DuplicateOutline),
+  });
+}
+
 onBeforeUnmount(() => {
   removePointerListeners();
 });
@@ -318,7 +335,7 @@ onBeforeUnmount(() => {
           :data-toggle-left-panel="leftPanelOpen"
           :aria-label="t('app.header.toggleSourceControl')"
           :class="[
-            'grid h-7 w-7 place-items-center rounded-md text-[12px] transition-colors',
+            'grid h-7 w-7 place-items-center rounded-md transition-colors',
             leftPanelOpen
               ? 'bg-accent text-foreground'
               : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
@@ -342,15 +359,15 @@ onBeforeUnmount(() => {
         </NButton>
       </TooltipTitle>
       <TooltipTitle :label="t('app.header.newTerminal')">
-        <NButton
+        <button
+          type="button"
           data-new-tab
-          size="tiny"
-          quaternary
           :aria-label="t('app.header.newTerminal')"
+          class="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
           @click="emit('newTab')"
         >
-          <template #icon><NIcon :component="AddOutline" /></template>
-        </NButton>
+          <NIcon :component="TerminalOutline" :size="14" />
+        </button>
       </TooltipTitle>
     </div>
 
@@ -446,53 +463,49 @@ onBeforeUnmount(() => {
 
     <div
       data-header-actions
-      class="flex shrink-0 items-center gap-0.5 border-l border-border/60 pl-2"
+      class="flex shrink-0 items-center gap-0.5 pl-1"
     >
-      <TooltipTitle :label="t('app.header.splitRight')">
-        <NButton
-          data-split-row
-          size="tiny"
-          quaternary
+      <TooltipTitle :label="t('app.header.splitActions')">
+        <NDropdown
+          trigger="click"
+          placement="bottom-end"
+          :options="splitOptions"
           :disabled="!props.workspaceReady || !canSplit"
-          :aria-label="t('app.header.splitRight')"
-          @click="emit('splitPane', 'row')"
+          :render-icon="renderSplitOptionIcon"
+          @select="handleSplitSelect"
         >
-          <template #icon><NIcon :component="DuplicateOutline" /></template>
-        </NButton>
-      </TooltipTitle>
-      <TooltipTitle :label="t('app.header.splitDown')">
-        <NButton
-          data-split-col
-          size="tiny"
-          quaternary
-          :disabled="!props.workspaceReady || !canSplit"
-          :aria-label="t('app.header.splitDown')"
-          @click="emit('splitPane', 'col')"
-        >
-          <template #icon><NIcon :component="ReorderTwoOutline" /></template>
-        </NButton>
+          <button
+            type="button"
+            data-split-actions
+            :disabled="!props.workspaceReady || !canSplit"
+            :aria-label="t('app.header.splitActions')"
+            class="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+          >
+            <NIcon :component="ReorderFourOutline" :size="14" />
+          </button>
+        </NDropdown>
       </TooltipTitle>
       <TooltipTitle :label="t('app.header.openCommandCenter')">
-        <NButton
+        <button
+          type="button"
           data-open-command-palette
-          size="tiny"
-          quaternary
           :aria-label="t('app.header.openCommandCenter')"
+          class="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
           @click="emit('openCommandPalette')"
         >
-          <template #icon><NIcon :component="SearchOutline" /></template>
-        </NButton>
+          <NIcon :component="SearchOutline" :size="14" />
+        </button>
       </TooltipTitle>
       <TooltipTitle :label="t('common.settings')">
-        <NButton
+        <button
+          type="button"
           data-open-settings
-          size="tiny"
-          quaternary
           :aria-label="t('common.settings')"
+          class="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
           @click="emit('openSettings')"
         >
-          <template #icon><NIcon :component="SettingsOutline" /></template>
-        </NButton>
+          <NIcon :component="SettingsOutline" :size="14" />
+        </button>
       </TooltipTitle>
       <TooltipTitle :label="t('common.explorer')">
         <button
@@ -500,7 +513,7 @@ onBeforeUnmount(() => {
           :data-toggle-right-panel="rightPanelOpen"
           :aria-label="t('app.header.toggleExplorer')"
           :class="[
-            'grid h-6 w-6 shrink-0 place-items-center rounded-md transition-colors',
+            'grid h-7 w-7 place-items-center rounded-md transition-colors',
             rightPanelOpen
               ? 'bg-accent text-foreground'
               : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',

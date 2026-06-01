@@ -83,6 +83,7 @@ const zhCN = {
       openFolder: "打开文件夹",
       preview: "预览",
       sourceControl: "源代码管理",
+      splitActions: "拆分布局",
       splitDown: "向下拆分",
       splitRight: "向右拆分",
       terminal: "终端",
