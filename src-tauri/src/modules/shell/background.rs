@@ -9,6 +9,7 @@ use serde::Serialize;
 use shared_child::SharedChild;
 
 use super::ringbuffer::BoundedRingBuffer;
+use crate::modules::lock::mutex_lock;
 use crate::modules::workspace::{resolve_path, WorkspaceEnv};
 
 const RING_CAP: usize = 4 * 1024 * 1024;
@@ -47,7 +48,16 @@ pub struct BackgroundProcInfo {
 
 impl BackgroundProc {
     pub fn read_logs(&self, since: u64) -> BackgroundLogResponse {
-        let (bytes, next_offset, dropped) = self.buffer.lock().unwrap().read_from(since);
+        // Use `mutex_lock` so a poisoned buffer (from an earlier panic in the
+        // drain threads) surfaces as an empty response rather than crashing
+        // the IPC handler. The lock is held only for the ringbuffer read.
+        let (bytes, next_offset, dropped) = match mutex_lock(&self.buffer, "background buffer") {
+            Ok(guard) => guard.read_from(since),
+            Err(error) => {
+                log::warn!("background log buffer unavailable: {error}");
+                (Vec::new(), since, 0)
+            }
+        };
         let exited = self.exited.load(Ordering::Acquire);
         let exit_code = if exited && !self.exit_unknown.load(Ordering::Acquire) {
             Some(self.exit_code.load(Ordering::Acquire))
@@ -152,7 +162,13 @@ pub fn spawn(
             loop {
                 match pipe.read(&mut buf) {
                     Ok(0) => break,
-                    Ok(n) => proc_ref.buffer.lock().unwrap().push(&buf[..n]),
+                    Ok(n) => match mutex_lock(&proc_ref.buffer, "background stdout buffer") {
+                        Ok(mut guard) => guard.push(&buf[..n]),
+                        Err(error) => {
+                            log::warn!("background stdout buffer unavailable: {error}");
+                            break;
+                        }
+                    },
                     Err(_) => break,
                 }
             }
@@ -166,7 +182,13 @@ pub fn spawn(
             loop {
                 match pipe.read(&mut buf) {
                     Ok(0) => break,
-                    Ok(n) => proc_ref.buffer.lock().unwrap().push(&buf[..n]),
+                    Ok(n) => match mutex_lock(&proc_ref.buffer, "background stderr buffer") {
+                        Ok(mut guard) => guard.push(&buf[..n]),
+                        Err(error) => {
+                            log::warn!("background stderr buffer unavailable: {error}");
+                            break;
+                        }
+                    },
                     Err(_) => break,
                 }
             }

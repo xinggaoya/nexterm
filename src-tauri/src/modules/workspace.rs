@@ -27,35 +27,55 @@ pub struct WorkspaceRegistry {
 impl WorkspaceRegistry {
     pub fn authorize<P: AsRef<Path>>(&self, path: P) -> std::io::Result<PathBuf> {
         let canonical = normalize_host_path(std::fs::canonicalize(path.as_ref())?);
-        let mut set = self.roots.lock().expect("workspace registry poisoned");
+        let mut set = self
+            .roots
+            .lock()
+            .map_err(|error| std::io::Error::other(format!("workspace registry poisoned: {error}")))?;
         set.insert(canonical.clone());
         Ok(canonical)
     }
 
     pub fn is_authorized(&self, target: &Path) -> bool {
         let target = normalize_host_path(target.to_path_buf());
-        let set = self.roots.lock().expect("workspace registry poisoned");
-        set.iter().any(|root| target.starts_with(root))
+        match self.roots.lock() {
+            Ok(set) => set.iter().any(|root| target.starts_with(root)),
+            // A poisoned registry means an earlier panic while inserting or
+            // reading authorized roots. Be safe and reject the path: callers
+            // will re-authorize through the bootstrap path on the next call.
+            Err(error) => {
+                log::warn!("workspace registry poisoned during is_authorized: {error}");
+                false
+            }
+        }
     }
 
     pub fn canonicalize_cached<P: AsRef<Path>>(&self, path: P) -> std::io::Result<PathBuf> {
         let key = path.as_ref().to_path_buf();
         {
-            let cache = self
-                .canonical_cache
-                .lock()
-                .expect("canonical cache poisoned");
-            if let Some(entry) = cache.get(&key) {
-                if entry.inserted_at.elapsed() < CANONICAL_TTL {
-                    return Ok(entry.canonical.clone());
+            match self.canonical_cache.lock() {
+                Ok(cache) => {
+                    if let Some(entry) = cache.get(&key) {
+                        if entry.inserted_at.elapsed() < CANONICAL_TTL {
+                            return Ok(entry.canonical.clone());
+                        }
+                    }
+                }
+                Err(error) => {
+                    log::warn!("canonical cache poisoned on read; bypassing: {error}");
                 }
             }
         }
         let canonical = normalize_host_path(std::fs::canonicalize(&key)?);
-        let mut cache = self
-            .canonical_cache
-            .lock()
-            .expect("canonical cache poisoned");
+        let mut cache = match self.canonical_cache.lock() {
+            Ok(cache) => cache,
+            Err(error) => {
+                // Read-side still works; the only thing we lose is the cache
+                // for this entry. Falling through to the result below is
+                // strictly better than aborting the IPC handler.
+                log::warn!("canonical cache poisoned on write; skipping cache: {error}");
+                return Ok(canonical);
+            }
+        };
         if cache.len() >= CANONICAL_CACHE_CAP {
             cache.retain(|_, entry| entry.inserted_at.elapsed() < CANONICAL_TTL);
             if cache.len() >= CANONICAL_CACHE_CAP {
@@ -213,6 +233,29 @@ pub struct WslDistro {
     pub name: String,
     pub default: bool,
     pub running: bool,
+}
+
+// Stable error prefix the frontend can pattern-match on to tell the user that
+// WSL itself is missing or disabled (vs. e.g. an invalid distro name). The
+// shape is `WslNotAvailable: <hint>` so a single string still fits the existing
+// `Result<_, String>` Tauri commands without a new error enum.
+pub(crate) const WSL_NOT_AVAILABLE_PREFIX: &str = "WslNotAvailable: ";
+
+#[cfg(windows)]
+fn wsl_spawn_error(context: &str, error: std::io::Error) -> String {
+    match error.kind() {
+        std::io::ErrorKind::NotFound => format!(
+            "{WSL_NOT_AVAILABLE_PREFIX}Windows Subsystem for Linux is not installed. \
+             Run 'wsl --install' from an elevated command prompt, then restart Nexterm. \
+             ({context}: {error})"
+        ),
+        std::io::ErrorKind::PermissionDenied => format!(
+            "{WSL_NOT_AVAILABLE_PREFIX}WSL is installed but the app does not have permission \
+             to launch wsl.exe. Check that virtualization is enabled and that no Group Policy \
+             is blocking WSL. ({context}: {error})"
+        ),
+        _ => format!("{context}: {error}"),
+    }
 }
 
 #[cfg(windows)]
@@ -450,7 +493,9 @@ fn run_wsl(args: &[&str]) -> Result<String, String> {
     let mut cmd = std::process::Command::new("wsl.exe");
     cmd.args(args);
     suppress_command_window(&mut cmd);
-    let out = cmd.output().map_err(|e| e.to_string())?;
+    let out = cmd
+        .output()
+        .map_err(|error| wsl_spawn_error("wsl.exe", error))?;
     if !out.status.success() {
         let stderr = decode_command_output(&out.stderr);
         return Err(stderr.trim().to_string());
@@ -472,7 +517,9 @@ pub(crate) fn wsl_exec_capture(
         .arg(program)
         .args(args);
     suppress_command_window(&mut cmd);
-    let out = cmd.output().map_err(|e| e.to_string())?;
+    let out = cmd
+        .output()
+        .map_err(|error| wsl_spawn_error("wsl.exe", error))?;
     if !out.status.success() {
         let stderr = decode_command_output(&out.stderr);
         return Err(stderr.trim().to_string());

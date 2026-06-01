@@ -9,13 +9,14 @@ use ignore::{WalkBuilder, WalkState};
 use serde::Serialize;
 
 use super::to_canon;
+use crate::modules::lock::mutex_lock;
 use crate::modules::workspace::{resolve_path, WorkspaceEnv};
 
 const FILE_SIZE_CAP: u64 = 5 * 1024 * 1024;
 const DEFAULT_MAX_RESULTS: usize = 200;
 const HARD_MAX_RESULTS: usize = 2000;
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct GrepHit {
     pub path: String,
     pub rel: String,
@@ -137,7 +138,16 @@ pub fn fs_grep(
                 path,
                 UTF8(|line_num, text| {
                     let line_text = text.trim_end_matches('\n').to_string();
-                    let mut guard = hits.lock().unwrap();
+                    let mut guard = match mutex_lock(&hits, "fs_grep hits") {
+                        Ok(guard) => guard,
+                        Err(error) => {
+                            // Lock poisoned by another worker — the searcher
+                            // can't usefully continue, so signal stop and let
+                            // the outer join handle the partial state.
+                            log::warn!("fs_grep stopping early: {error}");
+                            return Ok(false);
+                        }
+                    };
                     if guard.len() >= cap {
                         truncated.store(true, Ordering::Relaxed);
                         return Ok(false);
@@ -156,9 +166,28 @@ pub fn fs_grep(
         })
     });
 
-    let final_hits = Arc::try_unwrap(hits)
-        .map(|m| m.into_inner().unwrap())
-        .unwrap_or_default();
+    let final_hits = match Arc::try_unwrap(hits) {
+        Ok(mutex) => match mutex.into_inner() {
+            // Happy path: parallel walker finished without poisoning the lock.
+            Ok(hits) => hits,
+            // A worker panicked while holding the lock. The walker has finished
+            // so there is no further contention; recover whatever was pushed
+            // before the panic rather than aborting the IPC handler.
+            Err(poisoned) => {
+                log::warn!("fs_grep lock poisoned; recovering partial results");
+                poisoned.into_inner()
+            }
+        },
+        // Other worker threads still hold an Arc clone (shouldn't happen
+        // because the walker has joined, but be defensive).
+        Err(arc) => match mutex_lock(&arc, "fs_grep hits") {
+            Ok(guard) => (*guard).clone(),
+            Err(error) => {
+                log::warn!("fs_grep could not collect hits: {error}");
+                Vec::new()
+            }
+        },
+    };
 
     Ok(GrepResponse {
         hits: final_hits,

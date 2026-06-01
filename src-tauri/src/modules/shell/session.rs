@@ -7,6 +7,7 @@ use std::time::Duration;
 use serde::Serialize;
 
 use super::run_blocking_inner;
+use crate::modules::lock::mutex_lock;
 use crate::modules::workspace::{resolve_path, WorkspaceEnv};
 
 pub struct ShellSession {
@@ -59,7 +60,14 @@ impl ShellSession {
     }
 
     pub fn current_cwd(&self) -> String {
-        self.cwd.lock().unwrap().clone()
+        mutex_lock(&self.cwd, "shell session cwd")
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
+    }
+
+    fn set_cwd(&self, value: String) -> Result<(), String> {
+        *mutex_lock(&self.cwd, "shell session cwd")? = value;
+        Ok(())
     }
 
     pub fn run(
@@ -78,7 +86,7 @@ impl ShellSession {
                 let effective_workspace = workspace_hint.as_ref().unwrap_or(&self.workspace);
                 let p = resolve_path(&hint, effective_workspace);
                 if p.is_dir() {
-                    *self.cwd.lock().unwrap() = hint;
+                    self.set_cwd(hint)?;
                 }
             }
         }
@@ -103,7 +111,7 @@ impl ShellSession {
         if let Some(ref new_cwd) = cwd_after {
             let p = resolve_path(new_cwd, &self.workspace);
             if p.is_dir() {
-                *self.cwd.lock().unwrap() = new_cwd.clone();
+                self.set_cwd(new_cwd.clone())?;
             }
         }
         let resolved_cwd = self.current_cwd().replace('\\', "/");
@@ -119,9 +127,29 @@ impl ShellSession {
     }
 }
 
+// POSIX wrap. The sentinel is emitted from an EXIT trap so it always lands on
+// stdout, even when the user has `set -e` / `set -o errexit` / `pipefail` in
+// their rc file, or when the command itself forks and replaces the shell.
+// Without the trap, a non-zero exit in the user's command (or any earlier
+// failure in their rc) would short-circuit the sentinel printf and the
+// frontend's cwd would silently stop updating.
 fn wrap_posix_with_sentinel(command: &str, sentinel: &str) -> String {
+    // The trap function is set BEFORE the command runs, so it fires whether
+    // the command exits normally, fails under `set -e`, or the shell itself
+    // dies on a signal. We still set the explicit `__nexterm_rc` for callers
+    // that want to inspect the original exit code.
     format!(
-        "{command}\n__nexterm_rc=$?\nprintf '\\n%s%s\\n' '{sentinel}' \"$(pwd)\"\nexit $__nexterm_rc\n",
+        concat!(
+            "__nexterm_rc=0\n",
+            "__nexterm_emit() {{ printf '\\n%s%s\\n' '{sentinel}' \"$(pwd)\"; }}\n",
+            "trap __nexterm_emit EXIT\n",
+            "{command}\n",
+            "__nexterm_rc=$?\n",
+            "__nexterm_emit\n",
+            "exit $__nexterm_rc\n",
+        ),
+        sentinel = sentinel,
+        command = command,
     )
 }
 
@@ -135,9 +163,18 @@ fn wrap_with_sentinel(command: &str, workspace: &WorkspaceEnv, sentinel: &str) -
     }
     #[cfg(windows)]
     {
+        // PowerShell: register the emission as a finally block so it always
+        // runs, regardless of $ErrorActionPreference or terminating errors.
         format!(
-        "{command}\n$__nexterm_rc = if ($null -ne $LASTEXITCODE) {{ $LASTEXITCODE }} elseif ($?) {{ 0 }} else {{ 1 }}\n\"`n{sentinel}$($PWD.Path)\"\nexit $__nexterm_rc\n",
-    )
+            "$__nexterm_rc = 0\n\
+             try {{\n\
+                 {command}\n\
+                 $__nexterm_rc = if ($null -ne $LASTEXITCODE) {{ $LASTEXITCODE }} elseif ($?) {{ 0 }} else {{ 1 }}\n\
+             }} finally {{\n\
+                 \"`n{sentinel}$($PWD.Path)\"\n\
+                 exit $__nexterm_rc\n\
+             }}\n",
+        )
     }
 }
 
@@ -190,5 +227,28 @@ mod tests {
         let s = ShellSession::new("/tmp".into(), WorkspaceEnv::Local);
         let wrapped = wrap_with_sentinel("echo hi", &WorkspaceEnv::Local, &s.sentinel);
         assert!(wrapped.contains(&s.sentinel));
+    }
+
+    /// Regression test for the set -e / errexit / pipefail bug: the sentinel
+    /// must reach stdout even when the user's command would short-circuit
+    /// the rest of the script. POSIX uses `trap ... EXIT`, Windows uses a
+    /// `try/finally` block.
+    #[test]
+    fn wrap_emits_sentinel_even_under_strict_shell_options() {
+        let s = ShellSession::new("/tmp".into(), WorkspaceEnv::Local);
+        let wrapped = wrap_with_sentinel("true", &WorkspaceEnv::Local, &s.sentinel);
+        // Must register a hook that fires on any exit path.
+        #[cfg(unix)]
+        assert!(
+            wrapped.contains("trap __nexterm_emit EXIT"),
+            "POSIX wrap must register an EXIT trap so set -e / errexit cannot \
+             prevent the sentinel from being printed: {wrapped}"
+        );
+        #[cfg(windows)]
+        assert!(
+            wrapped.contains("try {") && wrapped.contains("} finally {"),
+            "Windows wrap must use try/finally so terminating errors still \
+             emit the sentinel: {wrapped}"
+        );
     }
 }

@@ -53,31 +53,37 @@ fn workspace_cache_key(workspace: &WorkspaceEnv) -> String {
 
 pub fn ensure_git_available(workspace: &WorkspaceEnv) -> Result<()> {
     let cache_key = workspace_cache_key(workspace);
-    let cached = {
-        let mut guard = availability_cell()
-            .lock()
-            .expect("git availability poisoned");
-        prune_expired_availability_entries(&mut guard);
-        guard
-            .get(&cache_key)
-            .filter(|entry| entry.checked_at.elapsed() < AVAILABILITY_TTL)
-            .map(|entry| entry.value.clone())
+    let cached = match availability_cell().lock() {
+        Ok(mut guard) => {
+            prune_expired_availability_entries(&mut guard);
+            guard
+                .get(&cache_key)
+                .filter(|entry| entry.checked_at.elapsed() < AVAILABILITY_TTL)
+                .map(|entry| entry.value.clone())
+        }
+        // A poisoned cache means an earlier panic — treat the cache as empty
+        // and fall through to a fresh probe rather than aborting the IPC
+        // handler. The probe itself runs `git --version`, which is the
+        // authoritative source either way.
+        Err(error) => {
+            log::warn!("git availability cache poisoned; falling back to a fresh probe: {error}");
+            None
+        }
     };
     let value = match cached {
         Some(v) => v,
         None => {
             let fresh = check_git_availability(workspace);
-            let mut guard = availability_cell()
-                .lock()
-                .expect("git availability poisoned");
-            prune_expired_availability_entries(&mut guard);
-            guard.insert(
-                cache_key,
-                AvailabilityCache {
-                    value: fresh.clone(),
-                    checked_at: Instant::now(),
-                },
-            );
+            if let Ok(mut guard) = availability_cell().lock() {
+                prune_expired_availability_entries(&mut guard);
+                guard.insert(
+                    cache_key,
+                    AvailabilityCache {
+                        value: fresh.clone(),
+                        checked_at: Instant::now(),
+                    },
+                );
+            }
             fresh
         }
     };
