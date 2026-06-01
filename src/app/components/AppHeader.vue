@@ -1,29 +1,35 @@
 <script setup lang="ts">
 import {
+  CaretDownOutline,
   CloseOutline,
+  DesktopOutline,
   DuplicateOutline,
   FolderOpenOutline,
   GitCommitOutline,
   GitCompareOutline,
   GlobeOutline,
+  HomeOutline,
   ReorderFourOutline,
   ReorderTwoOutline,
   SearchOutline,
+  ServerOutline,
   SettingsOutline,
   TerminalOutline,
   TimeOutline,
 } from "@vicons/ionicons5";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { NButton, NDropdown, NIcon, type DropdownOption } from "naive-ui";
-import { computed, h, onBeforeUnmount, ref, type Component, type VNode } from "vue";
+import { NButton, NButtonGroup, NDropdown, NIcon, type DropdownOption } from "naive-ui";
+import { computed, h, onBeforeUnmount, onMounted, ref, type Component, type VNode } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import WindowControls from "@/components/WindowControls.vue";
 import { IS_MAC } from "@/lib/platform";
+import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
 import { t } from "@/modules/i18n/translate";
 import type { TabDropPlacement } from "@/modules/tabs/tabsReorder";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import type { SplitDir } from "@/modules/terminal/lib/panes";
+import { useWorkspaceEnvPiniaStore, type WorkspaceEnv } from "@/modules/workspace";
 
 const props = withDefaults(
   defineProps<{
@@ -51,6 +57,9 @@ const emit = defineEmits<{
   pinTab: [id: number];
   newTab: [];
   chooseWorkspace: [];
+  chooseWorkspaceInEnv: [env: WorkspaceEnv];
+  openEnvHomeCurrent: [env: WorkspaceEnv];
+  openEnvHomeNew: [env: WorkspaceEnv];
   splitPane: [dir: SplitDir];
   openCommandPalette: [];
   openSettings: [];
@@ -89,6 +98,77 @@ const dropTarget = ref<{
 const pointerDrag = ref<PointerDragState | null>(null);
 const suppressedClickTabId = ref<number | null>(null);
 const dragGhost = ref<DragGhostState | null>(null);
+
+const workspaceEnvStore = useWorkspaceEnvPiniaStore();
+
+const LOCAL_ENV: WorkspaceEnv = { kind: "local" };
+
+function envLabel(env: WorkspaceEnv): string {
+  return env.kind === "wsl" ? env.distro : t("common.local");
+}
+
+function buildOpenFolderOptions(): DropdownOption[] {
+  const distros = workspaceEnvStore.distros ?? [];
+  const envs: WorkspaceEnv[] = [
+    LOCAL_ENV,
+    ...distros.map((distro) => ({
+      kind: "wsl" as const,
+      distro: distro.name,
+    })),
+  ];
+  const options: DropdownOption[] = [];
+  for (const env of envs) {
+    const envDisplay = envLabel(env);
+    options.push(
+      {
+        key: `browse:${actionKey(env)}`,
+        label: t("app.header.openFolderMenu.browseIn", { env: envDisplay }),
+        icon: () =>
+          h(NIcon, null, {
+            default: () => h(env.kind === "wsl" ? ServerOutline : DesktopOutline),
+          }),
+      },
+      {
+        key: `home-current:${actionKey(env)}`,
+        label: t("app.header.openFolderMenu.openHomeCurrent", { env: envDisplay }),
+        icon: () => h(NIcon, null, { default: () => h(HomeOutline) }),
+      },
+      {
+        key: `home-new:${actionKey(env)}`,
+        label: t("app.header.openFolderMenu.openHomeNew", { env: envDisplay }),
+        icon: () => h(NIcon, null, { default: () => h(HomeOutline) }),
+      },
+    );
+  }
+  return options;
+}
+
+function actionKey(env: WorkspaceEnv): string {
+  return env.kind === "wsl" ? `wsl:${env.distro}` : "local";
+}
+
+const openFolderOptions = computed<DropdownOption[]>(() => buildOpenFolderOptions());
+
+function handleOpenFolderSelect(key: string | number) {
+  const value = String(key);
+  const actionEnd = value.indexOf(":");
+  const action = value.slice(0, actionEnd);
+  const envPart = value.slice(actionEnd + 1);
+  let env: WorkspaceEnv = LOCAL_ENV;
+  if (envPart === "local") {
+    env = LOCAL_ENV;
+  } else if (envPart.startsWith("wsl:")) {
+    env = { kind: "wsl", distro: envPart.slice(4) };
+  }
+  if (action === "browse") emit("chooseWorkspaceInEnv", env);
+  else if (action === "home-current") emit("openEnvHomeCurrent", env);
+  else if (action === "home-new") emit("openEnvHomeNew", env);
+}
+
+onMounted(() => {
+  if (hasTauriInternals()) void workspaceEnvStore.refreshDistros();
+});
+
 function basename(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : "/";
@@ -345,19 +425,33 @@ onBeforeUnmount(() => {
           <NIcon :component="GitCommitOutline" :size="15" />
         </button>
       </TooltipTitle>
-      <TooltipTitle :label="t('app.header.openFolder')">
-        <NButton
-          data-open-workspace
-          size="tiny"
-          secondary
-          :aria-label="t('app.header.openFolder')"
-          class="shrink-0"
-          @click="emit('chooseWorkspace')"
+      <NButtonGroup size="tiny" class="shrink-0">
+        <TooltipTitle :label="t('app.header.openFolder')">
+          <NButton
+            data-open-workspace
+            secondary
+            :aria-label="t('app.header.openFolder')"
+            @click="emit('chooseWorkspace')"
+          >
+            <template #icon><NIcon :component="FolderOpenOutline" /></template>
+            <span class="hidden xl:inline">{{ t("app.header.openFolder") }}</span>
+          </NButton>
+        </TooltipTitle>
+        <NDropdown
+          trigger="click"
+          placement="bottom-end"
+          :options="openFolderOptions"
+          @select="handleOpenFolderSelect"
         >
-          <template #icon><NIcon :component="FolderOpenOutline" /></template>
-          <span class="hidden xl:inline">{{ t("app.header.openFolder") }}</span>
-        </NButton>
-      </TooltipTitle>
+          <NButton
+            data-open-workspace-menu
+            secondary
+            :aria-label="t('app.header.openFolder')"
+          >
+            <template #icon><NIcon :component="CaretDownOutline" /></template>
+          </NButton>
+        </NDropdown>
+      </NButtonGroup>
       <TooltipTitle :label="t('app.header.newTerminal')">
         <button
           type="button"

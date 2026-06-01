@@ -17,6 +17,7 @@ const settingsMock = vi.hoisted(() => ({
 
 const nativeMock = vi.hoisted(() => ({
   authorizeWorkspace: vi.fn(),
+  getWslHome: vi.fn(),
 }));
 
 const dialogMock = vi.hoisted(() => ({
@@ -33,9 +34,9 @@ vi.mock("@/modules/settings/store", () => ({
   setRecentWorkspaces: settingsMock.setRecentWorkspaces,
   setLastWslDistro: settingsMock.setLastWslDistro,
 }));
-
 vi.mock("./workspaceNative", () => ({
   authorizeWorkspace: nativeMock.authorizeWorkspace,
+  getWslHome: nativeMock.getWslHome,
 }));
 
 vi.mock("./workspaceDialog", () => ({
@@ -235,5 +236,66 @@ describe("workspace root pinia store", () => {
       "//server/share/repo",
       LOCAL_WORKSPACE,
     );
+  });
+
+  it("picks a directory for an explicit WSL distro using its home as the default path", async () => {
+    const env = { kind: "wsl" as const, distro: "Ubuntu" };
+    nativeMock.getWslHome.mockResolvedValueOnce("/home/dev");
+    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce("/home/dev/repo");
+    const store = useWorkspaceRootPiniaStore();
+
+    const selected = await store.pickWorkspaceDirectoryForEnv(env);
+
+    expect(selected).toEqual({ path: "/home/dev/repo", env });
+    expect(nativeMock.getWslHome).toHaveBeenCalledWith("Ubuntu");
+    expect(dialogMock.selectWorkspaceDirectory).toHaveBeenCalledWith(
+      "\\\\wsl.localhost\\Ubuntu\\home\\dev",
+    );
+  });
+
+  it("picks a directory for an explicit local env using the current root", async () => {
+    const store = useWorkspaceRootPiniaStore();
+    store.rootPath = "D:/repo";
+    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce("D:/other");
+
+    const selected = await store.pickWorkspaceDirectoryForEnv(LOCAL_WORKSPACE);
+
+    expect(selected).toEqual({ path: "D:/other", env: LOCAL_WORKSPACE });
+    expect(dialogMock.selectWorkspaceDirectory).toHaveBeenCalledWith("D:/repo");
+    expect(nativeMock.getWslHome).not.toHaveBeenCalled();
+  });
+
+  it("uses the most recent WSL workspace path for the same distro as the default path", async () => {
+    const env = { kind: "wsl" as const, distro: "Ubuntu" };
+    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce(
+      "\\\\wsl.localhost\\Ubuntu\\home\\dev\\projects\\repo",
+    );
+    const store = useWorkspaceRootPiniaStore();
+    store.recentWorkspaces = [
+      {
+        path: "/home/dev/projects/repo",
+        env,
+        openedAt: 100,
+      },
+    ];
+
+    await store.pickWorkspaceDirectoryForEnv(env);
+
+    expect(nativeMock.getWslHome).not.toHaveBeenCalled();
+    expect(dialogMock.selectWorkspaceDirectory).toHaveBeenCalledWith(
+      "\\\\wsl.localhost\\Ubuntu\\home\\dev\\projects\\repo",
+    );
+  });
+
+  it("falls back to no default path when the WSL home cannot be resolved", async () => {
+    const env = { kind: "wsl" as const, distro: "Debian" };
+    nativeMock.getWslHome.mockRejectedValueOnce(new Error("missing"));
+    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce(null);
+    const store = useWorkspaceRootPiniaStore();
+
+    const selected = await store.pickWorkspaceDirectoryForEnv(env);
+
+    expect(selected).toBeNull();
+    expect(dialogMock.selectWorkspaceDirectory).toHaveBeenCalledWith(undefined);
   });
 });
