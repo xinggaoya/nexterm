@@ -51,12 +51,14 @@ impl Drop for WslRefreshSource {
 pub(super) fn start_wsl_helper(
     distro: &str,
     root_path: String,
+    has_git_repo: bool,
     event_tx: mpsc::Sender<WorkspaceFsChangedEvent>,
 ) -> Result<WslRefreshSource, String> {
     #[cfg(not(windows))]
     {
         let _ = distro;
         let _ = root_path;
+        let _ = has_git_repo;
         let _ = event_tx;
         Err("WSL helper is only available on Windows".into())
     }
@@ -74,6 +76,7 @@ pub(super) fn start_wsl_helper(
                 distro,
                 helper_path,
                 root_path,
+                has_git_repo,
                 event_tx,
                 stop_rx,
                 supervisor_child,
@@ -99,6 +102,7 @@ struct WslHelperJsonEvent {
 #[cfg(any(test, windows))]
 pub(super) fn workspace_fs_event_from_wsl_json_line(
     root_path: &str,
+    has_git_repo: bool,
     line: &str,
 ) -> Result<Option<WorkspaceFsChangedEvent>, serde_json::Error> {
     let line = line.trim();
@@ -113,7 +117,9 @@ pub(super) fn workspace_fs_event_from_wsl_json_line(
         .collect();
     paths.sort();
     paths.dedup();
-    let git_related = helper_event.git_related || paths.iter().any(|path| is_wsl_git_path(path));
+    let git_related = has_git_repo
+        || helper_event.git_related
+        || paths.iter().any(|path| is_wsl_git_path(path));
     Ok(Some(WorkspaceFsChangedEvent {
         root_path: normalize_frontend_path(root_path),
         paths,
@@ -175,6 +181,7 @@ fn run_helper_supervisor(
     distro: String,
     helper_path: String,
     root_path: String,
+    has_git_repo: bool,
     event_tx: mpsc::Sender<WorkspaceFsChangedEvent>,
     stop_rx: mpsc::Receiver<()>,
     current_child: Arc<Mutex<Option<std::process::Child>>>,
@@ -189,6 +196,7 @@ fn run_helper_supervisor(
             &distro,
             &helper_path,
             &root_path,
+            has_git_repo,
             &event_tx,
             &stop_rx,
             &current_child,
@@ -224,6 +232,7 @@ fn run_helper_once(
     distro: &str,
     helper_path: &str,
     root_path: &str,
+    has_git_repo: bool,
     event_tx: &mpsc::Sender<WorkspaceFsChangedEvent>,
     stop_rx: &mpsc::Receiver<()>,
     current_child: &Arc<Mutex<Option<std::process::Child>>>,
@@ -275,7 +284,7 @@ fn run_helper_once(
             return HelperRunResult::Stopped;
         }
         match line {
-            Ok(line) => match workspace_fs_event_from_wsl_json_line(root_path, &line) {
+            Ok(line) => match workspace_fs_event_from_wsl_json_line(root_path, has_git_repo, &line) {
                 Ok(Some(event)) => {
                     failures.reset();
                     if event_tx.send(event).is_err() {
@@ -462,11 +471,25 @@ mod tests {
     fn parser_marks_git_paths_even_without_explicit_flag() {
         let event = workspace_fs_event_from_wsl_json_line(
             "/home/dev/repo",
+            false,
             r#"{"paths":["/home/dev/repo/.git/HEAD"]}"#,
         )
         .expect("valid json")
         .expect("event");
 
         assert!(event.git_related);
+    }
+
+    #[test]
+    fn parser_marks_source_paths_git_related_when_watcher_owns_a_repo() {
+        let event = workspace_fs_event_from_wsl_json_line(
+            "/home/dev/repo",
+            true,
+            r#"{"paths":["/home/dev/repo/src/main.rs"]}"#,
+        )
+        .expect("valid json")
+        .expect("event");
+
+        assert!(event.git_related, "source changes in a git repo must trigger git refresh");
     }
 }

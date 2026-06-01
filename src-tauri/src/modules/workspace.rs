@@ -49,6 +49,19 @@ impl WorkspaceRegistry {
         }
     }
 
+    /// Find the longest authorized root that is a prefix of `target`,
+    /// returning it as a forward-slash string suitable for
+    /// `WorkspaceFsChangedEvent`. Used by app-internal fs commands to
+    /// route their proactive events to the right watcher.
+    pub fn longest_authorized_root(&self, target: &Path) -> Option<String> {
+        let target = normalize_host_path(target.to_path_buf());
+        let set = self.roots.lock().ok()?;
+        set.iter()
+            .filter(|root| target.starts_with(root))
+            .max_by_key(|root| root.as_os_str().len())
+            .map(|root| root.to_string_lossy().replace('\\', "/"))
+    }
+
     pub fn canonicalize_cached<P: AsRef<Path>>(&self, path: P) -> std::io::Result<PathBuf> {
         let key = path.as_ref().to_path_buf();
         {

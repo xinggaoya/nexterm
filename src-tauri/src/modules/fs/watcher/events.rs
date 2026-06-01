@@ -220,13 +220,14 @@ fn emit_workspace_fs_event(app: &AppHandle, event: WorkspaceFsChangedEvent) {
 pub(super) fn workspace_fs_event_from_notify(
     root_path: &str,
     local_root: &Path,
+    has_git_repo: bool,
     event: Event,
 ) -> Option<WorkspaceFsChangedEvent> {
     if matches!(event.kind, EventKind::Access(_)) {
         return None;
     }
     let mut paths = Vec::new();
-    let mut git_related = false;
+    let mut git_related = has_git_repo;
     for path in event.paths {
         let normalized = crate::modules::workspace::normalize_host_path(path);
         if is_git_related_path(local_root, &normalized) {

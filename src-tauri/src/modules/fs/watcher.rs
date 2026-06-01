@@ -58,6 +58,7 @@ struct WorkspaceRefreshContext {
     root_path: String,
     workspace: WorkspaceEnv,
     local_root: Option<PathBuf>,
+    has_git_repo: bool,
 }
 
 #[tauri::command]
@@ -107,6 +108,46 @@ pub fn fs_unwatch_workspace(state: State<'_, FsWatcherState>) -> Result<(), Stri
     Ok(())
 }
 
+/// Emit a workspace-fs-changed event through the active watcher's batcher
+/// channel. Used by app-internal fs commands (`fs_write_file`,
+/// `fs_create_file`, `fs_rename`, `fs_delete`, etc.) so the file explorer
+/// and source-control panel update immediately without depending on the
+/// OS-level `notify` round-trip. Falls back to a no-op if no watcher is
+/// active for the given root.
+pub fn emit_workspace_fs_changed(
+    state: &FsWatcherState,
+    root_path: &str,
+    paths: Vec<String>,
+    git_related: bool,
+) {
+    let active = match mutex_lock(&state.active, "fs watcher state") {
+        Ok(active) => active,
+        Err(error) => {
+            log::warn!("{error}");
+            return;
+        }
+    };
+    let Some(active) = active.as_ref() else {
+        return;
+    };
+    let Some(event_tx) = active.event_tx.as_ref() else {
+        return;
+    };
+    let event = WorkspaceFsChangedEvent {
+        root_path: normalize_frontend_path(root_path),
+        paths: {
+            let mut paths = paths;
+            paths.sort();
+            paths.dedup();
+            paths
+        },
+        git_related,
+    };
+    if event_tx.send(event).is_err() {
+        log::debug!("workspace refresh batch receiver closed during proactive emit");
+    }
+}
+
 fn build_refresh_context(
     root_path: &str,
     workspace: WorkspaceEnv,
@@ -114,6 +155,7 @@ fn build_refresh_context(
 ) -> Result<WorkspaceRefreshContext, String> {
     let root_path = normalize_frontend_path(root_path);
     let key = workspace_watch_key(&root_path, &workspace);
+    let has_git_repo = detect_git_repo(registry, &root_path, &workspace);
 
     if workspace.is_wsl() {
         ensure_wsl_workspace_authorized(&root_path, &workspace, registry)?;
@@ -122,6 +164,7 @@ fn build_refresh_context(
             root_path,
             workspace,
             local_root: None,
+            has_git_repo,
         });
     }
 
@@ -131,13 +174,36 @@ fn build_refresh_context(
         root_path,
         workspace,
         local_root: Some(local_root),
+        has_git_repo,
     })
+}
+
+/// Probe whether the workspace root is inside a git repository. Best-effort:
+/// if `git` isn't on PATH or the repo can't be resolved for any reason we
+/// fall back to `false` so the watcher still works in non-git directories.
+/// Detected once at watcher-startup time; the answer is then plumbed into
+/// every emitted `WorkspaceFsChangedEvent` so the source-control panel
+/// refreshes even when the file change is not under `.git/...`.
+fn detect_git_repo(
+    registry: &WorkspaceRegistry,
+    root_path: &str,
+    workspace: &WorkspaceEnv,
+) -> bool {
+    match crate::modules::git::operations::resolve_repo(registry, root_path, workspace) {
+        Ok(Some(_)) => true,
+        Ok(None) => false,
+        Err(error) => {
+            log::debug!("git repo probe failed for {root_path}: {error}");
+            false
+        }
+    }
 }
 
 fn start_refresh_source(
     context: &WorkspaceRefreshContext,
     event_tx: mpsc::Sender<WorkspaceFsChangedEvent>,
 ) -> ActiveRefreshSource {
+    let has_git_repo = context.has_git_repo;
     match &context.workspace {
         WorkspaceEnv::Local => {
             let Some(local_root) = context.local_root.clone() else {
@@ -145,12 +211,13 @@ fn start_refresh_source(
                 return ActiveRefreshSource::Polling(polling::start_polling_refresh(
                     context.root_path.clone(),
                     event_tx,
-                    false,
+                    has_git_repo,
                 ));
             };
             match local::start_local_watcher(
                 context.root_path.clone(),
                 local_root,
+                has_git_repo,
                 event_tx.clone(),
             ) {
                 Ok(source) => ActiveRefreshSource::Local(source),
@@ -159,20 +226,20 @@ fn start_refresh_source(
                     ActiveRefreshSource::Polling(polling::start_polling_refresh(
                         context.root_path.clone(),
                         event_tx,
-                        false,
+                        has_git_repo,
                     ))
                 }
             }
         }
         WorkspaceEnv::Wsl { distro } => {
-            match wsl::start_wsl_helper(distro, context.root_path.clone(), event_tx.clone()) {
+            match wsl::start_wsl_helper(distro, context.root_path.clone(), has_git_repo, event_tx.clone()) {
                 Ok(source) => ActiveRefreshSource::Wsl(source),
                 Err(error) => {
                     log::warn!("WSL workspace watcher unavailable; using polling: {error}");
                     ActiveRefreshSource::Polling(polling::start_polling_refresh(
                         context.root_path.clone(),
                         event_tx,
-                        true,
+                        has_git_repo,
                     ))
                 }
             }
@@ -330,6 +397,7 @@ mod tests {
         let event = workspace_fs_event_from_notify(
             "/tmp/repo",
             Path::new("/tmp/repo"),
+            false,
             Event::new(EventKind::Modify(notify::event::ModifyKind::Any)),
         )
         .expect("notify event should become a workspace event");
@@ -339,9 +407,24 @@ mod tests {
     }
 
     #[test]
+    fn non_git_paths_marked_git_related_when_workspace_is_a_repo() {
+        let event = workspace_fs_event_from_notify(
+            "/tmp/repo",
+            Path::new("/tmp/repo"),
+            true,
+            Event::new(EventKind::Modify(notify::event::ModifyKind::Any))
+                .add_path(Path::new("/tmp/repo/src/main.rs").to_path_buf()),
+        )
+        .expect("notify event should become a workspace event");
+
+        assert!(event.git_related, "source changes inside a git repo must trigger git status refresh");
+    }
+
+    #[test]
     fn parses_wsl_helper_jsonl_into_workspace_events() {
         let event = workspace_fs_event_from_wsl_json_line(
             "/home/dev/repo",
+            false,
             r#"{"paths":["/home/dev/repo/src/main.rs","/home/dev/repo/.git/index"],"gitRelated":true}"#,
         )
         .expect("valid helper json")

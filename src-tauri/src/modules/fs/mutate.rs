@@ -1,8 +1,16 @@
-use crate::modules::workspace::{resolve_path, WorkspaceEnv};
+use tauri::State;
+
+use crate::modules::fs::watcher::{emit_workspace_fs_changed, FsWatcherState};
+use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
 
 /// Creates a new empty file. Fails if the file already exists.
 #[tauri::command]
-pub fn fs_create_file(path: String, workspace: Option<WorkspaceEnv>) -> Result<(), String> {
+pub fn fs_create_file(
+    path: String,
+    workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
+    watcher: State<'_, FsWatcherState>,
+) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     let p = resolve_path(&path, &workspace);
     if p.exists() {
@@ -11,14 +19,21 @@ pub fn fs_create_file(path: String, workspace: Option<WorkspaceEnv>) -> Result<(
     std::fs::write(&p, "").map_err(|e| {
         log::debug!("fs_create_file({}) failed: {e}", p.display());
         e.to_string()
-    })
+    })?;
+    notify_workspace_fs_changed(&registry, &watcher, &p, vec![path.clone()]);
+    Ok(())
 }
 
 /// Creates a new directory. Fails if the directory already exists.
 /// Parents are created as needed — matches the common "new folder" UX
 /// where typing "a/b/c" creates the full chain.
 #[tauri::command]
-pub fn fs_create_dir(path: String, workspace: Option<WorkspaceEnv>) -> Result<(), String> {
+pub fn fs_create_dir(
+    path: String,
+    workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
+    watcher: State<'_, FsWatcherState>,
+) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     let p = resolve_path(&path, &workspace);
     if p.exists() {
@@ -27,12 +42,20 @@ pub fn fs_create_dir(path: String, workspace: Option<WorkspaceEnv>) -> Result<()
     std::fs::create_dir_all(&p).map_err(|e| {
         log::debug!("fs_create_dir({}) failed: {e}", p.display());
         e.to_string()
-    })
+    })?;
+    notify_workspace_fs_changed(&registry, &watcher, &p, vec![path.clone()]);
+    Ok(())
 }
 
 /// Renames (or moves) a path. Refuses to overwrite an existing target.
 #[tauri::command]
-pub fn fs_rename(from: String, to: String, workspace: Option<WorkspaceEnv>) -> Result<(), String> {
+pub fn fs_rename(
+    from: String,
+    to: String,
+    workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
+    watcher: State<'_, FsWatcherState>,
+) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     let from_p = resolve_path(&from, &workspace);
     let to_p = resolve_path(&to, &workspace);
@@ -49,13 +72,23 @@ pub fn fs_rename(from: String, to: String, workspace: Option<WorkspaceEnv>) -> R
             to_p.display()
         );
         e.to_string()
-    })
+    })?;
+    // Emit both the old and new paths so a directory refresh rooted at
+    // either ancestor picks up the change.
+    let parent = from_p.parent().unwrap_or(&from_p);
+    notify_workspace_fs_changed(&registry, &watcher, parent, vec![from.clone(), to]);
+    Ok(())
 }
 
 /// Deletes a file or directory (recursively for dirs). Callers are
 /// responsible for confirming destructive operations with the user.
 #[tauri::command]
-pub fn fs_delete(path: String, workspace: Option<WorkspaceEnv>) -> Result<(), String> {
+pub fn fs_delete(
+    path: String,
+    workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
+    watcher: State<'_, FsWatcherState>,
+) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     let p = resolve_path(&path, &workspace);
     let meta = std::fs::symlink_metadata(&p).map_err(|e| {
@@ -72,5 +105,21 @@ pub fn fs_delete(path: String, workspace: Option<WorkspaceEnv>) -> Result<(), St
     result.map_err(|e| {
         log::warn!("fs_delete({}) failed: {e}", p.display());
         e.to_string()
-    })
+    })?;
+
+    let parent = p.parent().unwrap_or(&p);
+    notify_workspace_fs_changed(&registry, &watcher, parent, vec![path]);
+    Ok(())
+}
+
+fn notify_workspace_fs_changed(
+    registry: &WorkspaceRegistry,
+    watcher: &FsWatcherState,
+    host_path: &std::path::Path,
+    paths: Vec<String>,
+) {
+    let Some(root) = registry.longest_authorized_root(host_path) else {
+        return;
+    };
+    emit_workspace_fs_changed(watcher, &root, paths, true);
 }

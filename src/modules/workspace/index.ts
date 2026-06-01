@@ -11,6 +11,7 @@ export { useWorkspaceEnvPiniaStore } from "./workspaceEnvPinia";
 export {
   RECENT_WORKSPACE_LIMIT,
   normalizeWorkspacePath,
+  isSameWorkspaceRoot,
   type LaunchWorkspace,
   type WorkspaceSelection,
   useWorkspaceRootPiniaStore,

@@ -12,6 +12,7 @@ pub(super) struct LocalRefreshSource {
 pub(super) fn start_local_watcher(
     root_path: String,
     local_root: PathBuf,
+    has_git_repo: bool,
     event_tx: mpsc::Sender<WorkspaceFsChangedEvent>,
 ) -> Result<LocalRefreshSource, String> {
     let callback_root = root_path;
@@ -19,7 +20,7 @@ pub(super) fn start_local_watcher(
     let mut watcher = notify::recommended_watcher(move |result| match result {
         Ok(event) => {
             if let Some(event) =
-                workspace_fs_event_from_notify(&callback_root, &callback_local_root, event)
+                workspace_fs_event_from_notify(&callback_root, &callback_local_root, has_git_repo, event)
             {
                 if event_tx.send(event).is_err() {
                     log::debug!("workspace refresh batch receiver closed");

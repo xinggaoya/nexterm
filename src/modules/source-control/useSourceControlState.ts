@@ -251,9 +251,11 @@ export function useSourceControlState(options: SourceControlStateOptions) {
 
   watch(options.fsEvent, (event) => {
     if (!event || !isSameRoot(event.rootPath, options.rootPath.value)) return;
-    // Git-related events get fast refresh; non-git events use a longer delay
-    // to avoid unnecessary git status calls during heavy file I/O.
-    scheduleAutoRefresh(event.gitRelated ? 80 : 2000);
+    // Git-related events get fast refresh; non-git events still refresh,
+    // just with a slightly longer debounce so we don't hammer `git status`
+    // during unrelated churn (e.g. `node_modules` rebuilds in a non-git
+    // directory).
+    scheduleAutoRefresh(event.gitRelated ? 80 : 500);
   });
 
   watch(busyAction, (value) => {
