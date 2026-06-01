@@ -1,34 +1,10 @@
 import { computed, nextTick, reactive } from "vue";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { StoredWorkspace } from "@/modules/settings/store";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import type { WorkspaceEnv } from "@/modules/workspace";
 import { useWorkspaceLifecycle } from "./useWorkspaceLifecycle";
 
-const webviewWindowMock = vi.hoisted(() => {
-  const instances: Array<{
-    label: string;
-    options: Record<string, unknown>;
-    once: ReturnType<typeof vi.fn>;
-  }> = [];
-  return {
-    instances,
-    WebviewWindow: vi.fn(function WebviewWindow(
-      this: { label: string; options: Record<string, unknown>; once: ReturnType<typeof vi.fn> },
-      label: string,
-      options: Record<string, unknown>,
-    ) {
-      this.label = label;
-      this.options = options;
-      this.once = vi.fn(async () => vi.fn());
-      webviewWindowMock.instances.push(this);
-    }),
-  };
-});
-
-vi.mock("@tauri-apps/api/webviewWindow", () => ({
-  WebviewWindow: webviewWindowMock.WebviewWindow,
-}));
 const LOCAL: WorkspaceEnv = { kind: "local" };
 const WSL: WorkspaceEnv = { kind: "wsl", distro: "Ubuntu" };
 
@@ -92,13 +68,6 @@ function createHarness(rootPath: string | null = "/repo") {
 }
 
 describe("useWorkspaceLifecycle", () => {
-  beforeEach(() => {
-    webviewWindowMock.instances.length = 0;
-    webviewWindowMock.WebviewWindow.mockClear();
-  });
-  afterEach(() => {
-    webviewWindowMock.instances.length = 0;
-  });
   it("blocks workspace switches when editors are dirty", async () => {
     const harness = createHarness("/repo");
     harness.tabs.initialized = true;
@@ -314,96 +283,5 @@ describe("useWorkspaceLifecycle", () => {
     expect(getWslHome).not.toHaveBeenCalled();
     expect(lifecycle.workspaceSwitching.value).toBe(false);
     expect(lifecycle.switchingWorkspaceEnv.value).toBeNull();
-  });
-
-  it("opens the WSL distro home in a new window", async () => {
-    const harness = createHarness("/repo");
-    const lifecycle = useWorkspaceLifecycle({
-      ...harness,
-      workspaceRoot: computed(() => harness.workspaceRootStore.rootPath),
-      t: (key) => key,
-      getWslHome: vi.fn(async () => "/home/dev"),
-      hasRuntime: () => false,
-    });
-
-    await lifecycle.openEnvHomeInNewWindow(WSL);
-
-    expect(webviewWindowMock.WebviewWindow).toHaveBeenCalledTimes(1);
-    const instance = webviewWindowMock.instances[0];
-    expect(instance.options.url).toContain("workspaceEnv=wsl");
-    expect(instance.options.url).toContain("wslDistro=Ubuntu");
-    expect(instance.options.url).toContain("workspacePath=%2Fhome%2Fdev");
-    expect(harness.workspaceRootStore.openWorkspace).not.toHaveBeenCalled();
-  });
-
-  it("opens the local home in a new window", async () => {
-    const harness = createHarness("/repo");
-    const getLocalHome = vi.fn(async () => "C:/Users/dev");
-    const lifecycle = useWorkspaceLifecycle({
-      ...harness,
-      workspaceRoot: computed(() => harness.workspaceRootStore.rootPath),
-      t: (key) => key,
-      getLocalHome,
-      hasRuntime: () => false,
-    });
-
-    await lifecycle.openEnvHomeInNewWindow(LOCAL);
-
-    expect(getLocalHome).toHaveBeenCalled();
-    expect(webviewWindowMock.WebviewWindow).toHaveBeenCalledTimes(1);
-    const instance = webviewWindowMock.instances[0];
-    expect(instance.options.url).toContain("workspaceEnv=local");
-    expect(instance.options.url).toContain(
-      "workspacePath=C%3A%2FUsers%2Fdev",
-    );
-  });
-
-  it("surfaces WSL home resolution failures via the alert callback", async () => {
-    const harness = createHarness("/repo");
-    const alert = vi.fn();
-    const lifecycle = useWorkspaceLifecycle({
-      ...harness,
-      workspaceRoot: computed(() => harness.workspaceRootStore.rootPath),
-      t: (key) => key,
-      alert,
-      getWslHome: vi.fn(async () => {
-        throw new Error("wsl down");
-      }),
-      hasRuntime: () => false,
-    });
-
-    await lifecycle.openEnvHomeInNewWindow(WSL);
-
-    expect(alert).toHaveBeenCalledWith("Error: wsl down");
-    expect(webviewWindowMock.WebviewWindow).not.toHaveBeenCalled();
-  });
-
-  it("blocks openEnvHomeInNewWindow while editor tabs are dirty", async () => {
-    const harness = createHarness("/repo");
-    harness.tabs.initialized = true;
-    harness.tabs.tabs = [
-      {
-        id: 1,
-        kind: "editor",
-        title: "main.ts",
-        path: "/repo/src/main.ts",
-        dirty: true,
-        preview: false,
-      },
-    ];
-    const alert = vi.fn();
-    const lifecycle = useWorkspaceLifecycle({
-      ...harness,
-      workspaceRoot: computed(() => harness.workspaceRootStore.rootPath),
-      t: (key) => key,
-      alert,
-      getWslHome: vi.fn(async () => "/home/dev"),
-      hasRuntime: () => false,
-    });
-
-    await lifecycle.openEnvHomeInNewWindow(WSL);
-
-    expect(alert).toHaveBeenCalledWith("app.unsaved.switchWorkspaceBlocked");
-    expect(webviewWindowMock.WebviewWindow).not.toHaveBeenCalled();
   });
 });

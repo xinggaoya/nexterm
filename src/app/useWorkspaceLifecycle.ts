@@ -13,7 +13,6 @@ import type { Tab } from "@/modules/tabs/tabsTypes";
 import {
   getWslHome as getDefaultWslHome,
   normalizeWorkspacePath,
-  openWorkspaceInNewWindow,
   type WorkspaceEnv,
 } from "@/modules/workspace";
 
@@ -201,23 +200,6 @@ export function useWorkspaceLifecycle(options: WorkspaceLifecycleOptions) {
     }
   }
 
-  async function openEnvHomeInNewWindow(env: WorkspaceEnv) {
-    if (hasDirtyEditors()) return;
-    try {
-      const home =
-        env.kind === "wsl" ? await getWslHome(env.distro) : await getLocalHome();
-      const webview = openWorkspaceInNewWindow({
-        path: normalizeWorkspacePath(home),
-        env,
-      });
-      void webview.once("tauri://error", (event) => {
-        showAlert(String(event.payload));
-      });
-    } catch (error) {
-      showAlert(String(error));
-    }
-  }
-
   watch(
     () => [options.workspaceRoot.value, options.workspaceEnv.env] as const,
     ([rootPath]) => {
@@ -234,7 +216,6 @@ export function useWorkspaceLifecycle(options: WorkspaceLifecycleOptions) {
     chooseWorkspace,
     hasDirtyEditors,
     listenWorkspaceFsChanges,
-    openEnvHomeInNewWindow,
     openRecentWorkspace,
     openWorkspacePath,
     restartWorkspaceWatcher,

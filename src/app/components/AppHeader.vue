@@ -8,7 +8,6 @@ import {
   GitCommitOutline,
   GitCompareOutline,
   GlobeOutline,
-  HomeOutline,
   ReorderFourOutline,
   ReorderTwoOutline,
   SearchOutline,
@@ -58,8 +57,6 @@ const emit = defineEmits<{
   newTab: [];
   chooseWorkspace: [];
   chooseWorkspaceInEnv: [env: WorkspaceEnv];
-  openEnvHomeCurrent: [env: WorkspaceEnv];
-  openEnvHomeNew: [env: WorkspaceEnv];
   splitPane: [dir: SplitDir];
   openCommandPalette: [];
   openSettings: [];
@@ -103,42 +100,22 @@ const workspaceEnvStore = useWorkspaceEnvPiniaStore();
 
 const LOCAL_ENV: WorkspaceEnv = { kind: "local" };
 
-function envLabel(env: WorkspaceEnv): string {
-  return env.kind === "wsl" ? env.distro : t("common.local");
-}
-
 function buildOpenFolderOptions(): DropdownOption[] {
   const distros = workspaceEnvStore.distros ?? [];
-  const envs: WorkspaceEnv[] = [
-    LOCAL_ENV,
-    ...distros.map((distro) => ({
-      kind: "wsl" as const,
-      distro: distro.name,
-    })),
+  const options: DropdownOption[] = [
+    {
+      key: `browse:${actionKey(LOCAL_ENV)}`,
+      label: t("app.header.openFolderMenu.openInLocal"),
+      icon: () => h(NIcon, null, { default: () => h(DesktopOutline) }),
+    },
   ];
-  const options: DropdownOption[] = [];
-  for (const env of envs) {
-    const envDisplay = envLabel(env);
-    options.push(
-      {
-        key: `browse:${actionKey(env)}`,
-        label: t("app.header.openFolderMenu.browseIn", { env: envDisplay }),
-        icon: () =>
-          h(NIcon, null, {
-            default: () => h(env.kind === "wsl" ? ServerOutline : DesktopOutline),
-          }),
-      },
-      {
-        key: `home-current:${actionKey(env)}`,
-        label: t("app.header.openFolderMenu.openHomeCurrent", { env: envDisplay }),
-        icon: () => h(NIcon, null, { default: () => h(HomeOutline) }),
-      },
-      {
-        key: `home-new:${actionKey(env)}`,
-        label: t("app.header.openFolderMenu.openHomeNew", { env: envDisplay }),
-        icon: () => h(NIcon, null, { default: () => h(HomeOutline) }),
-      },
-    );
+  for (const distro of distros) {
+    const env: WorkspaceEnv = { kind: "wsl", distro: distro.name };
+    options.push({
+      key: `browse:${actionKey(env)}`,
+      label: t("app.header.openFolderMenu.openInWsl", { distro: distro.name }),
+      icon: () => h(NIcon, null, { default: () => h(ServerOutline) }),
+    });
   }
   return options;
 }
@@ -152,17 +129,12 @@ const openFolderOptions = computed<DropdownOption[]>(() => buildOpenFolderOption
 function handleOpenFolderSelect(key: string | number) {
   const value = String(key);
   const actionEnd = value.indexOf(":");
-  const action = value.slice(0, actionEnd);
   const envPart = value.slice(actionEnd + 1);
   let env: WorkspaceEnv = LOCAL_ENV;
-  if (envPart === "local") {
-    env = LOCAL_ENV;
-  } else if (envPart.startsWith("wsl:")) {
+  if (envPart.startsWith("wsl:")) {
     env = { kind: "wsl", distro: envPart.slice(4) };
   }
-  if (action === "browse") emit("chooseWorkspaceInEnv", env);
-  else if (action === "home-current") emit("openEnvHomeCurrent", env);
-  else if (action === "home-new") emit("openEnvHomeNew", env);
+  emit("chooseWorkspaceInEnv", env);
 }
 
 onMounted(() => {

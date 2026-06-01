@@ -475,7 +475,7 @@ describe("AppHeader.vue", () => {
     expect(wrapper.find("[data-open-workspace-menu]").exists()).toBe(true);
   });
 
-  it("emits chooseWorkspaceInEnv when the local browse option is selected", async () => {
+  it("emits chooseWorkspaceInEnv when the local open option is selected", async () => {
     const wrapper = mount(AppHeader, {
       global: { plugins: [createPinia()] },
       props: {
@@ -491,9 +491,11 @@ describe("AppHeader.vue", () => {
     expect(wrapper.emitted("chooseWorkspaceInEnv")).toEqual([
       [{ kind: "local" }],
     ]);
+    expect(wrapper.emitted("openEnvHomeCurrent")).toBeUndefined();
+    expect(wrapper.emitted("openEnvHomeNew")).toBeUndefined();
   });
 
-  it("emits chooseWorkspaceInEnv with the WSL distro for WSL browse options", async () => {
+  it("emits chooseWorkspaceInEnv with the WSL distro for each WSL open option", async () => {
     const pinia = createPinia();
     const { useWorkspaceEnvPiniaStore } = await import(
       "@/modules/workspace/workspaceEnvPinia"
@@ -519,52 +521,6 @@ describe("AppHeader.vue", () => {
 
     expect(wrapper.emitted("chooseWorkspaceInEnv")).toEqual([
       [{ kind: "wsl", distro: "Ubuntu-22.04" }],
-    ]);
-  });
-
-  it("emits openEnvHomeCurrent for the selected env", async () => {
-    const pinia = createPinia();
-    const { useWorkspaceEnvPiniaStore } = await import(
-      "@/modules/workspace/workspaceEnvPinia"
-    );
-    const envStore = useWorkspaceEnvPiniaStore(pinia);
-    envStore.distros = [{ name: "Debian", default: false, running: false }];
-    const wrapper = mount(AppHeader, {
-      global: { plugins: [pinia] },
-      props: {
-        tabs,
-        activeId: 1,
-        canSplit: true,
-        showWindowControls: false,
-      },
-    });
-    await nextTick();
-
-    await wrapper
-      .find("[data-option-key='home-current:wsl:Debian']")
-      .trigger("click");
-
-    expect(wrapper.emitted("openEnvHomeCurrent")).toEqual([
-      [{ kind: "wsl", distro: "Debian" }],
-    ]);
-  });
-  it("emits openEnvHomeNew for the selected env", async () => {
-    const wrapper = mount(AppHeader, {
-      global: { plugins: [createPinia()] },
-      props: {
-        tabs,
-        activeId: 1,
-        canSplit: true,
-        showWindowControls: false,
-      },
-    });
-
-    await wrapper
-      .find("[data-option-key='home-new:local']")
-      .trigger("click");
-
-    expect(wrapper.emitted("openEnvHomeNew")).toEqual([
-      [{ kind: "local" }],
     ]);
   });
 });
