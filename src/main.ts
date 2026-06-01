@@ -11,10 +11,14 @@ import { createApp } from "vue";
 import MainApp from "./app/MainApp.vue";
 import { applyLanguagePreference, i18n } from "./modules/i18n";
 import { initLaunchDir, getLaunchWorkspace } from "./lib/launchDir";
+import { onDeepLinkOpen, type DeepLinkOpenRequest } from "./lib/native";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "./lib/platform";
 import { hasTauriInternals } from "./lib/tauriRuntime";
 import { usePreferencesPiniaStore } from "./modules/settings/preferencesPinia";
-import { useWorkspaceRootPiniaStore } from "./modules/workspace";
+import {
+  useWorkspaceRootPiniaStore,
+  type WorkspaceEnv,
+} from "@/modules/workspace";
 
 if (USE_CUSTOM_WINDOW_CONTROLS) {
   document.documentElement.dataset.chrome = "borderless";
@@ -41,3 +45,20 @@ const showWindow = () => {
 };
 setTimeout(showWindow, 50);
 setTimeout(showWindow, 500);
+
+// Cold-start and runtime deep-link delivery (`nexterm://open?...`) flows
+// through the Rust plugin's setup hook into this `nexterm://deep-link-open`
+// event. The workspace is opened AFTER bootstrap so the pinia store is ready
+// to consume the path/env without re-entering hydration.
+if (hasTauriInternals()) {
+  const workspaceRootStore = useWorkspaceRootPiniaStore(pinia);
+  void onDeepLinkOpen((request: DeepLinkOpenRequest) => {
+    const env: WorkspaceEnv =
+      request.env === "wsl" && request.wslDistro
+        ? { kind: "wsl", distro: request.wslDistro }
+        : { kind: "local" };
+    void workspaceRootStore.openWorkspace(request.path, env).catch((error) => {
+      console.warn("Failed to open workspace from deep link", error);
+    });
+  });
+}

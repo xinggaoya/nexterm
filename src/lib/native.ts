@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { exit as pluginExit, relaunch as pluginRelaunch } from "@tauri-apps/plugin-process";
 import { currentWorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
 
 export type GitRepoInfo = {
@@ -153,6 +155,46 @@ export type GitDiscardEntry = {
 };
 
 export const WORKSPACE_FS_CHANGED_EVENT = "nexterm://workspace-fs-changed";
+
+/**
+ * Event name emitted by the Tauri backend (`src-tauri/src/lib.rs`) when a
+ * `nexterm://open?workspacePath=...&workspaceEnv=...&wslDistro=...` URL is
+ * delivered via the OS deep-link protocol handler. Listeners receive a
+ * `DeepLinkOpenRequest` payload that maps to `LaunchWorkspace` for the rest
+ * of the workspace lifecycle.
+ */
+export const DEEP_LINK_OPEN_EVENT = "nexterm://deep-link-open";
+
+export type DeepLinkOpenRequest = {
+  path: string;
+  env: string;
+  wslDistro?: string;
+};
+
+export type DeepLinkOpenHandler = (request: DeepLinkOpenRequest) => void;
+
+export function onDeepLinkOpen(handler: DeepLinkOpenHandler): Promise<UnlistenFn> {
+  return listen<DeepLinkOpenRequest>(DEEP_LINK_OPEN_EVENT, (event) => {
+    handler(event.payload);
+  });
+}
+
+/**
+ * Relaunch the current process. Thin wrapper around
+ * `@tauri-apps/plugin-process` so callers don't depend on the plugin package
+ * directly; kept async to match the underlying API.
+ */
+export function relaunchApp(): Promise<void> {
+  return pluginRelaunch();
+}
+
+/**
+ * Exit the current process with an explicit exit code. Defaults to `0` per
+ * the upstream `process` plugin contract.
+ */
+export function exitApp(code = 0): Promise<void> {
+  return pluginExit(code);
+}
 
 export const native = {
   workspaceAuthorize: (path: string) =>

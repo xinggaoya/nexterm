@@ -131,6 +131,9 @@ const zhCN = {
       minimize: "最小化",
       restore: "还原",
     },
+    deepLink: {
+      openFailed: "无法通过 {scheme} 链接打开工作区。",
+    },
   },
   settings: {
     tabs: {

@@ -3,7 +3,8 @@ mod panic_report;
 
 use modules::{fs, git, pty, shell, workspace};
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{AppHandle, Emitter, Runtime, State};
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_window_state::StateFlags;
 
 /// Drained on first read so HMR / re-mounts can't replay the launch dir.
@@ -38,6 +39,59 @@ fn parse_launch_dir() -> Option<String> {
     None
 }
 
+/// Tauri event name the frontend listens to for deep-link requests. Payload
+/// mirrors the URL `nexterm://open?workspacePath=...&workspaceEnv=...&wslDistro=...`
+/// query parameters parsed by `src/lib/launchDir.ts`.
+pub const DEEP_LINK_OPEN_EVENT: &str = "nexterm://deep-link-open";
+
+/// Subset of a deep-link URL the frontend cares about. Serialized into the
+/// `nexterm://deep-link-open` event so the launching workspace can be opened
+/// without further parsing in the webview.
+#[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DeepLinkOpenRequest {
+    pub path: String,
+    pub env: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wsl_distro: Option<String>,
+}
+
+fn parse_deep_link_query(url: &url::Url) -> Option<DeepLinkOpenRequest> {
+    if url.scheme() != "nexterm" {
+        return None;
+    }
+    // `nexterm://open?workspacePath=...&workspaceEnv=...&wslDistro=...`
+    if url.host_str() == Some("open") {
+        let mut params: std::collections::HashMap<String, String> = url
+            .query_pairs()
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect();
+        let path = params.remove("workspacePath");
+        let env = params.remove("workspaceEnv");
+        let wsl_distro = params.remove("wslDistro");
+        if let (Some(path), Some(env)) = (path, env) {
+            return Some(DeepLinkOpenRequest { path, env, wsl_distro });
+        }
+    }
+    // `nexterm:///absolute/path` or `nexterm://host/absolute/path` style URLs
+    // are treated as local workspace paths.
+    let trimmed = url.path().trim_start_matches('/');
+    if !trimmed.is_empty() {
+        return Some(DeepLinkOpenRequest {
+            path: trimmed.to_string(),
+            env: "local".to_string(),
+            wsl_distro: None,
+        });
+    }
+    None
+}
+
+fn emit_deep_link_open<R: Runtime>(app: &AppHandle<R>, request: DeepLinkOpenRequest) {
+    if let Err(error) = app.emit(DEEP_LINK_OPEN_EVENT, request) {
+        log::warn!("failed to emit deep-link open event: {error}");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     panic_report::install_panic_hook();
@@ -64,6 +118,35 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_deep_link::init())
+        .setup(|app| {
+            // Register the deep-link handler early so cold-start URLs (delivered
+            // by the OS as CLI args on Windows/Linux) are emitted to the
+            // frontend before `LaunchDir` is consumed by the bootstrap path.
+            let app_handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    if let Some(request) = parse_deep_link_query(&url) {
+                        emit_deep_link_open(&app_handle, request);
+                    }
+                }
+            });
+            // Surface any deep-link URL the plugin captured before our
+            // listener attached (cold start on macOS/iOS). The plugin stores
+            // it internally; re-emit it via our own event so the frontend
+            // only needs a single subscription.
+            if let Ok(Some(urls)) = app.deep_link().get_current() {
+                let app_handle = app.handle().clone();
+                for url in urls {
+                    if let Some(request) = parse_deep_link_query(&url) {
+                        emit_deep_link_open(&app_handle, request);
+                    }
+                }
+            }
+            Ok(())
+        })
         .manage(pty::PtyState::default())
         .manage(shell::ShellState::default())
         .manage(fs::watcher::FsWatcherState::default())

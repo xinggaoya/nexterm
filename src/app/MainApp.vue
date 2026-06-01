@@ -248,14 +248,18 @@ async function openSelectedWorkspaceInCurrentWindow() {
   await openWorkspacePath(selection.path, selection.env);
 }
 
-function openSelectedWorkspaceInNewWindow() {
+async function openSelectedWorkspaceInNewWindow() {
   const selection = workspaceOpenChoice.value;
   workspaceOpenChoice.value = null;
   if (!selection) return;
-  const webview = openWorkspaceInNewWindow(selection);
-  void webview.once("tauri://error", (event) => {
-    window.alert(String(event.payload));
-  });
+  try {
+    const webview = await openWorkspaceInNewWindow(selection);
+    void webview.once("tauri://error", (event) => {
+      window.alert(String(event.payload));
+    });
+  } catch (error) {
+    window.alert(String(error));
+  }
 }
 
 function openSettings(tab: SettingsTab = SETTINGS_DEFAULT_TAB) {
