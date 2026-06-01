@@ -82,10 +82,8 @@ const zhCN = {
       openCommandCenter: "打开命令中心",
       openFolder: "打开文件夹",
       openFolderMenu: {
-        browseIn: "在 {env} 中浏览文件夹…",
-        openHomeCurrent: "打开 {env} home (当前窗口)",
-        openHomeNew: "打开 {env} home (新窗口)",
-        wslDistro: "WSL：{distro}",
+        openInLocal: "在本机打开…",
+        openInWsl: "在 WSL：{distro} 中打开…",
       },
       preview: "预览",
       sourceControl: "源代码管理",

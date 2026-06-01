@@ -520,50 +520,6 @@ describe("MainApp.vue", () => {
     ).toContain("/home/dev/repo");
   });
 
-  it("routes open-env-home-current to switchWorkspace", async () => {
-    const pinia = createPinia();
-    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
-    workspaceRoot.rootPath = "D:/repo";
-    invokeMock.mockImplementationOnce((command: string) =>
-      command === "wsl_home" ? Promise.resolve("/home/dev") : Promise.resolve(null),
-    );
-
-    const wrapper = mount(MainApp, {
-      global: { plugins: [pinia, i18n] },
-    });
-    const header = wrapper.findComponent({ name: "AppHeader" });
-    header.vm.$emit("open-env-home-current", { kind: "wsl", distro: "Ubuntu" });
-    await flushPromises();
-    await nextTick();
-
-    expect(currentWorkspaceEnv()).toEqual({ kind: "wsl", distro: "Ubuntu" });
-    expect(workspaceRoot.rootPath).toBe("/home/dev");
-  });
-
-  it("routes open-env-home-new to a new workspace window", async () => {
-    const pinia = createPinia();
-    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
-    workspaceRoot.rootPath = "D:/repo";
-    invokeMock.mockImplementationOnce((command: string) =>
-      command === "wsl_home" ? Promise.resolve("/home/dev") : Promise.resolve(null),
-    );
-
-    const wrapper = mount(MainApp, {
-      global: { plugins: [pinia, i18n] },
-    });
-    const header = wrapper.findComponent({ name: "AppHeader" });
-    header.vm.$emit("open-env-home-new", { kind: "wsl", distro: "Ubuntu" });
-    await flushPromises();
-    await nextTick();
-
-    expect(webviewWindowMock.WebviewWindow).toHaveBeenCalledTimes(1);
-    const instance = webviewWindowMock.instances[0];
-    expect(instance.options.url).toContain("workspaceEnv=wsl");
-    expect(instance.options.url).toContain("wslDistro=Ubuntu");
-    expect(instance.options.url).toContain("workspacePath=%2Fhome%2Fdev");
-  });
-
-
   it("refreshes terminal themes after syncing app theme tokens", async () => {
     const originalRaf = window.requestAnimationFrame;
     window.requestAnimationFrame = ((callback: FrameRequestCallback) => {

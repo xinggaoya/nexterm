@@ -80,10 +80,8 @@ const enUS = {
       openCommandCenter: "Open command center",
       openFolder: "Open Folder",
       openFolderMenu: {
-        browseIn: "Browse folder in {env}…",
-        openHomeCurrent: "Open {env} home (current window)",
-        openHomeNew: "Open {env} home (new window)",
-        wslDistro: "WSL: {distro}",
+        openInLocal: "Open in Local…",
+        openInWsl: "Open in WSL: {distro}…",
       },
       preview: "Preview",
       sourceControl: "Source Control",

@@ -201,7 +201,6 @@ const taskConsole = useTaskConsoleController({
 
 const {
   chooseWorkspace,
-  openEnvHomeInNewWindow: openEnvHomeInNewWindowWindow,
   openRecentWorkspace,
   openWorkspacePath,
   startWorkspaceLifecycle,
@@ -240,14 +239,6 @@ async function chooseWorkspaceInEnv(env: WorkspaceEnv) {
   } catch (error) {
     window.alert(String(error));
   }
-}
-
-function openEnvHomeInCurrentWindow(env: WorkspaceEnv) {
-  return switchWorkspace(env);
-}
-
-function openEnvHomeInNewWindow(env: WorkspaceEnv) {
-  return openEnvHomeInNewWindowWindow(env);
 }
 
 async function openSelectedWorkspaceInCurrentWindow() {
@@ -385,8 +376,6 @@ watch(
               @new-tab="newTerminalTab"
               @choose-workspace="chooseWorkspaceOpenTarget"
               @choose-workspace-in-env="chooseWorkspaceInEnv"
-              @open-env-home-current="openEnvHomeInCurrentWindow"
-              @open-env-home-new="openEnvHomeInNewWindow"
               @split-pane="splitActivePane"
               @open-command-palette="openCommandPalette"
               @open-settings="openSettings"
