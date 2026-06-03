@@ -377,14 +377,7 @@ const enUS = {
     sha: "SHA",
     subject: "Subject",
   },
-  terminal: {
-    toolbar: {
-      copy: "Copy",
-      paste: "Paste",
-      selectAll: "Select all",
-      hint: "Terminal actions",
-    },
-  },
+  terminal: {},
 } as const;
 
 export default enUS;

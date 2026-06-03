@@ -187,7 +187,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   zoomLevel: 1.0,
   sourceControlPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
   explorerPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
-  touchOptimizations: "auto",
+  touchOptimizations: "off",
 };
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
