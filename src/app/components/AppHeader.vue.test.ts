@@ -518,9 +518,58 @@ describe("AppHeader.vue", () => {
     await wrapper
       .find("[data-option-key='browse:wsl:Ubuntu-22.04']")
       .trigger("click");
-
     expect(wrapper.emitted("chooseWorkspaceInEnv")).toEqual([
       [{ kind: "wsl", distro: "Ubuntu-22.04" }],
     ]);
+  });
+  it("expands the icon hit area on touch-enabled devices", async () => {
+    const { usePreferencesPiniaStore } = await import(
+      "@/modules/settings/preferencesPinia"
+    );
+    const pinia = createPinia();
+    usePreferencesPiniaStore(pinia).touchOptimizations = "on";
+
+    const wrapper = mount(AppHeader, {
+      global: { plugins: [pinia] },
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    const newTab = wrapper.find("[data-new-tab]");
+    const settings = wrapper.find("[data-open-settings]");
+    const split = wrapper.find("[data-split-actions]");
+
+    expect(newTab.classes()).toContain("h-11");
+    expect(newTab.classes()).toContain("w-11");
+    expect(settings.classes()).toContain("h-11");
+    expect(split.classes()).toContain("h-11");
+  });
+
+  it("keeps the compact icon hit area off touch devices", async () => {
+    const { usePreferencesPiniaStore } = await import(
+      "@/modules/settings/preferencesPinia"
+    );
+    const pinia = createPinia();
+    usePreferencesPiniaStore(pinia).touchOptimizations = "off";
+
+    const wrapper = mount(AppHeader, {
+      global: { plugins: [pinia] },
+      props: {
+        tabs,
+        activeId: 1,
+        canSplit: true,
+        showWindowControls: false,
+      },
+    });
+
+    const newTab = wrapper.find("[data-new-tab]");
+
+    expect(newTab.classes()).toContain("h-7");
+    expect(newTab.classes()).toContain("w-7");
+    expect(newTab.classes()).not.toContain("h-11");
   });
 });

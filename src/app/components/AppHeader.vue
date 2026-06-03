@@ -21,6 +21,7 @@ import { NButton, NButtonGroup, NDropdown, NIcon, type DropdownOption } from "na
 import { computed, h, onBeforeUnmount, onMounted, ref, type Component, type VNode } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import WindowControls from "@/components/WindowControls.vue";
+import { useTouchDevicePreference } from "@/lib/touchDevice";
 import { IS_MAC } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
@@ -360,13 +361,20 @@ const splitOptions = computed<DropdownOption[]>(() => [
   { key: "row", label: t("app.header.splitRight") },
   { key: "col", label: t("app.header.splitDown") },
 ]);
-
 function renderSplitOptionIcon(option: DropdownOption): VNode {
   return h(NIcon, { size: 14 }, {
     default: () =>
       h(option.key === "col" ? ReorderTwoOutline : DuplicateOutline),
   });
 }
+
+const { effectiveTouch } = useTouchDevicePreference();
+const iconButtonClass = computed(() =>
+  effectiveTouch.value ? "h-11 w-11" : "h-7 w-7",
+);
+const tabMinHeightClass = computed(() =>
+  effectiveTouch.value ? "min-h-11" : "min-h-7",
+);
 
 onBeforeUnmount(() => {
   removePointerListeners();
@@ -387,7 +395,8 @@ onBeforeUnmount(() => {
           :data-toggle-left-panel="leftPanelOpen"
           :aria-label="t('app.header.toggleSourceControl')"
           :class="[
-            'grid h-7 w-7 place-items-center rounded-md transition-colors',
+            'grid place-items-center rounded-md transition-colors',
+            iconButtonClass,
             leftPanelOpen
               ? 'bg-accent text-foreground'
               : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
@@ -429,7 +438,10 @@ onBeforeUnmount(() => {
           type="button"
           data-new-tab
           :aria-label="t('app.header.newTerminal')"
-          class="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
+          :class="[
+            'grid place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground',
+            iconButtonClass,
+          ]"
           @click="emit('newTab')"
         >
           <NIcon :component="TerminalOutline" :size="14" />
@@ -454,7 +466,8 @@ onBeforeUnmount(() => {
           :aria-grabbed="draggingTabId === tab.id"
           :title="`${tabKindLabel(tab)}: ${tabLabel(tab)}`"
           :class="[
-            'group relative flex h-7 min-w-[5.5rem] max-w-56 flex-[1_1_10rem] items-center justify-between gap-1.5 rounded-md px-2 text-left text-[12px] transition-[background-color,color,box-shadow,opacity]',
+            'group relative flex min-w-[5.5rem] max-w-56 flex-[1_1_10rem] items-center justify-between gap-1.5 rounded-md px-2 text-left text-[12px] transition-[background-color,color,box-shadow,opacity]',
+            tabMinHeightClass,
             props.tabs.length === 1 ? 'pe-2' : 'pe-1',
             draggingTabId === tab.id ? 'opacity-60' : '',
             dropTarget?.id === tab.id && dropTarget.placement === 'before'
@@ -545,7 +558,10 @@ onBeforeUnmount(() => {
             data-split-actions
             :disabled="!props.workspaceReady || !canSplit"
             :aria-label="t('app.header.splitActions')"
-            class="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+            :class="[
+              'grid place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted-foreground',
+              iconButtonClass,
+            ]"
           >
             <NIcon :component="ReorderFourOutline" :size="14" />
           </button>
@@ -556,7 +572,10 @@ onBeforeUnmount(() => {
           type="button"
           data-open-command-palette
           :aria-label="t('app.header.openCommandCenter')"
-          class="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
+          :class="[
+            'grid place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground',
+            iconButtonClass,
+          ]"
           @click="emit('openCommandPalette')"
         >
           <NIcon :component="SearchOutline" :size="14" />
@@ -567,7 +586,10 @@ onBeforeUnmount(() => {
           type="button"
           data-open-settings
           :aria-label="t('common.settings')"
-          class="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
+          :class="[
+            'grid place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground',
+            iconButtonClass,
+          ]"
           @click="emit('openSettings')"
         >
           <NIcon :component="SettingsOutline" :size="14" />
@@ -579,7 +601,8 @@ onBeforeUnmount(() => {
           :data-toggle-right-panel="rightPanelOpen"
           :aria-label="t('app.header.toggleExplorer')"
           :class="[
-            'grid h-7 w-7 place-items-center rounded-md transition-colors',
+            'grid place-items-center rounded-md transition-colors',
+            iconButtonClass,
             rightPanelOpen
               ? 'bg-accent text-foreground'
               : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
@@ -591,7 +614,6 @@ onBeforeUnmount(() => {
       </TooltipTitle>
       <WindowControls v-if="props.showWindowControls" />
     </div>
-
     <div
       v-if="dragGhost"
       data-tab-drag-ghost

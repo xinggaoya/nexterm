@@ -18,12 +18,14 @@ import {
   setTerminalScrollback,
   setTerminalWebglEnabled,
   setTheme,
+  setTouchOptimizations,
   setVimMode,
   type EditorThemeId,
   type FileOpenMode,
   type LanguagePref,
   type Preferences,
   type ThemePref,
+  type TouchMode,
 } from "./store";
 import type { CommandId } from "@/modules/commands/types";
 import {
@@ -150,6 +152,11 @@ export const usePreferencesPiniaStore = defineStore("preferences", {
       this.explorerPanelWidth = value;
       patchPreferencesSnapshot("explorerPanelWidth", value);
       await setExplorerPanelWidth(value);
+    },
+    async updateTouchOptimizations(value: TouchMode) {
+      this.touchOptimizations = value;
+      patchPreferencesSnapshot("touchOptimizations", value);
+      await setTouchOptimizations(value);
     },
   },
 });

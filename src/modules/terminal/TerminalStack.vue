@@ -15,6 +15,7 @@ const emit = defineEmits<{
   cwd: [leafId: number, cwd: string];
   title: [leafId: number, title: string];
   exit: [leafId: number, code: number];
+  selectionChange: [leafId: number];
 }>();
 
 const terminalTabs = computed(() =>
@@ -44,6 +45,7 @@ const terminalTabs = computed(() =>
         @cwd="(leafId, cwd) => emit('cwd', leafId, cwd)"
         @title="(leafId, title) => emit('title', leafId, title)"
         @exit="(leafId, code) => emit('exit', leafId, code)"
+        @selection-change="(leafId) => emit('selectionChange', leafId)"
       />
     </div>
   </div>

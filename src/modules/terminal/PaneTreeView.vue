@@ -15,6 +15,7 @@ const emit = defineEmits<{
   cwd: [leafId: number, cwd: string];
   title: [leafId: number, title: string];
   exit: [leafId: number, code: number];
+  selectionChange: [leafId: number];
 }>();
 
 function focusLeaf(leafId: number) {
@@ -40,6 +41,7 @@ function focusLeaf(leafId: number) {
       @cwd="(leafId, cwd) => emit('cwd', leafId, cwd)"
       @title="(leafId, title) => emit('title', leafId, title)"
       @exit="(leafId, code) => emit('exit', leafId, code)"
+      @selection-change="(leafId) => emit('selectionChange', leafId)"
     />
   </div>
 
@@ -68,6 +70,7 @@ function focusLeaf(leafId: number) {
           @cwd="(leafId, cwd) => emit('cwd', leafId, cwd)"
           @title="(leafId, title) => emit('title', leafId, title)"
           @exit="(leafId, code) => emit('exit', leafId, code)"
+          @selection-change="(leafId) => emit('selectionChange', leafId)"
         />
       </div>
     </template>

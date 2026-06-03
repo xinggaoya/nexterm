@@ -4,6 +4,8 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import WorkspaceEnvSelector from "./WorkspaceEnvSelector.vue";
 import { useWorkspaceEnvPiniaStore } from "@/modules/workspace/workspaceEnvPinia";
+import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import { resetTouchDeviceCache } from "@/lib/touchDevice";
 
 vi.mock("naive-ui", async () => {
   const { defineComponent } = await vi.importActual<typeof import("vue")>("vue");
@@ -32,13 +34,25 @@ vi.mock("@/lib/tauriRuntime", () => ({
   hasTauriInternals: () => false,
 }));
 
-vi.mock("@/modules/settings/store", () => ({
-  setLastWslDistro: vi.fn(),
-}));
+vi.mock("@/modules/settings/store", async () => {
+  const actual = await vi.importActual<typeof import("@/modules/settings/store")>(
+    "@/modules/settings/store",
+  );
+  return {
+    ...actual,
+    setLastWslDistro: vi.fn(),
+  };
+});
 
 describe("WorkspaceEnvSelector.vue", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    resetTouchDeviceCache();
+    Object.defineProperty(navigator, "maxTouchPoints", {
+      configurable: true,
+      value: 0,
+    });
+    delete (window as unknown as Record<string, unknown>).ontouchstart;
   });
 
   it("renders local workspace and available WSL distros", () => {
@@ -83,5 +97,30 @@ describe("WorkspaceEnvSelector.vue", () => {
     await wrapper.find("[data-option-key='wsl:Ubuntu']").trigger("click");
 
     expect(wrapper.emitted("select")).toBeUndefined();
+  });
+
+  it("uses a larger hit area on touch devices", () => {
+    const store = useWorkspaceEnvPiniaStore();
+    store.distros = [];
+    const prefs = usePreferencesPiniaStore();
+    prefs.touchOptimizations = "on";
+
+    const wrapper = mount(WorkspaceEnvSelector);
+    const button = wrapper.find("button");
+
+    expect(button.classes()).toContain("h-9");
+  });
+
+  it("keeps the default compact hit area on non-touch devices", () => {
+    const store = useWorkspaceEnvPiniaStore();
+    store.distros = [];
+    const prefs = usePreferencesPiniaStore();
+    prefs.touchOptimizations = "off";
+
+    const wrapper = mount(WorkspaceEnvSelector);
+    const button = wrapper.find("button");
+
+    expect(button.classes()).toContain("h-6");
+    expect(button.classes()).not.toContain("h-9");
   });
 });

@@ -3,6 +3,7 @@ import { DesktopOutline } from "@vicons/ionicons5";
 import { NButton, NDropdown, NIcon, type DropdownOption } from "naive-ui";
 import { computed, onMounted } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
+import { useTouchDevicePreference } from "@/lib/touchDevice";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { t } from "@/modules/i18n/translate";
 import {
@@ -12,6 +13,7 @@ import {
 import { useWorkspaceEnvPiniaStore } from "@/modules/workspace/workspaceEnvPinia";
 
 const workspace = useWorkspaceEnvPiniaStore();
+const { effectiveTouch } = useTouchDevicePreference();
 const props = withDefaults(
   defineProps<{
     switching?: boolean;
@@ -61,6 +63,12 @@ function handleSelect(key: string | number) {
   }
 }
 
+const envButtonClass = computed(() =>
+  effectiveTouch.value
+    ? "max-w-44 h-9"
+    : "max-w-44 h-6",
+);
+
 onMounted(() => {
   if (hasTauriInternals()) void workspace.refreshDistros();
 });
@@ -80,7 +88,7 @@ onMounted(() => {
         :disabled="props.switching"
         :loading="props.switching"
         :aria-label="t('app.workspaceEnv.title')"
-        class="max-w-44"
+        :class="envButtonClass"
       >
         <template #icon><NIcon :component="DesktopOutline" /></template>
         <span class="truncate">{{ label }}</span>

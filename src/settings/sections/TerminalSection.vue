@@ -32,6 +32,12 @@ const scrollbackOptions = computed(() =>
     value,
   })),
 );
+
+const touchOptions = computed(() => [
+  { label: t("settings.terminal.touchModeAuto"), value: "auto" },
+  { label: t("settings.terminal.touchModeOn"), value: "on" },
+  { label: t("settings.terminal.touchModeOff"), value: "off" },
+]);
 </script>
 
 <template>
@@ -94,6 +100,25 @@ const scrollbackOptions = computed(() =>
           />
         </NFormItem>
       </NForm>
+    </NCard>
+
+    <NCard
+      size="small"
+      :title="t('settings.terminal.touchCard')"
+      embedded
+    >
+      <NForm label-placement="left" label-width="150" size="small">
+        <NFormItem :label="t('settings.terminal.touchMode')">
+          <NSelect
+            :value="prefs.touchOptimizations"
+            :options="touchOptions"
+            @update:value="(value) => prefs.updateTouchOptimizations(value as 'auto' | 'on' | 'off')"
+          />
+        </NFormItem>
+      </NForm>
+      <p class="mt-2 text-xs text-muted-foreground">
+        {{ t("settings.terminal.touchHint") }}
+      </p>
     </NCard>
   </section>
 </template>

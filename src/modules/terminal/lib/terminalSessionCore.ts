@@ -28,6 +28,7 @@ export type TerminalSessionCallbacks = {
   onExit?: (code: number) => void;
   onCwd?: (cwd: string) => void;
   onTitle?: (title: string) => void;
+  onSelectionChange?: () => void;
 };
 
 type Session = {
@@ -57,6 +58,7 @@ type Session = {
   generation: number;
   pendingWrites: string[];
   pendingWriteBytes: number;
+  selectionDisposer: (() => void) | null;
 };
 
 // Cap on how much user-typed input we buffer while the PTY is not yet
@@ -149,6 +151,7 @@ function ensureSession(
     generation: 0,
     pendingWrites: startupInput ? [startupInput] : [],
     pendingWriteBytes: startupInput ? startupInput.length : 0,
+    selectionDisposer: null,
   };
   session.modelOscDisposers = registerModelOsc(session);
   sessions.set(leafId, session);
@@ -347,6 +350,14 @@ function bindLeafToSlot(leafId: number, s: Session): void {
     registerOsc: () => [],
     onSearchReady: (addon) => s.callbacks.onSearchReady?.(addon),
   });
+  const slot = getSlotForLeaf(leafId);
+  if (slot) {
+    s.selectionDisposer?.();
+    const disposable = slot.term.onSelectionChange(() => {
+      s.callbacks.onSelectionChange?.();
+    });
+    s.selectionDisposer = () => disposable.dispose();
+  }
   s.hasSlot = true;
   if (s.lastCwd !== null) s.callbacks.onCwd?.(s.lastCwd);
   if (s.pendingExit !== null) {
@@ -400,9 +411,10 @@ function unbindLeafFromSlot(leafId: number, s: Session): void {
     if (out.rows > 0) s.rows = out.rows;
     resizeModel(s, s.cols, s.rows);
   }
+  s.selectionDisposer?.();
+  s.selectionDisposer = null;
   s.hasSlot = false;
 }
-
 function attachSession(
   leafId: number,
   container: HTMLDivElement,

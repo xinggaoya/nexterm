@@ -4,6 +4,7 @@ const enUS = {
     cancel: "Cancel",
     close: "Close",
     commit: "Commit",
+    copy: "Copy",
     create: "Create",
     default: "default",
     explorer: "Explorer",
@@ -11,9 +12,11 @@ const enUS = {
     loading: "Loading...",
     local: "Local",
     noCurrentDirectory: "No current directory",
+    paste: "Paste",
     refresh: "Refresh",
     retry: "Retry",
     running: "running",
+    selectAll: "Select all",
     settings: "Settings",
     unknown: "Unknown",
   },
@@ -54,7 +57,6 @@ const enUS = {
       stageAll: "Stage All Changes",
       stashPop: "Git Stash Pop",
       stashSave: "Git Stash Save",
-
       toggleExplorer: "Toggle Explorer",
       toggleSourceControl: "Toggle Source Control",
       unstageAll: "Unstage All Changes",
@@ -190,6 +192,15 @@ const enUS = {
       runtime: "Runtime",
       title: "About",
       version: "Version",
+    },
+    terminal: {
+      touchCard: "Touch input",
+      touchHint:
+        "When enabled, headers and toolbars grow larger, tooltips are skipped, and the terminal pane shows floating copy and paste controls.",
+      touchMode: "Touch input",
+      touchModeAuto: "Auto detect",
+      touchModeOff: "Always off",
+      touchModeOn: "Always on",
     },
   },
   explorer: {
@@ -365,6 +376,14 @@ const enUS = {
     noSubject: "(no subject)",
     sha: "SHA",
     subject: "Subject",
+  },
+  terminal: {
+    toolbar: {
+      copy: "Copy",
+      paste: "Paste",
+      selectAll: "Select all",
+      hint: "Terminal actions",
+    },
   },
 } as const;
 
