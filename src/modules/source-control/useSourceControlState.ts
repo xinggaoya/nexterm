@@ -15,6 +15,7 @@ import type {
   GitStatusSnapshot,
   WorkspaceFsChangedEvent,
 } from "@/lib/native";
+import type { ReadonlyRef } from "@/lib/refs";
 import {
   buildSourceControlEntries,
   discardEntriesForEntries,
@@ -46,20 +47,15 @@ export type BusyAction =
   | `checkout:${string}`
   | `stash-pop:${string}`
   | `stash-drop:${string}`;
-
-export type ReadableRef<T> = {
-  readonly value: T;
-};
-
 export type SourceControlRuntimeState = {
   busyAction: Ref<BusyAction | null>;
-  repoRoot: ReadableRef<string | null>;
-  entries: ReadableRef<SourceControlFileEntry[]>;
-  gitDecorations: ReadableRef<GitDecorationMap>;
-  stagedCount: ReadableRef<number>;
-  stageAllPaths: ReadableRef<string[]>;
-  unstageAllPaths: ReadableRef<string[]>;
-  discardAllEntries: ReadableRef<GitDiscardEntry[]>;
+  repoRoot: ReadonlyRef<string | null>;
+  entries: ReadonlyRef<SourceControlFileEntry[]>;
+  gitDecorations: ReadonlyRef<GitDecorationMap>;
+  stagedCount: ReadonlyRef<number>;
+  stageAllPaths: ReadonlyRef<string[]>;
+  unstageAllPaths: ReadonlyRef<string[]>;
+  discardAllEntries: ReadonlyRef<GitDiscardEntry[]>;
   refreshStatus: () => Promise<void>;
   loadSnapshot: (rootPath: string | null) => Promise<void>;
   reloadCurrent?: () => Promise<void>;

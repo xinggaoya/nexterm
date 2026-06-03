@@ -1,8 +1,11 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { exit as pluginExit, relaunch as pluginRelaunch } from "@tauri-apps/plugin-process";
-import { currentWorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
-
+import {
+  currentWorkspaceEnv,
+  type WorkspaceEnv,
+} from "@/modules/workspace/workspaceEnvSnapshot";
+import type { WslDistro } from "@/modules/workspace/workspaceEnvSnapshot";
 export type GitRepoInfo = {
   repoRoot: string;
   branch: string;
@@ -154,9 +157,71 @@ export type GitDiscardEntry = {
   untracked: boolean;
 };
 
+export type FsReadResult =
+  | { kind: "text"; content: string; size: number }
+  | { kind: "binary"; size: number }
+  | { kind: "toolarge"; size: number; limit: number };
+
+export type FsDirEntry = {
+  name: string;
+  kind: "file" | "dir" | "symlink";
+  size: number;
+  mtime: number;
+};
+
+export type FsSearchHit = {
+  path: string;
+  rel: string;
+  name: string;
+  is_dir: boolean;
+};
+
+export type FsSearchResult = {
+  hits: FsSearchHit[];
+  truncated: boolean;
+};
+
+export type PtyOutputChunk = {
+  startOffset: number;
+  bytes: Uint8Array;
+};
+
+export type PtyTranscriptRead = {
+  startOffset: number;
+  nextOffset: number;
+  totalOffset: number;
+  bytes: Uint8Array;
+};
+
+export type PtyHandlers = {
+  onData: (chunk: PtyOutputChunk) => void;
+  onExit?: (code: number) => void;
+};
+
+export type PtySession = {
+  id: number;
+  write: (data: string) => Promise<void>;
+  resize: (cols: number, rows: number) => Promise<void>;
+  readTranscript: (
+    sinceOffset: number,
+    maxBytes?: number,
+  ) => Promise<PtyTranscriptRead>;
+  close: () => Promise<void>;
+};
+
+export type RawPtyTranscriptRead = {
+  startOffset: number;
+  nextOffset: number;
+  totalOffset: number;
+  dataBase64: string;
+};
+
+export const PTY_TRANSCRIPT_READ_CHUNK = 1024 * 1024;
+export const FS_SEARCH_DEFAULT_LIMIT = 200;
 export const WORKSPACE_FS_CHANGED_EVENT = "nexterm://workspace-fs-changed";
 
 /**
+ * Event name emitted by the Tauri backend (`src-tauri/src/lib.rs`) when a
  * Event name emitted by the Tauri backend (`src-tauri/src/lib.rs`) when a
  * `nexterm://open?workspacePath=...&workspaceEnv=...&wslDistro=...` URL is
  * delivered via the OS deep-link protocol handler. Listeners receive a
@@ -197,10 +262,10 @@ export function exitApp(code = 0): Promise<void> {
 }
 
 export const native = {
-  workspaceAuthorize: (path: string) =>
+  workspaceAuthorize: (path: string, workspace: WorkspaceEnv = currentWorkspaceEnv()) =>
     invoke<string>("workspace_authorize", {
       path,
-      workspace: currentWorkspaceEnv(),
+      workspace,
     }),
   gitResolveRepo: (cwd: string) =>
     invoke<GitRepoInfo | null>("git_resolve_repo", {
@@ -371,10 +436,157 @@ export const native = {
       handle,
     }),
   shellBgList: () => invoke<ShellBgProcInfo[]>("shell_bg_list"),
+  fsReadFile: (path: string) =>
+    invoke<FsReadResult>("fs_read_file", {
+      path,
+      workspace: currentWorkspaceEnv(),
+    }),
+  fsWriteFile: (path: string, content: string) =>
+    invoke<void>("fs_write_file", {
+      path,
+      content,
+      workspace: currentWorkspaceEnv(),
+    }),
+  fsReadDir: (path: string, showHidden: boolean) =>
+    invoke<FsDirEntry[]>("fs_read_dir", {
+      path,
+      showHidden,
+      workspace: currentWorkspaceEnv(),
+    }),
+  fsCreateDir: (path: string) =>
+    invoke<void>("fs_create_dir", {
+      path,
+      workspace: currentWorkspaceEnv(),
+    }),
+  fsCreateFile: (path: string) =>
+    invoke<void>("fs_create_file", {
+      path,
+      workspace: currentWorkspaceEnv(),
+    }),
+  fsRename: (from: string, to: string) =>
+    invoke<void>("fs_rename", {
+      from,
+      to,
+      workspace: currentWorkspaceEnv(),
+    }),
+  fsDelete: (path: string) =>
+    invoke<void>("fs_delete", {
+      path,
+      workspace: currentWorkspaceEnv(),
+    }),
+  fsSearch: (root: string, query: string, showHidden: boolean) =>
+    invoke<FsSearchResult>("fs_search", {
+      root,
+      query,
+      limit: FS_SEARCH_DEFAULT_LIMIT,
+      showHidden,
+      workspace: currentWorkspaceEnv(),
+    }),
+  getLaunchDir: () => invoke<string | null>("get_launch_dir"),
+  getWslHome: (distro: string) =>
+    invoke<string>("wsl_home", { distro }),
+  wslListDistros: () => invoke<WslDistro[]>("wsl_list_distros"),
   fsWatchWorkspace: (rootPath: string) =>
     invoke<void>("fs_watch_workspace", {
       rootPath,
       workspace: currentWorkspaceEnv(),
     }),
   fsUnwatchWorkspace: () => invoke<void>("fs_unwatch_workspace"),
+  ptyOpen: async (
+    cols: number,
+    rows: number,
+    handlers: PtyHandlers,
+    cwd?: string,
+  ): Promise<PtySession> => {
+    const onData = new Channel<ArrayBuffer>();
+    const onExit = new Channel<number>();
+    let released = false;
+    const noop = () => {};
+    const releaseHandlers = () => {
+      if (released) return;
+      released = true;
+      onData.onmessage = noop;
+      onExit.onmessage = noop;
+    };
+    onData.onmessage = (buf) => handlers.onData(decodeOutputFrame(buf));
+    onExit.onmessage = (code) => {
+      handlers.onExit?.(code);
+      releaseHandlers();
+    };
+    const id = await invoke<number>("pty_open", {
+      cols,
+      rows,
+      cwd: cwd ?? null,
+      workspace: currentWorkspaceEnv(),
+      onData,
+      onExit,
+    });
+    let closed = false;
+    return {
+      id,
+      write: (data: string) => invoke("pty_write", { id, data }),
+      resize: (c: number, r: number) =>
+        invoke("pty_resize", { id, cols: c, rows: r }),
+      readTranscript: async (
+        sinceOffset,
+        maxBytes = PTY_TRANSCRIPT_READ_CHUNK,
+      ): Promise<PtyTranscriptRead> => {
+        const raw = await invoke<RawPtyTranscriptRead>("pty_read_transcript", {
+          id,
+          sinceOffset,
+          maxBytes,
+        });
+        return {
+          startOffset: raw.startOffset,
+          nextOffset: raw.nextOffset,
+          totalOffset: raw.totalOffset,
+          bytes: decodeBase64(raw.dataBase64),
+        };
+      },
+      close: async () => {
+        if (closed) return;
+        closed = true;
+        try {
+          await invoke("pty_close", { id });
+        } finally {
+          releaseHandlers();
+        }
+      },
+    };
+  },
+  ptyWrite: (id: number, data: string) =>
+    invoke<void>("pty_write", { id, data }),
+  ptyResize: (id: number, cols: number, rows: number) =>
+    invoke<void>("pty_resize", { id, cols, rows }),
+  ptyReadTranscript: (id: number, sinceOffset: number, maxBytes: number) =>
+    invoke<RawPtyTranscriptRead>("pty_read_transcript", {
+      id,
+      sinceOffset,
+      maxBytes,
+    }),
+  ptyClose: (id: number) => invoke<void>("pty_close", { id }),
 };
+
+function decodeOutputFrame(buf: ArrayBuffer): PtyOutputChunk {
+  if (buf.byteLength < 8) {
+    return { startOffset: 0, bytes: new Uint8Array() };
+  }
+  const view = new DataView(buf);
+  const startOffset = Number(view.getBigUint64(0, true));
+  return {
+    startOffset,
+    bytes: new Uint8Array(buf, 8),
+  };
+}
+
+function decodeBase64(value: string): Uint8Array {
+  if (typeof atob === "undefined") {
+    return new Uint8Array();
+  }
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { native } from "@/lib/native";
 import type { WorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
 
 export type LaunchWorkspace = {
@@ -34,7 +34,7 @@ export async function initLaunchDir(): Promise<void> {
     return;
   }
 
-  const explicit = normalizeDir(await invoke<string | null>("get_launch_dir").catch(() => null));
+  const explicit = normalizeDir(await native.getLaunchDir().catch(() => null));
   cached = explicit ? { path: explicit, env: { kind: "local" } } : undefined;
 }
 

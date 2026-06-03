@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { ref } from "vue";
 import {
   findLeafCwd,
   findLeafTitle,
@@ -30,13 +31,6 @@ export type TabPatch = Partial<{
   dirty: boolean;
   url: string;
 }>;
-
-type State = {
-  initialized: boolean;
-  tabs: Tab[];
-  activeId: number;
-  nextId: number;
-};
 
 function createInitialTab(cwd?: string): TerminalTab {
   return {
@@ -73,434 +67,484 @@ function taskTitle(command: string): string {
   return `task: ${title}`;
 }
 
-export const useTabsPiniaStore = defineStore("tabs", {
-  state: (): State => ({
-    initialized: false,
-    tabs: [],
-    activeId: 1,
-    nextId: 3,
-  }),
-  actions: {
-    init(cwd?: string) {
-      if (this.initialized) return;
-      this.tabs = [createInitialTab(cwd)];
-      this.activeId = 1;
-      this.nextId = 3;
-      this.initialized = true;
-    },
-    resetWorkspace(cwd?: string) {
-      if (!this.initialized) {
-        this.init(cwd);
-        return;
+export const useTabsPiniaStore = defineStore("tabs", () => {
+  const initialized = ref(false);
+  const tabs = ref<Tab[]>([]);
+  const activeId = ref(1);
+  const nextId = ref(3);
+
+  function init(cwd?: string): void {
+    if (initialized.value) return;
+    tabs.value = [createInitialTab(cwd)];
+    activeId.value = 1;
+    nextId.value = 3;
+    initialized.value = true;
+  }
+
+  function resetWorkspace(cwd?: string): void {
+    if (!initialized.value) {
+      init(cwd);
+      return;
+    }
+    for (const tab of tabs.value) {
+      if (tab.kind !== "terminal") continue;
+      for (const leafId of leafIds(tab.paneTree)) {
+        disposeTerminalSession(leafId);
       }
-      for (const tab of this.tabs) {
-        if (tab.kind !== "terminal") continue;
-        for (const leafId of leafIds(tab.paneTree)) {
-          disposeTerminalSession(leafId);
-        }
-      }
-      const tabId = this.nextId++;
-      const leafId = this.nextId++;
-      this.tabs = [
-        {
-          id: tabId,
-          kind: "terminal",
-          title: "shell",
-          cwd,
-          paneTree: { kind: "leaf", id: leafId, cwd },
-          activeLeafId: leafId,
-        },
-      ];
-      this.activeId = tabId;
-    },
-    setActiveId(id: number) {
-      if (this.tabs.some((tab) => tab.id === id)) this.activeId = id;
-    },
-    newTab(cwd?: string): number {
-      if (!this.initialized) this.init();
-      const tabId = this.nextId++;
-      const leafId = this.nextId++;
-      this.tabs.push({
+    }
+    const tabId = nextId.value++;
+    const leafId = nextId.value++;
+    tabs.value = [
+      {
         id: tabId,
         kind: "terminal",
         title: "shell",
         cwd,
         paneTree: { kind: "leaf", id: leafId, cwd },
         activeLeafId: leafId,
-      });
-      this.activeId = tabId;
-      return tabId;
-    },
-    newTaskTerminal(input: { cwd?: string; command: string }): number {
-      if (!this.initialized) this.init(input.cwd);
-      const tabId = this.nextId++;
-      const leafId = this.nextId++;
-      const startupInput = inputForCommand(input.command);
-      this.tabs.push({
-        id: tabId,
-        kind: "terminal",
-        title: taskTitle(input.command),
+      },
+    ];
+    activeId.value = tabId;
+  }
+
+  function setActiveId(id: number): void {
+    if (tabs.value.some((tab) => tab.id === id)) activeId.value = id;
+  }
+
+  function newTab(cwd?: string): number {
+    if (!initialized.value) init();
+    const tabId = nextId.value++;
+    const leafId = nextId.value++;
+    tabs.value.push({
+      id: tabId,
+      kind: "terminal",
+      title: "shell",
+      cwd,
+      paneTree: { kind: "leaf", id: leafId, cwd },
+      activeLeafId: leafId,
+    });
+    activeId.value = tabId;
+    return tabId;
+  }
+
+  function newTaskTerminal(input: { cwd?: string; command: string }): number {
+    if (!initialized.value) init(input.cwd);
+    const tabId = nextId.value++;
+    const leafId = nextId.value++;
+    const startupInput = inputForCommand(input.command);
+    tabs.value.push({
+      id: tabId,
+      kind: "terminal",
+      title: taskTitle(input.command),
+      cwd: input.cwd,
+      paneTree: {
+        kind: "leaf",
+        id: leafId,
         cwd: input.cwd,
-        paneTree: {
-          kind: "leaf",
-          id: leafId,
-          cwd: input.cwd,
-          startupInput,
-        },
-        activeLeafId: leafId,
-      });
-      this.activeId = tabId;
-      return tabId;
-    },
-    openFileTab(path: string, pin = true): number | null {
-      if (!this.initialized) this.init();
-      if (pin) {
-        const existing = this.tabs.find(
-          (tab) => tab.kind === "editor" && tab.path === path,
-        );
-        if (existing) {
-          if (existing.kind === "editor" && existing.preview) {
-            this.tabs = this.tabs.map((tab) =>
-              tab.id === existing.id ? { ...tab, preview: false } : tab,
-            );
-          }
-          this.activeId = existing.id;
-          return existing.id;
+        startupInput,
+      },
+      activeLeafId: leafId,
+    });
+    activeId.value = tabId;
+    return tabId;
+  }
+
+  function openFileTab(path: string, pin = true): number | null {
+    if (!initialized.value) init();
+    if (pin) {
+      const existing = tabs.value.find(
+        (tab) => tab.kind === "editor" && tab.path === path,
+      );
+      if (existing) {
+        if (existing.kind === "editor" && existing.preview) {
+          tabs.value = tabs.value.map((tab) =>
+            tab.id === existing.id ? { ...tab, preview: false } : tab,
+          );
         }
-        const id = this.nextId++;
-        this.tabs.push({
-          id,
-          kind: "editor",
-          title: basename(path),
-          path,
-          dirty: false,
-          preview: false,
-        });
-        this.activeId = id;
-        return id;
+        activeId.value = existing.id;
+        return existing.id;
       }
-
-      const persistent = this.tabs.find(
-        (tab) => tab.kind === "editor" && tab.path === path && !tab.preview,
-      );
-      if (persistent) {
-        this.activeId = persistent.id;
-        return persistent.id;
-      }
-
-      const existingPreview = this.tabs.find(
-        (tab) => tab.kind === "editor" && tab.path === path && tab.preview,
-      );
-      if (existingPreview) {
-        this.activeId = existingPreview.id;
-        return existingPreview.id;
-      }
-
-      const id = this.nextId++;
-      const tab: EditorTab = {
+      const id = nextId.value++;
+      tabs.value.push({
         id,
         kind: "editor",
         title: basename(path),
         path,
         dirty: false,
-        preview: true,
-      };
-      const previewIndex = this.tabs.findIndex(
-        (item) => item.kind === "editor" && item.preview,
-      );
-      if (previewIndex === -1) this.tabs.push(tab);
-      else this.tabs.splice(previewIndex, 1, tab);
-      this.activeId = id;
+        preview: false,
+      });
+      activeId.value = id;
       return id;
-    },
-    pinTab(id: number) {
-      this.tabs = this.tabs.map((tab) =>
-        tab.id === id && tab.kind === "editor"
-          ? { ...tab, preview: false }
+    }
+
+    const persistent = tabs.value.find(
+      (tab) => tab.kind === "editor" && tab.path === path && !tab.preview,
+    );
+    if (persistent) {
+      activeId.value = persistent.id;
+      return persistent.id;
+    }
+
+    const existingPreview = tabs.value.find(
+      (tab) => tab.kind === "editor" && tab.path === path && tab.preview,
+    );
+    if (existingPreview) {
+      activeId.value = existingPreview.id;
+      return existingPreview.id;
+    }
+
+    const id = nextId.value++;
+    const tab: EditorTab = {
+      id,
+      kind: "editor",
+      title: basename(path),
+      path,
+      dirty: false,
+      preview: true,
+    };
+    const previewIndex = tabs.value.findIndex(
+      (item) => item.kind === "editor" && item.preview,
+    );
+    if (previewIndex === -1) tabs.value.push(tab);
+    else tabs.value.splice(previewIndex, 1, tab);
+    activeId.value = id;
+    return id;
+  }
+
+  function pinTab(id: number): void {
+    tabs.value = tabs.value.map((tab) =>
+      tab.id === id && tab.kind === "editor"
+        ? { ...tab, preview: false }
+        : tab,
+    );
+  }
+
+  function moveTab(
+    sourceId: number,
+    targetId: number,
+    placement: TabDropPlacement,
+  ): void {
+    tabs.value = reorderTabs(tabs.value, sourceId, targetId, placement);
+  }
+
+  function newPreviewTab(url: string): number {
+    if (!initialized.value) init();
+    const id = nextId.value++;
+    tabs.value.push({ id, kind: "preview", title: titleFromUrl(url), url });
+    activeId.value = id;
+    return id;
+  }
+
+  function newMarkdownTab(path: string): number {
+    if (!initialized.value) init();
+    const existing = tabs.value.find(
+      (tab) => tab.kind === "markdown" && tab.path === path,
+    );
+    if (existing) {
+      activeId.value = existing.id;
+      return existing.id;
+    }
+    const id = nextId.value++;
+    tabs.value.push({ id, kind: "markdown", title: basename(path), path });
+    activeId.value = id;
+    return id;
+  }
+
+  function openGitDiffTab(input: {
+    repoRoot: string;
+    path: string;
+    mode: "-" | "+";
+    originalPath: string | null;
+    title?: string;
+  }): number {
+    if (!initialized.value) init();
+    const title = input.title ?? basename(input.path);
+    const existing = tabs.value.find(
+      (tab) =>
+        tab.kind === "git-diff" &&
+        tab.repoRoot === input.repoRoot &&
+        tab.path === input.path &&
+        tab.mode === input.mode,
+    );
+    if (existing) {
+      tabs.value = tabs.value.map((tab) =>
+        tab.id === existing.id
+          ? { ...tab, title, originalPath: input.originalPath }
           : tab,
       );
-    },
-    moveTab(sourceId: number, targetId: number, placement: TabDropPlacement) {
-      this.tabs = reorderTabs(this.tabs, sourceId, targetId, placement);
-    },
-    newPreviewTab(url: string): number {
-      if (!this.initialized) this.init();
-      const id = this.nextId++;
-      this.tabs.push({ id, kind: "preview", title: titleFromUrl(url), url });
-      this.activeId = id;
-      return id;
-    },
-    newMarkdownTab(path: string): number {
-      if (!this.initialized) this.init();
-      const existing = this.tabs.find(
-        (tab) => tab.kind === "markdown" && tab.path === path,
+      activeId.value = existing.id;
+      return existing.id;
+    }
+    const id = nextId.value++;
+    const tab: GitDiffTab = {
+      id,
+      kind: "git-diff",
+      title,
+      repoRoot: input.repoRoot,
+      path: input.path,
+      mode: input.mode,
+      originalPath: input.originalPath,
+    };
+    tabs.value.push(tab);
+    activeId.value = id;
+    return id;
+  }
+
+  function openCommitHistoryTab(input: {
+    repoRoot: string;
+    branch?: string | null;
+  }): number {
+    if (!initialized.value) init();
+    const title = input.branch ? `History · ${input.branch}` : "Git History";
+    const existing = tabs.value.find(
+      (tab) => tab.kind === "git-history" && tab.repoRoot === input.repoRoot,
+    );
+    if (existing) {
+      tabs.value = tabs.value.map((tab) =>
+        tab.id === existing.id ? { ...tab, title } : tab,
       );
-      if (existing) {
-        this.activeId = existing.id;
-        return existing.id;
-      }
-      const id = this.nextId++;
-      this.tabs.push({ id, kind: "markdown", title: basename(path), path });
-      this.activeId = id;
-      return id;
-    },
-    openGitDiffTab(input: {
-      repoRoot: string;
-      path: string;
-      mode: "-" | "+";
-      originalPath: string | null;
-      title?: string;
-    }): number {
-      if (!this.initialized) this.init();
-      const title = input.title ?? basename(input.path);
-      const existing = this.tabs.find(
-        (tab) =>
-          tab.kind === "git-diff" &&
-          tab.repoRoot === input.repoRoot &&
-          tab.path === input.path &&
-          tab.mode === input.mode,
-      );
-      if (existing) {
-        this.tabs = this.tabs.map((tab) =>
-          tab.id === existing.id
-            ? { ...tab, title, originalPath: input.originalPath }
-            : tab,
-        );
-        this.activeId = existing.id;
-        return existing.id;
-      }
-      const id = this.nextId++;
-      const tab: GitDiffTab = {
-        id,
-        kind: "git-diff",
-        title,
-        repoRoot: input.repoRoot,
-        path: input.path,
-        mode: input.mode,
-        originalPath: input.originalPath,
-      };
-      this.tabs.push(tab);
-      this.activeId = id;
-      return id;
-    },
-    openCommitHistoryTab(input: { repoRoot: string; branch?: string | null }): number {
-      if (!this.initialized) this.init();
-      const title = input.branch ? `History · ${input.branch}` : "Git History";
-      const existing = this.tabs.find(
-        (tab) => tab.kind === "git-history" && tab.repoRoot === input.repoRoot,
-      );
-      if (existing) {
-        this.tabs = this.tabs.map((tab) =>
-          tab.id === existing.id ? { ...tab, title } : tab,
-        );
-        this.activeId = existing.id;
-        return existing.id;
-      }
-      const id = this.nextId++;
-      const tab: GitHistoryTab = {
-        id,
-        kind: "git-history",
-        title,
-        repoRoot: input.repoRoot,
-      };
-      this.tabs.push(tab);
-      this.activeId = id;
-      return id;
-    },
-    openCommitFileDiffTab(input: {
-      repoRoot: string;
-      sha: string;
-      shortSha: string;
-      subject: string;
-      path: string;
-      originalPath: string | null;
-    }): number {
-      if (!this.initialized) this.init();
-      const title = `${basename(input.path)} @ ${input.shortSha}`;
-      const existing = this.tabs.find(
-        (tab) =>
-          tab.kind === "git-commit-file" &&
-          tab.repoRoot === input.repoRoot &&
-          tab.sha === input.sha &&
-          tab.path === input.path,
-      );
-      if (existing) {
-        this.tabs = this.tabs.map((tab) =>
-          tab.id === existing.id
-            ? {
-                ...tab,
-                title,
-                subject: input.subject,
-                originalPath: input.originalPath,
-              }
-            : tab,
-        );
-        this.activeId = existing.id;
-        return existing.id;
-      }
-      const id = this.nextId++;
-      const tab: GitCommitFileDiffTab = {
-        id,
-        kind: "git-commit-file",
-        title,
-        repoRoot: input.repoRoot,
-        sha: input.sha,
-        shortSha: input.shortSha,
-        subject: input.subject,
-        path: input.path,
-        originalPath: input.originalPath,
-      };
-      this.tabs.push(tab);
-      this.activeId = id;
-      return id;
-    },
-    closeTab(id: number) {
-      if (this.tabs.length <= 1) return;
-      const idx = this.tabs.findIndex((tab) => tab.id === id);
-      if (idx < 0) return;
-      const target = this.tabs[idx];
-      const toDispose =
-        target.kind === "terminal" ? leafIds(target.paneTree) : [];
-      const next = this.tabs.filter((tab) => tab.id !== id);
-      this.tabs = next;
-      if (this.activeId === id) {
-        this.activeId = next[Math.max(0, idx - 1)]?.id ?? next[0]?.id ?? id;
-      }
-      for (const leafId of toDispose) disposeTerminalSession(leafId);
-    },
-    focusPane(tabId: number, leafId: number) {
-      this.tabs = this.tabs.map((tab) =>
-        tab.id === tabId && tab.kind === "terminal" && hasLeaf(tab.paneTree, leafId)
+      activeId.value = existing.id;
+      return existing.id;
+    }
+    const id = nextId.value++;
+    const tab: GitHistoryTab = {
+      id,
+      kind: "git-history",
+      title,
+      repoRoot: input.repoRoot,
+    };
+    tabs.value.push(tab);
+    activeId.value = id;
+    return id;
+  }
+
+  function openCommitFileDiffTab(input: {
+    repoRoot: string;
+    sha: string;
+    shortSha: string;
+    subject: string;
+    path: string;
+    originalPath: string | null;
+  }): number {
+    if (!initialized.value) init();
+    const title = `${basename(input.path)} @ ${input.shortSha}`;
+    const existing = tabs.value.find(
+      (tab) =>
+        tab.kind === "git-commit-file" &&
+        tab.repoRoot === input.repoRoot &&
+        tab.sha === input.sha &&
+        tab.path === input.path,
+    );
+    if (existing) {
+      tabs.value = tabs.value.map((tab) =>
+        tab.id === existing.id
           ? {
               ...tab,
-              activeLeafId: leafId,
-              terminalTitle: findLeafTitle(tab.paneTree, leafId),
-              ...(findLeafCwd(tab.paneTree, leafId) !== undefined
-                ? { cwd: findLeafCwd(tab.paneTree, leafId) }
-                : {}),
+              title,
+              subject: input.subject,
+              originalPath: input.originalPath,
             }
           : tab,
       );
-    },
-    setLeafCwd(leafId: number, cwd: string) {
-      this.tabs = this.tabs.map((tab) => {
-        if (tab.kind !== "terminal") return tab;
-        const nextTree = setLeafCwdInTree(tab.paneTree, leafId, cwd);
-        const patch =
-          tab.activeLeafId === leafId ? { cwd } : {};
-        return { ...tab, ...patch, paneTree: nextTree };
-      });
-    },
-    setLeafTitle(leafId: number, terminalTitle: string) {
-      this.tabs = this.tabs.map((tab) => {
-        if (tab.kind !== "terminal") return tab;
-        const nextTree = setLeafTitleInTree(tab.paneTree, leafId, terminalTitle);
+      activeId.value = existing.id;
+      return existing.id;
+    }
+    const id = nextId.value++;
+    const tab: GitCommitFileDiffTab = {
+      id,
+      kind: "git-commit-file",
+      title,
+      repoRoot: input.repoRoot,
+      sha: input.sha,
+      shortSha: input.shortSha,
+      subject: input.subject,
+      path: input.path,
+      originalPath: input.originalPath,
+    };
+    tabs.value.push(tab);
+    activeId.value = id;
+    return id;
+  }
+
+  function closeTab(id: number): void {
+    if (tabs.value.length <= 1) return;
+    const idx = tabs.value.findIndex((tab) => tab.id === id);
+    if (idx < 0) return;
+    const target = tabs.value[idx];
+    const toDispose =
+      target.kind === "terminal" ? leafIds(target.paneTree) : [];
+    const next = tabs.value.filter((tab) => tab.id !== id);
+    tabs.value = next;
+    if (activeId.value === id) {
+      activeId.value = next[Math.max(0, idx - 1)]?.id ?? next[0]?.id ?? id;
+    }
+    for (const leafId of toDispose) disposeTerminalSession(leafId);
+  }
+
+  function focusPane(tabId: number, leafId: number): void {
+    tabs.value = tabs.value.map((tab) =>
+      tab.id === tabId && tab.kind === "terminal" && hasLeaf(tab.paneTree, leafId)
+        ? {
+            ...tab,
+            activeLeafId: leafId,
+            terminalTitle: findLeafTitle(tab.paneTree, leafId),
+            ...(findLeafCwd(tab.paneTree, leafId) !== undefined
+              ? { cwd: findLeafCwd(tab.paneTree, leafId) }
+              : {}),
+          }
+        : tab,
+    );
+  }
+
+  function setLeafCwd(leafId: number, cwd: string): void {
+    tabs.value = tabs.value.map((tab) => {
+      if (tab.kind !== "terminal") return tab;
+      const nextTree = setLeafCwdInTree(tab.paneTree, leafId, cwd);
+      const patch =
+        tab.activeLeafId === leafId ? { cwd } : {};
+      return { ...tab, ...patch, paneTree: nextTree };
+    });
+  }
+
+  function setLeafTitle(leafId: number, terminalTitle: string): void {
+    tabs.value = tabs.value.map((tab) => {
+      if (tab.kind !== "terminal") return tab;
+      const nextTree = setLeafTitleInTree(tab.paneTree, leafId, terminalTitle);
+      return {
+        ...tab,
+        terminalTitle: findLeafTitle(nextTree, tab.activeLeafId),
+        paneTree: nextTree,
+      };
+    });
+  }
+
+  function updateTab(id: number, patch: TabPatch): void {
+    tabs.value = tabs.value.map((tab) => {
+      if (tab.id !== id) return tab;
+      if (tab.kind === "terminal") {
         return {
           ...tab,
-          terminalTitle: findLeafTitle(nextTree, tab.activeLeafId),
-          paneTree: nextTree,
+          ...(patch.title !== undefined ? { title: patch.title } : {}),
+          ...(patch.cwd !== undefined ? { cwd: patch.cwd } : {}),
         };
-      });
-    },
-    updateTab(id: number, patch: TabPatch) {
-      this.tabs = this.tabs.map((tab) => {
-        if (tab.id !== id) return tab;
-        if (tab.kind === "terminal") {
-          return {
-            ...tab,
-            ...(patch.title !== undefined ? { title: patch.title } : {}),
-            ...(patch.cwd !== undefined ? { cwd: patch.cwd } : {}),
-          };
-        }
-        if (tab.kind === "preview") {
-          return {
-            ...tab,
-            ...(patch.title !== undefined ? { title: patch.title } : {}),
-            ...(patch.url !== undefined
-              ? { url: patch.url, title: patch.title ?? titleFromUrl(patch.url) }
-              : {}),
-          };
-        }
-        if (tab.kind === "markdown" || tab.kind === "git-history") {
-          return {
-            ...tab,
-            ...(patch.title !== undefined ? { title: patch.title } : {}),
-          };
-        }
-        if (tab.kind === "editor") {
-          return {
-            ...tab,
-            ...(patch.dirty === true && tab.preview ? { preview: false } : {}),
-            ...(patch.title !== undefined ? { title: patch.title } : {}),
-            ...(patch.dirty !== undefined ? { dirty: patch.dirty } : {}),
-            ...(patch.path !== undefined ? { path: patch.path } : {}),
-          };
-        }
+      }
+      if (tab.kind === "preview") {
+        return {
+          ...tab,
+          ...(patch.title !== undefined ? { title: patch.title } : {}),
+          ...(patch.url !== undefined
+            ? { url: patch.url, title: patch.title ?? titleFromUrl(patch.url) }
+            : {}),
+        };
+      }
+      if (tab.kind === "markdown" || tab.kind === "git-history") {
         return {
           ...tab,
           ...(patch.title !== undefined ? { title: patch.title } : {}),
         };
-      });
-    },
-    splitActivePane(tabId: number, dir: SplitDir): number | null {
-      let newLeafId: number | null = null;
-      this.tabs = this.tabs.map((tab) => {
-        if (tab.id !== tabId || tab.kind !== "terminal") return tab;
-        if (leafIds(tab.paneTree).length >= MAX_PANES_PER_TAB) return tab;
-        const splitId = this.nextId++;
-        const leafId = this.nextId++;
-        newLeafId = leafId;
+      }
+      if (tab.kind === "editor") {
         return {
           ...tab,
-          paneTree: splitLeaf(
-            tab.paneTree,
-            tab.activeLeafId,
-            splitId,
-            leafId,
-            dir,
-            tab.cwd,
-          ),
-          activeLeafId: leafId,
+          ...(patch.dirty === true && tab.preview ? { preview: false } : {}),
+          ...(patch.title !== undefined ? { title: patch.title } : {}),
+          ...(patch.dirty !== undefined ? { dirty: patch.dirty } : {}),
+          ...(patch.path !== undefined ? { path: patch.path } : {}),
         };
-      });
-      return newLeafId;
-    },
-    closeActivePane(tabId: number): boolean {
-      const tabIndex = this.tabs.findIndex((tab) => tab.id === tabId);
-      const tab = this.tabs[tabIndex];
-      if (!tab || tab.kind !== "terminal") return false;
-
-      const targetLeafId = tab.activeLeafId;
-      const nextTree = removeLeaf(tab.paneTree, targetLeafId);
-      if (nextTree === null) {
-        if (this.tabs.length <= 1) return false;
-        const nextTabs = this.tabs.filter((item) => item.id !== tabId);
-        this.tabs = nextTabs;
-        if (this.activeId === tabId) {
-          this.activeId =
-            nextTabs[Math.max(0, tabIndex - 1)]?.id ?? nextTabs[0]?.id ?? tabId;
-        }
-        disposeTerminalSession(targetLeafId);
-        return true;
       }
+      return {
+        ...tab,
+        ...(patch.title !== undefined ? { title: patch.title } : {}),
+      };
+    });
+  }
 
-      const remaining = leafIds(nextTree);
-      const sibling = siblingLeafOf(tab.paneTree, targetLeafId);
-      const activeLeafId =
-        sibling && remaining.includes(sibling) ? sibling : remaining[0];
-      const cwd = findLeafCwd(nextTree, activeLeafId);
-      this.tabs = this.tabs.map((item) =>
-        item.id === tabId && item.kind === "terminal"
-          ? {
-              ...item,
-              paneTree: nextTree,
-              activeLeafId,
-              ...(cwd !== undefined ? { cwd } : {}),
-            }
-          : item,
-      );
+  function splitActivePane(tabId: number, dir: SplitDir): number | null {
+    let newLeafId: number | null = null;
+    tabs.value = tabs.value.map((tab) => {
+      if (tab.id !== tabId || tab.kind !== "terminal") return tab;
+      if (leafIds(tab.paneTree).length >= MAX_PANES_PER_TAB) return tab;
+      const splitId = nextId.value++;
+      const leafId = nextId.value++;
+      newLeafId = leafId;
+      return {
+        ...tab,
+        paneTree: splitLeaf(
+          tab.paneTree,
+          tab.activeLeafId,
+          splitId,
+          leafId,
+          dir,
+          tab.cwd,
+        ),
+        activeLeafId: leafId,
+      };
+    });
+    return newLeafId;
+  }
+
+  function closeActivePane(tabId: number): boolean {
+    const tabIndex = tabs.value.findIndex((tab) => tab.id === tabId);
+    const tab = tabs.value[tabIndex];
+    if (!tab || tab.kind !== "terminal") return false;
+
+    const targetLeafId = tab.activeLeafId;
+    const nextTree = removeLeaf(tab.paneTree, targetLeafId);
+    if (nextTree === null) {
+      if (tabs.value.length <= 1) return false;
+      const nextTabs = tabs.value.filter((item) => item.id !== tabId);
+      tabs.value = nextTabs;
+      if (activeId.value === tabId) {
+        activeId.value =
+          nextTabs[Math.max(0, tabIndex - 1)]?.id ?? nextTabs[0]?.id ?? tabId;
+      }
       disposeTerminalSession(targetLeafId);
-      return false;
-    },
-  },
+      return true;
+    }
+
+    const remaining = leafIds(nextTree);
+    const sibling = siblingLeafOf(tab.paneTree, targetLeafId);
+    const activeLeafId =
+      sibling && remaining.includes(sibling) ? sibling : remaining[0];
+    const cwd = findLeafCwd(nextTree, activeLeafId);
+    tabs.value = tabs.value.map((item) =>
+      item.id === tabId && item.kind === "terminal"
+        ? {
+            ...item,
+            paneTree: nextTree,
+            activeLeafId,
+            ...(cwd !== undefined ? { cwd } : {}),
+          }
+        : item,
+    );
+    disposeTerminalSession(targetLeafId);
+    return false;
+  }
+
+  return {
+    initialized,
+    tabs,
+    activeId,
+    nextId,
+    init,
+    resetWorkspace,
+    setActiveId,
+    newTab,
+    newTaskTerminal,
+    openFileTab,
+    pinTab,
+    moveTab,
+    newPreviewTab,
+    newMarkdownTab,
+    openGitDiffTab,
+    openCommitHistoryTab,
+    openCommitFileDiffTab,
+    closeTab,
+    focusPane,
+    setLeafCwd,
+    setLeafTitle,
+    updateTab,
+    splitActivePane,
+    closeActivePane,
+  };
 });

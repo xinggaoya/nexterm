@@ -14,7 +14,7 @@ import {
   NModal,
   NNotificationProvider,
 } from "naive-ui";
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppHeader from "./components/AppHeader.vue";
 import AppStatusBar from "./components/AppStatusBar.vue";
@@ -24,6 +24,7 @@ import { getNaiveLocaleConfig } from "@/modules/i18n/naive";
 import { resolveAppLocale } from "@/modules/i18n/types";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
+import { useEventListener } from "@/lib/useEventListener";
 import {
   SETTINGS_DEFAULT_TAB,
   type SettingsTab,
@@ -64,8 +65,8 @@ const settingsOpen = ref(false);
 const workspaceOpenChoice = ref<WorkspaceSelection | null>(null);
 const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
 const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
-const closeGuard = ref<InstanceType<typeof UnsavedCloseGuard> | null>(null);
-const workspaceShell = ref<InstanceType<typeof WorkspaceShell> | null>(null);
+const closeGuard = useTemplateRef<typeof UnsavedCloseGuard>("closeGuard");
+const workspaceShell = useTemplateRef<typeof WorkspaceShell>("workspaceShell");
 const colorSchemeQuery =
   typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: dark)")
@@ -318,19 +319,18 @@ const {
 onMounted(() => {
   if (hasTauriInternals()) void prefs.hydrate();
   void startWorkspaceLifecycle();
-  colorSchemeQuery?.addEventListener("change", colorSchemeListener);
-  window.addEventListener("languagechange", syncLanguage);
-  window.addEventListener("keydown", handleGlobalCommandKeydown);
-  window.addEventListener("contextmenu", preventNativeContextMenu);
   startLayoutObservers();
 });
 
+if (colorSchemeQuery) {
+  useEventListener(colorSchemeQuery, "change", colorSchemeListener);
+}
+useEventListener(window, "languagechange", syncLanguage);
+useEventListener(window, "keydown", handleGlobalCommandKeydown);
+useEventListener(window, "contextmenu", preventNativeContextMenu);
+
 onUnmounted(() => {
   taskConsole.disposeTaskConsole();
-  colorSchemeQuery?.removeEventListener("change", colorSchemeListener);
-  window.removeEventListener("languagechange", syncLanguage);
-  window.removeEventListener("keydown", handleGlobalCommandKeydown);
-  window.removeEventListener("contextmenu", preventNativeContextMenu);
   stopLayoutObservers();
   stopWorkspaceLifecycle();
 });

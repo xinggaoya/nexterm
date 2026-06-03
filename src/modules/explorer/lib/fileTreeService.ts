@@ -1,5 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
-import { currentWorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
+import { native } from "@/lib/native";
 
 export type DirEntry = {
   name: string;
@@ -31,50 +30,36 @@ export function dirname(path: string): string {
   return path.slice(0, i);
 }
 
-export async function readFileTreeDir(
+export function readFileTreeDir(
   path: string,
   showHidden: boolean,
 ): Promise<DirEntry[]> {
-  return invoke<DirEntry[]>("fs_read_dir", {
-    path,
-    showHidden,
-    workspace: currentWorkspaceEnv(),
-  });
+  return native.fsReadDir(path, showHidden);
 }
 
 export async function createFileTreeEntry(
   path: string,
   kind: "file" | "dir",
 ): Promise<void> {
-  const cmd = kind === "dir" ? "fs_create_dir" : "fs_create_file";
-  await invoke(cmd, { path, workspace: currentWorkspaceEnv() });
+  if (kind === "dir") {
+    await native.fsCreateDir(path);
+  } else {
+    await native.fsCreateFile(path);
+  }
 }
 
-export async function renameFileTreePath(
-  from: string,
-  to: string,
-): Promise<void> {
-  await invoke("fs_rename", {
-    from,
-    to,
-    workspace: currentWorkspaceEnv(),
-  });
+export function renameFileTreePath(from: string, to: string): Promise<void> {
+  return native.fsRename(from, to);
 }
 
-export async function deleteFileTreePath(path: string): Promise<void> {
-  await invoke("fs_delete", { path, workspace: currentWorkspaceEnv() });
+export function deleteFileTreePath(path: string): Promise<void> {
+  return native.fsDelete(path);
 }
 
-export async function searchFileTree(
+export function searchFileTree(
   root: string,
   query: string,
   showHidden: boolean,
 ): Promise<SearchResult> {
-  return invoke<SearchResult>("fs_search", {
-    root,
-    query,
-    limit: 200,
-    showHidden,
-    workspace: currentWorkspaceEnv(),
-  });
+  return native.fsSearch(root, query, showHidden);
 }
