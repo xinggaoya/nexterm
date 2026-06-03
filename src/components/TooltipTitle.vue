@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { NTooltip } from "naive-ui";
+import { computed } from "vue";
+import { useTouchDevicePreference } from "@/lib/touchDevice";
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     label: string;
     placement?: "top" | "right" | "bottom" | "left";
@@ -14,10 +16,15 @@ withDefaults(
     triggerClass: "inline-flex shrink-0",
   },
 );
+
+const { effectiveTouch } = useTouchDevicePreference();
+const isDisabled = computed(
+  () => props.disabled || !props.label || effectiveTouch.value,
+);
 </script>
 
 <template>
-  <NTooltip :disabled="disabled || !label" :placement="placement" trigger="hover">
+  <NTooltip :disabled="isDisabled" :placement="placement" trigger="hover">
     <template #trigger>
       <span :class="triggerClass">
         <slot />

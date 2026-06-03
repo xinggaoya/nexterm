@@ -8,6 +8,15 @@ export type { LanguagePref } from "@/modules/i18n/types";
 
 export type ThemePref = "system" | "light" | "dark";
 export type FileOpenMode = "preview" | "pinned";
+export type TouchMode = "auto" | "on" | "off";
+
+const TOUCH_MODES: readonly TouchMode[] = ["auto", "on", "off"];
+
+function normalizeTouchMode(value: unknown): TouchMode {
+  return TOUCH_MODES.includes(value as TouchMode)
+    ? (value as TouchMode)
+    : "auto";
+}
 
 export const EDITOR_THEMES = [
   "atomone",
@@ -62,6 +71,7 @@ export type Preferences = {
   zoomLevel: number;
   sourceControlPanelWidth: number;
   explorerPanelWidth: number;
+  touchOptimizations: TouchMode;
 };
 
 const STORE_PATH = "nexterm-settings.json";
@@ -86,6 +96,7 @@ const KEY_RECENT_WORKSPACES = "recentWorkspaces";
 const KEY_ZOOM_LEVEL = "zoomLevel";
 const KEY_SOURCE_CONTROL_PANEL_WIDTH = "sourceControlPanelWidth";
 const KEY_EXPLORER_PANEL_WIDTH = "explorerPanelWidth";
+const KEY_TOUCH_OPTIMIZATIONS = "touchOptimizations";
 
 export const SIDE_PANEL_WIDTH_DEFAULT = 256;
 export const SIDE_PANEL_WIDTH_MIN = 180;
@@ -176,6 +187,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   zoomLevel: 1.0,
   sourceControlPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
   explorerPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
+  touchOptimizations: "auto",
 };
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
@@ -254,6 +266,7 @@ export async function loadPreferences(): Promise<Preferences> {
       get<number>(KEY_EXPLORER_PANEL_WIDTH) ??
         DEFAULT_PREFERENCES.explorerPanelWidth,
     ),
+    touchOptimizations: normalizeTouchMode(get(KEY_TOUCH_OPTIMIZATIONS)),
   };
 }
 
@@ -368,6 +381,10 @@ export async function setExplorerPanelWidth(value: number): Promise<void> {
   await writePref(KEY_EXPLORER_PANEL_WIDTH, clampSidePanelWidth(value));
 }
 
+export async function setTouchOptimizations(value: TouchMode): Promise<void> {
+  await writePref(KEY_TOUCH_OPTIMIZATIONS, normalizeTouchMode(value));
+}
+
 export type PrefKey = keyof Preferences;
 
 export async function onPreferencesChange(
@@ -394,6 +411,7 @@ export async function onPreferencesChange(
     [KEY_ZOOM_LEVEL]: "zoomLevel",
     [KEY_SOURCE_CONTROL_PANEL_WIDTH]: "sourceControlPanelWidth",
     [KEY_EXPLORER_PANEL_WIDTH]: "explorerPanelWidth",
+    [KEY_TOUCH_OPTIMIZATIONS]: "touchOptimizations",
   };
   const unsubLocal = await store.onChange<unknown>((key, value) => {
     const mapped = map[key];

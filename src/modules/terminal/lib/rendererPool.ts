@@ -682,6 +682,10 @@ function isTerminalPasteShortcut(e: KeyboardEvent): boolean {
   return isCtrlShiftKey(e, "v");
 }
 
+export function getLeafTerm(leafId: number): Terminal | null {
+  return getSlotForLeaf(leafId)?.term ?? null;
+}
+
 function isCtrlShiftKey(e: KeyboardEvent, key: "c" | "v"): boolean {
   return (
     e.ctrlKey &&
