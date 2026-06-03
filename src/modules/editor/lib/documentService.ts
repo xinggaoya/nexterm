@@ -1,10 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
-import { currentWorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
-
-type ReadResult =
-  | { kind: "text"; content: string; size: number }
-  | { kind: "binary"; size: number }
-  | { kind: "toolarge"; size: number; limit: number };
+import { native } from "@/lib/native";
 
 export type EditorDocumentState =
   | { status: "loading" }
@@ -17,10 +11,7 @@ export async function readEditorDocument(
   path: string,
 ): Promise<EditorDocumentState> {
   try {
-    const result = await invoke<ReadResult>("fs_read_file", {
-      path,
-      workspace: currentWorkspaceEnv(),
-    });
+    const result = await native.fsReadFile(path);
     if (result.kind === "text") {
       return {
         status: "ready",
@@ -45,9 +36,5 @@ export async function writeEditorDocument(
   path: string,
   content: string,
 ): Promise<void> {
-  await invoke("fs_write_file", {
-    path,
-    content,
-    workspace: currentWorkspaceEnv(),
-  });
+  await native.fsWriteFile(path, content);
 }

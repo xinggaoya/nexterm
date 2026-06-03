@@ -1,9 +1,5 @@
+import { basename } from "@/lib/path";
 import type { EditorTab, Tab } from "./tabsTypes";
-
-function basename(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : path;
-}
 
 function dirtyEditorLabel(tab: EditorTab): string {
   return tab.title || basename(tab.path);

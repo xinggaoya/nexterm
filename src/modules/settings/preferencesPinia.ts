@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { ref } from "vue";
 import {
   DEFAULT_PREFERENCES,
   loadPreferences,
@@ -27,136 +28,274 @@ import {
   type ThemePref,
   type TouchMode,
 } from "./store";
-import type { CommandId } from "@/modules/commands/types";
+import type { CommandId, KeybindingOverrides } from "@/modules/commands/types";
 import {
   patchPreferencesSnapshot,
   replacePreferencesSnapshot,
 } from "./preferencesSnapshot";
 
-type State = Preferences & {
-  hydrated: boolean;
-  listening: boolean;
-};
+export const usePreferencesPiniaStore = defineStore("preferences", () => {
+  const theme = ref<ThemePref>(DEFAULT_PREFERENCES.theme);
+  const language = ref<LanguagePref>(DEFAULT_PREFERENCES.language);
+  const editorTheme = ref<EditorThemeId>(DEFAULT_PREFERENCES.editorTheme);
+  const autostart = ref<boolean>(DEFAULT_PREFERENCES.autostart);
+  const restoreWindowState = ref<boolean>(
+    DEFAULT_PREFERENCES.restoreWindowState,
+  );
+  const vimMode = ref<boolean>(DEFAULT_PREFERENCES.vimMode);
+  const fileOpenMode = ref<FileOpenMode>(DEFAULT_PREFERENCES.fileOpenMode);
+  const showHidden = ref<boolean>(DEFAULT_PREFERENCES.showHidden);
+  const terminalWebglEnabled = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalWebglEnabled,
+  );
+  const terminalFontFamily = ref<string>(
+    DEFAULT_PREFERENCES.terminalFontFamily,
+  );
+  const terminalLetterSpacing = ref<number>(
+    DEFAULT_PREFERENCES.terminalLetterSpacing,
+  );
+  const terminalFontSize = ref<number>(DEFAULT_PREFERENCES.terminalFontSize);
+  const terminalScrollback = ref<number>(
+    DEFAULT_PREFERENCES.terminalScrollback,
+  );
+  const keybindings = ref<KeybindingOverrides>(
+    DEFAULT_PREFERENCES.keybindings,
+  );
+  const lastWslDistro = ref<string | null>(DEFAULT_PREFERENCES.lastWslDistro);
+  const lastWorkspace = ref<Preferences["lastWorkspace"]>(
+    DEFAULT_PREFERENCES.lastWorkspace,
+  );
+  const recentWorkspaces = ref<Preferences["recentWorkspaces"]>(
+    DEFAULT_PREFERENCES.recentWorkspaces,
+  );
+  const zoomLevel = ref<number>(DEFAULT_PREFERENCES.zoomLevel);
+  const sourceControlPanelWidth = ref<number>(
+    DEFAULT_PREFERENCES.sourceControlPanelWidth,
+  );
+  const explorerPanelWidth = ref<number>(
+    DEFAULT_PREFERENCES.explorerPanelWidth,
+  );
+  const touchOptimizations = ref<TouchMode>(
+    DEFAULT_PREFERENCES.touchOptimizations,
+  );
 
-function applyPatch<K extends keyof Preferences>(
-  state: State,
-  key: K,
-  value: Preferences[K],
-) {
-  (state as unknown as Preferences)[key] = value;
-}
+  const hydrated = ref(false);
+  const listening = ref(false);
 
-export const usePreferencesPiniaStore = defineStore("preferences", {
-  state: (): State => ({
-    ...DEFAULT_PREFERENCES,
-    hydrated: false,
-    listening: false,
-  }),
-  actions: {
-    async hydrate() {
-      if (this.hydrated) return;
-      const prefs = await loadPreferences();
-      replacePreferencesSnapshot(prefs);
-      this.$patch({ ...prefs, hydrated: true });
-      if (this.listening) return;
-      this.listening = true;
-      void onPreferencesChange((key, value) => {
-        patchPreferencesSnapshot(key, value as never);
-        this.$patch((state) => {
-          applyPatch(state, key, value as never);
-        });
-      });
-    },
-    async updateTheme(value: ThemePref) {
-      this.theme = value;
-      patchPreferencesSnapshot("theme", value);
-      await setTheme(value);
-    },
-    async updateLanguage(value: LanguagePref) {
-      this.language = value;
-      patchPreferencesSnapshot("language", value);
-      await setLanguage(value);
-    },
-    async updateEditorTheme(value: EditorThemeId) {
-      this.editorTheme = value;
-      patchPreferencesSnapshot("editorTheme", value);
-      await setEditorTheme(value);
-    },
-    async updateAutostart(value: boolean) {
-      this.autostart = value;
-      patchPreferencesSnapshot("autostart", value);
-      await setAutostart(value);
-    },
-    async updateRestoreWindowState(value: boolean) {
-      this.restoreWindowState = value;
-      patchPreferencesSnapshot("restoreWindowState", value);
-      await setRestoreWindowState(value);
-    },
-    async updateVimMode(value: boolean) {
-      this.vimMode = value;
-      patchPreferencesSnapshot("vimMode", value);
-      await setVimMode(value);
-    },
-    async updateFileOpenMode(value: FileOpenMode) {
-      this.fileOpenMode = value;
-      patchPreferencesSnapshot("fileOpenMode", value);
-      await setFileOpenMode(value);
-    },
-    async updateShowHidden(value: boolean) {
-      this.showHidden = value;
-      patchPreferencesSnapshot("showHidden", value);
-      await setShowHidden(value);
-    },
-    async updateTerminalWebglEnabled(value: boolean) {
-      this.terminalWebglEnabled = value;
-      patchPreferencesSnapshot("terminalWebglEnabled", value);
-      await setTerminalWebglEnabled(value);
-    },
-    async updateTerminalFontFamily(value: string) {
-      this.terminalFontFamily = value;
-      patchPreferencesSnapshot("terminalFontFamily", value);
-      await setTerminalFontFamily(value);
-    },
-    async updateTerminalLetterSpacing(value: number) {
-      this.terminalLetterSpacing = value;
-      patchPreferencesSnapshot("terminalLetterSpacing", value);
-      await setTerminalLetterSpacing(value);
-    },
-    async updateTerminalFontSize(value: number) {
-      this.terminalFontSize = value;
-      patchPreferencesSnapshot("terminalFontSize", value);
-      await setTerminalFontSize(value);
-    },
-    async updateTerminalScrollback(value: number) {
-      this.terminalScrollback = value;
-      patchPreferencesSnapshot("terminalScrollback", value);
-      await setTerminalScrollback(value);
-    },
-    async updateCommandKeybinding(
-      id: CommandId,
-      keybinding: string | null | undefined,
-    ) {
-      const next = { ...this.keybindings };
-      if (keybinding === undefined) delete next[id];
-      else next[id] = keybinding;
-      this.keybindings = next;
-      patchPreferencesSnapshot("keybindings", next);
-      await setKeybindings(next);
-    },
-    async updateSourceControlPanelWidth(value: number) {
-      this.sourceControlPanelWidth = value;
-      patchPreferencesSnapshot("sourceControlPanelWidth", value);
-      await setSourceControlPanelWidth(value);
-    },
-    async updateExplorerPanelWidth(value: number) {
-      this.explorerPanelWidth = value;
-      patchPreferencesSnapshot("explorerPanelWidth", value);
-      await setExplorerPanelWidth(value);
-    },
-    async updateTouchOptimizations(value: TouchMode) {
-      this.touchOptimizations = value;
-      patchPreferencesSnapshot("touchOptimizations", value);
-      await setTouchOptimizations(value);
-    },
-  },
+  function applySnapshot(snapshot: Preferences): void {
+    theme.value = snapshot.theme;
+    language.value = snapshot.language;
+    editorTheme.value = snapshot.editorTheme;
+    autostart.value = snapshot.autostart;
+    restoreWindowState.value = snapshot.restoreWindowState;
+    vimMode.value = snapshot.vimMode;
+    fileOpenMode.value = snapshot.fileOpenMode;
+    showHidden.value = snapshot.showHidden;
+    terminalWebglEnabled.value = snapshot.terminalWebglEnabled;
+    terminalFontFamily.value = snapshot.terminalFontFamily;
+    terminalLetterSpacing.value = snapshot.terminalLetterSpacing;
+    terminalFontSize.value = snapshot.terminalFontSize;
+    terminalScrollback.value = snapshot.terminalScrollback;
+    keybindings.value = snapshot.keybindings;
+    lastWslDistro.value = snapshot.lastWslDistro;
+    lastWorkspace.value = snapshot.lastWorkspace;
+    recentWorkspaces.value = snapshot.recentWorkspaces;
+    zoomLevel.value = snapshot.zoomLevel;
+    sourceControlPanelWidth.value = snapshot.sourceControlPanelWidth;
+    explorerPanelWidth.value = snapshot.explorerPanelWidth;
+    touchOptimizations.value = snapshot.touchOptimizations;
+  }
+
+  async function hydrate(): Promise<void> {
+    if (hydrated.value) return;
+    const prefs = await loadPreferences();
+    replacePreferencesSnapshot(prefs);
+    applySnapshot(prefs);
+    hydrated.value = true;
+    if (listening.value) return;
+    listening.value = true;
+    void onPreferencesChange((key, value) => {
+      patchPreferencesSnapshot(key, value as never);
+      const partial = { [key]: value } as Partial<Preferences>;
+      applySnapshot({ ...(readPreferencesSnapshot()), ...partial });
+    });
+  }
+
+  async function updateTheme(value: ThemePref): Promise<void> {
+    theme.value = value;
+    patchPreferencesSnapshot("theme", value);
+    await setTheme(value);
+  }
+
+  async function updateLanguage(value: LanguagePref): Promise<void> {
+    language.value = value;
+    patchPreferencesSnapshot("language", value);
+    await setLanguage(value);
+  }
+
+  async function updateEditorTheme(value: EditorThemeId): Promise<void> {
+    editorTheme.value = value;
+    patchPreferencesSnapshot("editorTheme", value);
+    await setEditorTheme(value);
+  }
+
+  async function updateAutostart(value: boolean): Promise<void> {
+    autostart.value = value;
+    patchPreferencesSnapshot("autostart", value);
+    await setAutostart(value);
+  }
+
+  async function updateRestoreWindowState(value: boolean): Promise<void> {
+    restoreWindowState.value = value;
+    patchPreferencesSnapshot("restoreWindowState", value);
+    await setRestoreWindowState(value);
+  }
+
+  async function updateVimMode(value: boolean): Promise<void> {
+    vimMode.value = value;
+    patchPreferencesSnapshot("vimMode", value);
+    await setVimMode(value);
+  }
+
+  async function updateFileOpenMode(value: FileOpenMode): Promise<void> {
+    fileOpenMode.value = value;
+    patchPreferencesSnapshot("fileOpenMode", value);
+    await setFileOpenMode(value);
+  }
+
+  async function updateShowHidden(value: boolean): Promise<void> {
+    showHidden.value = value;
+    patchPreferencesSnapshot("showHidden", value);
+    await setShowHidden(value);
+  }
+
+  async function updateTerminalWebglEnabled(value: boolean): Promise<void> {
+    terminalWebglEnabled.value = value;
+    patchPreferencesSnapshot("terminalWebglEnabled", value);
+    await setTerminalWebglEnabled(value);
+  }
+
+  async function updateTerminalFontFamily(value: string): Promise<void> {
+    terminalFontFamily.value = value;
+    patchPreferencesSnapshot("terminalFontFamily", value);
+    await setTerminalFontFamily(value);
+  }
+
+  async function updateTerminalLetterSpacing(value: number): Promise<void> {
+    terminalLetterSpacing.value = value;
+    patchPreferencesSnapshot("terminalLetterSpacing", value);
+    await setTerminalLetterSpacing(value);
+  }
+
+  async function updateTerminalFontSize(value: number): Promise<void> {
+    terminalFontSize.value = value;
+    patchPreferencesSnapshot("terminalFontSize", value);
+    await setTerminalFontSize(value);
+  }
+
+  async function updateTerminalScrollback(value: number): Promise<void> {
+    terminalScrollback.value = value;
+    patchPreferencesSnapshot("terminalScrollback", value);
+    await setTerminalScrollback(value);
+  }
+
+  async function updateCommandKeybinding(
+    id: CommandId,
+    keybinding: string | null | undefined,
+  ): Promise<void> {
+    const next = { ...keybindings.value };
+    if (keybinding === undefined) delete next[id];
+    else next[id] = keybinding;
+    keybindings.value = next;
+    patchPreferencesSnapshot("keybindings", next);
+    await setKeybindings(next);
+  }
+
+  async function updateSourceControlPanelWidth(value: number): Promise<void> {
+    sourceControlPanelWidth.value = value;
+    patchPreferencesSnapshot("sourceControlPanelWidth", value);
+    await setSourceControlPanelWidth(value);
+  }
+
+  async function updateExplorerPanelWidth(value: number): Promise<void> {
+    explorerPanelWidth.value = value;
+    patchPreferencesSnapshot("explorerPanelWidth", value);
+    await setExplorerPanelWidth(value);
+  }
+
+  async function updateTouchOptimizations(value: TouchMode): Promise<void> {
+    touchOptimizations.value = value;
+    patchPreferencesSnapshot("touchOptimizations", value);
+    await setTouchOptimizations(value);
+  }
+
+  function readPreferencesSnapshot(): Preferences {
+    return {
+      theme: theme.value,
+      language: language.value,
+      editorTheme: editorTheme.value,
+      autostart: autostart.value,
+      restoreWindowState: restoreWindowState.value,
+      vimMode: vimMode.value,
+      fileOpenMode: fileOpenMode.value,
+      showHidden: showHidden.value,
+      terminalWebglEnabled: terminalWebglEnabled.value,
+      terminalFontFamily: terminalFontFamily.value,
+      terminalLetterSpacing: terminalLetterSpacing.value,
+      terminalFontSize: terminalFontSize.value,
+      terminalScrollback: terminalScrollback.value,
+      keybindings: keybindings.value,
+      lastWslDistro: lastWslDistro.value,
+      lastWorkspace: lastWorkspace.value,
+      recentWorkspaces: recentWorkspaces.value,
+      zoomLevel: zoomLevel.value,
+      sourceControlPanelWidth: sourceControlPanelWidth.value,
+      explorerPanelWidth: explorerPanelWidth.value,
+      touchOptimizations: touchOptimizations.value,
+    };
+  }
+
+  return {
+    theme,
+    language,
+    editorTheme,
+    autostart,
+    restoreWindowState,
+    vimMode,
+    fileOpenMode,
+    showHidden,
+    terminalWebglEnabled,
+    terminalFontFamily,
+    terminalLetterSpacing,
+    terminalFontSize,
+    terminalScrollback,
+    keybindings,
+    lastWslDistro,
+    lastWorkspace,
+    recentWorkspaces,
+    zoomLevel,
+    sourceControlPanelWidth,
+    explorerPanelWidth,
+    touchOptimizations,
+    hydrated,
+    listening,
+    hydrate,
+    updateTheme,
+    updateLanguage,
+    updateEditorTheme,
+    updateAutostart,
+    updateRestoreWindowState,
+    updateVimMode,
+    updateFileOpenMode,
+    updateShowHidden,
+    updateTerminalWebglEnabled,
+    updateTerminalFontFamily,
+    updateTerminalLetterSpacing,
+    updateTerminalFontSize,
+    updateTerminalScrollback,
+    updateCommandKeybinding,
+    updateSourceControlPanelWidth,
+    updateExplorerPanelWidth,
+    updateTouchOptimizations,
+  };
 });

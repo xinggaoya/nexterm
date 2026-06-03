@@ -1,16 +1,13 @@
-import { invoke } from "@tauri-apps/api/core";
-import { currentWorkspaceEnv, type WorkspaceEnv } from "./workspaceEnvSnapshot";
+import { native } from "@/lib/native";
+import type { WorkspaceEnv } from "./workspaceEnvSnapshot";
 
 export function getWslHome(distro: string): Promise<string> {
-  return invoke<string>("wsl_home", { distro });
+  return native.getWslHome(distro);
 }
 
 export function authorizeWorkspace(
   path: string,
-  workspace: WorkspaceEnv = currentWorkspaceEnv(),
+  workspace: WorkspaceEnv,
 ): Promise<string> {
-  return invoke<string>("workspace_authorize", {
-    path,
-    workspace,
-  });
+  return native.workspaceAuthorize(path, workspace);
 }

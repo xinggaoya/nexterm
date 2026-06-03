@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { ref } from "vue";
 import {
   DEFAULT_PREFERENCES,
   loadPreferences,
@@ -18,15 +19,6 @@ import { normalizeWorkspacePath, isSameWorkspaceRoot } from "./workspacePath";
 
 export const RECENT_WORKSPACE_LIMIT = 10;
 export { normalizeWorkspacePath, isSameWorkspaceRoot };
-
-type State = {
-  hydrated: boolean;
-  loading: boolean;
-  rootPath: string | null;
-  lastWorkspace: StoredWorkspace | null;
-  recentWorkspaces: StoredWorkspace[];
-  error: string | null;
-};
 
 type OpenOptions = {
   persist?: boolean;
@@ -52,36 +44,27 @@ function isWorkspaceEnv(value: unknown): value is WorkspaceEnv {
   if (!value || typeof value !== "object") return false;
   const env = value as { kind?: unknown; distro?: unknown };
   if (env.kind === "local") return true;
-  return env.kind === "wsl" && typeof env.distro === "string" && env.distro.length > 0;
+  if (env.kind === "wsl" && typeof env.distro === "string") return true;
+  return false;
 }
 
 function isStoredWorkspace(value: unknown): value is StoredWorkspace {
   if (!value || typeof value !== "object") return false;
-  const item = value as { path?: unknown; env?: unknown; openedAt?: unknown };
+  const ws = value as { path?: unknown; env?: unknown; openedAt?: unknown };
   return (
-    typeof item.path === "string" &&
-    item.path.trim().length > 0 &&
-    isWorkspaceEnv(item.env) &&
-    typeof item.openedAt === "number"
+    typeof ws.path === "string" &&
+    isWorkspaceEnv(ws.env) &&
+    typeof ws.openedAt === "number"
   );
 }
 
 function normalizeStoredWorkspace(value: unknown): StoredWorkspace | null {
-  if (!isStoredWorkspace(value)) return null;
-  return {
-    path: normalizeWorkspacePath(value.path),
-    env: value.env,
-    openedAt: value.openedAt,
-  };
+  return isStoredWorkspace(value) ? value : null;
 }
 
 function normalizeRecentWorkspaces(value: unknown): StoredWorkspace[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map(normalizeStoredWorkspace)
-    .filter((item): item is StoredWorkspace => item !== null)
-    .sort((a, b) => b.openedAt - a.openedAt)
-    .slice(0, RECENT_WORKSPACE_LIMIT);
+  return value.filter(isStoredWorkspace);
 }
 
 function workspaceKey(record: Pick<StoredWorkspace, "path" | "env">): string {
@@ -138,147 +121,168 @@ function upsertRecent(
   record: StoredWorkspace,
 ): StoredWorkspace[] {
   const key = workspaceKey(record);
-  return [
-    record,
-    ...recent.filter((item) => workspaceKey(item) !== key),
-  ].slice(0, RECENT_WORKSPACE_LIMIT);
+  const filtered = recent.filter((item) => workspaceKey(item) !== key);
+  return [record, ...filtered].slice(0, RECENT_WORKSPACE_LIMIT);
 }
 
-export const useWorkspaceRootPiniaStore = defineStore("workspace-root", {
-  state: (): State => ({
-    hydrated: false,
-    loading: false,
-    rootPath: null,
-    lastWorkspace: null,
-    recentWorkspaces: [],
-    error: null,
-  }),
-  actions: {
-    async bootstrap(explicitLaunch?: string | LaunchWorkspace | null): Promise<void> {
-      if (this.hydrated) return;
-      const prefs = await loadPreferences().catch(() => DEFAULT_PREFERENCES);
-      this.recentWorkspaces = normalizeRecentWorkspaces(prefs.recentWorkspaces);
-      this.lastWorkspace = normalizeStoredWorkspace(prefs.lastWorkspace);
+export const useWorkspaceRootPiniaStore = defineStore("workspace-root", () => {
+  const hydrated = ref(false);
+  const loading = ref(false);
+  const rootPath = ref<string | null>(null);
+  const lastWorkspace = ref<StoredWorkspace | null>(null);
+  const recentWorkspaces = ref<StoredWorkspace[]>([]);
+  const error = ref<string | null>(null);
 
-      const explicit =
-        typeof explicitLaunch === "string"
-          ? { path: normalizeWorkspacePath(explicitLaunch), env: LOCAL_WORKSPACE }
-          : explicitLaunch
-            ? {
-                path: normalizeWorkspacePath(explicitLaunch.path),
-                env: explicitLaunch.env,
-              }
-            : null;
-      const candidate = explicit
-        ? { ...explicit, openedAt: Date.now() }
-        : this.lastWorkspace;
+  async function bootstrap(
+    explicitLaunch?: string | LaunchWorkspace | null,
+  ): Promise<void> {
+    if (hydrated.value) return;
+    const prefs = await loadPreferences().catch(() => DEFAULT_PREFERENCES);
+    recentWorkspaces.value = normalizeRecentWorkspaces(prefs.recentWorkspaces);
+    lastWorkspace.value = normalizeStoredWorkspace(prefs.lastWorkspace);
 
-      if (candidate) {
-        await this.openWorkspace(candidate.path, candidate.env, { persist: true }).catch(
-          (error) => {
-            this.rootPath = null;
-            this.error = normalizeError(error);
-          },
-        );
-      }
+    const explicit =
+      typeof explicitLaunch === "string"
+        ? { path: normalizeWorkspacePath(explicitLaunch), env: LOCAL_WORKSPACE }
+        : explicitLaunch
+          ? {
+              path: normalizeWorkspacePath(explicitLaunch.path),
+              env: explicitLaunch.env,
+            }
+          : null;
+    const candidate = explicit
+      ? { ...explicit, openedAt: Date.now() }
+      : lastWorkspace.value;
 
-      this.hydrated = true;
-    },
-    async openWorkspace(
-      path: string,
-      env: WorkspaceEnv = useWorkspaceEnvPiniaStore().env,
-      options: OpenOptions = {},
-    ): Promise<StoredWorkspace> {
-      this.loading = true;
-      this.error = null;
+    if (candidate) {
       try {
-        const requested = normalizeWorkspacePath(path);
-        const authorized = normalizeWorkspacePath(
-          await authorizeWorkspace(requested, env),
-        );
-        const record: StoredWorkspace = {
-          path: authorized,
-          env,
-          openedAt: Date.now(),
-        };
-        const recent = upsertRecent(this.recentWorkspaces, record);
+        await openWorkspace(candidate.path, candidate.env, { persist: true });
+      } catch (err) {
+        rootPath.value = null;
+        error.value = normalizeError(err);
+      }
+    }
 
-        useWorkspaceEnvPiniaStore().setEnv(env);
-        this.rootPath = record.path;
-        this.lastWorkspace = record;
-        this.recentWorkspaces = recent;
+    hydrated.value = true;
+  }
 
-        if (options.persist !== false) {
-          try {
-            await Promise.all([
-              setLastWorkspace(record),
-              setRecentWorkspaces(recent),
-            ]);
-          } catch {
-            // Opening the workspace should not fail just because persistence is unavailable.
-          }
+  async function openWorkspace(
+    path: string,
+    env: WorkspaceEnv = useWorkspaceEnvPiniaStore().env,
+    options: OpenOptions = {},
+  ): Promise<StoredWorkspace> {
+    loading.value = true;
+    error.value = null;
+    try {
+      const requested = normalizeWorkspacePath(path);
+      const authorized = normalizeWorkspacePath(
+        await authorizeWorkspace(requested, env),
+      );
+      const record: StoredWorkspace = {
+        path: authorized,
+        env,
+        openedAt: Date.now(),
+      };
+      const recent = upsertRecent(recentWorkspaces.value, record);
+
+      useWorkspaceEnvPiniaStore().setEnv(env);
+      rootPath.value = record.path;
+      lastWorkspace.value = record;
+      recentWorkspaces.value = recent;
+
+      if (options.persist !== false) {
+        try {
+          await Promise.all([
+            setLastWorkspace(record),
+            setRecentWorkspaces(recent),
+          ]);
+        } catch {
+          // Opening the workspace should not fail just because persistence is unavailable.
         }
+      }
 
-        return record;
-      } catch (error) {
-        this.error = normalizeError(error);
-        throw error;
-      } finally {
-        this.loading = false;
-      }
-    },
-    async pickWorkspaceDirectory(): Promise<WorkspaceSelection | null> {
-      const env = useWorkspaceEnvPiniaStore().env;
-      const selected = await selectWorkspaceDirectory(
-        dialogDefaultPath(this.rootPath, env),
-      );
-      if (!selected) return null;
-      const path = normalizeWorkspacePath(selected);
-      return {
-        path,
-        env: envForSelectedDirectory(path, env),
-      };
-    },
-    async pickWorkspaceDirectoryForEnv(
-      env: WorkspaceEnv,
-    ): Promise<WorkspaceSelection | null> {
-      const defaultPath = await this.resolveDialogDefaultPath(env);
-      const selected = await selectWorkspaceDirectory(defaultPath);
-      if (!selected) return null;
-      const path = normalizeWorkspacePath(selected);
-      return {
-        path,
-        env: envForSelectedDirectory(path, env),
-      };
-    },
-    async resolveDialogDefaultPath(env: WorkspaceEnv): Promise<string | undefined> {
-      if (env.kind === "local") {
-        return dialogDefaultPath(this.rootPath, env);
-      }
-      const recent = this.recentWorkspaces.find(
-        (item) => item.env.kind === "wsl" && item.env.distro === env.distro,
-      );
-      if (recent) {
-        return recent.path.startsWith("/")
-          ? wslHomeToUnc(env.distro, recent.path)
-          : recent.path;
-      }
-      try {
-        const home = await getWslHome(env.distro);
-        return wslHomeToUnc(env.distro, home);
-      } catch {
-        return undefined;
-      }
-    },
-    async chooseWorkspace(): Promise<StoredWorkspace | null> {
-      const selected = await this.pickWorkspaceDirectory();
-      if (!selected) return null;
-      return this.openWorkspace(selected.path, selected.env);
-    },
-    clearWorkspace() {
-      this.rootPath = null;
-      this.lastWorkspace = null;
-      this.error = null;
-    },
-  },
+      return record;
+    } catch (err) {
+      error.value = normalizeError(err);
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function pickWorkspaceDirectory(): Promise<WorkspaceSelection | null> {
+    const env = useWorkspaceEnvPiniaStore().env;
+    const selected = await selectWorkspaceDirectory(
+      dialogDefaultPath(rootPath.value, env),
+    );
+    if (!selected) return null;
+    const path = normalizeWorkspacePath(selected);
+    return {
+      path,
+      env: envForSelectedDirectory(path, env),
+    };
+  }
+
+  async function pickWorkspaceDirectoryForEnv(
+    env: WorkspaceEnv,
+  ): Promise<WorkspaceSelection | null> {
+    const defaultPath = await resolveDialogDefaultPath(env);
+    const selected = await selectWorkspaceDirectory(defaultPath);
+    if (!selected) return null;
+    const path = normalizeWorkspacePath(selected);
+    return {
+      path,
+      env: envForSelectedDirectory(path, env),
+    };
+  }
+
+  async function resolveDialogDefaultPath(
+    env: WorkspaceEnv,
+  ): Promise<string | undefined> {
+    if (env.kind === "local") {
+      return dialogDefaultPath(rootPath.value, env);
+    }
+    const recent = recentWorkspaces.value.find(
+      (item) => item.env.kind === "wsl" && item.env.distro === env.distro,
+    );
+    if (recent) {
+      return recent.path.startsWith("/")
+        ? wslHomeToUnc(env.distro, recent.path)
+        : recent.path;
+    }
+    try {
+      const home = await getWslHome(env.distro);
+      return wslHomeToUnc(env.distro, home);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async function chooseWorkspace(): Promise<StoredWorkspace | null> {
+    const selected = await pickWorkspaceDirectory();
+    if (!selected) return null;
+    return openWorkspace(selected.path, selected.env);
+  }
+
+  function clearWorkspace(): void {
+    rootPath.value = null;
+    lastWorkspace.value = null;
+    error.value = null;
+  }
+
+  return {
+    hydrated,
+    loading,
+    rootPath,
+    lastWorkspace,
+    recentWorkspaces,
+    error,
+    bootstrap,
+    openWorkspace,
+    pickWorkspaceDirectory,
+    pickWorkspaceDirectoryForEnv,
+    resolveDialogDefaultPath,
+    chooseWorkspace,
+    clearWorkspace,
+  };
 });

@@ -1,14 +1,13 @@
 import { getCurrentInstance, onBeforeUnmount, ref, watch } from "vue";
+import type { ReadonlyRef } from "@/lib/refs";
 import type { GitBranchInfo, GitStashEntry } from "@/lib/native";
-import type { ReadableRef } from "./useSourceControlState";
-
 type SourceControlGitMetadataNative = {
   gitBranchList: (repoRoot: string) => Promise<GitBranchInfo[]>;
   gitStashList: (repoRoot: string) => Promise<GitStashEntry[]>;
 };
 
 type SourceControlGitMetadataOptions = {
-  repoRoot: ReadableRef<string | null>;
+  repoRoot: ReadonlyRef<string | null>;
   native: SourceControlGitMetadataNative;
 };
 
@@ -18,7 +17,6 @@ export function useSourceControlGitMetadata(options: SourceControlGitMetadataOpt
   const loading = ref(false);
   const error = ref<string | null>(null);
   const requestId = ref(0);
-
   async function refreshGitMetadata() {
     const root = options.repoRoot.value;
     const currentId = ++requestId.value;
