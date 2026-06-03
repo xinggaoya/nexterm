@@ -7,7 +7,18 @@ import {
   mountTerminalSession,
   updateTerminalSessionVisibility,
 } from "./lib/terminalSessionCore";
-import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import { getLeafTerm } from "./lib/rendererPool";
+
+const clipboardMocks = vi.hoisted(() => ({
+  readClipboardText: vi.fn(),
+  writeClipboardText: vi.fn(),
+}));
+
+const fakeTerm = {
+  getSelection: vi.fn(() => ""),
+  paste: vi.fn(),
+  selectAll: vi.fn(),
+};
 
 vi.mock("./lib/terminalSessionCore", () => ({
   mountTerminalSession: vi.fn(() => vi.fn()),
@@ -28,32 +39,17 @@ vi.mock("./lib/rendererPool", () => ({
   applyLetterSpacing: vi.fn(),
   applyScrollback: vi.fn(),
   applyWebglPreference: vi.fn(),
-  getLeafTerm: vi.fn(() => null),
+  getLeafTerm: vi.fn(() => fakeTerm),
 }));
 
-vi.mock("./TerminalSelectionToolbar.vue", () => ({
-  default: {
-    name: "TerminalSelectionToolbar",
-    props: ["leafId", "container", "visible", "focused"],
-    emits: ["close", "select"],
-    template: "<div data-selection-toolbar-stub />",
-  },
-}));
-
-function makeTouch(
-  type: string,
-  touches: Array<{ clientX: number; clientY: number }>,
-): TouchEvent {
-  const event = new Event(type, { bubbles: true, cancelable: true }) as TouchEvent;
-  Object.defineProperty(event, "touches", { value: touches });
-  Object.defineProperty(event, "changedTouches", { value: touches });
-  return event;
-}
+vi.mock("@/lib/clipboard", () => clipboardMocks);
 
 describe("TerminalPane.vue", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
+    fakeTerm.getSelection.mockReturnValue("");
+    vi.mocked(getLeafTerm).mockReturnValue(fakeTerm as never);
   });
 
   it("mounts a framework-neutral terminal session for its leaf", () => {
@@ -127,11 +123,10 @@ describe("TerminalPane.vue", () => {
     expect(updateTerminalSessionVisibility).toHaveBeenCalledWith(43, true, true);
   });
 
-  it("dispatches wheel events to the host when touch scroll moves", async () => {
-    const prefs = usePreferencesPiniaStore();
-    prefs.touchOptimizations = "on";
+  it("shows a right-click context menu with copy/paste/select-all", async () => {
+    clipboardMocks.writeClipboardText.mockResolvedValue(undefined);
     const wrapper = mount(TerminalPane, {
-      props: { leafId: 50, visible: true, focused: true },
+      props: { leafId: 60, visible: true, focused: true },
       attachTo: document.body,
     });
     const host = wrapper.element.querySelector(
@@ -139,59 +134,101 @@ describe("TerminalPane.vue", () => {
     ) as HTMLElement;
     expect(host).toBeTruthy();
 
-    const wheelSpy = vi.fn();
-    host.addEventListener("wheel", wheelSpy);
+    Object.defineProperty(host, "getBoundingClientRect", {
+      value: () => ({
+        left: 0,
+        top: 0,
+        right: 800,
+        bottom: 600,
+        width: 800,
+        height: 600,
+        x: 0,
+        y: 0,
+        toJSON() {},
+      }),
+    });
 
-    host.dispatchEvent(makeTouch("touchstart", [{ clientX: 10, clientY: 100 }]));
-    host.dispatchEvent(makeTouch("touchmove", [{ clientX: 12, clientY: 130 }]));
-
+    // No selection initially → copy is disabled
+    fakeTerm.getSelection.mockReturnValue("");
+    const eventNoSelection = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 100,
+      clientY: 80,
+    });
+    host.dispatchEvent(eventNoSelection);
     await wrapper.vm.$nextTick();
-    expect(wheelSpy).toHaveBeenCalled();
-    const event = wheelSpy.mock.calls[0][0] as WheelEvent;
-    expect(event.deltaY).toBeLessThan(0);
-    wrapper.unmount();
-  });
 
-  it("ignores touch input when touch optimizations are off", async () => {
-    const prefs = usePreferencesPiniaStore();
-    prefs.touchOptimizations = "off";
-    const wrapper = mount(TerminalPane, {
-      props: { leafId: 51, visible: true, focused: true },
-      attachTo: document.body,
-    });
-    const host = wrapper.element.querySelector(
-      ".nexterm-terminal-scrollbar",
-    ) as HTMLElement;
-    expect(host).toBeTruthy();
+    let menu = wrapper.find("[data-terminal-context-menu]");
+    expect(menu.exists()).toBe(true);
+    expect(
+      menu.find("[data-terminal-context-action='copy']").attributes("disabled"),
+    ).toBeDefined();
+    expect(menu.find("[data-terminal-context-action='paste']").exists()).toBe(true);
+    expect(
+      menu.find("[data-terminal-context-action='select-all']").exists(),
+    ).toBe(true);
 
-    const wheelSpy = vi.fn();
-    host.addEventListener("wheel", wheelSpy);
-
-    host.dispatchEvent(makeTouch("touchstart", [{ clientX: 10, clientY: 100 }]));
-    host.dispatchEvent(makeTouch("touchmove", [{ clientX: 12, clientY: 130 }]));
-
+    // Click outside closes the menu
+    document.body.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true }),
+    );
     await wrapper.vm.$nextTick();
-    expect(wheelSpy).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
+    expect(wrapper.find("[data-terminal-context-menu]").exists()).toBe(false);
 
-  it("shows the selection toolbar after a long press when touch is enabled", async () => {
-    vi.useFakeTimers();
-    const prefs = usePreferencesPiniaStore();
-    prefs.touchOptimizations = "on";
-    const wrapper = mount(TerminalPane, {
-      props: { leafId: 52, visible: true, focused: true },
-      attachTo: document.body,
-    });
-    const host = wrapper.element.querySelector(
-      ".nexterm-terminal-scrollbar",
-    ) as HTMLElement;
-    expect(host).toBeTruthy();
+    // With selection → copy enabled, clicking it copies
+    fakeTerm.getSelection.mockReturnValue("hello world");
+    host.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 200,
+        clientY: 150,
+      }),
+    );
+    await wrapper.vm.$nextTick();
 
-    host.dispatchEvent(makeTouch("touchstart", [{ clientX: 10, clientY: 100 }]));
-    await vi.advanceTimersByTimeAsync(350);
-    expect(wrapper.find("[data-selection-toolbar-stub]").exists()).toBe(true);
+    menu = wrapper.find("[data-terminal-context-menu]");
+    expect(menu.exists()).toBe(true);
+    expect(
+      menu.find("[data-terminal-context-action='copy']").attributes("disabled"),
+    ).toBeUndefined();
+    await menu.find("[data-terminal-context-action='copy']").trigger("click");
+    expect(clipboardMocks.writeClipboardText).toHaveBeenCalledWith("hello world");
+    expect(wrapper.find("[data-terminal-context-menu]").exists()).toBe(false);
+
+    // Paste action reads clipboard and calls term.paste
+    clipboardMocks.readClipboardText.mockResolvedValue("clip text");
+    host.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 50,
+        clientY: 60,
+      }),
+    );
+    await wrapper.vm.$nextTick();
+    await wrapper
+      .find("[data-terminal-context-action='paste']")
+      .trigger("click");
+    expect(clipboardMocks.readClipboardText).toHaveBeenCalled();
+    expect(fakeTerm.paste).toHaveBeenCalledWith("clip text");
+
+    // Select-all invokes term.selectAll
+    host.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 10,
+        clientY: 20,
+      }),
+    );
+    await wrapper.vm.$nextTick();
+    await wrapper
+      .find("[data-terminal-context-action='select-all']")
+      .trigger("click");
+    expect(fakeTerm.selectAll).toHaveBeenCalled();
+
     wrapper.unmount();
-    vi.useRealTimers();
   });
 });

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { SearchAddon } from "@xterm/addon-search";
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { readClipboardText, writeClipboardText } from "@/lib/clipboard";
 import { useTouchDevicePreference } from "@/lib/touchDevice";
+import { t as translate } from "@/modules/i18n/translate";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import {
   applyFontFamily,
@@ -9,6 +11,7 @@ import {
   applyLetterSpacing,
   applyScrollback,
   applyWebglPreference,
+  getLeafTerm,
 } from "./lib/rendererPool";
 import {
   createTerminalSessionHandle,
@@ -16,7 +19,6 @@ import {
   mountTerminalSession,
   updateTerminalSessionVisibility,
 } from "./lib/terminalSessionCore";
-import TerminalSelectionToolbar from "./TerminalSelectionToolbar.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -38,31 +40,19 @@ const emit = defineEmits<{
   exit: [leafId: number, code: number];
   cwd: [leafId: number, cwd: string];
   title: [leafId: number, title: string];
-  selectionChange: [leafId: number];
 }>();
 
 const prefs = usePreferencesPiniaStore();
 const { effectiveTouch } = useTouchDevicePreference();
 const container = ref<HTMLDivElement | null>(null);
-const toolbarVisible = ref(false);
+const contextMenu = ref<{ x: number; y: number; hasSelection: boolean } | null>(null);
+const menuEl = ref<HTMLElement | null>(null);
 let cleanup: (() => void) | undefined;
-let touchStartY = 0;
 let touchLastY = 0;
-let touchMoved = false;
-let longPressTimer: number | null = null;
-const LONG_PRESS_MS = 300;
-const SCROLL_MOVE_THRESHOLD = 4;
 const WHEEL_SENSITIVITY = 1;
 
 function syncCurrentVisibility() {
   updateTerminalSessionVisibility(props.leafId, props.visible, props.focused);
-}
-
-function clearLongPress() {
-  if (longPressTimer !== null) {
-    window.clearTimeout(longPressTimer);
-    longPressTimer = null;
-  }
 }
 
 function dispatchWheel(deltaY: number) {
@@ -76,37 +66,11 @@ function dispatchWheel(deltaY: number) {
   host.dispatchEvent(wheel);
 }
 
-function handleTouchStart(event: TouchEvent) {
-  if (!effectiveTouch.value) return;
-  if (event.touches.length !== 1) {
-    clearLongPress();
-    return;
-  }
-  const touch = event.touches[0];
-  touchStartY = touch.clientY;
-  touchLastY = touch.clientY;
-  touchMoved = false;
-  clearLongPress();
-  longPressTimer = window.setTimeout(() => {
-    longPressTimer = null;
-    if (touchMoved) return;
-    showToolbar();
-  }, LONG_PRESS_MS);
-}
-
 function handleTouchMove(event: TouchEvent) {
   if (!effectiveTouch.value) return;
-  if (event.touches.length !== 1) {
-    clearLongPress();
-    return;
-  }
+  if (event.touches.length !== 1) return;
   const touch = event.touches[0];
   const deltaY = touch.clientY - touchLastY;
-  if (!touchMoved) {
-    if (Math.abs(touch.clientY - touchStartY) < SCROLL_MOVE_THRESHOLD) return;
-    touchMoved = true;
-    clearLongPress();
-  }
   touchLastY = touch.clientY;
   if (Math.abs(deltaY) < 0.5) return;
   event.preventDefault();
@@ -115,18 +79,56 @@ function handleTouchMove(event: TouchEvent) {
   dispatchWheel(-deltaY);
 }
 
-function handleTouchEnd() {
-  clearLongPress();
-  touchMoved = false;
+function getSelectionText(): string {
+  return getLeafTerm(props.leafId)?.getSelection() ?? "";
 }
 
-function showToolbar() {
-  toolbarVisible.value = true;
-  emit("selectionChange", props.leafId);
+function handleContextMenu(event: MouseEvent) {
+  event.preventDefault();
+  const host = container.value;
+  if (!host) return;
+  const rect = host.getBoundingClientRect();
+  contextMenu.value = {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+    hasSelection: getSelectionText() !== "",
+  };
 }
 
-function hideToolbar() {
-  toolbarVisible.value = false;
+function closeContextMenu() {
+  contextMenu.value = null;
+}
+
+function handleDocumentPointerDown(event: PointerEvent) {
+  if (!contextMenu.value) return;
+  const target = event.target as Node | null;
+  if (target && menuEl.value && menuEl.value.contains(target)) return;
+  closeContextMenu();
+}
+
+async function handleContextCopy() {
+  const text = getSelectionText();
+  if (!text) return;
+  await writeClipboardText(text);
+  closeContextMenu();
+}
+
+async function handleContextPaste() {
+  const term = getLeafTerm(props.leafId);
+  if (!term) return;
+  const text = await readClipboardText();
+  if (text) term.paste(text);
+  closeContextMenu();
+}
+
+function handleContextSelectAll() {
+  const term = getLeafTerm(props.leafId);
+  if (!term) return;
+  term.selectAll();
+  if (contextMenu.value) {
+    contextMenu.value = { ...contextMenu.value, hasSelection: true };
+  }
+  closeContextMenu();
 }
 
 onMounted(() => {
@@ -142,37 +144,29 @@ onMounted(() => {
       onExit: (code) => emit("exit", props.leafId, code),
       onCwd: (cwd) => emit("cwd", props.leafId, cwd),
       onTitle: (title) => emit("title", props.leafId, title),
-      onSelectionChange: () => {
-        if (toolbarVisible.value) {
-          emit("selectionChange", props.leafId);
-        }
-      },
     },
   });
   syncCurrentVisibility();
-  host.addEventListener("touchstart", handleTouchStart, { passive: true });
   host.addEventListener("touchmove", handleTouchMove, { passive: false });
-  host.addEventListener("touchend", handleTouchEnd, { passive: true });
-  host.addEventListener("touchcancel", handleTouchEnd, { passive: true });
+  host.addEventListener("contextmenu", handleContextMenu);
+  document.addEventListener("pointerdown", handleDocumentPointerDown, true);
 });
 
 onBeforeUnmount(() => {
-  clearLongPress();
   cleanup?.();
+  closeContextMenu();
   const host = container.value;
   if (host) {
-    host.removeEventListener("touchstart", handleTouchStart);
     host.removeEventListener("touchmove", handleTouchMove);
-    host.removeEventListener("touchend", handleTouchEnd);
-    host.removeEventListener("touchcancel", handleTouchEnd);
+    host.removeEventListener("contextmenu", handleContextMenu);
   }
+  document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
 });
-
 watch(
   () => [props.leafId, props.visible, props.focused] as const,
   ([leafId, visible, focused]) => {
     updateTerminalSessionVisibility(leafId, visible, focused);
-    if (!focused) hideToolbar();
+    if (!focused) closeContextMenu();
   },
 );
 
@@ -219,8 +213,6 @@ defineExpose({
   getSelection: () => createTerminalSessionHandle(props.leafId).getSelection(),
   applyTheme: () => createTerminalSessionHandle(props.leafId).applyTheme(),
 });
-
-const toolbarHost = computed(() => container.value);
 </script>
 
 <template>
@@ -235,13 +227,39 @@ const toolbarHost = computed(() => container.value);
       ref="container"
       class="nexterm-terminal-scrollbar zoom-exempt h-full w-full"
     />
-    <TerminalSelectionToolbar
-      :leaf-id="leafId"
-      :container="toolbarHost"
-      :visible="toolbarVisible"
-      :focused="focused"
-      @close="hideToolbar"
-      @select="hideToolbar"
-    />
+    <div
+      v-if="contextMenu"
+      ref="menuEl"
+      data-terminal-context-menu
+      role="menu"
+      class="pointer-events-auto absolute z-30 min-w-32 rounded-md border border-border/60 bg-card py-1 text-foreground shadow-md"
+      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+    >
+      <button
+        type="button"
+        data-terminal-context-action="copy"
+        :disabled="!contextMenu.hasSelection"
+        class="block w-full px-3 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+        @click="handleContextCopy"
+      >
+        {{ translate("common.copy") }}
+      </button>
+      <button
+        type="button"
+        data-terminal-context-action="paste"
+        class="block w-full px-3 py-1 text-left text-xs hover:bg-accent"
+        @click="handleContextPaste"
+      >
+        {{ translate("common.paste") }}
+      </button>
+      <button
+        type="button"
+        data-terminal-context-action="select-all"
+        class="block w-full px-3 py-1 text-left text-xs hover:bg-accent"
+        @click="handleContextSelectAll"
+      >
+        {{ translate("common.selectAll") }}
+      </button>
+    </div>
   </div>
 </template>

@@ -375,14 +375,7 @@ const zhCN = {
     sha: "SHA",
     subject: "主题",
   },
-  terminal: {
-    toolbar: {
-      copy: "复制",
-      paste: "粘贴",
-      selectAll: "全选",
-      hint: "终端操作",
-    },
-  },
+  terminal: {},
 } satisfies MessageSchema;
 
 export default zhCN;
