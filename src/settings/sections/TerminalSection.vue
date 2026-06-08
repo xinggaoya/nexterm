@@ -54,6 +54,12 @@ const scrollbackOptions = computed(() =>
             @update:value="prefs.updateTerminalWebglEnabled"
           />
         </NFormItem>
+        <NFormItem :label="t('settings.general.terminalContextMenu')">
+          <NSwitch
+            :value="prefs.terminalContextMenuEnabled"
+            @update:value="prefs.updateTerminalContextMenuEnabled"
+          />
+        </NFormItem>
         <NFormItem :label="t('settings.general.fontFamily')">
           <NSelect
             :value="prefs.terminalFontFamily"

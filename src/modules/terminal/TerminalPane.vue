@@ -84,6 +84,12 @@ function getSelectionText(): string {
 }
 
 function handleContextMenu(event: MouseEvent) {
+  // When the user disables the custom terminal context menu in settings, let
+  // the browser/xterm default menu take over (it ships copy / paste / select
+  // all out of the box). We deliberately don't preventDefault so the native
+  // menu can render and so the global `preventNativeContextMenu` handler in
+  // MainApp.vue doesn't have to know about this preference.
+  if (!prefs.terminalContextMenuEnabled) return;
   event.preventDefault();
   const host = container.value;
   if (!host) return;

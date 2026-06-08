@@ -171,6 +171,7 @@ const zhCN = {
       showHiddenFiles: "显示隐藏文件",
       startupAndWorkspace: "启动与工作区",
       terminal: "终端",
+      terminalContextMenu: "终端右键菜单",
       terminalDescription: "本地终端渲染、字体与缓冲区默认设置。",
       theme: "主题",
       title: "通用",
