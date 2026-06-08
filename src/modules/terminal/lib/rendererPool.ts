@@ -105,7 +105,11 @@ function createSlot(): Slot {
   );
 
   const host = document.createElement("div");
-  host.style.cssText = "width:100%;height:100%;";
+  // overflow:hidden clips the xterm canvas when PTY disables auto-wrap (e.g.
+  // `top`/`vim`/`tmux` send `ESC[?7l`), so the rightmost column can't bleed
+  // into the host container. Combined with the global `.xterm` scrollbar
+  // being hidden in globals.css, the host must contain the overflow itself.
+  host.style.cssText = "width:100%;height:100%;overflow:hidden;";
   host.setAttribute("data-nexterm-slot", String(slots.length));
   getRecycler().appendChild(host);
   term.open(host);
