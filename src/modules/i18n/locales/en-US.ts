@@ -170,6 +170,7 @@ const enUS = {
       showHiddenFiles: "Show hidden files",
       startupAndWorkspace: "Startup and workspace",
       terminal: "Terminal",
+      terminalContextMenu: "Terminal context menu",
       terminalDescription: "Local terminal rendering, font, and buffer defaults.",
       theme: "Theme",
       title: "General",

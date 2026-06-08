@@ -60,6 +60,7 @@ export type Preferences = {
   fileOpenMode: FileOpenMode;
   showHidden: boolean;
   terminalWebglEnabled: boolean;
+  terminalContextMenuEnabled: boolean;
   terminalFontFamily: string;
   terminalLetterSpacing: number;
   terminalFontSize: number;
@@ -85,6 +86,7 @@ const KEY_FILE_OPEN_MODE = "fileOpenMode";
 const KEY_SHOW_HIDDEN = "showHidden";
 const LEGACY_KEY_SHOW_HIDDEN_DIRS = "showHiddenDirectories";
 const KEY_TERMINAL_WEBGL_ENABLED = "terminalWebglEnabled";
+const KEY_TERMINAL_CONTEXT_MENU_ENABLED = "terminalContextMenuEnabled";
 const KEY_TERMINAL_FONT_FAMILY = "terminalFontFamily";
 const KEY_TERMINAL_LETTER_SPACING = "terminalLetterSpacing";
 const KEY_TERMINAL_FONT_SIZE = "terminalFontSize";
@@ -176,6 +178,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   fileOpenMode: "preview",
   showHidden: false,
   terminalWebglEnabled: true,
+  terminalContextMenuEnabled: true,
   terminalFontFamily: "",
   terminalLetterSpacing: 0,
   terminalFontSize: TERMINAL_FONT_SIZE_DEFAULT,
@@ -234,6 +237,9 @@ export async function loadPreferences(): Promise<Preferences> {
     terminalWebglEnabled:
       get<boolean>(KEY_TERMINAL_WEBGL_ENABLED) ??
       DEFAULT_PREFERENCES.terminalWebglEnabled,
+    terminalContextMenuEnabled:
+      get<boolean>(KEY_TERMINAL_CONTEXT_MENU_ENABLED) ??
+      DEFAULT_PREFERENCES.terminalContextMenuEnabled,
     terminalFontFamily:
       get<string>(KEY_TERMINAL_FONT_FAMILY) ??
       DEFAULT_PREFERENCES.terminalFontFamily,
@@ -304,6 +310,12 @@ export async function setShowHidden(value: boolean): Promise<void> {
 
 export async function setTerminalWebglEnabled(value: boolean): Promise<void> {
   await writePref(KEY_TERMINAL_WEBGL_ENABLED, value);
+}
+
+export async function setTerminalContextMenuEnabled(
+  value: boolean,
+): Promise<void> {
+  await writePref(KEY_TERMINAL_CONTEXT_MENU_ENABLED, value);
 }
 
 export async function setTerminalFontFamily(value: string): Promise<void> {
@@ -400,6 +412,7 @@ export async function onPreferencesChange(
     [KEY_FILE_OPEN_MODE]: "fileOpenMode",
     [KEY_SHOW_HIDDEN]: "showHidden",
     [KEY_TERMINAL_WEBGL_ENABLED]: "terminalWebglEnabled",
+    [KEY_TERMINAL_CONTEXT_MENU_ENABLED]: "terminalContextMenuEnabled",
     [KEY_TERMINAL_FONT_FAMILY]: "terminalFontFamily",
     [KEY_TERMINAL_LETTER_SPACING]: "terminalLetterSpacing",
     [KEY_TERMINAL_FONT_SIZE]: "terminalFontSize",

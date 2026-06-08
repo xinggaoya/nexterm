@@ -13,6 +13,7 @@ import {
   setRestoreWindowState,
   setShowHidden,
   setSourceControlPanelWidth,
+  setTerminalContextMenuEnabled,
   setTerminalFontFamily,
   setTerminalFontSize,
   setTerminalLetterSpacing,
@@ -47,6 +48,9 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const showHidden = ref<boolean>(DEFAULT_PREFERENCES.showHidden);
   const terminalWebglEnabled = ref<boolean>(
     DEFAULT_PREFERENCES.terminalWebglEnabled,
+  );
+  const terminalContextMenuEnabled = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalContextMenuEnabled,
   );
   const terminalFontFamily = ref<string>(
     DEFAULT_PREFERENCES.terminalFontFamily,
@@ -92,6 +96,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     fileOpenMode.value = snapshot.fileOpenMode;
     showHidden.value = snapshot.showHidden;
     terminalWebglEnabled.value = snapshot.terminalWebglEnabled;
+    terminalContextMenuEnabled.value = snapshot.terminalContextMenuEnabled;
     terminalFontFamily.value = snapshot.terminalFontFamily;
     terminalLetterSpacing.value = snapshot.terminalLetterSpacing;
     terminalFontSize.value = snapshot.terminalFontSize;
@@ -175,6 +180,14 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     await setTerminalWebglEnabled(value);
   }
 
+  async function updateTerminalContextMenuEnabled(
+    value: boolean,
+  ): Promise<void> {
+    terminalContextMenuEnabled.value = value;
+    patchPreferencesSnapshot("terminalContextMenuEnabled", value);
+    await setTerminalContextMenuEnabled(value);
+  }
+
   async function updateTerminalFontFamily(value: string): Promise<void> {
     terminalFontFamily.value = value;
     patchPreferencesSnapshot("terminalFontFamily", value);
@@ -240,6 +253,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
       fileOpenMode: fileOpenMode.value,
       showHidden: showHidden.value,
       terminalWebglEnabled: terminalWebglEnabled.value,
+      terminalContextMenuEnabled: terminalContextMenuEnabled.value,
       terminalFontFamily: terminalFontFamily.value,
       terminalLetterSpacing: terminalLetterSpacing.value,
       terminalFontSize: terminalFontSize.value,
@@ -265,6 +279,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     fileOpenMode,
     showHidden,
     terminalWebglEnabled,
+    terminalContextMenuEnabled,
     terminalFontFamily,
     terminalLetterSpacing,
     terminalFontSize,
@@ -289,6 +304,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateFileOpenMode,
     updateShowHidden,
     updateTerminalWebglEnabled,
+    updateTerminalContextMenuEnabled,
     updateTerminalFontFamily,
     updateTerminalLetterSpacing,
     updateTerminalFontSize,
