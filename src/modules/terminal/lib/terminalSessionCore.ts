@@ -334,11 +334,15 @@ async function openPtyForSession(
 
 function bindLeafToSlot(leafId: number, s: Session): void {
   if (!s.container) return;
-  resizeModel(s, s.cols, s.rows);
+  // The slot runs writeSnapshot *after* it has been resized to the live
+  // container dims. This way the model is serialized against the same
+  // coordinate system the terminal will render on, so re-binding a slot
+  // into a different-sized pane (or after a sidebar toggle) does not
+  // re-flow snapshot text through a stale cell grid.
   acquireSlot({
     leafId,
     container: s.container,
-    snapshot: serializeModel(s),
+    snapshot: null,
     altScreen: isAltScreen(s.modelTerm),
     shellExited: s.shellExited,
     searchQuery: s.searchQuery,
@@ -346,6 +350,19 @@ function bindLeafToSlot(leafId: number, s: Session): void {
     rows: s.rows,
     registerOsc: () => [],
     onSearchReady: (addon) => s.callbacks.onSearchReady?.(addon),
+    writeSnapshot: (term, cols, rows) => {
+      // Resize the model first so serialize() reads from the new grid.
+      resizeModel(s, cols, rows);
+      const snapshot = serializeModel(s);
+      if (snapshot) {
+        scheduleTerminalWrite(term, snapshot);
+      }
+      s.cols = cols;
+      s.rows = rows;
+      // Re-show the cursor in the same RAF flush so a single frame paints
+      // the snapshot and the cursor together.
+      scheduleTerminalWrite(term, "\x1b[?25h");
+    },
   });
   s.hasSlot = true;
   if (s.lastCwd !== null) s.callbacks.onCwd?.(s.lastCwd);

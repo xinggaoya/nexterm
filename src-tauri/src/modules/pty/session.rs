@@ -17,15 +17,19 @@ use crate::modules::workspace::WorkspaceEnv;
 
 // Flusher coalesces a short window after first-byte arrival so we send chunks,
 // not single bytes. MAX_IDLE is only a safety net for missed signals.
-const FLUSH_COALESCE: Duration = Duration::from_millis(4);
+// 6ms (vs 4ms) trades a hair of latency for fewer channel frames during
+// sustained bursts (npm install logs, `cat` of large files), which keeps the
+// frontend event loop from being preempted by Tauri-channel wakes.
+const FLUSH_COALESCE: Duration = Duration::from_millis(6);
 const FLUSH_MAX_IDLE: Duration = Duration::from_millis(50);
 const READ_BUF: usize = 16 * 1024;
 // Cap on buffered-but-not-yet-flushed bytes. On overflow we discard only the
 // live channel backlog; the transcript below remains complete and lets the
-// frontend fill the offset gap without corrupting xterm state.
-const MAX_PENDING: usize = 4 * 1024 * 1024;
+// frontend fill the offset gap without corrupting xterm state. Widened to
+// 6 MiB so a long burst combined with a WebView GC pause does not trigger
+// a live drop before the flusher wakes up.
+const MAX_PENDING: usize = 6 * 1024 * 1024;
 const MAX_TRANSCRIPT_READ: usize = 4 * 1024 * 1024;
-
 pub struct TranscriptRead {
     pub start_offset: u64,
     pub next_offset: u64,
@@ -353,8 +357,10 @@ pub fn spawn(
                     }
                 }
                 // Coalesce a short window so a burst flushes as one chunk.
-                // Skip the sleep when data is already large to avoid adding
-                // latency to high-throughput streams.
+                // Skip the sleep when the buffer is already large to avoid
+                // adding latency to high-throughput streams. The threshold
+                // was raised from 32 KiB to 48 KiB so that mid-burst
+                // wakeups do not interrupt the wider FLUSH_COALESCE window.
                 let pending_len = {
                     match mutex_lock(lock, "pty pending output") {
                         Ok(g) => g.bytes.len(),
@@ -364,7 +370,7 @@ pub fn spawn(
                         }
                     }
                 };
-                if pending_len < 32 * 1024 {
+                if pending_len < 48 * 1024 {
                     thread::sleep(FLUSH_COALESCE);
                 }
                 let frame = match mutex_lock(lock, "pty pending output") {

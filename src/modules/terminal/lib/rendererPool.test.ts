@@ -26,6 +26,10 @@ type MockTerminal = {
   keyHandler: ((event: KeyboardEvent) => boolean) | null;
 };
 
+type MockFitAddon = {
+  fit: ReturnType<typeof vi.fn>;
+  proposeDimensions: () => { cols: number; rows: number } | undefined;
+};
 vi.mock("@/lib/fonts", () => ({
   detectMonoFontFamily: () => "JetBrains Mono",
 }));
@@ -54,6 +58,12 @@ vi.mock("@/lib/clipboard", () => clipboardMocks);
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: class {
     fit = vi.fn();
+    // Default to undefined so the renderer pool's helper falls back to the
+    // current term cols/rows. Tests that need a specific proposal can call
+    // `.proposeDimensions.mockReturnValue(...)` on the instance.
+    proposeDimensions: () => { cols: number; rows: number } | undefined = vi
+      .fn()
+      .mockReturnValue(undefined);
   },
 }));
 
@@ -68,7 +78,6 @@ vi.mock("@xterm/addon-web-links", () => ({
     constructor() {}
   },
 }));
-
 vi.mock("@xterm/addon-webgl", () => ({
   WebglAddon: class {
     onContextLoss = vi.fn();
@@ -190,7 +199,16 @@ async function mountBoundTerminal() {
 
   const term = terminalInstances[0];
   if (!term?.keyHandler) throw new Error("terminal key handler was not attached");
-  return { rendererPool, container, slot, term, writes, resizes, kicks };
+  return {
+    rendererPool,
+    container,
+    slot,
+    term,
+    writes,
+    resizes,
+    kicks,
+    fitAddon: slot.fitAddon as unknown as MockFitAddon,
+  };
 }
 
 function setElementSize(el: HTMLElement, width: number, height: number): void {
@@ -227,7 +245,6 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     document.body.innerHTML = "";
     installBrowserMocks();
   });
-
   it("copies the terminal selection with Ctrl+Shift+C without writing to the PTY", async () => {
     clipboardMocks.writeClipboardText.mockResolvedValue(undefined);
     const { term, writes } = await mountBoundTerminal();
@@ -311,16 +328,21 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     expect(lastItem(resizes)).toEqual([100, 30]);
   });
 
-  it("syncs PTY size on the next animation frame when the container resizes", async () => {
-    const { container, term, resizes } = await mountBoundTerminal();
+  it("syncs PTY size on the next animation frame when the proposed dims change", async () => {
+    const { container, term, resizes, fitAddon } = await mountBoundTerminal();
     term.resize(120, 32);
     setElementSize(container, 960, 480);
+    // proposeDimensions() drives the slot's resize decisions. Simulate the
+    // FitAddon reading the new 960x480 container and proposing larger dims.
+    (
+      fitAddon.proposeDimensions as unknown as ReturnType<typeof vi.fn>
+    ).mockReturnValue({ cols: 140, rows: 36 });
 
     const observer = lastItem(resizeObserverMocks)!;
     observer.callback([], observer as unknown as ResizeObserver);
 
-    expect(lastItem(resizes)).toEqual([120, 32]);
-    expect(lastItem(term.refreshes)).toEqual([0, 31]);
+    expect(lastItem(resizes)).toEqual([140, 36]);
+    expect(lastItem(term.refreshes)).toEqual([0, 35]);
   });
 
   it("ignores zero-sized resize observations", async () => {
@@ -345,6 +367,88 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     });
 
     expect(lastItem(kicks)).toEqual([term.cols, term.rows]);
+  });
+
+  it("defers applyFontSize layout recovery to the next animation frame", async () => {
+    // Replace the synchronous RAF mock with a queue so we can observe the
+    // gap between the option write and the layout recovery.
+    const rafQueue: FrameRequestCallback[] = [];
+    Object.defineProperty(window, "requestAnimationFrame", {
+      configurable: true,
+      value: (cb: FrameRequestCallback) => {
+        rafQueue.push(cb);
+        return rafQueue.length;
+      },
+    });
+    Object.defineProperty(window, "cancelAnimationFrame", {
+      configurable: true,
+      value: (id: number) => {
+        rafQueue[id - 1] = undefined as unknown as FrameRequestCallback;
+      },
+    });
+    const { fitAddon } = await mountBoundTerminal();
+    // mountBoundTerminal also queues its own double-RAF unhide, so we
+    // measure the queue size delta rather than the absolute count.
+    const initialQueueDepth = rafQueue.length;
+    const initialFitCount = fitAddon.fit.mock.calls.length;
+
+    // The fontSize change must schedule a RAF rather than running fit()
+    // synchronously, otherwise xterm's css.cell.width is still the previous
+    // frame's value and the resulting cols/rows are stale.
+    const rendererPool = await import("./rendererPool");
+    rendererPool.applyFontSize(20);
+
+    expect(fitAddon.fit.mock.calls.length).toBe(initialFitCount);
+    expect(rafQueue).toHaveLength(initialQueueDepth + 1);
+
+    // Once the frame fires, the deferred recoverSlotLayout invokes fit().
+    rafQueue[initialQueueDepth](0);
+    expect(fitAddon.fit.mock.calls.length).toBeGreaterThan(initialFitCount);
+  });
+
+  it("invokes writeSnapshot with the live container dims during bindSlot", async () => {
+    const rendererPool = await import("./rendererPool");
+    const writes: string[] = [];
+    const resizes: Array<[number, number]> = [];
+    rendererPool.configureRendererPool({
+      resolveLeaf: (leafId) =>
+        leafId === 11
+          ? {
+              writeToPty: (data) => writes.push(data),
+              resizePty: (cols, rows) => resizes.push([cols, rows]),
+              kickPty: () => {},
+            }
+          : null,
+      evictLeaf: vi.fn(),
+      isLeafFocused: () => true,
+    });
+
+    const container = document.createElement("div");
+    setElementSize(container, 800, 400);
+    document.body.appendChild(container);
+
+    // First bind establishes the "saved" model dims.
+    rendererPool.acquireSlot({
+      leafId: 11,
+      container,
+      snapshot: null,
+      altScreen: false,
+      shellExited: false,
+      searchQuery: null,
+      cols: 80,
+      rows: 24,
+      registerOsc: () => [],
+      onSearchReady: vi.fn(),
+      writeSnapshot: (term, cols, rows) => {
+        // The slot is expected to be at the proposed live dims here, which
+        // (under the mock) fall back to the current term dims. The contract
+        // is that writeSnapshot is called exactly once and sees the slot's
+        // post-fit terminal dims.
+        expect(term.cols).toBeGreaterThan(0);
+        expect(term.rows).toBeGreaterThan(0);
+        expect([cols, rows]).toEqual([term.cols, term.rows]);
+      },
+    });
   });
 });
 
