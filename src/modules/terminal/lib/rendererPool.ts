@@ -9,6 +9,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { terminalWordNavigationSequence } from "./keymap";
+import { scheduleTerminalWrite } from "./terminalOutputScheduler";
 
 export const POOL_MAX_SIZE = 5;
 
@@ -42,6 +43,10 @@ export type Slot = {
   observer: ResizeObserver | null;
   fitRaf: number | null;
   unhideRaf: number | null;
+  // Deferred layout work (e.g. after font/zoom/letter-spacing change). A RAF
+  // delay lets xterm apply the new option before we recompute cell dims,
+  // otherwise fit() reads stale css.cell.width from the previous render.
+  pendingLayoutRaf: number | null;
   lastCols: number;
   lastRows: number;
   lastW: number;
@@ -128,6 +133,7 @@ function createSlot(): Slot {
     observer: null,
     fitRaf: null,
     unhideRaf: null,
+    pendingLayoutRaf: null,
     lastCols: term.cols,
     lastRows: term.rows,
     lastW: 0,
@@ -214,7 +220,6 @@ function pickSlotFor(leafId: number): PickResult {
   const chosen = best!;
   return { slot: chosen, previousLeafId: chosen.currentLeafId };
 }
-
 export type AcquireParams = {
   leafId: number;
   container: HTMLDivElement;
@@ -229,8 +234,13 @@ export type AcquireParams = {
   rows: number;
   registerOsc: (term: Terminal) => (() => void)[];
   onSearchReady: (addon: SearchAddon) => void;
+  // Optional callback invoked *after* the slot has been fit to the current
+  // container size, with the resulting (cols, rows). The session uses this
+  // to resize its model and serialize a snapshot that matches the live
+  // dimensions, so re-binding a slot in a different-sized pane does not
+  // re-render old-coord content into a new-coord grid.
+  writeSnapshot?: (term: Terminal, cols: number, rows: number) => void;
 };
-
 export function acquireSlot(params: AcquireParams): Slot {
   const existing = slots.find((s) => s.currentLeafId === params.leafId);
   if (existing) {
@@ -258,6 +268,7 @@ function bindSlot(slot: Slot, p: AcquireParams): void {
   slot.lastUsedAt = performance.now();
 
   cancelPendingUnhide(slot);
+  cancelPendingLayout(slot);
   slot.host.style.visibility = "hidden";
 
   if (slot.host.parentNode !== p.container) {
@@ -265,27 +276,41 @@ function bindSlot(slot: Slot, p: AcquireParams): void {
   }
 
   slot.term.options.disableStdin = p.shellExited;
-  slot.term.clear();
+  // reset() already clears the buffer; the prior clear() was redundant.
   slot.term.reset();
 
+  // Fit the slot to the *current* container first, so the snapshot written
+  // below is serialized against the live dimensions. Doing it in this
+  // order avoids reflowing snapshot text through two coordinate systems
+  // when the user resized the pane while the slot was recycled.
+  const proposed = proposeSlotDimensions(slot);
   if (
-    p.cols > 0 &&
-    p.rows > 0 &&
-    (slot.term.cols !== p.cols || slot.term.rows !== p.rows)
+    proposed.cols > 0 &&
+    proposed.rows > 0 &&
+    (proposed.cols !== slot.term.cols || proposed.rows !== slot.term.rows)
   ) {
-    slot.term.resize(p.cols, p.rows);
-  }
-
-  if (p.snapshot) {
     try {
-      slot.term.write(p.snapshot);
+      slot.term.resize(proposed.cols, proposed.rows);
     } catch (e) {
-      console.warn("[nexterm] snapshot replay failed:", e);
+      console.warn("[nexterm] terminal initial resize failed:", e);
     }
   }
-  try {
-    slot.term.write("\x1b[?25h");
-  } catch {}
+
+  // Install the observer *before* the snapshot write so a ResizeObserver
+  // tick (which can fire synchronously on some hosts) cannot race with
+  // the snapshot landing on the terminal grid.
+  setupResizeObserver(slot, p);
+
+  // Now ask the session to (re)serialize its model at the current dims and
+  // replay it on the live terminal. The callback also flips the cursor
+  // back on; both go through the same RAF flush so a single frame paints
+  // the snapshot and the cursor together.
+  if (p.writeSnapshot) {
+    p.writeSnapshot(slot.term, slot.term.cols, slot.term.rows);
+  } else if (p.snapshot) {
+    scheduleTerminalWrite(slot.term, p.snapshot);
+  }
+  scheduleTerminalWrite(slot.term, "\x1b[?25h");
 
   for (const d of slot.oscDisposers) {
     try {
@@ -294,9 +319,13 @@ function bindSlot(slot: Slot, p: AcquireParams): void {
   }
   slot.oscDisposers = p.registerOsc(slot.term);
 
-  setupResizeObserver(slot, p);
+  // Only force a PTY resize when the live dimensions actually differ from
+  // the saved ones; an alt-screen binding also kicks the PTY so the TUI
+  // repaints from scratch.
+  const forcePty =
+    slot.lastCols !== slot.term.cols || slot.lastRows !== slot.term.rows;
   recoverSlotLayout(slot, p.leafId, {
-    forcePty: true,
+    forcePty,
     kickPty: p.altScreen && !p.shellExited,
     focus: adapter?.isLeafFocused(p.leafId) ?? false,
   });
@@ -384,6 +413,32 @@ function cancelPendingFit(slot: Slot): void {
   }
 }
 
+// Defer slot layout recovery to the next animation frame. Use this after
+// mutating terminal options (fontSize / letterSpacing / fontFamily) so the
+// xterm renderer gets a chance to apply the new option before we recompute
+// cell dimensions; otherwise fit() reads the previous render's css.cell.width
+// and the resulting cols/rows are stale by a frame.
+function schedulePendingLayout(
+  slot: Slot,
+  leafId: number,
+  options: RecoverLayoutOptions,
+): void {
+  if (slot.pendingLayoutRaf !== null) {
+    cancelAnimationFrame(slot.pendingLayoutRaf);
+  }
+  slot.pendingLayoutRaf = requestAnimationFrame(() => {
+    slot.pendingLayoutRaf = null;
+    recoverSlotLayout(slot, leafId, options);
+  });
+}
+
+function cancelPendingLayout(slot: Slot): void {
+  if (slot.pendingLayoutRaf !== null) {
+    cancelAnimationFrame(slot.pendingLayoutRaf);
+    slot.pendingLayoutRaf = null;
+  }
+}
+
 type RecoverLayoutOptions = {
   forcePty?: boolean;
   kickPty?: boolean;
@@ -412,10 +467,14 @@ function recoverSlotLayout(
   if (!isUsableLayout(w, h)) return false;
   slot.lastW = w;
   slot.lastH = h;
-  safeFit(slot);
-  const resized = syncPtySize(slot, leafId, options.forcePty ?? false);
+  // Apply the proposed dimensions only when they actually differ from the
+  // current cols/rows. This avoids an unnecessary xterm reflow when the
+  // container size hasn't changed (e.g. after a font option change that
+  // doesn't move the cell grid).
+  const proposed = proposeSlotDimensions(slot);
+  const resized = applyProposedDims(slot, proposed, options.forcePty ?? false);
   // Only force a full repaint when the terminal dimensions actually changed.
-  // xterm handles repaint internally after fit() when dimensions are stable.
+  // xterm handles repaint internally when dimensions are stable.
   if (resized) refreshTerminal(slot);
 
   const bridge = adapter?.resolveLeaf(leafId);
@@ -424,6 +483,56 @@ function recoverSlotLayout(
   }
   if (options.focus) slot.term.focus();
   return resized;
+}
+
+function proposeSlotDimensions(slot: Slot): { cols: number; rows: number } {
+  try {
+    const dims = slot.fitAddon.proposeDimensions();
+    if (
+      dims &&
+      Number.isFinite(dims.cols) &&
+      Number.isFinite(dims.rows) &&
+      dims.cols > 0 &&
+      dims.rows > 0
+    ) {
+      return { cols: dims.cols, rows: dims.rows };
+    }
+  } catch (e) {
+    console.warn("[nexterm] terminal proposeDimensions failed:", e);
+  }
+  return { cols: slot.term.cols, rows: slot.term.rows };
+}
+
+function applyProposedDims(
+  slot: Slot,
+  proposed: { cols: number; rows: number },
+  force: boolean,
+): boolean {
+  if (proposed.cols <= 0 || proposed.rows <= 0) return false;
+  const changed =
+    proposed.cols !== slot.term.cols || proposed.rows !== slot.term.rows;
+  // Skip the fit+resize path entirely when the proposed dims already match
+  // and we are not forcing a sync. This is the common steady-state call
+  // (e.g. a no-op ResizeObserver tick on an unchanged container) and avoids
+  // a redundant xterm reflow.
+  if (!changed && !force) return false;
+  // fitAddon.fit() both calculates and applies the new dims to xterm in one
+  // call. We rely on it directly instead of fitAddon.fit() + term.resize()
+  // to avoid an intermediate state where the renderer sees a stale cell grid.
+  safeFit(slot);
+  // After fit(), re-read in case the rounded dims differ from the proposal.
+  const settled = proposeSlotDimensions(slot);
+  if (settled.cols !== slot.term.cols || settled.rows !== slot.term.rows) {
+    try {
+      slot.term.resize(settled.cols, settled.rows);
+    } catch (e) {
+      console.warn("[nexterm] terminal resize failed:", e);
+      return false;
+    }
+  }
+  const leafId = slot.currentLeafId;
+  if (leafId === null) return false;
+  return syncPtySize(slot, leafId, force);
 }
 
 function safeFit(slot: Slot): void {
@@ -489,7 +598,7 @@ function detachSlotFromLeaf(slot: Slot): void {
   slot.observer?.disconnect();
   slot.observer = null;
   cancelPendingFit(slot);
-
+  cancelPendingLayout(slot);
   cancelPendingUnhide(slot);
   slot.host.style.visibility = "";
 
@@ -528,6 +637,14 @@ function attachWebgl(slot: Slot): void {
       setTimeout(() => {
         if (slot.webglAddon) return;
         if (!readPreferencesSnapshot().terminalWebglEnabled) return;
+        // Force a refresh first so the WebGL renderer rebuilds its textures
+        // from the *current* cell grid; otherwise the freshly-attached
+        // canvas may sample a stale atlas and paint one frame offset.
+        if (slot.term.rows > 0) {
+          try {
+            slot.term.refresh(0, slot.term.rows - 1);
+          } catch {}
+        }
         attachWebgl(slot);
       }, WEBGL_RECOVERY_DELAY_MS);
     });
@@ -537,11 +654,19 @@ function attachWebgl(slot: Slot): void {
     for (const c of after) if (!before.has(c)) added.push(c);
     slot.webglAddon = webgl;
     slot.webglCanvases = added;
+    // Repaint the full grid on the new canvas so the WebGL renderer aligns
+    // its texture atlas to the cell grid dimensions it inherited. Without
+    // this, the first frame after attach can be painted with a 1-pixel-off
+    // texture until the next xterm refresh cycle.
+    if (slot.term.rows > 0) {
+      try {
+        slot.term.refresh(0, slot.term.rows - 1);
+      } catch {}
+    }
   } catch (e) {
     console.warn("[nexterm-webgl] unavailable:", e);
   }
 }
-
 function disposeSlotWebgl(slot: Slot): void {
   if (!slot.webglAddon) return;
   const addon = slot.webglAddon;
@@ -570,6 +695,17 @@ function disposeSlotWebgl(slot: Slot): void {
     )._renderService = null;
   } catch {}
   slot.webglAddon = null;
+  // After tearing the WebGL renderer down, xterm's cell grid still matches
+  // the now-orphaned canvas. Schedule a fit on the next frame so the next
+  // attach (or DOM fallback) inherits dimensions that match the new canvas
+  // size rather than the disposed one's.
+  if (typeof requestAnimationFrame === "function") {
+    cancelAnimationFrame(slot.fitRaf ?? 0);
+    slot.fitRaf = requestAnimationFrame(() => {
+      slot.fitRaf = null;
+      safeFit(slot);
+    });
+  }
 }
 
 function releaseCanvasContext(canvas: HTMLCanvasElement): void {
@@ -606,7 +742,10 @@ export function applyFontSize(size: number): void {
     if (slot.term.options.fontSize === size) continue;
     slot.term.options.fontSize = size;
     if (slot.currentLeafId !== null) {
-      recoverSlotLayout(slot, slot.currentLeafId, { forcePty: true });
+      // Defer: the renderer hasn't picked up the new fontSize yet, so
+      // synchronous fit() would measure the old cell width and produce
+      // a cols/rows that overshoots the container.
+      schedulePendingLayout(slot, slot.currentLeafId, { forcePty: true });
     }
   }
 }
@@ -615,7 +754,9 @@ export function applyLetterSpacing(spacing: number): void {
   for (const slot of slots) {
     if (slot.term.options.letterSpacing === spacing) continue;
     slot.term.options.letterSpacing = spacing;
-    if (slot.currentLeafId !== null) recoverSlotLayout(slot, slot.currentLeafId);
+    if (slot.currentLeafId !== null) {
+      schedulePendingLayout(slot, slot.currentLeafId, {});
+    }
   }
 }
 
@@ -625,11 +766,12 @@ export function applyFontFamily(family: string): void {
     if (slot.term.options.fontFamily === resolved) continue;
     slot.term.options.fontFamily = resolved;
     if (slot.currentLeafId !== null) {
-      recoverSlotLayout(slot, slot.currentLeafId, { forcePty: true });
+      // Defer for the same reason as applyFontSize: the cell width for
+      // the new font isn't known until the next render pass.
+      schedulePendingLayout(slot, slot.currentLeafId, { forcePty: true });
     }
   }
 }
-
 export function applyScrollback(value: number): void {
   for (const slot of slots) {
     if (slot.term.options.scrollback === value) continue;
