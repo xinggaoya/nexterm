@@ -7,6 +7,9 @@ import {
   setAutostart,
   setEditorTheme,
   setExplorerPanelWidth,
+  setEditorFontSize,
+  setEditorTabSize,
+  setEditorWordWrap,
   setFileOpenMode,
   setKeybindings,
   setLanguage,
@@ -79,6 +82,9 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const explorerPanelWidth = ref<number>(
     DEFAULT_PREFERENCES.explorerPanelWidth,
   );
+  const editorFontSize = ref<number>(DEFAULT_PREFERENCES.editorFontSize);
+  const editorTabSize = ref<number>(DEFAULT_PREFERENCES.editorTabSize);
+  const editorWordWrap = ref<boolean>(DEFAULT_PREFERENCES.editorWordWrap);
   const touchOptimizations = ref<TouchMode>(
     DEFAULT_PREFERENCES.touchOptimizations,
   );
@@ -109,6 +115,9 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     sourceControlPanelWidth.value = snapshot.sourceControlPanelWidth;
     explorerPanelWidth.value = snapshot.explorerPanelWidth;
     touchOptimizations.value = snapshot.touchOptimizations;
+    editorFontSize.value = snapshot.editorFontSize;
+    editorTabSize.value = snapshot.editorTabSize;
+    editorWordWrap.value = snapshot.editorWordWrap;
   }
 
   async function hydrate(): Promise<void> {
@@ -242,6 +251,24 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     await setTouchOptimizations(value);
   }
 
+  async function updateEditorFontSize(value: number): Promise<void> {
+    editorFontSize.value = value;
+    patchPreferencesSnapshot("editorFontSize", value);
+    await setEditorFontSize(value);
+  }
+
+  async function updateEditorTabSize(value: number): Promise<void> {
+    editorTabSize.value = value;
+    patchPreferencesSnapshot("editorTabSize", value);
+    await setEditorTabSize(value);
+  }
+
+  async function updateEditorWordWrap(value: boolean): Promise<void> {
+    editorWordWrap.value = value;
+    patchPreferencesSnapshot("editorWordWrap", value);
+    await setEditorWordWrap(value);
+  }
+
   function readPreferencesSnapshot(): Preferences {
     return {
       theme: theme.value,
@@ -266,6 +293,9 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
       sourceControlPanelWidth: sourceControlPanelWidth.value,
       explorerPanelWidth: explorerPanelWidth.value,
       touchOptimizations: touchOptimizations.value,
+      editorFontSize: editorFontSize.value,
+      editorTabSize: editorTabSize.value,
+      editorWordWrap: editorWordWrap.value,
     };
   }
 
@@ -292,6 +322,9 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     sourceControlPanelWidth,
     explorerPanelWidth,
     touchOptimizations,
+    editorFontSize,
+    editorTabSize,
+    editorWordWrap,
     hydrated,
     listening,
     hydrate,
@@ -313,5 +346,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateSourceControlPanelWidth,
     updateExplorerPanelWidth,
     updateTouchOptimizations,
+    updateEditorFontSize,
+    updateEditorTabSize,
+    updateEditorWordWrap,
   };
 });

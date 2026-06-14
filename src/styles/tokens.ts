@@ -22,7 +22,13 @@ type TokenName =
   | "border"
   | "primary"
   | "destructive"
-  | "ring";
+  | "ring"
+  | "activity-bar"
+  | "title-bar"
+  | "terminal-focus"
+  | "pane-handle"
+  | "pane-handle-active"
+  | "panel-bg";
 
 export type AppTokens = Record<TokenName, string>;
 
@@ -38,6 +44,12 @@ const TOKENS: TokenName[] = [
   "primary",
   "destructive",
   "ring",
+  "activity-bar",
+  "title-bar",
+  "terminal-focus",
+  "pane-handle",
+  "pane-handle-active",
+  "panel-bg",
 ];
 
 const FALLBACK_TOKENS: AppTokens = {
@@ -52,6 +64,12 @@ const FALLBACK_TOKENS: AppTokens = {
   primary: "rgb(24, 24, 27)",
   destructive: "rgb(239, 68, 68)",
   ring: "rgb(161, 161, 170)",
+  "activity-bar": "rgb(248, 248, 250)",
+  "title-bar": "rgb(250, 250, 252)",
+  "terminal-focus": "rgb(59, 130, 246)",
+  "pane-handle": "rgb(220, 220, 224)",
+  "pane-handle-active": "rgb(100, 140, 230)",
+  "panel-bg": "rgb(249, 249, 251)",
 };
 
 let probe: HTMLDivElement | null = null;

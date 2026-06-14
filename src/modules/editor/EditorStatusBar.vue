@@ -12,7 +12,7 @@ const props = defineProps<{
 </script>
 
 <template>
-  <div class="flex h-7 shrink-0 items-center justify-between gap-3 border-t border-border/60 bg-background/95 px-3 text-[11px] text-muted-foreground">
+  <div class="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-border/30 bg-panel-bg px-3 text-[11px] text-muted-foreground">
     <div class="flex min-w-0 items-center gap-3">
       <span class="truncate">{{ props.languageLabel }}</span>
       <span>{{ props.sizeLabel }}</span>
