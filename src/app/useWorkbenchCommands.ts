@@ -30,6 +30,7 @@ import {
   pathsToUnstage,
 } from "@/modules/source-control/sourceControlModel";
 import type { SplitDir } from "@/modules/terminal/lib/panes";
+import { createTerminalSessionHandle } from "@/modules/terminal/lib/terminalSessionCore";
 import type { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 
@@ -269,6 +270,22 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
       case "terminal.splitVertical":
         options.splitActivePane("col");
         return;
+      case "terminal.clear": {
+        const tab = options.activeTab.value;
+        if (tab?.kind === "terminal") {
+          const handle = createTerminalSessionHandle(tab.activeLeafId);
+          handle.write("\x1b[H\x1b[2J\x1b[3J\x1b[H");
+        }
+        return;
+      }
+      case "terminal.reset": {
+        const tab = options.activeTab.value;
+        if (tab?.kind === "terminal") {
+          const handle = createTerminalSessionHandle(tab.activeLeafId);
+          handle.write("\x1bc");
+        }
+        return;
+      }
       case "panel.sourceControl.toggle":
         options.leftPanelOpen.value = !options.leftPanelOpen.value;
         return;

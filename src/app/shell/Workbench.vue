@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, type ComponentPublicInstance, type ComputedRef, type Ref } from "vue";
+import { ref, type ComputedRef, type Ref } from "vue";
 import { NSplit } from "naive-ui";
 import type { WorkspaceFsChangedEvent } from "@/lib/native";
 import EditorPane from "@/modules/editor/EditorPane.vue";
@@ -116,11 +116,6 @@ function isActiveGitDiff(): boolean {
   );
 }
 
-function setRightSplitHost(element: Element | ComponentPublicInstance | null) {
-  props.layout.rightSplitHost.value =
-    element instanceof HTMLElement ? element : null;
-}
-
 function setGitDecorations(decorations: GitDecorationMap) {
   gitDecorations.value = decorations;
 }
@@ -129,9 +124,7 @@ async function saveActiveEditor() {
   await activeEditorPane.value?.save();
 }
 
-defineExpose({
-  saveActiveEditor,
-});
+defineExpose({ saveActiveEditor });
 </script>
 
 <template>
@@ -161,11 +154,11 @@ defineExpose({
     <template #resize-trigger>
       <div
         v-if="layout.leftPanelOpen.value"
-        class="h-full w-full bg-border/30 transition-colors hover:bg-primary/25"
+        class="h-full w-full bg-pane-handle transition-colors hover:bg-pane-handle-active"
       />
     </template>
     <template #2>
-      <div :ref="setRightSplitHost" class="h-full min-w-0">
+      <div class="h-full min-w-0">
         <NSplit
           class="h-full min-w-0"
           direction="horizontal"
@@ -184,7 +177,7 @@ defineExpose({
               <div class="relative min-h-0 flex-1">
                 <div
                   :class="[
-                    'absolute inset-0 px-3 pt-2 pb-2',
+                    'absolute inset-0',
                     isActiveKind('terminal') ? '' : 'pointer-events-none invisible',
                   ]"
                   :aria-hidden="!isActiveKind('terminal')"
@@ -200,7 +193,7 @@ defineExpose({
 
                 <div
                   :class="[
-                    'absolute inset-0 px-3 pt-2 pb-2',
+                    'absolute inset-0',
                     isActiveKind('preview') ? '' : 'pointer-events-none invisible',
                   ]"
                   :aria-hidden="!isActiveKind('preview')"
@@ -214,7 +207,7 @@ defineExpose({
 
                 <div
                   :class="[
-                    'absolute inset-0 px-3 pt-2 pb-2',
+                    'absolute inset-0',
                     isActiveKind('markdown') ? '' : 'pointer-events-none invisible',
                   ]"
                   :aria-hidden="!isActiveKind('markdown')"
@@ -224,7 +217,7 @@ defineExpose({
 
                 <div
                   :class="[
-                    'absolute inset-0 px-3 pt-2 pb-2',
+                    'absolute inset-0',
                     isActiveGitDiff() ? '' : 'pointer-events-none invisible',
                   ]"
                   :aria-hidden="!isActiveGitDiff()"
@@ -248,7 +241,7 @@ defineExpose({
 
                 <div
                   v-if="activeTab && activeTab.kind === 'editor'"
-                  class="absolute inset-0 flex min-h-0 flex-col bg-background px-3 pt-2 pb-2"
+                  class="absolute inset-0 flex min-h-0 flex-col bg-background"
                   :class="isActiveKind('editor') ? '' : 'pointer-events-none invisible'"
                   :aria-hidden="!isActiveKind('editor')"
                 >
@@ -256,9 +249,7 @@ defineExpose({
                     ref="activeEditorPane"
                     :path="activeTab.path"
                     :fs-event="workspaceFsEvent"
-                    @dirty-change="
-                      (dirty) => tabsStore.updateTab(activeTab!.id, { dirty })
-                    "
+                    @dirty-change="(dirty) => tabsStore.updateTab(activeTab!.id, { dirty })"
                   />
                 </div>
               </div>
@@ -289,7 +280,7 @@ defineExpose({
           <template #resize-trigger>
             <div
               v-if="layout.rightPanelOpen.value"
-              class="h-full w-full bg-border/30 transition-colors hover:bg-primary/25"
+              class="h-full w-full bg-pane-handle transition-colors hover:bg-pane-handle-active"
             />
           </template>
           <template #2>

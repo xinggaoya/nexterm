@@ -6,6 +6,8 @@ export type CommandId =
   | "terminal.new"
   | "terminal.splitHorizontal"
   | "terminal.splitVertical"
+  | "terminal.clear"
+  | "terminal.reset"
   | "panel.sourceControl.toggle"
   | "panel.explorer.toggle"
   | "explorer.refresh"

@@ -62,6 +62,8 @@ const zhCN = {
       toggleExplorer: "切换资源管理器",
       toggleSourceControl: "切换源代码管理",
       unstageAll: "取消暂存所有更改",
+      clearTerminal: "清空终端",
+      resetTerminal: "重置终端",
     },
     noCommandsFound: "没有匹配的命令",
     noFilesFound: "没有匹配的文件",

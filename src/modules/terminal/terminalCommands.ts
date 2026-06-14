@@ -22,4 +22,18 @@ export const TERMINAL_COMMAND_SPECS: CommandSpec[] = [
     defaultKeybinding: null,
     workspaceRequired: true,
   },
+  {
+    id: "terminal.clear",
+    titleKey: "commands.items.clearTerminal",
+    category: "terminal",
+    defaultKeybinding: null,
+    workspaceRequired: true,
+  },
+  {
+    id: "terminal.reset",
+    titleKey: "commands.items.resetTerminal",
+    category: "terminal",
+    defaultKeybinding: null,
+    workspaceRequired: true,
+  },
 ];

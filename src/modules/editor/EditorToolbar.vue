@@ -21,7 +21,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-background/95 px-3">
+  <div class="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-border/30 bg-panel-bg px-3">
     <div class="flex min-w-0 items-center gap-2">
       <div class="min-w-0">
         <div class="truncate text-[12px] font-medium leading-4">{{ props.fileName }}</div>
