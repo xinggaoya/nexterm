@@ -529,12 +529,12 @@ onBeforeUnmount(() => {
 <template>
   <aside
     data-file-explorer
-    class="flex h-full w-full min-h-0 flex-col bg-card text-foreground outline-none"
+    class="flex h-full w-full min-h-0 flex-col bg-panel-bg text-foreground outline-none"
     tabindex="0"
     @keydown="handleKeydown"
   >
     <div
-      class="flex h-8 shrink-0 items-center gap-1 border-b border-border/60 px-2"
+      class="flex h-8 shrink-0 items-center gap-1 border-b border-border/30 px-2"
       data-explorer-header
     >
       <div class="flex min-w-0 flex-1 items-center gap-1.5" :title="rootPath || undefined">

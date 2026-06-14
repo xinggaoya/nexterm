@@ -73,6 +73,9 @@ export type Preferences = {
   sourceControlPanelWidth: number;
   explorerPanelWidth: number;
   touchOptimizations: TouchMode;
+  editorFontSize: number;
+  editorTabSize: number;
+  editorWordWrap: boolean;
 };
 
 const STORE_PATH = "nexterm-settings.json";
@@ -96,11 +99,19 @@ const KEY_LAST_WSL_DISTRO = "lastWslDistro";
 const KEY_LAST_WORKSPACE = "lastWorkspace";
 const KEY_RECENT_WORKSPACES = "recentWorkspaces";
 const KEY_ZOOM_LEVEL = "zoomLevel";
+const KEY_EDITOR_FONT_SIZE = "editorFontSize";
+const KEY_EDITOR_TAB_SIZE = "editorTabSize";
+const KEY_EDITOR_WORD_WRAP = "editorWordWrap";
 const KEY_SOURCE_CONTROL_PANEL_WIDTH = "sourceControlPanelWidth";
 const KEY_EXPLORER_PANEL_WIDTH = "explorerPanelWidth";
 const KEY_TOUCH_OPTIMIZATIONS = "touchOptimizations";
 
 export const SIDE_PANEL_WIDTH_DEFAULT = 256;
+
+export const EDITOR_FONT_SIZE_DEFAULT = 13;
+export const EDITOR_FONT_SIZE_MIN = 10;
+export const EDITOR_FONT_SIZE_MAX = 24;
+export const EDITOR_TAB_SIZE_DEFAULT = 2;
 export const SIDE_PANEL_WIDTH_MIN = 180;
 export const SIDE_PANEL_WIDTH_MAX = 520;
 
@@ -191,6 +202,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sourceControlPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
   explorerPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
   touchOptimizations: "off",
+  editorFontSize: EDITOR_FONT_SIZE_DEFAULT,
+  editorTabSize: EDITOR_TAB_SIZE_DEFAULT,
+  editorWordWrap: false,
 };
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
@@ -273,6 +287,13 @@ export async function loadPreferences(): Promise<Preferences> {
         DEFAULT_PREFERENCES.explorerPanelWidth,
     ),
     touchOptimizations: normalizeTouchMode(get(KEY_TOUCH_OPTIMIZATIONS)),
+    editorFontSize: clampEditorFontSize(
+      get<number>(KEY_EDITOR_FONT_SIZE) ?? DEFAULT_PREFERENCES.editorFontSize,
+    ),
+    editorTabSize:
+      get<number>(KEY_EDITOR_TAB_SIZE) ?? DEFAULT_PREFERENCES.editorTabSize,
+    editorWordWrap:
+      get<boolean>(KEY_EDITOR_WORD_WRAP) ?? DEFAULT_PREFERENCES.editorWordWrap,
   };
 }
 
@@ -395,6 +416,24 @@ export async function setExplorerPanelWidth(value: number): Promise<void> {
 
 export async function setTouchOptimizations(value: TouchMode): Promise<void> {
   await writePref(KEY_TOUCH_OPTIMIZATIONS, normalizeTouchMode(value));
+}
+
+function clampEditorFontSize(value: number): number {
+  if (!Number.isFinite(value)) return EDITOR_FONT_SIZE_DEFAULT;
+  return Math.min(EDITOR_FONT_SIZE_MAX, Math.max(EDITOR_FONT_SIZE_MIN, Math.round(value)));
+}
+
+export async function setEditorFontSize(value: number): Promise<void> {
+  await writePref(KEY_EDITOR_FONT_SIZE, clampEditorFontSize(value));
+}
+
+export async function setEditorTabSize(value: number): Promise<void> {
+  const valid = [2, 4, 8].includes(value) ? value : EDITOR_TAB_SIZE_DEFAULT;
+  await writePref(KEY_EDITOR_TAB_SIZE, valid);
+}
+
+export async function setEditorWordWrap(value: boolean): Promise<void> {
+  await writePref(KEY_EDITOR_WORD_WRAP, value);
 }
 
 export type PrefKey = keyof Preferences;

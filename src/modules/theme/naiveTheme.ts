@@ -34,7 +34,7 @@ export function buildNaiveThemeOverrides(
       inputColor: t.background,
       closeIconColor: t["muted-foreground"],
       closeIconColorHover: t.foreground,
-      borderRadius: "8px",
+      borderRadius: "6px",
       borderRadiusSmall: "6px",
       fontFamily:
         "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif",
@@ -48,10 +48,22 @@ export function buildNaiveThemeOverrides(
       borderRadiusLarge: "8px",
     },
     Card: {
-      borderRadius: "8px",
+      borderRadius: "6px",
     },
     Dialog: {
-      borderRadius: "8px",
+      borderRadius: "6px",
+    },
+    Input: {
+      borderRadius: "6px",
+    },
+    Tag: {
+      borderRadius: "6px",
+    },
+    Tabs: {
+      tabHeightMedium: "36px",
+      tabGapMedium: "0px",
+      tabFontSizeMedium: "13px",
+      barColor: t.primary,
     },
     Notification: {
       width: "300px",

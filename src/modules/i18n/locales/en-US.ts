@@ -60,6 +60,8 @@ const enUS = {
       toggleExplorer: "Toggle Explorer",
       toggleSourceControl: "Toggle Source Control",
       unstageAll: "Unstage All Changes",
+      clearTerminal: "Clear Terminal",
+      resetTerminal: "Reset Terminal",
     },
     noCommandsFound: "No commands found",
     noFilesFound: "No files found",

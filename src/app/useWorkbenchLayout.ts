@@ -63,7 +63,7 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   );
   const sourceControlPaneClass = computed(() =>
     [
-      "h-full overflow-hidden bg-card",
+      "h-full overflow-hidden bg-panel-bg",
       leftPanelOpen.value ? "border-r border-border/40" : "",
     ].join(" "),
   );
@@ -87,7 +87,7 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   });
   const explorerPaneClass = computed(() =>
     [
-      "h-full overflow-hidden bg-card",
+      "h-full overflow-hidden bg-panel-bg",
       rightPanelOpen.value ? "border-l border-border/40" : "",
     ].join(" "),
   );

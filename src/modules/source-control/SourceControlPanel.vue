@@ -187,7 +187,7 @@ function confirmDiscardEffective() {
 </script>
 
 <template>
-  <aside class="flex h-full w-full min-h-0 flex-col bg-card text-foreground">
+  <aside class="flex h-full w-full min-h-0 flex-col bg-panel-bg text-foreground">
     <SourceControlToolbar
       :branch-label="branchLabel"
       :changed-count="changedCount"
