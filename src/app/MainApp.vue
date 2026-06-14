@@ -16,9 +16,11 @@ import {
 } from "naive-ui";
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import AppHeader from "./components/AppHeader.vue";
-import AppStatusBar from "./components/AppStatusBar.vue";
-import WorkspaceShell from "./components/WorkspaceShell.vue";
+import TitleBar from "./shell/TitleBar.vue";
+import ActivityBar from "./shell/ActivityBar.vue";
+import TabBar from "./shell/TabBar.vue";
+import StatusBar from "./shell/StatusBar.vue";
+import Workbench from "./shell/Workbench.vue";
 import { applyLanguagePreference } from "@/modules/i18n";
 import { getNaiveLocaleConfig } from "@/modules/i18n/naive";
 import { resolveAppLocale } from "@/modules/i18n/types";
@@ -66,7 +68,7 @@ const workspaceOpenChoice = ref<WorkspaceSelection | null>(null);
 const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
 const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
 const closeGuard = useTemplateRef<typeof UnsavedCloseGuard>("closeGuard");
-const workspaceShell = useTemplateRef<typeof WorkspaceShell>("workspaceShell");
+const workbench = useTemplateRef<typeof Workbench>("workbench");
 const colorSchemeQuery =
   typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: dark)")
@@ -75,7 +77,6 @@ const systemDark = ref(colorSchemeQuery?.matches ?? true);
 const colorSchemeListener = (event: MediaQueryListEvent) => {
   systemDark.value = event.matches;
 };
-
 const fallbackTokens: AppTokens = {
   background: "rgb(255, 255, 255)",
   foreground: "rgb(24, 24, 27)",
@@ -88,6 +89,12 @@ const fallbackTokens: AppTokens = {
   primary: "rgb(24, 24, 27)",
   destructive: "rgb(239, 68, 68)",
   ring: "rgb(161, 161, 170)",
+  "activity-bar": "rgb(248, 248, 250)",
+  "title-bar": "rgb(250, 250, 252)",
+  "terminal-focus": "rgb(59, 130, 246)",
+  "pane-handle": "rgb(220, 220, 224)",
+  "pane-handle-active": "rgb(100, 140, 230)",
+  "panel-bg": "rgb(249, 249, 251)",
 };
 
 const themeOverrides = ref(buildNaiveThemeOverrides(fallbackTokens));
@@ -111,6 +118,8 @@ const canSplitActiveTab = computed(() => {
   if (!tab || tab.kind !== "terminal") return false;
   return leafIds(tab.paneTree).length < MAX_PANES_PER_TAB;
 });
+const gitBranch = ref<string | null>(null);
+const changeCount = ref(0);
 const workbenchLayout = useWorkbenchLayout({ prefs });
 useWindowChromeState();
 const {
@@ -186,7 +195,7 @@ function requestCloseTab(id: number) {
 }
 
 async function saveActiveEditor() {
-  await workspaceShell.value?.saveActiveEditor();
+  await workbench.value?.saveActiveEditor();
 }
 
 async function readWorkspaceTextFile(path: string): Promise<string | null> {
@@ -233,14 +242,6 @@ async function chooseWorkspaceOpenTarget() {
   }
 }
 
-async function chooseWorkspaceInEnv(env: WorkspaceEnv) {
-  try {
-    const selection = await workspaceRootStore.pickWorkspaceDirectoryForEnv(env);
-    workspaceOpenChoice.value = selection;
-  } catch (error) {
-    window.alert(String(error));
-  }
-}
 
 async function openSelectedWorkspaceInCurrentWindow() {
   const selection = workspaceOpenChoice.value;
@@ -344,7 +345,6 @@ watch(
   { immediate: true },
 );
 </script>
-
 <template>
   <NConfigProvider
     :theme="naiveTheme"
@@ -365,60 +365,72 @@ watch(
               :tabs="tabs.tabs"
               @close-tab="(id) => tabs.closeTab(id)"
             />
-            <AppHeader
-              :tabs="tabs.tabs"
-              :active-id="tabs.activeId"
-              :can-split="canSplitActiveTab"
-              :workspace-ready="hasWorkspace"
+            <TitleBar
+              :workspace-root="workspaceRoot"
+              :git-branch="gitBranch"
               :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
-              :left-panel-open="leftPanelOpen"
-              :right-panel-open="rightPanelOpen"
-              @select-tab="(id) => tabs.setActiveId(id)"
-              @close-tab="requestCloseTab"
-              @pin-tab="(id) => tabs.pinTab(id)"
-              @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement)"
-              @new-tab="newTerminalTab"
-              @choose-workspace="chooseWorkspaceOpenTarget"
-              @choose-workspace-in-env="chooseWorkspaceInEnv"
-              @split-pane="splitActivePane"
               @open-command-palette="openCommandPalette"
               @open-settings="openSettings"
-              @toggle-left-panel="leftPanelOpen = !leftPanelOpen"
-              @toggle-right-panel="rightPanelOpen = !rightPanelOpen"
+              @choose-workspace="chooseWorkspaceOpenTarget"
             />
-
-            <main v-if="hasWorkspace" class="min-h-0 flex-1">
-              <WorkspaceShell
-                ref="workspaceShell"
-                :active-id="tabs.activeId"
-                :active-tab="activeTab"
-                :layout="workbenchLayout"
-                :tabs="tabs.tabs"
-                :tabs-store="tabs"
-                :task-console="taskConsole"
-                :workspace-fs-event="workspaceFsEvent"
-                :workspace-root="workspaceRoot"
-                @open-file="openFileTab"
-                @open-markdown-preview="openMarkdownPreview"
-                @open-source-diff="openSourceDiff"
-                @open-source-history="openSourceHistory"
+            <div class="flex min-h-0 flex-1">
+              <ActivityBar
+                :left-panel-open="leftPanelOpen"
+                :right-panel-open="rightPanelOpen"
+                :has-workspace="hasWorkspace"
+                :change-count="changeCount"
+                @toggle-left-panel="leftPanelOpen = !leftPanelOpen"
+                @toggle-right-panel="rightPanelOpen = !rightPanelOpen"
+                @new-terminal="newTerminalTab"
+                @open-settings="openSettings"
               />
-            </main>
-
-            <main v-else class="min-h-0 flex-1 bg-background">
-              <WorkspaceWelcome
-                :recent-workspaces="workspaceRootStore.recentWorkspaces"
-                :loading="workspaceRootStore.loading"
-                :error="workspaceRootStore.error"
-                @choose-workspace="chooseWorkspace"
-                @open-recent="openRecentWorkspace"
-                @workspace-env-change="switchWorkspace"
-              />
-            </main>
-
-            <AppStatusBar
+              <div class="flex min-h-0 flex-1 flex-col">
+                <TabBar
+                  v-if="hasWorkspace"
+                  :tabs="tabs.tabs"
+                  :active-id="tabs.activeId"
+                  :can-split="canSplitActiveTab"
+                  :show-actions="hasWorkspace"
+                  @select-tab="(id) => tabs.setActiveId(id)"
+                  @close-tab="requestCloseTab"
+                  @pin-tab="(id) => tabs.pinTab(id)"
+                  @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement)"
+                  @new-tab="newTerminalTab"
+                  @split-pane="splitActivePane"
+                />
+                <main class="min-h-0 flex-1">
+                  <Workbench
+                    v-if="hasWorkspace"
+                    ref="workbench"
+                    :active-id="tabs.activeId"
+                    :active-tab="activeTab"
+                    :layout="workbenchLayout"
+                    :tabs="tabs.tabs"
+                    :tabs-store="tabs"
+                    :task-console="taskConsole"
+                    :workspace-fs-event="workspaceFsEvent"
+                    :workspace-root="workspaceRoot"
+                    @open-file="openFileTab"
+                    @open-markdown-preview="openMarkdownPreview"
+                    @open-source-diff="openSourceDiff"
+                    @open-source-history="openSourceHistory"
+                  />
+                  <WorkspaceWelcome
+                    v-else
+                    :recent-workspaces="workspaceRootStore.recentWorkspaces"
+                    :loading="workspaceRootStore.loading"
+                    :error="workspaceRootStore.error"
+                    @choose-workspace="chooseWorkspace"
+                    @open-recent="openRecentWorkspace"
+                    @workspace-env-change="switchWorkspace"
+                  />
+                </main>
+              </div>
+            </div>
+            <StatusBar
               :workspace-root="workspaceRoot"
               :terminal-cwd="activeCwd"
+              :git-branch="gitBranch"
               :workspace-switching="workspaceSwitching"
               :switching-workspace-env="switchingWorkspaceEnv"
               @workspace-change="switchWorkspace"

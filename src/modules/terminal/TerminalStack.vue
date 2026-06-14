@@ -2,7 +2,7 @@
 import type { SearchAddon } from "@xterm/addon-search";
 import { computed } from "vue";
 import type { Tab, TerminalTab } from "@/modules/tabs/tabsTypes";
-import PaneTreeView from "./PaneTreeView.vue";
+import PaneTreeV2 from "./PaneTreeV2.vue";
 
 const props = defineProps<{
   tabs: Tab[];
@@ -15,6 +15,8 @@ const emit = defineEmits<{
   cwd: [leafId: number, cwd: string];
   title: [leafId: number, title: string];
   exit: [leafId: number, code: number];
+  split: [tabId: number, leafId: number, dir: "row" | "col"];
+  close: [tabId: number, leafId: number];
 }>();
 
 const terminalTabs = computed(() =>
@@ -35,15 +37,18 @@ const terminalTabs = computed(() =>
       }"
       :aria-hidden="tab.id !== activeId"
     >
-      <PaneTreeView
+      <PaneTreeV2
         :node="tab.paneTree"
         :tab-visible="tab.id === activeId"
         :active-leaf-id="tab.activeLeafId"
+        :tab-id="tab.id"
         @focus-leaf="(leafId) => emit('focusLeaf', tab.id, leafId)"
         @search-ready="(leafId, addon) => emit('searchReady', leafId, addon)"
         @cwd="(leafId, cwd) => emit('cwd', leafId, cwd)"
         @title="(leafId, title) => emit('title', leafId, title)"
-        @exit="(leafId, code) => emit('exit', leafId, code)"
+        @exit="(_leafId, code) => emit('exit', tab.id, code)"
+        @split="(leafId, dir) => emit('split', tab.id, leafId, dir)"
+        @close="(leafId) => emit('close', tab.id, leafId)"
       />
     </div>
   </div>
