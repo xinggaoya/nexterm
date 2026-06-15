@@ -17,7 +17,7 @@ export type WorkbenchLayoutOptions = {
   saveDelayMs?: number;
 };
 
-const DEFAULT_PANEL_RESIZE_TRIGGER_SIZE = 6;
+const DEFAULT_PANEL_RESIZE_TRIGGER_SIZE = 2;
 const DEFAULT_PANEL_WIDTH_SAVE_DELAY_MS = 250;
 
 function clampPanelWidth(value: number): number {
