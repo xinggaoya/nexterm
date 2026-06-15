@@ -9,6 +9,7 @@ import { NDropdown, NIcon, type DropdownOption } from "naive-ui";
 import { computed, h, onBeforeUnmount, ref, type VNode } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { tabLabel } from "@/modules/tabs/tabLabel";
 import { t } from "@/modules/i18n/translate";
 import type { TabDropPlacement } from "@/modules/tabs/tabsReorder";
 import type { Tab } from "@/modules/tabs/tabsTypes";
@@ -30,18 +31,7 @@ const emit = defineEmits<{
   splitPane: [dir: SplitDir];
 }>();
 
-// --- Tab icon/label helpers ---
 
-function basename(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : "/";
-}
-
-function tabLabel(tab: Tab): string {
-  if (tab.kind === "terminal" && tab.terminalTitle) return tab.terminalTitle;
-  if (tab.kind === "terminal" && tab.cwd) return basename(tab.cwd);
-  return tab.title;
-}
 
 function tabKindLabel(tab: Tab): string {
   if (tab.kind === "terminal") return t("app.header.terminal");
@@ -51,8 +41,8 @@ function tabKindLabel(tab: Tab): string {
   if (tab.kind === "preview") return t("app.header.preview");
   return t("settings.general.editor");
 }
-
 // --- Drag-to-reorder ---
+
 
 type PointerDragState = {
   sourceId: number;

@@ -12,16 +12,19 @@ import { NDropdown, NIcon } from "naive-ui";
 import { computed, onMounted } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import WindowControls from "@/components/WindowControls.vue";
+import { basename, tabLabel } from "@/modules/tabs/tabLabel";
+import type { Tab } from "@/modules/tabs/tabsTypes";
 import { IS_MAC, IS_WINDOWS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { t } from "@/modules/i18n/translate";
 import { LOCAL_WORKSPACE, type WorkspaceEnv } from "@/modules/workspace";
 import { useWorkspaceEnvPiniaStore } from "@/modules/workspace/workspaceEnvPinia";
 
-defineProps<{
+const props = defineProps<{
   workspaceRoot: string | null;
   gitBranch: string | null;
   showWindowControls: boolean;
+  activeTab: Tab | null;
 }>();
 
 const emit = defineEmits<{
@@ -62,10 +65,11 @@ function handleOpenFolderSelect(key: string) {
   }
 }
 
-function basename(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : "/";
-}
+const centerLabel = computed(() => {
+  if (props.activeTab) return tabLabel(props.activeTab);
+  if (props.workspaceRoot) return basename(props.workspaceRoot);
+  return "Nexterm";
+});
 
 async function startWindowDrag(event: PointerEvent) {
   if (event.button !== 0) return;
@@ -124,7 +128,7 @@ async function startWindowDrag(event: PointerEvent) {
         @click.stop="emit('chooseWorkspace')"
       >
         <span class="max-w-[200px] truncate font-medium text-foreground">
-          {{ basename(workspaceRoot) }}
+          {{ centerLabel }}
         </span>
         <span
           v-if="gitBranch"
@@ -133,7 +137,6 @@ async function startWindowDrag(event: PointerEvent) {
           {{ gitBranch }}
         </span>
       </button>
-      <span v-else class="text-[12px] font-medium text-foreground">Nexterm</span>
     </div>
 
     <!-- Right: explorer, git, command center, settings, window controls -->

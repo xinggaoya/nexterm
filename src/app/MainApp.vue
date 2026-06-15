@@ -376,6 +376,7 @@ watch(
               :workspace-root="workspaceRoot"
               :git-branch="gitBranch"
               :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
+              :active-tab="activeTab"
               @open-command-palette="openCommandPalette"
               @open-settings="openSettings"
               @choose-workspace="chooseWorkspaceOpenTarget"
