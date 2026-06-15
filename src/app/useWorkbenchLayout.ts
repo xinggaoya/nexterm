@@ -17,7 +17,7 @@ export type WorkbenchLayoutOptions = {
   saveDelayMs?: number;
 };
 
-const DEFAULT_PANEL_RESIZE_TRIGGER_SIZE = 2;
+const DEFAULT_PANEL_RESIZE_TRIGGER_SIZE = 8;
 const DEFAULT_PANEL_WIDTH_SAVE_DELAY_MS = 250;
 
 function clampPanelWidth(value: number): number {
@@ -63,8 +63,10 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   );
   const sourceControlPaneClass = computed(() =>
     [
-      "h-full overflow-hidden bg-panel-bg",
-      leftPanelOpen.value ? "border-r border-border/40" : "",
+      "h-full overflow-hidden rounded-xl",
+      leftPanelOpen.value
+        ? "nexterm-card-elevated"
+        : "bg-transparent",
     ].join(" "),
   );
   const explorerSplitSize = computed(() => {
@@ -87,8 +89,10 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   });
   const explorerPaneClass = computed(() =>
     [
-      "h-full overflow-hidden bg-panel-bg",
-      rightPanelOpen.value ? "border-l border-border/40" : "",
+      "h-full overflow-hidden rounded-xl",
+      rightPanelOpen.value
+        ? "nexterm-card-elevated"
+        : "bg-transparent",
     ].join(" "),
   );
 

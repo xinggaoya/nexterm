@@ -9,6 +9,10 @@
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Inter Variable', sans-serif;
+    --color-card-shadow: var(--card-shadow);
+    --color-card-header: var(--card-header-bg);
+    --color-card-hover: var(--card-hover);
+    --color-pane-handle-hover: var(--pane-handle-hover);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -56,7 +60,7 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
+    --background: oklch(0.96 0.003 260);
     --foreground: oklch(0.148 0.004 228.8);
     --card: oklch(1 0 0);
     --card-foreground: oklch(0.148 0.004 228.8);
@@ -66,13 +70,13 @@
     --primary-foreground: oklch(0.987 0.002 197.1);
     --secondary: oklch(0.963 0.002 197.1);
     --secondary-foreground: oklch(0.218 0.008 223.9);
-    --muted: oklch(0.963 0.002 197.1);
-    --muted-foreground: oklch(0.56 0.021 213.5);
+    --muted: oklch(0.97 0.003 260);
+    --muted-foreground: oklch(0.54 0.02 213.5);
     --accent: oklch(0.963 0.002 197.1);
     --accent-foreground: oklch(0.218 0.008 223.9);
     --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.925 0.005 214.3);
-    --input: oklch(0.925 0.005 214.3);
+    --border: oklch(0.895 0.005 214.3);
+    --input: oklch(0.895 0.005 214.3);
     --ring: oklch(0.723 0.014 214.4);
     --chart-1: oklch(0.872 0.007 219.6);
     --chart-2: oklch(0.56 0.021 213.5);
@@ -80,47 +84,50 @@
     --chart-4: oklch(0.378 0.015 216);
     --chart-5: oklch(0.275 0.011 216.9);
     --radius: 0.625rem;
-    --sidebar: oklch(0.987 0.002 197.1);
+    --sidebar: oklch(0.97 0.003 260);
     --sidebar-foreground: oklch(0.148 0.004 228.8);
-    --activity-bar: oklch(0.975 0.002 260);
-    --title-bar: oklch(0.985 0.002 260);
+    --activity-bar: oklch(0.94 0.003 260);
+    --title-bar: oklch(0.972 0.002 260);
     --terminal-focus: oklch(0.55 0.15 250);
-    --pane-handle: oklch(0.9 0.005 260);
+    --pane-handle: oklch(0.875 0.005 260);
     --pane-handle-active: oklch(0.65 0.12 250);
-    --panel-bg: oklch(0.98 0.002 260);
+    --panel-bg: oklch(1 0 0);
     --sidebar-primary: oklch(0.218 0.008 223.9);
     --sidebar-primary-foreground: oklch(0.987 0.002 197.1);
     --sidebar-accent: oklch(0.963 0.002 197.1);
     --sidebar-accent-foreground: oklch(0.218 0.008 223.9);
-    --sidebar-border: oklch(0.925 0.005 214.3);
+    --sidebar-border: oklch(0.895 0.005 214.3);
     --sidebar-ring: oklch(0.723 0.014 214.4);
+    --card-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+    --card-header-bg: oklch(0.985 0.002 260);
+    --card-hover: oklch(0.975 0.003 260);
+    --pane-handle-hover: oklch(0.65 0.12 250 / 0.35);
 }
-
 .dark {
-    --background: oklch(0.13 0.005 260);
+    --background: oklch(0.12 0.005 260);
     --foreground: oklch(0.987 0.002 197.1);
-    --card: oklch(0.16 0.005 260);
+    --card: oklch(0.22 0.008 260);
     --card-foreground: oklch(0.987 0.002 197.1);
-    --popover: oklch(0.16 0.005 260);
+    --popover: oklch(0.22 0.008 260);
     --popover-foreground: oklch(0.987 0.002 197.1);
     --primary: oklch(0.925 0.005 214.3);
     --primary-foreground: oklch(0.218 0.008 223.9);
     --secondary: oklch(0.275 0.011 216.9);
     --secondary-foreground: oklch(0.987 0.002 197.1);
-    --muted: oklch(0.275 0.011 216.9);
-    --muted-foreground: oklch(0.723 0.014 214.4);
+    --muted: oklch(0.27 0.01 260);
+    --muted-foreground: oklch(0.7 0.014 214.4);
     --accent: oklch(0.275 0.011 216.9);
     --accent-foreground: oklch(0.987 0.002 197.1);
     --destructive: oklch(0.704 0.191 22.216);
     --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
+    --input: oklch(1 0 0 / 12%);
     --ring: oklch(0.56 0.021 213.5);
     --chart-1: oklch(0.872 0.007 219.6);
     --chart-2: oklch(0.56 0.021 213.5);
     --chart-3: oklch(0.45 0.017 213.2);
     --chart-4: oklch(0.378 0.015 216);
     --chart-5: oklch(0.275 0.011 216.9);
-    --sidebar: oklch(0.218 0.008 223.9);
+    --sidebar: oklch(0.22 0.008 260);
     --sidebar-foreground: oklch(0.987 0.002 197.1);
     --sidebar-primary: oklch(0.488 0.243 264.376);
     --sidebar-primary-foreground: oklch(0.987 0.002 197.1);
@@ -128,12 +135,16 @@
     --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.56 0.021 213.5);
-    --activity-bar: oklch(0.11 0.006 260);
-    --title-bar: oklch(0.14 0.005 260);
+    --activity-bar: oklch(0.108 0.005 260);
+    --title-bar: oklch(0.128 0.005 260);
     --terminal-focus: oklch(0.65 0.15 250);
-    --pane-handle: oklch(0.3 0.005 260);
+    --pane-handle: oklch(0.285 0.005 260);
     --pane-handle-active: oklch(0.55 0.12 250);
-    --panel-bg: oklch(0.145 0.005 260);
+    --panel-bg: oklch(0.22 0.008 260);
+    --card-shadow: 0 2px 8px -2px rgb(0 0 0 / 0.45), 0 1px 3px -1px rgb(0 0 0 / 0.3);
+    --card-header-bg: oklch(0.235 0.008 260);
+    --card-hover: oklch(0.25 0.008 260);
+    --pane-handle-hover: oklch(0.55 0.12 250 / 0.45);
 }
 
 @layer base {
@@ -151,6 +162,41 @@
   html {
     @apply font-sans;
     }
+}
+
+/*
+ * Card layering utilities — opt-in building blocks for the function-module
+ * card layout. The workbench canvas is the dark gutter between cards, and
+ * each panel/editor/terminal mounts as a raised card with a hairline border,
+ * subtle shadow, and rounded corners. Cards host their own `--card-header-bg`
+ * tinted header row for toolbars and titles, and a `--card-hover` wash for
+ * hover affordances on interactive rows inside the card.
+ */
+@layer components {
+  .nexterm-card {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+  .nexterm-card-header {
+    background-color: var(--card-header-bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .nexterm-card-row-hover {
+    transition: background-color 120ms ease;
+  }
+  .nexterm-card-row-hover:hover {
+    background-color: var(--card-hover);
+  }
+  .nexterm-card-elevated {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--card-shadow);
+  }
+  .nexterm-canvas {
+    background-color: var(--background);
+  }
 }
 
 :root {

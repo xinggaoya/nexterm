@@ -129,7 +129,7 @@ defineExpose({ saveActiveEditor });
 
 <template>
   <NSplit
-    class="h-full min-w-0"
+    class="nexterm-canvas h-full min-h-0 min-w-0 p-2"
     direction="horizontal"
     :size="layout.sourceControlSplitSize.value"
     :min="layout.sourceControlSplitMin.value"
@@ -137,7 +137,7 @@ defineExpose({ saveActiveEditor });
     :disabled="!layout.leftPanelOpen.value"
     :resize-trigger-size="layout.panelResizeTriggerSize"
     :pane1-class="layout.sourceControlPaneClass.value"
-    pane2-class="h-full min-w-0"
+    pane2-class="h-full min-h-0 min-w-0"
     @update:size="layout.updateSourceControlSplitSize"
     @drag-end="layout.flushSourceControlWidthSave"
   >
@@ -154,26 +154,25 @@ defineExpose({ saveActiveEditor });
     <template #resize-trigger>
       <div
         v-if="layout.leftPanelOpen.value"
-        class="h-full w-full bg-pane-handle transition-colors hover:bg-pane-handle-active"
+        class="h-full w-full bg-transparent transition-colors hover:bg-pane-handle-active"
       />
     </template>
     <template #2>
-      <div class="h-full min-w-0">
+      <div class="h-full min-h-0 min-w-0">
         <NSplit
-          class="h-full min-w-0"
+          class="nexterm-canvas h-full min-h-0 min-w-0"
           direction="horizontal"
           :size="layout.explorerSplitSize.value"
           :min="layout.explorerSplitMin.value"
           :max="layout.explorerSplitMax.value"
-          :disabled="!layout.rightPanelOpen.value"
           :resize-trigger-size="layout.panelResizeTriggerSize"
-          pane1-class="h-full min-w-0"
+          pane1-class="h-full min-h-0 min-w-0"
           :pane2-class="layout.explorerPaneClass.value"
           @update:size="layout.updateExplorerSplitSize"
           @drag-end="layout.flushExplorerWidthSave"
         >
           <template #1>
-            <section class="flex h-full min-w-0 flex-col bg-background">
+            <section class="nexterm-card-elevated flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
               <div class="relative min-h-0 flex-1">
                 <div
                   :class="[
@@ -280,7 +279,7 @@ defineExpose({ saveActiveEditor });
           <template #resize-trigger>
             <div
               v-if="layout.rightPanelOpen.value"
-              class="h-full w-full bg-pane-handle transition-colors hover:bg-pane-handle-active"
+              class="h-full w-full bg-transparent transition-colors hover:bg-pane-handle-active"
             />
           </template>
           <template #2>
