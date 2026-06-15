@@ -17,7 +17,6 @@ import {
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import TitleBar from "./shell/TitleBar.vue";
-import ActivityBar from "./shell/ActivityBar.vue";
 import TabBar from "./shell/TabBar.vue";
 import StatusBar from "./shell/StatusBar.vue";
 import Workbench from "./shell/Workbench.vue";
@@ -119,7 +118,6 @@ const canSplitActiveTab = computed(() => {
   return leafIds(tab.paneTree).length < MAX_PANES_PER_TAB;
 });
 const gitBranch = ref<string | null>(null);
-const changeCount = ref(0);
 const workbenchLayout = useWorkbenchLayout({ prefs });
 useWindowChromeState();
 const {
@@ -236,6 +234,15 @@ function selectedWorkspaceLabel(selection: WorkspaceSelection): string {
 async function chooseWorkspaceOpenTarget() {
   try {
     const selection = await workspaceRootStore.pickWorkspaceDirectory();
+    workspaceOpenChoice.value = selection;
+  } catch (error) {
+    window.alert(String(error));
+  }
+}
+
+async function chooseWorkspaceInEnv(env: WorkspaceEnv) {
+  try {
+    const selection = await workspaceRootStore.pickWorkspaceDirectoryForEnv(env);
     workspaceOpenChoice.value = selection;
   } catch (error) {
     window.alert(String(error));
@@ -372,60 +379,51 @@ watch(
               @open-command-palette="openCommandPalette"
               @open-settings="openSettings"
               @choose-workspace="chooseWorkspaceOpenTarget"
+              @choose-workspace-in-env="chooseWorkspaceInEnv"
+              @toggle-explorer="rightPanelOpen = !rightPanelOpen"
+              @toggle-source-control="leftPanelOpen = !leftPanelOpen"
             />
-            <div class="flex min-h-0 flex-1">
-              <ActivityBar
-                :left-panel-open="leftPanelOpen"
-                :right-panel-open="rightPanelOpen"
-                :has-workspace="hasWorkspace"
-                :change-count="changeCount"
-                @toggle-left-panel="leftPanelOpen = !leftPanelOpen"
-                @toggle-right-panel="rightPanelOpen = !rightPanelOpen"
-                @new-terminal="newTerminalTab"
-                @open-settings="openSettings"
+            <div class="flex min-h-0 flex-1 flex-col">
+              <TabBar
+                v-if="hasWorkspace"
+                :tabs="tabs.tabs"
+                :active-id="tabs.activeId"
+                :can-split="canSplitActiveTab"
+                :show-actions="hasWorkspace"
+                @select-tab="(id) => tabs.setActiveId(id)"
+                @close-tab="requestCloseTab"
+                @pin-tab="(id) => tabs.pinTab(id)"
+                @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement)"
+                @new-tab="newTerminalTab"
+                @split-pane="splitActivePane"
               />
-              <div class="flex min-h-0 flex-1 flex-col">
-                <TabBar
+              <main class="min-h-0 flex-1">
+                <Workbench
                   v-if="hasWorkspace"
-                  :tabs="tabs.tabs"
+                  ref="workbench"
                   :active-id="tabs.activeId"
-                  :can-split="canSplitActiveTab"
-                  :show-actions="hasWorkspace"
-                  @select-tab="(id) => tabs.setActiveId(id)"
-                  @close-tab="requestCloseTab"
-                  @pin-tab="(id) => tabs.pinTab(id)"
-                  @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement)"
-                  @new-tab="newTerminalTab"
-                  @split-pane="splitActivePane"
+                  :active-tab="activeTab"
+                  :layout="workbenchLayout"
+                  :tabs="tabs.tabs"
+                  :tabs-store="tabs"
+                  :task-console="taskConsole"
+                  :workspace-fs-event="workspaceFsEvent"
+                  :workspace-root="workspaceRoot"
+                  @open-file="openFileTab"
+                  @open-markdown-preview="openMarkdownPreview"
+                  @open-source-diff="openSourceDiff"
+                  @open-source-history="openSourceHistory"
                 />
-                <main class="min-h-0 flex-1">
-                  <Workbench
-                    v-if="hasWorkspace"
-                    ref="workbench"
-                    :active-id="tabs.activeId"
-                    :active-tab="activeTab"
-                    :layout="workbenchLayout"
-                    :tabs="tabs.tabs"
-                    :tabs-store="tabs"
-                    :task-console="taskConsole"
-                    :workspace-fs-event="workspaceFsEvent"
-                    :workspace-root="workspaceRoot"
-                    @open-file="openFileTab"
-                    @open-markdown-preview="openMarkdownPreview"
-                    @open-source-diff="openSourceDiff"
-                    @open-source-history="openSourceHistory"
-                  />
-                  <WorkspaceWelcome
-                    v-else
-                    :recent-workspaces="workspaceRootStore.recentWorkspaces"
-                    :loading="workspaceRootStore.loading"
-                    :error="workspaceRootStore.error"
-                    @choose-workspace="chooseWorkspace"
-                    @open-recent="openRecentWorkspace"
-                    @workspace-env-change="switchWorkspace"
-                  />
-                </main>
-              </div>
+                <WorkspaceWelcome
+                  v-else
+                  :recent-workspaces="workspaceRootStore.recentWorkspaces"
+                  :loading="workspaceRootStore.loading"
+                  :error="workspaceRootStore.error"
+                  @choose-workspace="chooseWorkspace"
+                  @open-recent="openRecentWorkspace"
+                  @workspace-env-change="switchWorkspace"
+                />
+              </main>
             </div>
             <StatusBar
               :workspace-root="workspaceRoot"
