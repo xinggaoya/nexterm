@@ -61,7 +61,7 @@ function handleRemoteSelect(key: string | number) {
 
 <template>
   <div>
-    <div class="flex h-9 shrink-0 items-center gap-1 border-b border-border/60 px-2">
+    <div class="nexterm-card-header flex h-9 shrink-0 items-center gap-1 px-2">
       <div class="flex min-w-0 flex-1 items-center gap-1.5">
         <NIcon :component="GitBranchOutline" :size="14" class="shrink-0 text-muted-foreground" />
         <span class="truncate text-[12px] font-semibold">{{ props.branchLabel }}</span>
@@ -111,7 +111,7 @@ function handleRemoteSelect(key: string | number) {
 
     <div
       v-if="props.repoRoot && props.status"
-      class="flex shrink-0 items-center gap-1.5 border-b border-border/60 px-2 py-2"
+      class="flex shrink-0 items-center gap-1.5 border-b border-border/40 px-2 py-2"
     >
       <NTag size="small" round type="info">{{ props.branchLabel }}</NTag>
       <NTag v-if="props.status.upstream" size="small" round>{{ props.status.upstream }}</NTag>

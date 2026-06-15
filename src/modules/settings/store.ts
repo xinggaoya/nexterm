@@ -180,7 +180,7 @@ export const TERMINAL_SCROLLBACK_PRESETS = [
 ] as const;
 
 export const DEFAULT_PREFERENCES: Preferences = {
-  theme: "system",
+  theme: "dark",
   language: "system",
   editorTheme: "atomone",
   autostart: false,
