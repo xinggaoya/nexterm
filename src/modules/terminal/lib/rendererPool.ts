@@ -295,6 +295,9 @@ function bindSlot(slot: Slot, p: AcquireParams): void {
       console.warn("[nexterm] terminal initial resize failed:", e);
     }
   }
+  // Sync host width so the flex-centering container distributes leftover
+  // pixels evenly on both sides of the terminal content.
+  syncHostWidth(slot);
 
   // Install the observer *before* the snapshot write so a ResizeObserver
   // tick (which can fire synchronously on some hosts) cannot race with
@@ -485,7 +488,24 @@ function recoverSlotLayout(
   return resized;
 }
 
+/** Get cell dimensions from xterm's internal render service. */
+function getCellDims(slot: Slot): { width: number; height: number } {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const core = (slot.term as any)._core;
+    const cell = core?._renderService?.dimensions?.css?.cell;
+    if (cell?.width > 0 && cell?.height > 0) {
+      return { width: cell.width, height: cell.height };
+    }
+  } catch { /* ignore */ }
+  return { width: 0, height: 0 };
+}
+
 function proposeSlotDimensions(slot: Slot): { cols: number; rows: number } {
+  // Prefer fitAddon's proposal when it has a valid measurement. It reads the
+  // .xterm element width, which may differ from the container when the host
+  // is flex-centered — but that only affects the reported cols, not accuracy,
+  // because we re-derive cols from the container width below as a second pass.
   try {
     const dims = slot.fitAddon.proposeDimensions();
     if (
@@ -495,6 +515,19 @@ function proposeSlotDimensions(slot: Slot): { cols: number; rows: number } {
       dims.cols > 0 &&
       dims.rows > 0
     ) {
+      // Recompute cols from the actual container width so centering works
+      // correctly even when the host is narrower than the container.
+      const container = slot.container;
+      if (container) {
+        const w = container.clientWidth;
+        if (w > 0) {
+          const cell = getCellDims(slot);
+          if (cell.width > 0) {
+            const cols = Math.floor(w / cell.width);
+            if (cols > 0) return { cols, rows: dims.rows };
+          }
+        }
+      }
       return { cols: dims.cols, rows: dims.rows };
     }
   } catch (e) {
@@ -511,36 +544,35 @@ function applyProposedDims(
   if (proposed.cols <= 0 || proposed.rows <= 0) return false;
   const changed =
     proposed.cols !== slot.term.cols || proposed.rows !== slot.term.rows;
-  // Skip the fit+resize path entirely when the proposed dims already match
-  // and we are not forcing a sync. This is the common steady-state call
-  // (e.g. a no-op ResizeObserver tick on an unchanged container) and avoids
-  // a redundant xterm reflow.
   if (!changed && !force) return false;
-  // fitAddon.fit() both calculates and applies the new dims to xterm in one
-  // call. We rely on it directly instead of fitAddon.fit() + term.resize()
-  // to avoid an intermediate state where the renderer sees a stale cell grid.
-  safeFit(slot);
-  // After fit(), re-read in case the rounded dims differ from the proposal.
-  const settled = proposeSlotDimensions(slot);
-  if (settled.cols !== slot.term.cols || settled.rows !== slot.term.rows) {
+  // Resize the terminal to the proposed dimensions.
+  if (changed) {
     try {
-      slot.term.resize(settled.cols, settled.rows);
+      slot.term.resize(proposed.cols, proposed.rows);
     } catch (e) {
       console.warn("[nexterm] terminal resize failed:", e);
       return false;
     }
   }
+  // Reset host to full width so fitAddon.fit() reads the actual container
+  // width (not the centered host width). This also lets _renderService pick
+  // up updated cell dimensions after a font-size change.
+  slot.host.style.width = "100%";
+  safeFit(slot);
+  // Re-center: set the host width to the terminal canvas width.
+  syncHostWidth(slot);
   const leafId = slot.currentLeafId;
   if (leafId === null) return false;
   return syncPtySize(slot, leafId, force);
 }
-
-function safeFit(slot: Slot): void {
-  try {
-    slot.fitAddon.fit();
-  } catch (e) {
-    console.warn("[nexterm] terminal fit failed:", e);
-  }
+/** Set the host width to the terminal canvas width so that the flex-centering
+ *  container distributes leftover pixels evenly on both sides. */
+function syncHostWidth(slot: Slot): void {
+  const cell = getCellDims(slot);
+  if (cell.width <= 0) return;
+  const canvasW = Math.ceil(slot.term.cols * cell.width);
+  const maxW = slot.container?.clientWidth ?? canvasW;
+  slot.host.style.width = `${Math.min(canvasW, maxW)}px`;
 }
 
 function syncPtySize(slot: Slot, leafId: number, force: boolean): boolean {
@@ -560,6 +592,14 @@ function refreshTerminal(slot: Slot): void {
     slot.term.refresh(0, slot.term.rows - 1);
   } catch (e) {
     console.warn("[nexterm] terminal refresh failed:", e);
+  }
+}
+
+function safeFit(slot: Slot): void {
+  try {
+    slot.fitAddon.fit();
+  } catch (e) {
+    console.warn("[nexterm] terminal fit failed:", e);
   }
 }
 

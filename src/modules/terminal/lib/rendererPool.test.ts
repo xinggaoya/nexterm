@@ -97,6 +97,13 @@ vi.mock("@xterm/xterm", () => ({
     refreshes: Array<[number, number]> = [];
     keyHandler: ((event: KeyboardEvent) => boolean) | null = null;
     private dataHandler: ((data: string) => void) | null = null;
+    _core = {
+      _renderService: {
+        dimensions: {
+          css: { cell: { width: 8, height: 16 } },
+        },
+      },
+    };
 
     constructor(options: Record<string, unknown>) {
       this.options = { ...options };
@@ -341,7 +348,9 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     const observer = lastItem(resizeObserverMocks)!;
     observer.callback([], observer as unknown as ResizeObserver);
 
-    expect(lastItem(resizes)).toEqual([140, 36]);
+    // The new code recomputes cols from container width / cellWidth
+    // (960 / 8 = 120) while still using fitAddon's rows (36).
+    expect(lastItem(resizes)).toEqual([120, 36]);
     expect(lastItem(term.refreshes)).toEqual([0, 35]);
   });
 
@@ -401,7 +410,9 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     expect(fitAddon.fit.mock.calls.length).toBe(initialFitCount);
     expect(rafQueue).toHaveLength(initialQueueDepth + 1);
 
-    // Once the frame fires, the deferred recoverSlotLayout invokes fit().
+    // Once the frame fires, the deferred recoverSlotLayout invokes
+    // safeFit() so fitAddon.fit() is called (even when cell dims haven't
+    // updated yet, e.g. in a test mock environment).
     rafQueue[initialQueueDepth](0);
     expect(fitAddon.fit.mock.calls.length).toBeGreaterThan(initialFitCount);
   });
