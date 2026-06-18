@@ -22,6 +22,8 @@ import {
   setTerminalLetterSpacing,
   setTerminalScrollback,
   setTerminalWebglEnabled,
+  setTerminalNotificationEnabled,
+  setTerminalNotificationSoundEnabled,
   setTheme,
   setTouchOptimizations,
   setVimMode,
@@ -65,6 +67,12 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const terminalScrollback = ref<number>(
     DEFAULT_PREFERENCES.terminalScrollback,
   );
+  const terminalNotificationEnabled = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalNotificationEnabled,
+  );
+  const terminalNotificationSoundEnabled = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalNotificationSoundEnabled,
+  );
   const keybindings = ref<KeybindingOverrides>(
     DEFAULT_PREFERENCES.keybindings,
   );
@@ -107,6 +115,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     terminalLetterSpacing.value = snapshot.terminalLetterSpacing;
     terminalFontSize.value = snapshot.terminalFontSize;
     terminalScrollback.value = snapshot.terminalScrollback;
+    terminalNotificationEnabled.value = snapshot.terminalNotificationEnabled;
+    terminalNotificationSoundEnabled.value = snapshot.terminalNotificationSoundEnabled;
     keybindings.value = snapshot.keybindings;
     lastWslDistro.value = snapshot.lastWslDistro;
     lastWorkspace.value = snapshot.lastWorkspace;
@@ -221,6 +231,18 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     await setTerminalScrollback(value);
   }
 
+  async function updateTerminalNotificationEnabled(value: boolean): Promise<void> {
+    terminalNotificationEnabled.value = value;
+    patchPreferencesSnapshot("terminalNotificationEnabled", value);
+    await setTerminalNotificationEnabled(value);
+  }
+
+  async function updateTerminalNotificationSoundEnabled(value: boolean): Promise<void> {
+    terminalNotificationSoundEnabled.value = value;
+    patchPreferencesSnapshot("terminalNotificationSoundEnabled", value);
+    await setTerminalNotificationSoundEnabled(value);
+  }
+
   async function updateCommandKeybinding(
     id: CommandId,
     keybinding: string | null | undefined,
@@ -285,6 +307,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
       terminalLetterSpacing: terminalLetterSpacing.value,
       terminalFontSize: terminalFontSize.value,
       terminalScrollback: terminalScrollback.value,
+      terminalNotificationEnabled: terminalNotificationEnabled.value,
+      terminalNotificationSoundEnabled: terminalNotificationSoundEnabled.value,
       keybindings: keybindings.value,
       lastWslDistro: lastWslDistro.value,
       lastWorkspace: lastWorkspace.value,
@@ -314,6 +338,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     terminalLetterSpacing,
     terminalFontSize,
     terminalScrollback,
+    terminalNotificationEnabled,
+    terminalNotificationSoundEnabled,
     keybindings,
     lastWslDistro,
     lastWorkspace,
@@ -342,6 +368,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateTerminalLetterSpacing,
     updateTerminalFontSize,
     updateTerminalScrollback,
+    updateTerminalNotificationEnabled,
+    updateTerminalNotificationSoundEnabled,
     updateCommandKeybinding,
     updateSourceControlPanelWidth,
     updateExplorerPanelWidth,
