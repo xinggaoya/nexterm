@@ -60,6 +60,21 @@ const scrollbackOptions = computed(() =>
             @update:value="prefs.updateTerminalContextMenuEnabled"
           />
         </NFormItem>
+        <NFormItem :label="t('settings.general.terminalNotifications')">
+          <NSwitch
+            :value="prefs.terminalNotificationEnabled"
+            @update:value="prefs.updateTerminalNotificationEnabled"
+          />
+        </NFormItem>
+        <NFormItem
+          v-if="prefs.terminalNotificationEnabled"
+          :label="t('settings.general.terminalNotificationSound')"
+        >
+          <NSwitch
+            :value="prefs.terminalNotificationSoundEnabled"
+            @update:value="prefs.updateTerminalNotificationSoundEnabled"
+          />
+        </NFormItem>
         <NFormItem :label="t('settings.general.fontFamily')">
           <NSelect
             :value="prefs.terminalFontFamily"
