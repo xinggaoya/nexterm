@@ -34,6 +34,7 @@
     "deep-link:default",
     "deep-link:allow-get-current",
     "positioner:default",
-    "process:default"
+    "process:default",
+    "notification:default"
   ]
 }
