@@ -178,6 +178,8 @@ const enUS = {
       title: "General",
       vimMode: "Vim mode",
       webglRenderer: "WebGL renderer",
+      terminalNotifications: "Terminal notifications",
+      terminalNotificationSound: "Notification sound",
     },
     options: {
       dark: "Dark",
