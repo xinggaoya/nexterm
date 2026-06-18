@@ -180,8 +180,11 @@ function dropPendingWrites(s: Session): void {
 }
 
 function registerModelOsc(s: Session): (() => void)[] {
+  const { notifyBell, notifyCommandComplete } = useTerminalNotification();
   const shellState = createShellIntegrationState();
-  const prompt = registerPromptTracker(s.modelTerm, shellState);
+  const prompt = registerPromptTracker(s.modelTerm, shellState, {
+    onCommandComplete: () => notifyCommandComplete(),
+  });
   const cwd = registerCwdHandler(
     s.modelTerm,
     (next) => {
@@ -195,7 +198,6 @@ function registerModelOsc(s: Session): (() => void)[] {
     s.callbacks.onTitle?.(next);
   });
 
-  const { notifyBell } = useTerminalNotification();
   const onBell = s.modelTerm.onBell(() => {
     notifyBell();
   });
