@@ -96,6 +96,7 @@ export function createTerminalOptions() {
     scrollSensitivity: 1,
     fastScrollSensitivity: 5,
     allowProposedApi: true,
+    bellStyle: prefs.terminalNotificationSoundEnabled ? "sound" as const : "none" as const,
   };
 }
 

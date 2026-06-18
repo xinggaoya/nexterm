@@ -9,6 +9,7 @@ import {
   registerPromptTracker,
   registerTitleHandler,
 } from "./osc-handlers";
+import { useTerminalNotification } from "./useTerminalNotification";
 import { openPty, type PtyOutputChunk, type PtySession } from "./pty-bridge";
 import {
   acquireSlot,
@@ -193,7 +194,13 @@ function registerModelOsc(s: Session): (() => void)[] {
   const title = registerTitleHandler(s.modelTerm, (next) => {
     s.callbacks.onTitle?.(next);
   });
-  return [prompt.dispose, cwd, title];
+
+  const { notifyBell } = useTerminalNotification();
+  const onBell = s.modelTerm.onBell(() => {
+    notifyBell();
+  });
+
+  return [prompt.dispose, cwd, title, () => onBell.dispose()];
 }
 
 function deliverPtyChunk(
