@@ -179,6 +179,8 @@ const zhCN = {
       title: "通用",
       vimMode: "Vim 模式",
       webglRenderer: "WebGL 渲染器",
+      terminalNotifications: "终端通知",
+      terminalNotificationSound: "通知声音",
     },
     options: {
       dark: "深色",
