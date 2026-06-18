@@ -279,6 +279,12 @@ function bindSlot(slot: Slot, p: AcquireParams): void {
   // reset() already clears the buffer; the prior clear() was redundant.
   slot.term.reset();
 
+  // Reset host to full container width so the initial proposal reads the
+  // actual container width, not the stale centered width from the slot's
+  // previous binding. recoverSlotLayout below re-centers the host via
+  // syncHostWidth once the new cols are settled.
+  slot.host.style.width = "100%";
+
   // Fit the slot to the *current* container first, so the snapshot written
   // below is serialized against the live dimensions. Doing it in this
   // order avoids reflowing snapshot text through two coordinate systems
@@ -295,9 +301,6 @@ function bindSlot(slot: Slot, p: AcquireParams): void {
       console.warn("[nexterm] terminal initial resize failed:", e);
     }
   }
-  // Sync host width so the flex-centering container distributes leftover
-  // pixels evenly on both sides of the terminal content.
-  syncHostWidth(slot);
 
   // Install the observer *before* the snapshot write so a ResizeObserver
   // tick (which can fire synchronously on some hosts) cannot race with
@@ -470,6 +473,12 @@ function recoverSlotLayout(
   if (!isUsableLayout(w, h)) return false;
   slot.lastW = w;
   slot.lastH = h;
+  // Reset host to full container width BEFORE proposing so fit reads the
+  // actual container width, not the centered width left over from the
+  // previous binding. syncHostWidth() inside applyProposedDims will
+  // re-center the host once the new cols are settled. Without this reset,
+  // a stale narrow host would make fit propose too few cols.
+  slot.host.style.width = "100%";
   // Apply the proposed dimensions only when they actually differ from the
   // current cols/rows. This avoids an unnecessary xterm reflow when the
   // container size hasn't changed (e.g. after a font option change that
@@ -502,10 +511,19 @@ function getCellDims(slot: Slot): { width: number; height: number } {
 }
 
 function proposeSlotDimensions(slot: Slot): { cols: number; rows: number } {
-  // Prefer fitAddon's proposal when it has a valid measurement. It reads the
-  // .xterm element width, which may differ from the container when the host
-  // is flex-centered — but that only affects the reported cols, not accuracy,
-  // because we re-derive cols from the container width below as a second pass.
+  // Delegate to fitAddon.proposeDimensions() verbatim. The addon subtracts
+  // the scrollbar allowance from the parent width (14px when scrollback > 0,
+  // see @xterm/addon-fit), which our own Math.floor(containerW / cellW)
+  // computation cannot replicate without duplicating that logic. Recomputing
+  // cols ourselves used to produce a HIGHER cols than fit() would settle on,
+  // and the subsequent safeFit() call resized the terminal a second time —
+  // after the snapshot had already been serialized at the wrong cols. For
+  // alt-screen TUIs (vim, less) that second resize reflowed the snapshot
+  // and corrupted the layout on every tab re-bind.
+  //
+  // Callers must reset slot.host.style.width to "100%" before invoking this
+  // so fit reads the actual container width rather than a stale centered
+  // width left over from a previous binding.
   try {
     const dims = slot.fitAddon.proposeDimensions();
     if (
@@ -515,19 +533,6 @@ function proposeSlotDimensions(slot: Slot): { cols: number; rows: number } {
       dims.cols > 0 &&
       dims.rows > 0
     ) {
-      // Recompute cols from the actual container width so centering works
-      // correctly even when the host is narrower than the container.
-      const container = slot.container;
-      if (container) {
-        const w = container.clientWidth;
-        if (w > 0) {
-          const cell = getCellDims(slot);
-          if (cell.width > 0) {
-            const cols = Math.floor(w / cell.width);
-            if (cols > 0) return { cols, rows: dims.rows };
-          }
-        }
-      }
       return { cols: dims.cols, rows: dims.rows };
     }
   } catch (e) {
@@ -545,7 +550,11 @@ function applyProposedDims(
   const changed =
     proposed.cols !== slot.term.cols || proposed.rows !== slot.term.rows;
   if (!changed && !force) return false;
-  // Resize the terminal to the proposed dimensions.
+  // Resize the terminal to the proposed dimensions. `proposed` already comes
+  // from fitAddon.proposeDimensions() (which subtracts the scrollbar
+  // allowance), so there is no need to invoke fit() again — the old code's
+  // safeFit() here used to trigger a SECOND resize because the previous
+  // proposeSlotDimensions recomputed cols without that subtraction.
   if (changed) {
     try {
       slot.term.resize(proposed.cols, proposed.rows);
@@ -554,12 +563,7 @@ function applyProposedDims(
       return false;
     }
   }
-  // Reset host to full width so fitAddon.fit() reads the actual container
-  // width (not the centered host width). This also lets _renderService pick
-  // up updated cell dimensions after a font-size change.
-  slot.host.style.width = "100%";
-  safeFit(slot);
-  // Re-center: set the host width to the terminal canvas width.
+  // Re-center the host now that the terminal grid has settled.
   syncHostWidth(slot);
   const leafId = slot.currentLeafId;
   if (leafId === null) return false;
@@ -736,14 +740,22 @@ function disposeSlotWebgl(slot: Slot): void {
   } catch {}
   slot.webglAddon = null;
   // After tearing the WebGL renderer down, xterm's cell grid still matches
-  // the now-orphaned canvas. Schedule a fit on the next frame so the next
-  // attach (or DOM fallback) inherits dimensions that match the new canvas
-  // size rather than the disposed one's.
+  // the now-orphaned canvas. Schedule a full layout recovery on the next
+  // frame so the next attach (or DOM fallback) inherits dimensions that
+  // match the new canvas size rather than the disposed one's. Going through
+  // recoverSlotLayout (instead of bare safeFit) also resets the host width
+  // to 100% before re-measuring, so a centered host does not feed a stale
+  // narrow width into fitAddon.proposeDimensions().
   if (typeof requestAnimationFrame === "function") {
     cancelAnimationFrame(slot.fitRaf ?? 0);
     slot.fitRaf = requestAnimationFrame(() => {
       slot.fitRaf = null;
-      safeFit(slot);
+      const leafId = slot.currentLeafId;
+      if (leafId !== null) {
+        recoverSlotLayout(slot, leafId, { forcePty: true });
+      } else {
+        safeFit(slot);
+      }
     });
   }
 }

@@ -30,6 +30,28 @@ type MockFitAddon = {
   fit: ReturnType<typeof vi.fn>;
   proposeDimensions: () => { cols: number; rows: number } | undefined;
 };
+
+// Shared FitAddon mocks so tests can prime `proposeDimensions` BEFORE a slot
+// is created (each instance references the same function). The `fit` mock
+// mirrors the real addon: it reads proposeDimensions() and resizes the bound
+// terminal when the dims differ. This lets tests catch the redundant
+// double-resize that occurred when proposeSlotDimensions skipped the
+// scrollbar subtraction that fit() performs internally.
+const fitMocks = vi.hoisted(() => {
+  const proposeDimensions = vi.fn(
+    () => undefined as { cols: number; rows: number } | undefined,
+  );
+  const fit = vi.fn(function (this: { _term: MockTerminal | null }) {
+    const term = this._term;
+    if (!term) return;
+    const dims = proposeDimensions();
+    if (!dims) return;
+    if (term.cols !== dims.cols || term.rows !== dims.rows) {
+      term.resize(dims.cols, dims.rows);
+    }
+  });
+  return { proposeDimensions, fit };
+});
 vi.mock("@/lib/fonts", () => ({
   detectMonoFontFamily: () => "JetBrains Mono",
 }));
@@ -57,13 +79,15 @@ vi.mock("@/lib/clipboard", () => clipboardMocks);
 
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: class {
-    fit = vi.fn();
+    _term: MockTerminal | null = null;
+    fit = fitMocks.fit;
     // Default to undefined so the renderer pool's helper falls back to the
     // current term cols/rows. Tests that need a specific proposal can call
-    // `.proposeDimensions.mockReturnValue(...)` on the instance.
-    proposeDimensions: () => { cols: number; rows: number } | undefined = vi
-      .fn()
-      .mockReturnValue(undefined);
+    // `fitMocks.proposeDimensions.mockReturnValue(...)` before binding.
+    proposeDimensions = fitMocks.proposeDimensions;
+    activate(term: unknown) {
+      this._term = term as MockTerminal;
+    }
   },
 }));
 
@@ -110,7 +134,13 @@ vi.mock("@xterm/xterm", () => ({
       terminalInstances.push(this);
     }
 
-    loadAddon() {}
+    loadAddon(addon: unknown) {
+      // The real xterm calls addon.activate(term) during loadAddon so the
+      // FitAddon can reach the terminal. Mirror that here so the realistic
+      // fit() mock can resize the bound term.
+      const a = addon as { activate?: (term: unknown) => void };
+      if (typeof a.activate === "function") a.activate(this);
+    }
     open() {}
     clear() {}
     reset() {}
@@ -249,6 +279,13 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     terminalInstances.length = 0;
     clipboardMocks.readClipboardText.mockReset();
     clipboardMocks.writeClipboardText.mockReset();
+    // Shared FitAddon mocks must be reset between tests so a return value
+    // primed in one test does not leak into the next. fit keeps its
+    // implementation (only call history is cleared) while proposeDimensions
+    // is fully reset to its default `undefined` return.
+    fitMocks.proposeDimensions.mockReset();
+    fitMocks.proposeDimensions.mockReturnValue(undefined);
+    fitMocks.fit.mockClear();
     document.body.innerHTML = "";
     installBrowserMocks();
   });
@@ -348,9 +385,14 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     const observer = lastItem(resizeObserverMocks)!;
     observer.callback([], observer as unknown as ResizeObserver);
 
-    // The new code recomputes cols from container width / cellWidth
-    // (960 / 8 = 120) while still using fitAddon's rows (36).
-    expect(lastItem(resizes)).toEqual([120, 36]);
+    // The slot must adopt fitAddon's proposal verbatim. The old code
+    // recomputed cols from container.clientWidth (960/8=120), skipping the
+    // scrollbar subtraction fit() performs — that caused a redundant second
+    // resize inside fit() and corrupted alt-screen snapshots during tab
+    // re-bind. See "writeSnapshot cols match" regression test below.
+    expect(lastItem(resizes)).toEqual([140, 36]);
+    expect(term.cols).toBe(140);
+    expect(term.rows).toBe(36);
     expect(lastItem(term.refreshes)).toEqual([0, 35]);
   });
 
@@ -399,22 +441,32 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     // mountBoundTerminal also queues its own double-RAF unhide, so we
     // measure the queue size delta rather than the absolute count.
     const initialQueueDepth = rafQueue.length;
-    const initialFitCount = fitAddon.fit.mock.calls.length;
+    const initialProposeCount = (
+      fitAddon.proposeDimensions as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls.length;
 
-    // The fontSize change must schedule a RAF rather than running fit()
-    // synchronously, otherwise xterm's css.cell.width is still the previous
-    // frame's value and the resulting cols/rows are stale.
+    // The fontSize change must schedule a RAF rather than running
+    // proposeDimensions synchronously, otherwise xterm's css.cell.width is
+    // still the previous frame's value and the resulting cols/rows are
+    // stale.
     const rendererPool = await import("./rendererPool");
     rendererPool.applyFontSize(20);
 
-    expect(fitAddon.fit.mock.calls.length).toBe(initialFitCount);
+    expect(
+      (fitAddon.proposeDimensions as unknown as ReturnType<typeof vi.fn>).mock
+        .calls.length,
+    ).toBe(initialProposeCount);
     expect(rafQueue).toHaveLength(initialQueueDepth + 1);
 
-    // Once the frame fires, the deferred recoverSlotLayout invokes
-    // safeFit() so fitAddon.fit() is called (even when cell dims haven't
-    // updated yet, e.g. in a test mock environment).
+    // Once the frame fires, the deferred recoverSlotLayout runs and reads
+    // fitAddon.proposeDimensions() to recompute layout. (Previously this
+    // asserted on fit() being called; that is no longer the case now that
+    // the redundant safeFit has been removed.)
     rafQueue[initialQueueDepth](0);
-    expect(fitAddon.fit.mock.calls.length).toBeGreaterThan(initialFitCount);
+    expect(
+      (fitAddon.proposeDimensions as unknown as ReturnType<typeof vi.fn>).mock
+        .calls.length,
+    ).toBeGreaterThan(initialProposeCount);
   });
 
   it("invokes writeSnapshot with the live container dims during bindSlot", async () => {
@@ -460,6 +512,90 @@ describe("rendererPool terminal clipboard shortcuts", () => {
         expect([cols, rows]).toEqual([term.cols, term.rows]);
       },
     });
+  });
+
+  it("resizes the terminal at most once per layout recovery (no redundant fit)", async () => {
+    const { container, term, fitAddon } = await mountBoundTerminal();
+    term.resize(120, 32);
+    setElementSize(container, 960, 480);
+    (
+      fitAddon.proposeDimensions as unknown as ReturnType<typeof vi.fn>
+    ).mockReturnValue({ cols: 140, rows: 36 });
+
+    const resizeSpy = vi.spyOn(term, "resize");
+    const fitSpy = fitAddon.fit as unknown as ReturnType<typeof vi.fn>;
+    const initialFitCount = fitSpy.mock.calls.length;
+
+    const observer = lastItem(resizeObserverMocks)!;
+    observer.callback([], observer as unknown as ResizeObserver);
+
+    // Only one resize (120,32 → 140,36). The old code did a second resize
+    // inside safeFit() because proposeSlotDimensions recomputed cols without
+    // the scrollbar subtraction fit() performs — fit() then saw a mismatch
+    // and resized again. That double-resize reflowed alt-screen snapshots
+    // and corrupted TUI layouts (vim, less) after tab switches.
+    const resizeCalls = resizeSpy.mock.calls.map(
+      ([c, r]) => [c, r] as [number, number],
+    );
+    expect(resizeCalls).toEqual([[140, 36]]);
+    // fit() is no longer invoked during layout recovery — proposeDimensions()
+    // alone drives the resize, and term.resize() applies it directly.
+    expect(fitSpy.mock.calls.length).toBe(initialFitCount);
+  });
+
+  it("writeSnapshot cols match the final slot cols after bind (alt-screen tab re-bind regression)", async () => {
+    const rendererPool = await import("./rendererPool");
+    const resizes: Array<[number, number]> = [];
+    rendererPool.configureRendererPool({
+      resolveLeaf: (leafId) =>
+        leafId === 42
+          ? {
+              writeToPty: () => {},
+              resizePty: (cols, rows) => resizes.push([cols, rows]),
+              kickPty: () => {},
+            }
+          : null,
+      evictLeaf: vi.fn(),
+      isLeafFocused: () => true,
+    });
+
+    // Simulate fit's scrollbar-aware proposal: container 800px, cellWidth 8,
+    // fit subtracts ~14px scrollbar → 98 cols. The OLD code recomputed cols
+    // as floor(800/8)=100 (no subtraction), then safeFit() internally
+    // resized the slot back to 98 — AFTER the snapshot was already
+    // serialized at 100 cols. Writing the 100-col snapshot into a 98-col
+    // terminal reflowed alt-screen content and corrupted TUI layouts.
+    fitMocks.proposeDimensions.mockReturnValue({ cols: 98, rows: 25 });
+
+    const container = document.createElement("div");
+    setElementSize(container, 800, 400);
+    document.body.appendChild(container);
+
+    let snapshotCols = -1;
+    let snapshotRows = -1;
+    const slot = rendererPool.acquireSlot({
+      leafId: 42,
+      container,
+      snapshot: null,
+      altScreen: true,
+      shellExited: false,
+      searchQuery: null,
+      cols: 80,
+      rows: 24,
+      registerOsc: () => [],
+      onSearchReady: vi.fn(),
+      writeSnapshot: (_term, cols, rows) => {
+        snapshotCols = cols;
+        snapshotRows = rows;
+      },
+    });
+
+    // Bug 1 invariant: the cols used to serialize the model snapshot must
+    // equal the cols the slot settles on. A mismatch means the alt-screen
+    // snapshot gets reflowed when written back, shifting vim/less layouts.
+    expect(snapshotCols).toBe(slot.term.cols);
+    expect(snapshotRows).toBe(slot.term.rows);
+    expect(lastItem(resizes)?.[0]).toBe(slot.term.cols);
   });
 });
 
