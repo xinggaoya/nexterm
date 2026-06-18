@@ -31,3 +31,10 @@ cargo clippy --all-targets --locked -- -D warnings
 - Rust/Tauri 后端在 `src-tauri/`。
 - 项目架构和协作约束记录在 `NEXTERM.md`。
 - 当前仓库为私有二次开发用途。
+
+## 文档
+
+- [系统架构总览](docs/architecture/overview.md)
+- [模块详细设计](docs/architecture/)
+- [代码 Wiki](CODE_WIKI.md)
+- [项目设计文档](NEXTERM.md)

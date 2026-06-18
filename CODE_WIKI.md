@@ -360,3 +360,11 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 3. **Transcript**：RAII + 临时文件的输出存储
 4. **blocking helper**：Git 模块使用 `blocking()` 封装同步操作到线程池
 5. **ChildKillGuard**：RAII 风格的子进程终止管理
+
+---
+
+## 相关文档
+
+- [系统架构总览](docs/architecture/overview.md)
+- [模块详细设计](docs/architecture/)
+- [项目设计文档](NEXTERM.md)
