@@ -231,7 +231,7 @@ defineExpose({
   >
     <div
       ref="container"
-      class="nexterm-terminal-scrollbar zoom-exempt flex h-full w-full items-center justify-center rounded-sm bg-background focus-within:ring-1 focus-within:ring-terminal-focus"
+      class="nexterm-terminal-scrollbar zoom-exempt flex h-full w-full items-center justify-center rounded-sm bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-terminal-focus"
     />
     <div
       v-if="contextMenu"
