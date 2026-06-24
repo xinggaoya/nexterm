@@ -480,6 +480,12 @@ function recoverSlotLayout(
   // re-center the host once the new cols are settled. Without this reset,
   // a stale narrow host would make fit propose too few cols.
   slot.host.style.width = "100%";
+  // Capture whether the live terminal grid is about to move. We compare
+  // BEFORE applyProposedDims because syncPtySize will overwrite lastCols/
+  // lastRows inside that call — we need the pre-resize state to decide
+  // whether to kick the PTY afterwards.
+  const sizeChanged =
+    slot.term.cols !== slot.lastCols || slot.term.rows !== slot.lastRows;
   // Apply the proposed dimensions only when they actually differ from the
   // current cols/rows. This avoids an unnecessary xterm reflow when the
   // container size hasn't changed (e.g. after a font option change that
@@ -491,7 +497,20 @@ function recoverSlotLayout(
   if (resized) refreshTerminal(slot);
 
   const bridge = adapter?.resolveLeaf(leafId);
-  if (options.kickPty && bridge && slot.term.cols > 0 && slot.term.rows > 0) {
+  // Kick the PTY when (a) the caller explicitly requested it (alt-screen
+  // bindings, where we want a from-scratch repaint of any volatile screen
+  // state) OR (b) the live grid actually moved. The latter matters for
+  // Ink-based inline TUIs (OpenCode, Claude Code) that never enter
+  // alt-screen: Linux suppresses winsize ioctls that don't actually change
+  // the size, so without this kick those TUIs would never receive the
+  // SIGWINCH they need to reflow their inline layout (status bar etc.) when
+  // the pane resizes.
+  if (
+    bridge &&
+    slot.term.cols > 0 &&
+    slot.term.rows > 0 &&
+    (options.kickPty || sizeChanged)
+  ) {
     bridge.kickPty(slot.term.cols, slot.term.rows);
   }
   if (options.focus) slot.term.focus();
@@ -512,15 +531,25 @@ function getCellDims(slot: Slot): { width: number; height: number } {
 }
 
 function proposeSlotDimensions(slot: Slot): { cols: number; rows: number } {
-  // Delegate to fitAddon.proposeDimensions() verbatim. The addon subtracts
-  // the scrollbar allowance from the parent width (14px when scrollback > 0,
-  // see @xterm/addon-fit), which our own Math.floor(containerW / cellW)
-  // computation cannot replicate without duplicating that logic. Recomputing
-  // cols ourselves used to produce a HIGHER cols than fit() would settle on,
-  // and the subsequent safeFit() call resized the terminal a second time —
-  // after the snapshot had already been serialized at the wrong cols. For
-  // alt-screen TUIs (vim, less) that second resize reflowed the snapshot
-  // and corrupted the layout on every tab re-bind.
+  // Delegate to fitAddon.proposeDimensions() for the core measurement. The
+  // addon subtracts the scrollbar allowance from the parent width (14px when
+  // scrollback > 0, see @xterm/addon-fit), which our own
+  // Math.floor(containerW / cellW) computation cannot replicate without
+  // duplicating that logic. Recomputing cols ourselves used to produce a
+  // HIGHER cols than fit() would settle on, and the subsequent safeFit() call
+  // resized the terminal a second time — after the snapshot had already been
+  // serialized at the wrong cols. For alt-screen TUIs (vim, less) that second
+  // resize reflowed the snapshot and corrupted the layout on every tab
+  // re-bind.
+  //
+  // We do, however, add back the scrollbar allowance before returning. The
+  // 14px the addon subtracts is meant to reserve space for a visible scrollbar
+  // but we hide xterm's scrollbar via globals.css
+  // (`.xterm .scrollbar { display:none !important }`), so the reserved space
+  // is wasted — without compensation the terminal reports ~2 fewer cols than
+  // the canvas can actually fit. That gap manifests as a visible right-side
+  // margin in the canvas, visually pushing TUI renderings (e.g. OpenCode,
+  // Claude Code status bars) toward the left edge of the pane.
   //
   // Callers must reset slot.host.style.width to "100%" before invoking this
   // so fit reads the actual container width rather than a stale centered
@@ -534,6 +563,13 @@ function proposeSlotDimensions(slot: Slot): { cols: number; rows: number } {
       dims.cols > 0 &&
       dims.rows > 0
     ) {
+      const cell = getCellDims(slot);
+      if (cell.width > 0) {
+        // Refund the 14px scrollbar allowance (≈1–2 cols at typical cell
+        // widths) so PTY cols match the canvas grid.
+        const scrollbarCols = Math.floor(14 / cell.width);
+        return { cols: dims.cols + scrollbarCols, rows: dims.rows };
+      }
       return { cols: dims.cols, rows: dims.rows };
     }
   } catch (e) {

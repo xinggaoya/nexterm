@@ -385,13 +385,14 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     const observer = lastItem(resizeObserverMocks)!;
     observer.callback([], observer as unknown as ResizeObserver);
 
-    // The slot must adopt fitAddon's proposal verbatim. The old code
-    // recomputed cols from container.clientWidth (960/8=120), skipping the
-    // scrollbar subtraction fit() performs — that caused a redundant second
-    // resize inside fit() and corrupted alt-screen snapshots during tab
-    // re-bind. See "writeSnapshot cols match" regression test below.
-    expect(lastItem(resizes)).toEqual([140, 36]);
-    expect(term.cols).toBe(140);
+    // The slot must adopt fitAddon's proposal with the scrollbar allowance
+    // refunded: FitAddon subtracts 14px (≈1 col at cellWidth=8), but our
+    // CSS hides the xterm scrollbar (globals.css .xterm .scrollbar), so we
+    // add it back. Without this compensation the PTY reports 1 fewer col
+    // than the canvas grid, leaving a right-side gap that visually pushes
+    // TUI renderings toward the left edge of the pane.
+    expect(lastItem(resizes)).toEqual([141, 36]);
+    expect(term.cols).toBe(141);
     expect(term.rows).toBe(36);
     expect(lastItem(term.refreshes)).toEqual([0, 35]);
   });
@@ -529,15 +530,17 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     const observer = lastItem(resizeObserverMocks)!;
     observer.callback([], observer as unknown as ResizeObserver);
 
-    // Only one resize (120,32 → 140,36). The old code did a second resize
-    // inside safeFit() because proposeSlotDimensions recomputed cols without
-    // the scrollbar subtraction fit() performs — fit() then saw a mismatch
-    // and resized again. That double-resize reflowed alt-screen snapshots
-    // and corrupted TUI layouts (vim, less) after tab switches.
+    // Only one resize (120,32 → 141,36). The scrollbar allowance is refunded
+    // by proposeSlotDimensions (FitAddon subtracts 14px ≈ 1 col) so the
+    // canvas grid and the PTY size stay aligned. The old code did a second
+    // resize inside safeFit() because proposeSlotDimensions recomputed cols
+    // without the scrollbar subtraction fit() performs — fit() then saw a
+    // mismatch and resized again. That double-resize reflowed alt-screen
+    // snapshots and corrupted TUI layouts (vim, less) after tab switches.
     const resizeCalls = resizeSpy.mock.calls.map(
       ([c, r]) => [c, r] as [number, number],
     );
-    expect(resizeCalls).toEqual([[140, 36]]);
+    expect(resizeCalls).toEqual([[141, 36]]);
     // fit() is no longer invoked during layout recovery — proposeDimensions()
     // alone drives the resize, and term.resize() applies it directly.
     expect(fitSpy.mock.calls.length).toBe(initialFitCount);
@@ -560,11 +563,13 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     });
 
     // Simulate fit's scrollbar-aware proposal: container 800px, cellWidth 8,
-    // fit subtracts ~14px scrollbar → 98 cols. The OLD code recomputed cols
-    // as floor(800/8)=100 (no subtraction), then safeFit() internally
-    // resized the slot back to 98 — AFTER the snapshot was already
-    // serialized at 100 cols. Writing the 100-col snapshot into a 98-col
-    // terminal reflowed alt-screen content and corrupted TUI layouts.
+    // fit subtracts ~14px scrollbar → 98 cols. proposeSlotDimensions refunds
+    // that allowance (CSS hides the xterm scrollbar), so the slot ends up at
+    // 98 + floor(14/8) = 99 cols. The OLD code recomputed cols as
+    // floor(800/8)=100, then safeFit() internally resized the slot back to
+    // 98 — AFTER the snapshot was already serialized at 100 cols. Writing
+    // the 100-col snapshot into a 98-col terminal reflowed alt-screen
+    // content and corrupted TUI layouts.
     fitMocks.proposeDimensions.mockReturnValue({ cols: 98, rows: 25 });
 
     const container = document.createElement("div");
@@ -596,6 +601,89 @@ describe("rendererPool terminal clipboard shortcuts", () => {
     expect(snapshotCols).toBe(slot.term.cols);
     expect(snapshotRows).toBe(slot.term.rows);
     expect(lastItem(resizes)?.[0]).toBe(slot.term.cols);
+    // Sanity: with cellWidth=8 the 14px scrollbar refund is exactly 1 col.
+    expect(slot.term.cols).toBe(99);
+  });
+
+  it("refunds the FitAddon scrollbar deduction so PTY cols match the canvas grid", async () => {
+    // FitAddon hardcodes a 14px scrollbar allowance (see @xterm/addon-fit
+    // v0.11.0 proposeDimensions). globals.css hides the xterm scrollbar
+    // with display:none, so the 14px is wasted. proposeSlotDimensions
+    // compensates by adding floor(14/cellW) back to the proposed cols.
+    // With cellW=8 that is exactly 1 col.
+    const { term, fitAddon, container } = await mountBoundTerminal();
+    term.resize(80, 24);
+    // Resize the container so the ResizeObserver actually fires.
+    setElementSize(container, 1024, 600);
+    // prime FitAddon to propose 100x25
+    (
+      fitAddon.proposeDimensions as unknown as ReturnType<typeof vi.fn>
+    ).mockReturnValue({ cols: 100, rows: 25 });
+
+    const observer = lastItem(resizeObserverMocks)!;
+    observer.callback([], observer as unknown as ResizeObserver);
+
+    // term.resize must have settled at FitAddon cols + the scrollbar refund
+    // (100 + floor(14/8) = 101). Without the refund the slot would land at
+    // 100 cols and the PTY would receive a smaller grid than the canvas can
+    // render, leaving the TUI visually offset to the left of the pane.
+    expect(term.cols).toBe(101);
+    expect(term.rows).toBe(25);
+  });
+
+  it("kicks the PTY for inline (non-alt-screen) TUIs when cols actually move", async () => {
+    // OpenCode / Claude Code are Ink-based inline TUIs — they never enter
+    // alt-screen, so the legacy kickPty: options.kickPty condition never
+    // fired for them. When a pane resizes, syncPtySize emits TIOCSWINSZ but
+    // Linux suppresses winsize ioctls that don't actually change the size,
+    // and inline TUIs that listen for SIGWINCH through useWindowSize() can
+    // stay pinned to the previous cols. recoverSlotLayout now also kicks
+    // when sizeChanged is true, so inline TUIs get a guaranteed SIGWINCH.
+    const { term, fitAddon, container, kicks } = await mountBoundTerminal();
+    // Move the terminal to a known state different from the createSlot
+    // initial — slot.lastCols starts at term.cols (80), so we need term.cols
+    // to differ from it for sizeChanged to fire later.
+    term.resize(100, 24);
+    // Resize the container so the ResizeObserver actually fires.
+    setElementSize(container, 1024, 600);
+    const initialKickCount = kicks.length;
+
+    // Simulate FitAddon proposing larger dims (e.g. pane grew wider).
+    (
+      fitAddon.proposeDimensions as unknown as ReturnType<typeof vi.fn>
+    ).mockReturnValue({ cols: 130, rows: 30 });
+
+    const observer = lastItem(resizeObserverMocks)!;
+    observer.callback([], observer as unknown as ResizeObserver);
+
+    // term.resize must have settled at FitAddon cols + the scrollbar refund
+    // (130 + 1 = 131) and a kick must have been recorded.
+    expect(term.cols).toBe(131);
+    expect(term.rows).toBe(30);
+    expect(kicks.length).toBeGreaterThan(initialKickCount);
+    expect(lastItem(kicks)).toEqual([131, 30]);
+  });
+
+  it("does not kick the PTY when cols/rows are stable and no kick is requested", async () => {
+    // The new sizeChanged-based kick path must not fire on every layout
+    // recovery. Only an actual grid move should trigger the kick, so
+    // stable-size refreshes stay quiet and don't spam the PTY.
+    const { rendererPool, term, container, kicks } = await mountBoundTerminal();
+    term.resize(120, 30);
+    // First refresh pins lastCols/lastRows to the terminal's current grid
+    // and may itself emit a kick (sizeChanged was true before this call).
+    rendererPool.refreshSlotLayout(7, { forcePty: true });
+    const baselineKickCount = kicks.length;
+
+    // Now refresh without any resize occurring — the terminal is already
+    // settled at the same cols/rows, and the caller does NOT request a
+    // kick. sizeChanged will be false so the new sizeChanged-based branch
+    // must stay silent.
+    setElementSize(container, 800, 480);
+    rendererPool.refreshSlotLayout(7, { forcePty: false, kickPty: false });
+
+    // No new kick: cols/rows are stable and kickPty is not requested.
+    expect(kicks.length).toBe(baselineKickCount);
   });
 });
 
