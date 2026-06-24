@@ -5,6 +5,125 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SourceControlPanel from "./SourceControlPanel.vue";
 import { native, type GitChangedFile } from "@/lib/native";
 
+// NVirtualList (and the underlying vueuc virtual list) probes
+// `window.matchMedia` for pointer / touch capability detection and
+// `ResizeObserver` to measure the viewport, both of which are missing
+// from jsdom. We install minimal stubs before any component under test
+// imports the virtual list.
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+if (
+  typeof window !== "undefined" &&
+  typeof (window as unknown as { ResizeObserver?: unknown }).ResizeObserver !==
+    "function"
+) {
+  (window as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+    private callback: ResizeObserverCallback;
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+    observe(target: Element) {
+      const rect =
+        typeof (target as HTMLElement).getBoundingClientRect === "function"
+          ? (target as HTMLElement).getBoundingClientRect()
+          : { width: 320, height: 600, top: 0, left: 0, right: 320, bottom: 600, x: 0, y: 0, toJSON: () => ({}) };
+      this.callback(
+        [
+          {
+            target,
+            contentRect: {
+              width: rect.width,
+              height: rect.height,
+              top: rect.top,
+              left: rect.left,
+              right: rect.right,
+              bottom: rect.bottom,
+              x: 0,
+              y: 0,
+              toJSON: () => ({}),
+            },
+            borderBoxSize: [] as unknown as ReadonlyArray<ResizeObserverSize>,
+            contentBoxSize: [] as unknown as ReadonlyArray<ResizeObserverSize>,
+            devicePixelContentBoxSize: [] as unknown as ReadonlyArray<ResizeObserverSize>,
+          },
+        ],
+        this,
+      );
+    }
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
+// jsdom reports layout properties (`clientHeight`, `offsetHeight`, etc.)
+// as 0 for every element, so the virtual list thinks it has no viewport
+// and renders nothing. Patch the prototype so the list measures a
+// realistic viewport and the test selectors can find the rendered rows.
+if (typeof window !== "undefined") {
+  const proto = (window as unknown as { HTMLElement: { prototype: HTMLElement } })
+    .HTMLElement.prototype as unknown as Record<string, unknown>;
+  Object.defineProperty(proto, "clientHeight", {
+    configurable: true,
+    get() {
+      return 600;
+    },
+  });
+  Object.defineProperty(proto, "clientWidth", {
+    configurable: true,
+    get() {
+      return 320;
+    },
+  });
+  Object.defineProperty(proto, "offsetHeight", {
+    configurable: true,
+    get() {
+      return 600;
+    },
+  });
+  Object.defineProperty(proto, "offsetWidth", {
+    configurable: true,
+    get() {
+      return 320;
+    },
+  });
+  Object.defineProperty(proto, "getClientRects", {
+    configurable: true,
+    value() {
+      return [{ top: 0, left: 0, right: 320, bottom: 600, width: 320, height: 600 }];
+    },
+  });
+  Object.defineProperty(proto, "getBoundingClientRect", {
+    configurable: true,
+    value() {
+      return {
+        width: 320,
+        height: 600,
+        top: 0,
+        left: 0,
+        right: 320,
+        bottom: 600,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      };
+    },
+  });
+}
+
 const dialogConfirmMock = vi.hoisted(() => vi.fn());
 const dropdownSelectMock = vi.hoisted(() => vi.fn());
 
@@ -27,6 +146,33 @@ vi.mock("naive-ui", async () => {
       ) {
         dropdownSelectMock.mockImplementation((key: string) => emit("select", key));
         return () => h("div", { "data-dropdown-mock": "" }, slots.default?.() ?? []);
+      },
+    },
+    // The full NVirtualList is a vueuc-backed list that only renders rows
+    // after a ResizeObserver round-trip. In jsdom that requires rAF +
+    // MutationObserver to fire (and a couple of polyfills above). The
+    // tests in this file frequently use `vi.useFakeTimers()` which
+    // freezes rAF, so the list would never paint and every
+    // `[data-source-file]` / `[data-stage-file]` selector would come
+    // back empty. Substitute a plain div that just iterates the items
+    // via the default slot — it covers the data and event contract we
+    // care about without any viewport measurement.
+    NVirtualList: {
+      name: "NVirtualListMock",
+      props: ["items", "itemSize", "itemResizable"],
+      setup(_props: { items: unknown[] }, { slots }: { slots: { default?: (ctx: { item: unknown }) => VNodeChild } }) {
+        return () =>
+          h(
+            "div",
+            { "data-virtual-list-mock": "" },
+            (_props.items as unknown[]).map((item, index) =>
+              h(
+                "div",
+                { key: index, "data-virtual-list-row": String(index) },
+                slots.default?.({ item }) ?? [],
+              ),
+            ),
+          );
       },
     },
     useDialog: () => ({
@@ -61,6 +207,23 @@ async function flush() {
   for (let i = 0; i < 3; i += 1) {
     await Promise.resolve();
     await nextTick();
+  }
+  // `NVirtualList` measures the viewport through a juggle/resize-observer
+  // round trip that uses MutationObserver + requestAnimationFrame. In
+  // jsdom none of those are wired up to fire synchronously, so we
+  // drain a couple of animation frames to let the viewport height
+  // settle. We only do this when fake timers are *not* in use, since
+  // `vi.useFakeTimers` (used by some tests in this file) freezes
+  // rAF/setTimeout and would otherwise deadlock.
+  if (
+    typeof vi.isFakeTimers === "function" &&
+    !vi.isFakeTimers() &&
+    typeof requestAnimationFrame === "function"
+  ) {
+    for (let i = 0; i < 3; i += 1) {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      await nextTick();
+    }
   }
 }
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NSpin, useDialog } from "naive-ui";
-import { computed, ref, toRef, watch } from "vue";
+import { computed, shallowRef, toRef, watch } from "vue";
 import {
   native,
   type GitCommitResult,
@@ -16,12 +16,7 @@ import type {
   SourceControlFileEntry,
   SourceControlGroupId,
 } from "./sourceControlModel";
-import {
-  discardEntriesForEntries,
-  getPrimaryDiffMode,
-  pathsToStage,
-  pathsToUnstage,
-} from "./sourceControlModel";
+import { getPrimaryDiffMode } from "./sourceControlModel";
 import type { GitDecorationMap } from "./gitDecorations";
 import { useSourceControlActions } from "./useSourceControlActions";
 import { useSourceControlGitMetadata } from "./useSourceControlGitMetadata";
@@ -104,28 +99,95 @@ const {
   handleCommitKeydown,
 } = actions;
 
-const selectedKeys = ref<Set<string>>(new Set());
-const selectedEntries = computed(() =>
-  entries.value.filter((entry) => selectedKeys.value.has(entry.key)),
-);
-const effectiveStagePaths = computed(() => {
-  const selected = pathsToStage(selectedEntries.value);
-  return selected.length > 0 ? selected : stageAllPaths.value;
-});
-const effectiveUnstagePaths = computed(() => {
-  const selected = pathsToUnstage(selectedEntries.value);
-  return selected.length > 0 ? selected : unstageAllPaths.value;
-});
-const effectiveDiscardEntries = computed<GitDiscardEntry[]>(() => {
-  const selected = discardEntriesForEntries(selectedEntries.value);
-  return selected.length > 0 ? selected : discardAllEntries.value;
+// Selection state. `selectedKeySet` is the live source of truth — the
+// child list reads an array view of it for prop stability. The two are
+// kept in sync via `syncSelectedKeys` rather than re-deriving, so the
+// list never sees a fresh Set on every render.
+const selectedKeySet = shallowRef<Set<string>>(new Set());
+const selectedKeys = computed(() => Array.from(selectedKeySet.value));
+
+function syncSelectedKeys(next: Set<string>) {
+  selectedKeySet.value = next;
+}
+
+const effectiveStagePaths = computed<string[]>(() => {
+  const set = selectedKeySet.value;
+  if (set.size > 0) {
+    const out: string[] = [];
+    for (const entry of entries.value) {
+      if (entry.group === "changes" && entry.unstaged && set.has(entry.key)) {
+        out.push(entry.path);
+      }
+    }
+    if (out.length > 0) return out;
+  }
+  return stageAllPaths.value;
 });
 
+const effectiveUnstagePaths = computed<string[]>(() => {
+  const set = selectedKeySet.value;
+  if (set.size > 0) {
+    const out: string[] = [];
+    for (const entry of entries.value) {
+      if (entry.group === "staged" && entry.staged && set.has(entry.key)) {
+        out.push(entry.path);
+      }
+    }
+    if (out.length > 0) return out;
+  }
+  return unstageAllPaths.value;
+});
+
+const effectiveDiscardEntries = computed<GitDiscardEntry[]>(() => {
+  const set = selectedKeySet.value;
+  if (set.size > 0) {
+    const out: GitDiscardEntry[] = [];
+    for (const entry of entries.value) {
+      if (
+        entry.group === "changes" &&
+        entry.unstaged &&
+        set.has(entry.key)
+      ) {
+        out.push({ path: entry.path, untracked: entry.untracked });
+      }
+    }
+    if (out.length > 0) return out;
+  }
+  return discardAllEntries.value;
+});
+
+// Prune stale selection keys when the entry list changes. The previous
+// implementation re-allocated the full Set on every change, which
+// forced a deep patch on the child list even when nothing meaningful
+// changed. We fast-path the common no-op case and only allocate a new
+// Set when at least one key is actually dropped.
 watch(entries, (next) => {
-  const valid = new Set(next.map((entry) => entry.key));
-  selectedKeys.value = new Set(
-    Array.from(selectedKeys.value).filter((key) => valid.has(key)),
-  );
+  const current = selectedKeySet.value;
+  if (current.size === 0) return;
+  if (next.length === 0) {
+    if (current.size > 0) syncSelectedKeys(new Set());
+    return;
+  }
+  let needsUpdate = false;
+  for (const key of current) {
+    let found = false;
+    for (const entry of next) {
+      if (entry.key === key) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      needsUpdate = true;
+      break;
+    }
+  }
+  if (!needsUpdate) return;
+  const valid = new Set<string>();
+  for (const entry of next) valid.add(entry.key);
+  const next2 = new Set<string>();
+  for (const key of current) if (valid.has(key)) next2.add(key);
+  syncSelectedKeys(next2);
 });
 
 watch(
@@ -158,19 +220,31 @@ function openHistory() {
 }
 
 function toggleEntrySelected(entry: SourceControlFileEntry, selected: boolean) {
-  const next = new Set(selectedKeys.value);
+  const current = selectedKeySet.value;
+  const has = current.has(entry.key);
+  if (selected === has) return;
+  const next = new Set(current);
   if (selected) next.add(entry.key);
   else next.delete(entry.key);
-  selectedKeys.value = next;
+  syncSelectedKeys(next);
 }
 
 function setGroupSelected(group: SourceControlGroupId, selected: boolean) {
-  const next = new Set(selectedKeys.value);
-  for (const entry of entries.value.filter((item) => item.group === group)) {
-    if (selected) next.add(entry.key);
-    else next.delete(entry.key);
+  const current = selectedKeySet.value;
+  const next = new Set(current);
+  let changed = false;
+  for (const entry of entries.value) {
+    if (entry.group !== group) continue;
+    const has = next.has(entry.key);
+    if (selected && !has) {
+      next.add(entry.key);
+      changed = true;
+    } else if (!selected && has) {
+      next.delete(entry.key);
+      changed = true;
+    }
   }
-  selectedKeys.value = next;
+  if (changed) syncSelectedKeys(next);
 }
 
 async function stageEffective() {

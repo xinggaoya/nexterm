@@ -120,6 +120,22 @@ function patchTreeSnapshot(changedPaths: string[]) {
   }
 }
 
+// Return every directory path that is either the root or has been
+// expanded. These are the only directories whose rows are currently
+// visible in the tree, so they're the only ones that need to be
+// re-walked when the git decoration map changes.
+function visibleDirectoryPaths(): string[] {
+  const root = props.rootPath;
+  if (!root) return [];
+  const out = [root];
+  for (const dir of expanded) {
+    // Only include paths inside the current root, otherwise we will
+    // feed stale entries from a previous workspace into the patch.
+    if (dir === root || dir.startsWith(`${root}/`)) out.push(dir);
+  }
+  return out;
+}
+
 const rows = computed(() => treeSnapshot.value.rows);
 const entryIndexByPath = computed(() => treeSnapshot.value.entryIndexByPath);
 const entryPaths = computed(() =>
@@ -511,8 +527,17 @@ watch(
   },
 );
 
+// When the git decoration map changes, the only rows that need to be
+// recomputed are the ones currently visible in the tree. Walking every
+// expanded subtree from scratch on every `git status` refresh used to
+// take seconds on large monorepos because the rebuild re-iterated
+// every loaded directory. The incremental patch only re-walks the
+// currently-expanded subtrees, leaving collapsed directories for when
+// they are next opened.
 watch(() => props.gitDecorations, () => {
-  rebuildTreeSnapshot();
+  const visible = visibleDirectoryPaths();
+  if (visible.length === 0) return;
+  patchTreeSnapshot(visible);
 });
 
 watch(rows, () => {

@@ -386,4 +386,62 @@ describe("updateFileTreeRows", () => {
     );
     expect(mainRow?.kind === "entry" && mainRow.gitDecoration?.statusKind).toBe("modified");
   });
+
+  it("matches a full rebuild on a large deeply-expanded tree", () => {
+    // Build a synthetic tree with a wide-but-shallow structure so the
+    // patch path actually has to walk the full visibleDirectoryPaths
+    // expansion. The shape mirrors what a real monorepo produces when
+    // the user opens the root and several top-level packages.
+    const nodes: FileTreeState = {};
+    const expanded = new Set<string>();
+    const root = "/repo";
+    nodes[root] = { status: "loaded", entries: [] };
+    const packageCount = 24;
+    const fileCount = 40;
+    for (let p = 0; p < packageCount; p += 1) {
+      const pkgName = `pkg_${p}`;
+      const pkgPath = `${root}/${pkgName}`;
+      const entries: { name: string; kind: "file" | "dir"; size: number; mtime: number }[] = [];
+      for (let f = 0; f < fileCount; f += 1) {
+        entries.push({ name: `f_${f}.ts`, kind: "file", size: 1, mtime: f });
+      }
+      nodes[pkgPath] = { status: "loaded", entries };
+      nodes[root].entries!.push({ name: pkgName, kind: "dir", size: 0, mtime: p });
+      expanded.add(pkgPath);
+    }
+
+    const params = {
+      nodes,
+      expanded,
+      pendingCreate: null,
+      renaming: null,
+      gitDecorations: undefined,
+    };
+
+    const prev = buildFileTreeRows({
+      rootPath: root,
+      nodes,
+      expanded,
+      pendingCreate: null,
+      renaming: null,
+    });
+
+    // Patch every currently expanded directory. This is the same code
+    // path the explorer takes when `gitDecorations` changes after a
+    // `git status` refresh.
+    const visiblePaths = [root, ...expanded];
+    const result = updateFileTreeRows(prev, visiblePaths, params);
+    const fullRebuild = buildFileTreeRows({
+      rootPath: root,
+      nodes,
+      expanded,
+      pendingCreate: null,
+      renaming: null,
+    });
+
+    expect(result.rows).toEqual(fullRebuild.rows);
+    expect(Object.fromEntries(result.entryIndexByPath)).toEqual(
+      Object.fromEntries(fullRebuild.entryIndexByPath),
+    );
+  });
 });
