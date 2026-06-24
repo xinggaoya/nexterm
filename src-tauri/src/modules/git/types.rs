@@ -6,6 +6,12 @@ pub(crate) const MAX_TIMEOUT_SECS: u64 = 180;
 pub(crate) const MAX_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
 pub(crate) const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 pub(crate) const MIN_GIT_VERSION: &str = "2.23";
+/// Upper bound on the number of changed files surfaced to the UI from a
+/// single `git status` snapshot. Files beyond this limit are dropped and
+/// the snapshot is flagged as `truncated` so the panel can prompt the user
+/// to fall back to the terminal. This keeps the IPC payload, the reactive
+/// store, and the git decorations map bounded for huge monorepos.
+pub(crate) const MAX_CHANGED_FILES: usize = 5000;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

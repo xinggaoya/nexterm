@@ -161,7 +161,11 @@ export function updateFileTreeRows(
   if (changedPaths.length === 0) return prev;
 
   let rows = prev.rows;
-  const entryIndexByPath = new Map(prev.entryIndexByPath);
+  // Skip the deep clone when no changes are visible: cheap O(M) copy
+  // on a Map that is never used. The patch path itself only needs the
+  // Map when it actually splices.
+  const maybeEntryIndexByPath = prev.entryIndexByPath;
+  let entryIndexByPath: Map<string, number> | null = null;
   let mutated = false;
 
   // Process paths from deepest to shallowest so index shifts from
@@ -169,7 +173,11 @@ export function updateFileTreeRows(
   const sorted = [...changedPaths].sort((a, b) => b.length - a.length);
 
   for (const dirPath of sorted) {
-    const dirIdx = entryIndexByPath.get(dirPath);
+    // Materialize the working copy of the index lazily, on the first
+    // splice that needs to mutate it. `maybeEntryIndexByPath` is the
+    // original Map from `prev`; once we've cloned it the variable
+    // points to the working copy for the rest of the call.
+    const dirIdx = (entryIndexByPath ?? maybeEntryIndexByPath).get(dirPath);
     // Directory not visible in the tree, skip
     if (dirIdx === undefined) continue;
 
@@ -256,6 +264,11 @@ export function updateFileTreeRows(
 
     walkFragment(dirPath, dirDepth + 1);
 
+    // Lazy clone the index only on the first splice that needs it.
+    if (entryIndexByPath === null) {
+      entryIndexByPath = new Map(maybeEntryIndexByPath);
+    }
+
     // Remove old entries from index that are being replaced
     for (let i = dirIdx + 1; i < endIdx; i++) {
       const r = rows[i];
@@ -273,13 +286,23 @@ export function updateFileTreeRows(
 
     // Fix entryIndexByPath for rows that were after the old subtree.
     // These must be adjusted BEFORE adding the new fragment entries,
-    // otherwise the fragment entries themselves get shifted.
+    // otherwise the fragment entries themselves get shifted. We only
+    // touch entries that need shifting (idx >= endIdx) instead of
+    // re-iterating the entire Map, which is the common hot path
+    // (large trees, many Map entries that aren't affected by a single
+    // subtree patch).
     const delta = fragment.length - (endIdx - dirIdx - 1);
     if (delta !== 0) {
+      // Collect first, mutate after. Adjusting in place while iterating
+      // a Map is safe in JS, but pulling the keys up front keeps the
+      // inner loop branch-free.
+      const toShift: string[] = [];
       for (const [path, idx] of entryIndexByPath) {
-        if (idx >= endIdx) {
-          entryIndexByPath.set(path, idx + delta);
-        }
+        if (idx >= endIdx) toShift.push(path);
+      }
+      for (const path of toShift) {
+        const idx = entryIndexByPath.get(path) as number;
+        entryIndexByPath.set(path, idx + delta);
       }
     }
 
@@ -290,5 +313,5 @@ export function updateFileTreeRows(
   }
 
   if (!mutated) return prev;
-  return { rows, entryIndexByPath };
+  return { rows, entryIndexByPath: entryIndexByPath ?? maybeEntryIndexByPath };
 }

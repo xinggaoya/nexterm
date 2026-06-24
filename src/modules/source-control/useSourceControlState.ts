@@ -18,9 +18,6 @@ import type {
 import type { ReadonlyRef } from "@/lib/refs";
 import {
   buildSourceControlEntries,
-  discardEntriesForEntries,
-  pathsToStage,
-  pathsToUnstage,
   type SourceControlFileEntry,
 } from "./sourceControlModel";
 import { buildGitDecorationMap, type GitDecorationMap } from "./gitDecorations";
@@ -96,13 +93,39 @@ export function useSourceControlState(options: SourceControlStateOptions) {
     if (!current) return options.t("app.header.sourceControl");
     return current.isDetached ? "detached" : current.branch;
   });
-  const stagedCount = computed(
-    () => entries.value.filter((entry) => entry.staged).length,
-  );
-  const changedCount = computed(() => entries.value.length);
-  const stageAllPaths = computed(() => pathsToStage(entries.value));
-  const unstageAllPaths = computed(() => pathsToUnstage(entries.value));
-  const discardAllEntries = computed(() => discardEntriesForEntries(entries.value));
+  // Aggregate every list-level metric (counts, stage/unstage/discard
+  // paths) in a single pass over `entries` to avoid re-traversing the
+  // array once per derived state. With ~5000 changed files the previous
+  // per-computed traversals were O(5N) re-evaluations.
+  const derived = computed(() => {
+    const source = entries.value;
+    let stagedCount = 0;
+    const stagePaths: string[] = [];
+    const unstagePaths: string[] = [];
+    const discardEntries: GitDiscardEntry[] = [];
+    for (const entry of source) {
+      if (entry.staged) stagedCount++;
+      if (entry.group === "changes" && entry.unstaged) {
+        stagePaths.push(entry.path);
+        discardEntries.push({ path: entry.path, untracked: entry.untracked });
+      }
+      if (entry.group === "staged" && entry.staged) {
+        unstagePaths.push(entry.path);
+      }
+    }
+    return {
+      stagedCount,
+      changedCount: source.length,
+      stageAllPaths: stagePaths,
+      unstageAllPaths: unstagePaths,
+      discardAllEntries: discardEntries,
+    };
+  });
+  const stagedCount = computed(() => derived.value.stagedCount);
+  const changedCount = computed(() => derived.value.changedCount);
+  const stageAllPaths = computed(() => derived.value.stageAllPaths);
+  const unstageAllPaths = computed(() => derived.value.unstageAllPaths);
+  const discardAllEntries = computed(() => derived.value.discardAllEntries);
 
   async function loadSnapshot(rootPath: string | null) {
     const currentId = ++requestId.value;

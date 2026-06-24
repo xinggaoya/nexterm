@@ -14,7 +14,8 @@ use crate::modules::git::types::{
     DiscardEntry, GitBranchInfo, GitBranchResult, GitCommitFileChange, GitCommitResult,
     GitDiffContentResult, GitDiffResult, GitFetchResult, GitLogEntry, GitOutput, GitPanelSnapshot,
     GitPullResult, GitPushResult, GitRepoInfo, GitStashEntry, GitStashPushOptions, GitStashResult,
-    GitStatusSnapshot, TextSource, DEFAULT_TIMEOUT_SECS, NETWORK_TIMEOUT_SECS,
+    GitStatusSnapshot, TextSource, DEFAULT_TIMEOUT_SECS, MAX_CHANGED_FILES,
+    NETWORK_TIMEOUT_SECS,
 };
 use crate::modules::git::utils::{
     authorized_repo_root, canonical_dir, resolve_within_repo, split_upstream, ResolvedGitDirectory,
@@ -141,6 +142,9 @@ fn status_inner(repo_root: &ResolvedGitDirectory) -> Result<GitStatusSnapshot> {
     let stdout = std::str::from_utf8(&output.stdout).unwrap_or("");
     let parsed = parse_porcelain_v2(stdout);
 
+    let (changed_files, truncated_by_count) = apply_changed_files_limit(parsed.files);
+    let truncated = output.truncated || truncated_by_count;
+
     Ok(GitStatusSnapshot {
         repo_root: repo_root.git_path.clone(),
         branch: parsed.branch,
@@ -148,9 +152,23 @@ fn status_inner(repo_root: &ResolvedGitDirectory) -> Result<GitStatusSnapshot> {
         ahead: parsed.ahead,
         behind: parsed.behind,
         is_detached: parsed.is_detached,
-        truncated: output.truncated,
-        changed_files: parsed.files,
+        truncated,
+        changed_files,
     })
+}
+
+/// Bound the number of changed files surfaced to the UI. Returns the
+/// truncated list and a flag indicating whether any entries were dropped.
+/// See `MAX_CHANGED_FILES` for the rationale.
+pub(crate) fn apply_changed_files_limit(
+    files: Vec<crate::modules::git::types::GitChangedFile>,
+) -> (Vec<crate::modules::git::types::GitChangedFile>, bool) {
+    if files.len() <= MAX_CHANGED_FILES {
+        return (files, false);
+    }
+    let mut truncated = files;
+    truncated.truncate(MAX_CHANGED_FILES);
+    (truncated, true)
 }
 
 pub fn diff(
@@ -1176,7 +1194,8 @@ fn pathspec(repo_root: &Path, absolute: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::BRANCH_LIST_FORMAT_ARG;
+    use super::{apply_changed_files_limit, BRANCH_LIST_FORMAT_ARG, MAX_CHANGED_FILES};
+    use crate::modules::git::types::GitChangedFile;
 
     #[test]
     fn branch_list_format_uses_ref_filter_hex_escape() {
@@ -1185,5 +1204,47 @@ mod tests {
             .expect("branch list git arg should set a format");
         assert!(format.contains("%1f"));
         assert!(!format.contains("%x1f"));
+    }
+
+    fn make_files(count: usize) -> Vec<GitChangedFile> {
+        (0..count)
+            .map(|i| GitChangedFile {
+                path: format!("file_{i}.txt"),
+                original_path: None,
+                index_status: " ".into(),
+                worktree_status: "M".into(),
+                staged: false,
+                unstaged: true,
+                untracked: false,
+                status_label: "Modified".into(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn changed_files_limit_returns_input_when_under_cap() {
+        let files = make_files(100);
+        let original_len = files.len();
+        let (kept, truncated) = apply_changed_files_limit(files);
+        assert_eq!(kept.len(), original_len);
+        assert!(!truncated);
+    }
+
+    #[test]
+    fn changed_files_limit_truncates_at_cap() {
+        let files = make_files(MAX_CHANGED_FILES + 250);
+        let (kept, truncated) = apply_changed_files_limit(files);
+        assert_eq!(kept.len(), MAX_CHANGED_FILES);
+        assert!(truncated);
+    }
+
+    #[test]
+    fn changed_files_limit_keeps_first_entries() {
+        let files = make_files(MAX_CHANGED_FILES + 5);
+        let (kept, truncated) = apply_changed_files_limit(files);
+        assert_eq!(kept.len(), MAX_CHANGED_FILES);
+        assert!(truncated);
+        // Order is preserved: first entry kept is the first one we built.
+        assert_eq!(kept.first().map(|f| f.path.as_str()), Some("file_0.txt"));
     }
 }
