@@ -64,4 +64,11 @@ export const TERMINAL_COMMAND_SPECS: CommandSpec[] = [
     defaultKeybinding: "Alt+Down",
     workspaceRequired: true,
   },
+  {
+    id: "terminal.runSnippet",
+    titleKey: "snippets.runSnippetTitle",
+    category: "terminal",
+    defaultKeybinding: null,
+    workspaceRequired: true,
+  },
 ];

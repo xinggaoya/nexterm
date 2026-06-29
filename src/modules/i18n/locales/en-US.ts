@@ -424,6 +424,14 @@ const enUS = {
     rename: "Rename Terminal",
     renamePlaceholder: "Terminal name",
   },
+  snippets: {
+    tscWatch: "TypeScript: tsc --watch",
+    viteDev: "Vite: dev server",
+    cargoWatch: "Cargo: cargo watch",
+    npmInstall: "pnpm install",
+    gitStatus: "Git: status",
+    runSnippetTitle: "Run Snippet",
+  },
 } as const;
 
 export default enUS;
