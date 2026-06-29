@@ -222,6 +222,7 @@ const zhCN = {
     copyPath: "复制路径",
     copyRelativePath: "复制相对路径",
     delete: "删除",
+    duplicate: "复制副本",
     loading: "加载中...",
     newFile: "新建文件",
     newFolder: "新建文件夹",
