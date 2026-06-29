@@ -18,6 +18,8 @@ const emit = defineEmits<{
   exit: [leafId: number, code: number];
   split: [leafId: number, dir: "row" | "col"];
   close: [leafId: number];
+  rename: [leafId: number, title: string];
+  kill: [leafId: number];
 }>();
 
 function focusLeaf(leafId: number) {
@@ -41,10 +43,15 @@ function focusLeaf(leafId: number) {
       :focused="node.id === activeLeafId"
       :initial-cwd="node.cwd"
       :startup-input="node.startupInput"
+      :terminal-title="node.terminalTitle"
       @search-ready="(leafId, addon) => emit('searchReady', leafId, addon)"
       @cwd="(leafId, cwd) => emit('cwd', leafId, cwd)"
       @title="(leafId, title) => emit('title', leafId, title)"
       @exit="(leafId, code) => emit('exit', leafId, code)"
+      @split="(leafId, dir) => emit('split', leafId, dir)"
+      @close="(leafId) => emit('close', leafId)"
+      @rename="(leafId, title) => emit('rename', leafId, title)"
+      @kill="(leafId) => emit('kill', leafId)"
     />
   </div>
 
@@ -79,6 +86,8 @@ function focusLeaf(leafId: number) {
           @exit="(leafId, code) => emit('exit', leafId, code)"
           @split="(leafId, dir) => emit('split', leafId, dir)"
           @close="(leafId) => emit('close', leafId)"
+          @rename="(leafId, title) => emit('rename', leafId, title)"
+          @kill="(leafId) => emit('kill', leafId)"
         />
       </div>
     </template>

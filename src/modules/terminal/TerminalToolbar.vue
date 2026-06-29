@@ -2,6 +2,8 @@
 import {
   CloseOutline,
   DuplicateOutline,
+  PencilOutline,
+  PowerOutline,
   RefreshOutline,
   SearchOutline,
   TrashOutline,
@@ -13,9 +15,10 @@ import { t } from "@/modules/i18n/translate";
 import type { SplitDir } from "./lib/panes";
 import type { SearchAddon } from "@xterm/addon-search";
 
-defineProps<{
+const props = defineProps<{
   leafId: number;
   paneCount: number;
+  currentTitle?: string;
 }>();
 
 const emit = defineEmits<{
@@ -23,9 +26,14 @@ const emit = defineEmits<{
   close: [];
   clear: [];
   reset: [];
+  rename: [title: string];
+  kill: [];
 }>();
 
 const searchVisible = ref(false);
+const renameVisible = ref(false);
+const renameInput = ref<InstanceType<typeof NInput> | null>(null);
+const renameValue = ref("");
 const searchQuery = ref("");
 const searchInput = ref<InstanceType<typeof NInput> | null>(null);
 let searchAddonRef: SearchAddon | null = null;
@@ -50,6 +58,25 @@ function handleSearchPrev() {
   searchAddonRef.findPrevious(searchQuery.value);
 }
 
+function startRename() {
+  renameValue.value = props.currentTitle ?? "";
+  renameVisible.value = true;
+  nextTick(() => renameInput.value?.focus());
+}
+
+function commitRename() {
+  if (!renameVisible.value) return;
+  const next = renameValue.value.trim();
+  renameVisible.value = false;
+  if (next && next !== (props.currentTitle ?? "")) {
+    emit("rename", next);
+  }
+}
+
+function cancelRename() {
+  renameVisible.value = false;
+  renameValue.value = "";
+}
 </script>
 
 <template>
@@ -113,6 +140,25 @@ function handleSearchPrev() {
           <NIcon :component="SearchOutline" :size="13" />
         </button>
       </TooltipTitle>
+      <TooltipTitle :label="t('terminal.rename')">
+        <button
+          type="button"
+          class="grid h-6 w-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          :class="renameVisible ? 'bg-accent text-foreground' : ''"
+          @click="startRename"
+        >
+          <NIcon :component="PencilOutline" :size="13" />
+        </button>
+      </TooltipTitle>
+      <TooltipTitle :label="t('terminal.kill')">
+        <button
+          type="button"
+          class="grid h-6 w-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-destructive/20 hover:text-destructive"
+          @click="emit('kill')"
+        >
+          <NIcon :component="PowerOutline" :size="13" />
+        </button>
+      </TooltipTitle>
       <TooltipTitle v-if="paneCount > 1" :label="t('app.header.closeTab')">
         <button
           type="button"
@@ -151,6 +197,23 @@ function handleSearchPrev() {
       >
         <span class="text-[10px]">↓</span>
       </button>
+    </div>
+
+    <!-- Inline rename bar -->
+    <div
+      v-if="renameVisible"
+      class="absolute inset-x-0 top-full flex items-center gap-1 bg-panel-bg/90 px-2 py-1 backdrop-blur-sm"
+    >
+      <NInput
+        ref="renameInput"
+        v-model:value="renameValue"
+        size="tiny"
+        :placeholder="t('terminal.renamePlaceholder')"
+        class="flex-1"
+        @keyup.enter="commitRename"
+        @keyup.esc="cancelRename"
+        @blur="commitRename"
+      />
     </div>
   </div>
 </template>

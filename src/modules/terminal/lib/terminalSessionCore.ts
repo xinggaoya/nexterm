@@ -586,6 +586,12 @@ export async function respawnSession(
   if (s.cols > 0 && s.rows > 0) pty.resize(s.cols, s.rows);
 }
 
+export function getPtyIdForLeaf(leafId: number): number | null {
+  const session = sessions.get(leafId);
+  if (!session) return null;
+  return session.pty?.id ?? null;
+}
+
 export function disposeSession(leafId: number): void {
   const s = sessions.get(leafId);
   if (!s) return;

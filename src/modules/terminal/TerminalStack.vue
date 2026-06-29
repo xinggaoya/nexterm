@@ -17,6 +17,8 @@ const emit = defineEmits<{
   exit: [leafId: number, code: number];
   split: [tabId: number, leafId: number, dir: "row" | "col"];
   close: [tabId: number, leafId: number];
+  rename: [leafId: number, title: string];
+  kill: [leafId: number];
 }>();
 
 const terminalTabs = computed(() =>
@@ -49,6 +51,8 @@ const terminalTabs = computed(() =>
         @exit="(_leafId, code) => emit('exit', tab.id, code)"
         @split="(leafId, dir) => emit('split', tab.id, leafId, dir)"
         @close="(leafId) => emit('close', tab.id, leafId)"
+        @rename="(leafId, title) => emit('rename', leafId, title)"
+        @kill="(leafId) => emit('kill', leafId)"
       />
     </div>
   </div>
