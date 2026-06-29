@@ -422,6 +422,14 @@ const zhCN = {
     rename: "重命名终端",
     renamePlaceholder: "终端名称",
   },
+  snippets: {
+    tscWatch: "TypeScript：tsc --watch",
+    viteDev: "Vite：开发服务器",
+    cargoWatch: "Cargo：cargo watch",
+    npmInstall: "pnpm install",
+    gitStatus: "Git：状态",
+    runSnippetTitle: "运行片段",
+  },
 } satisfies MessageSchema;
 
 export default zhCN;

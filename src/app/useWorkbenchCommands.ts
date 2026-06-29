@@ -19,6 +19,7 @@ import {
   buildResolvedKeybindings,
   createCommandRegistry,
   keybindingMatchesEvent,
+  type CommandContext,
   type CommandDefinition,
   type CommandId,
   type KeybindingOverrides,
@@ -31,6 +32,7 @@ import {
 } from "@/modules/source-control/sourceControlModel";
 import type { SplitDir } from "@/modules/terminal/lib/panes";
 import { createTerminalSessionHandle } from "@/modules/terminal/lib/terminalSessionCore";
+import { DEFAULT_TERMINAL_SNIPPETS } from "@/modules/snippets";
 import type { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 
@@ -83,18 +85,33 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
     workspaceReady: options.hasWorkspace.value,
   }));
 
-  const commandDefinitions = computed<CommandDefinition[]>(() =>
-    CORE_COMMAND_SPECS.map((spec) => ({
+  const commandDefinitions = computed<CommandDefinition[]>(() => [
+    ...CORE_COMMAND_SPECS.map((spec) => ({
       id: spec.id,
       title: options.t(spec.titleKey),
       category: spec.category,
       defaultKeybinding: spec.defaultKeybinding,
       when: spec.workspaceRequired
-        ? (context) => context.workspaceReady
+        ? (context: CommandContext) => context.workspaceReady
         : undefined,
       run: () => runCoreCommand(spec.id),
     })),
-  );
+    ...DEFAULT_TERMINAL_SNIPPETS.map((snippet) => ({
+      id: `snippet.${snippet.id}` as CommandId,
+      title: options.t(snippet.nameKey),
+      category: "terminal" as const,
+      defaultKeybinding: null,
+      when: (context: CommandContext) => context.workspaceReady,
+      run: () => {
+        if (options.workspaceRoot.value) {
+          options.tabs.newTaskTerminal({
+            cwd: options.workspaceRoot.value,
+            command: snippet.command,
+          });
+        }
+      },
+    })),
+  ]);
 
   const commandRegistry = computed(() =>
     createCommandRegistry(commandDefinitions.value),
@@ -403,6 +420,9 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
         options.openCommandPalette("files");
         return;
       }
+      case "terminal.runSnippet":
+        options.openCommandPalette("commands");
+        return;
     }
   }
 

@@ -2,6 +2,7 @@ export type CommandId =
   | "workbench.commandPalette.open"
   | "workbench.quickOpen.open"
   | "workbench.closeActiveTab"
+  | `snippet.${string}`
   | "tasks.run"
   | "terminal.new"
   | "terminal.splitHorizontal"
@@ -40,7 +41,8 @@ export type CommandId =
   | "terminal.focusRight"
   | "terminal.focusUp"
   | "terminal.focusDown"
-  | "search.findInFiles";
+  | "search.findInFiles"
+  | "terminal.runSnippet";;
 
 export type CommandCategory =
   | "editor"
