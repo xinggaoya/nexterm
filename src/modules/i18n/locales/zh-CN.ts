@@ -11,7 +11,6 @@ const zhCN = {
     default: "默认",
     explorer: "资源管理器",
     history: "历史",
-    loading: "加载中...",
     local: "本机",
     noCurrentDirectory: "没有当前目录",
     paste: "粘贴",
@@ -78,7 +77,6 @@ const zhCN = {
   app: {
     header: {
       closeTab: "关闭标签",
-      dragWindow: "拖动窗口",
       gitDiff: "Git 差异",
       gitHistory: "Git 历史",
       markdown: "Markdown",
@@ -97,11 +95,9 @@ const zhCN = {
       terminal: "终端",
       toggleExplorer: "切换文件资源管理器",
       toggleSourceControl: "切换源代码管理面板",
-      unsavedChanges: "未保存的更改",
     },
     status: {
       noWorkspace: "未打开工作区",
-      openFolder: "打开文件夹",
     },
     workspaceOpen: {
       currentWindow: "在当前窗口打开",
@@ -134,9 +130,6 @@ const zhCN = {
       maximize: "最大化",
       minimize: "最小化",
       restore: "还原",
-    },
-    deepLink: {
-      openFailed: "无法通过 {scheme} 链接打开工作区。",
     },
   },
   settings: {
@@ -222,6 +215,7 @@ const zhCN = {
     open: "打开",
     openPreview: "打开预览",
     partialResults: "仅显示部分结果。请缩小搜索范围。",
+    rename: "重命名",
     revealInFinder: "在文件管理器中显示",
     searchFiles: "搜索文件...",
     searchFilesTitle: "搜索文件",

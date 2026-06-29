@@ -246,6 +246,51 @@ describe("FileExplorer.vue", () => {
     expect(wrapper.emitted("pathDeleted")).toEqual([["/repo/README.md"]]);
   });
 
+  it("renames files through the context menu", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+
+    await wrapper.find("[data-menu-action='rename']").trigger("click");
+    await flush();
+
+    expect(renameFileTreePath).not.toHaveBeenCalled();
+    expect(wrapper.find("[data-inline-tree-input]").exists()).toBe(true);
+
+    await wrapper.find("[data-inline-tree-input]").setValue("README.old.md");
+    await wrapper.find("[data-inline-tree-input]").trigger("keydown", { key: "Enter" });
+    await flush();
+
+    expect(renameFileTreePath).toHaveBeenCalledWith(
+      "/repo/README.md",
+      "/repo/README.old.md",
+    );
+    expect(wrapper.emitted("pathRenamed")).toEqual([
+      ["/repo/README.md", "/repo/README.old.md"],
+    ]);
+  });
+
+  it("hides the rename action on the root context menu", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    const tree = wrapper.find(".min-h-0.flex-1");
+    await tree.trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+
+    expect(wrapper.find("[data-menu-action='rename']").exists()).toBe(false);
+  });
+
   it("closes the context menu when clicking outside it", async () => {
     const wrapper = mount(FileExplorer, {
       global: { plugins: [createPinia()] },

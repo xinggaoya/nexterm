@@ -696,6 +696,7 @@ onBeforeUnmount(() => {
       @open-file="(path, pin) => emit('openFile', path, pin)"
       @open-markdown-preview="(path) => emit('openMarkdownPreview', path)"
       @create="beginCreate"
+      @rename="beginRename"
       @delete-path="deletePath"
     />
   </aside>

@@ -27,6 +27,7 @@ const emit = defineEmits<{
   openFile: [path: string, pin: boolean];
   openMarkdownPreview: [path: string];
   create: [parentPath: string, kind: "file" | "dir"];
+  rename: [path: string];
   deletePath: [path: string];
 }>();
 
@@ -94,6 +95,12 @@ function copyPath(relative: boolean) {
 function create(kind: "file" | "dir") {
   if (!props.target) return;
   emit("create", createTargetPath(props.target), kind);
+  close();
+}
+
+function beginRename() {
+  if (!props.target || props.target.source === "root") return;
+  emit("rename", props.target.path);
   close();
 }
 
@@ -198,6 +205,14 @@ onBeforeUnmount(() => {
     </button>
     <template v-if="target.source !== 'root'">
       <div class="my-1 h-px bg-border/70" />
+      <button
+        type="button"
+        data-menu-action="rename"
+        class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+        @click="beginRename"
+      >
+        {{ t("explorer.rename") }}
+      </button>
       <button
         type="button"
         data-menu-action="delete"
