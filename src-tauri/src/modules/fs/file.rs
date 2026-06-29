@@ -1,16 +1,13 @@
 use std::io::Write;
 use std::path::Path;
-use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
 use tauri::State;
 use tempfile::NamedTempFile;
 
-use crate::modules::fs::wsl_ops::{self, WslEntryKind};
+use crate::modules::fs::wsl_ops;
 use crate::modules::fs::watcher::{emit_workspace_fs_changed, FsWatcherState};
-use crate::modules::workspace::{
-    normalize_host_path, resolve_path, WorkspaceEnv, WorkspaceRegistry,
-};
+use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
 
 const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
@@ -30,21 +27,6 @@ pub enum ReadResult {
         size: u64,
         limit: u64,
     },
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum StatKind {
-    File,
-    Dir,
-    Symlink,
-}
-
-#[derive(Serialize)]
-pub struct FileStat {
-    pub size: u64,
-    pub mtime: u64,
-    pub kind: StatKind,
 }
 
 #[tauri::command]
@@ -140,58 +122,6 @@ pub fn fs_write_file(
     }
 
     Ok(())
-}
-
-#[tauri::command]
-pub fn fs_canonicalize(path: String, workspace: Option<WorkspaceEnv>) -> Result<String, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    let p = resolve_path(&path, &workspace);
-    let canon = normalize_host_path(std::fs::canonicalize(&p).map_err(|e| e.to_string())?);
-    Ok(canon.to_string_lossy().replace('\\', "/"))
-}
-
-#[tauri::command]
-pub fn fs_stat(path: String, workspace: Option<WorkspaceEnv>) -> Result<FileStat, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    if let WorkspaceEnv::Wsl { distro } = &workspace {
-        if wsl_ops::should_use_wsl_ops(&path, &workspace) {
-            let stat = wsl_ops::stat_path(distro, &path)?;
-            return Ok(FileStat {
-                size: stat.size,
-                mtime: stat.mtime,
-                kind: stat_kind_from_wsl(stat.kind),
-            });
-        }
-    }
-
-    let p = resolve_path(&path, &workspace);
-    let meta = std::fs::metadata(&p).map_err(|e| e.to_string())?;
-    let kind = if meta.is_dir() {
-        StatKind::Dir
-    } else if meta.file_type().is_symlink() {
-        StatKind::Symlink
-    } else {
-        StatKind::File
-    };
-    let mtime = meta
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
-    Ok(FileStat {
-        size: meta.len(),
-        mtime,
-        kind,
-    })
-}
-
-fn stat_kind_from_wsl(kind: WslEntryKind) -> StatKind {
-    match kind {
-        WslEntryKind::File => StatKind::File,
-        WslEntryKind::Dir => StatKind::Dir,
-        WslEntryKind::Symlink => StatKind::Symlink,
-    }
 }
 
 #[cfg(all(test, unix))]

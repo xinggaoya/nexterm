@@ -169,15 +169,6 @@ pub async fn workspace_authorize(
     authorize_workspace_path(&registry, &path, &workspace)
 }
 
-#[tauri::command]
-pub async fn workspace_current_dir(
-    registry: tauri::State<'_, WorkspaceRegistry>,
-) -> Result<String, String> {
-    let launch = resolve_launch_dir();
-    let canonical = registry.authorize(&launch).map_err(|e| e.to_string())?;
-    Ok(canonical.to_string_lossy().replace('\\', "/"))
-}
-
 // Snapshotted once at app startup so the live `current_dir()` drifting later
 // (file dialogs, plugin chdir) can't shift the value seen by IPC or spawn.
 static LAUNCH_CWD: OnceLock<Option<PathBuf>> = OnceLock::new();
@@ -600,27 +591,6 @@ pub async fn wsl_list_distros() -> Result<Vec<WslDistro>, String> {
         tauri::async_runtime::spawn_blocking(list_distros_blocking)
             .await
             .map_err(|e| e.to_string())?
-    }
-}
-
-#[tauri::command]
-pub async fn wsl_default_distro() -> Result<Option<String>, String> {
-    #[cfg(not(windows))]
-    {
-        Ok(None)
-    }
-    #[cfg(windows)]
-    {
-        tauri::async_runtime::spawn_blocking(|| {
-            let distros = list_distros_blocking()?;
-            Ok(distros
-                .iter()
-                .find(|d| d.default)
-                .map(|d| d.name.clone())
-                .or_else(|| distros.first().map(|d| d.name.clone())))
-        })
-        .await
-        .map_err(|e| e.to_string())?
     }
 }
 

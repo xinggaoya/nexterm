@@ -1,7 +1,7 @@
 import { computed, type ComputedRef } from "vue";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 
-export type TouchMode = "auto" | "on" | "off";
+type TouchMode = "auto" | "on" | "off";
 
 let cachedDetection: boolean | null = null;
 

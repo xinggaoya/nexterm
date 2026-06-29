@@ -10,13 +10,3 @@ export function basename(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : path;
 }
-
-/**
- * POSIX-style `dirname`: returns everything up to (but not including) the
- * final `/`. Falls back to `/` for paths without a parent segment.
- */
-export function dirname(path: string): string {
-  const i = path.lastIndexOf("/");
-  if (i <= 0) return "/";
-  return path.slice(0, i);
-}
