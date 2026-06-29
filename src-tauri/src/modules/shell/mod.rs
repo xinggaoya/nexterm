@@ -1,10 +1,8 @@
 pub mod background;
 pub mod ringbuffer;
-pub mod session;
 
 use std::collections::HashMap;
 use std::io::Read;
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{mpsc, Arc, RwLock};
@@ -21,7 +19,6 @@ use crate::modules::workspace::validate_wsl_distro_name;
 use crate::modules::workspace::{authorize_spawn_cwd, WorkspaceEnv, WorkspaceRegistry};
 
 use background::{BackgroundLogResponse, BackgroundProc, BackgroundProcInfo};
-use session::{SessionRunOutput, ShellSession};
 
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 const MAX_TIMEOUT_SECS: u64 = 300;
@@ -75,15 +72,6 @@ pub async fn shell_run_command(
     });
 
     rx.recv().map_err(|e| e.to_string())?
-}
-
-pub(crate) fn run_blocking_inner(
-    command: String,
-    cwd: Option<String>,
-    workspace: WorkspaceEnv,
-    dur: Duration,
-) -> Result<CommandOutput, String> {
-    run_blocking(command, cwd, workspace, dur)
 }
 
 fn run_blocking(
@@ -148,84 +136,21 @@ fn run_blocking(
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Persistent shell state + background process state.
+// Background process state.
 // ──────────────────────────────────────────────────────────────────────────
 
 pub struct ShellState {
-    sessions: RwLock<HashMap<u32, Arc<ShellSession>>>,
     bg: RwLock<HashMap<u32, Arc<BackgroundProc>>>,
-    next_session_id: AtomicU32,
     next_bg_id: AtomicU32,
 }
 
 impl Default for ShellState {
     fn default() -> Self {
         Self {
-            sessions: RwLock::new(HashMap::new()),
             bg: RwLock::new(HashMap::new()),
-            next_session_id: AtomicU32::new(1),
             next_bg_id: AtomicU32::new(1),
         }
     }
-}
-
-#[tauri::command]
-pub fn shell_session_open(
-    state: tauri::State<ShellState>,
-    registry: tauri::State<WorkspaceRegistry>,
-    cwd: Option<String>,
-    workspace: Option<WorkspaceEnv>,
-) -> Result<u32, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    authorize_spawn_cwd(&registry, cwd.as_deref(), &workspace)?;
-    let initial = match cwd.as_deref().filter(|s| !s.is_empty()) {
-        Some(c) => c.to_string(),
-        None => {
-            if let WorkspaceEnv::Wsl { distro } = &workspace {
-                crate::modules::workspace::wsl_home(distro.clone())?
-            } else {
-                crate::modules::fs::to_canon(dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")))
-            }
-        }
-    };
-    let session = Arc::new(ShellSession::new(initial, workspace));
-    let id = state.next_session_id.fetch_add(1, Ordering::Relaxed);
-    rwlock_write(&state.sessions, "shell sessions")?.insert(id, session);
-    Ok(id)
-}
-
-#[tauri::command]
-pub async fn shell_session_run(
-    state: tauri::State<'_, ShellState>,
-    registry: tauri::State<'_, WorkspaceRegistry>,
-    id: u32,
-    command: String,
-    cwd: Option<String>,
-    timeout_secs: Option<u64>,
-    workspace: Option<WorkspaceEnv>,
-) -> Result<SessionRunOutput, String> {
-    let session = rwlock_read(&state.sessions, "shell sessions")?
-        .get(&id)
-        .cloned()
-        .ok_or_else(|| "no shell session".to_string())?;
-    let effective_workspace = workspace.clone().unwrap_or_else(|| session.workspace.clone());
-    authorize_spawn_cwd(&registry, cwd.as_deref(), &effective_workspace)?;
-    let dur = Duration::from_secs(
-        timeout_secs
-            .unwrap_or(DEFAULT_TIMEOUT_SECS)
-            .clamp(1, MAX_TIMEOUT_SECS),
-    );
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let _ = tx.send(session.run(command, cwd, workspace, dur));
-    });
-    rx.recv().map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-pub fn shell_session_close(state: tauri::State<ShellState>, id: u32) -> Result<(), String> {
-    rwlock_write(&state.sessions, "shell sessions")?.remove(&id);
-    Ok(())
 }
 
 #[tauri::command]

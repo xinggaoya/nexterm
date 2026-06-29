@@ -35,11 +35,6 @@ export type GitStatusSnapshot = {
   changedFiles: GitChangedFile[];
 };
 
-export type GitDiffResult = {
-  diffText: string;
-  truncated: boolean;
-};
-
 export type GitDiffContentResult = {
   originalContent: string;
   modifiedContent: string;
@@ -236,9 +231,9 @@ export type DeepLinkOpenRequest = {
   wslDistro?: string;
 };
 
-export type DeepLinkOpenHandler = (request: DeepLinkOpenRequest) => void;
-
-export function onDeepLinkOpen(handler: DeepLinkOpenHandler): Promise<UnlistenFn> {
+export function onDeepLinkOpen(
+  handler: (request: DeepLinkOpenRequest) => void,
+): Promise<UnlistenFn> {
   return listen<DeepLinkOpenRequest>(DEEP_LINK_OPEN_EVENT, (event) => {
     handler(event.payload);
   });
@@ -280,13 +275,6 @@ export const native = {
   gitStatus: (repoRoot: string) =>
     invoke<GitStatusSnapshot>("git_status", {
       repoRoot,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitDiff: (repoRoot: string, path: string | null, staged: boolean) =>
-    invoke<GitDiffResult>("git_diff", {
-      repoRoot,
-      path,
-      staged,
       workspace: currentWorkspaceEnv(),
     }),
   gitDiffContent: (
@@ -387,12 +375,6 @@ export const native = {
       repoRoot,
       limit: options?.limit ?? null,
       beforeSha: options?.beforeSha ?? null,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitShowCommit: (repoRoot: string, sha: string) =>
-    invoke<GitDiffResult>("git_show_commit", {
-      repoRoot,
-      sha,
       workspace: currentWorkspaceEnv(),
     }),
   gitCommitFiles: (repoRoot: string, sha: string) =>
