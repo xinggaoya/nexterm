@@ -26,6 +26,7 @@ const emit = defineEmits<{
   close: [];
   openFile: [path: string, pin: boolean];
   openMarkdownPreview: [path: string];
+  openInTerminal: [path: string];
   create: [parentPath: string, kind: "file" | "dir"];
   rename: [path: string];
   deletePath: [path: string];
@@ -80,6 +81,12 @@ function openMarkdownPreview() {
 function revealTarget() {
   if (!props.target) return;
   void revealInFinder(props.target.path);
+  close();
+}
+
+function openInTerminal() {
+  if (!props.target || !props.target.isDir) return;
+  emit("openInTerminal", props.target.path);
   close();
 }
 
@@ -168,6 +175,15 @@ onBeforeUnmount(() => {
       @click="revealTarget"
     >
       {{ t("explorer.revealInFinder") }}
+    </button>
+    <button
+      v-if="target.isDir"
+      type="button"
+      data-menu-action="open-in-terminal"
+      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+      @click="openInTerminal"
+    >
+      {{ t("explorer.openInTerminal") }}
     </button>
     <div class="my-1 h-px bg-border/70" />
     <button

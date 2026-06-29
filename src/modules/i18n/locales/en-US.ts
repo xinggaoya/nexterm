@@ -212,6 +212,7 @@ const enUS = {
     newFolder: "New folder",
     noMatches: "No matches",
     open: "Open",
+    openInTerminal: "Open Terminal",
     openPreview: "Open Preview",
     partialResults: "Showing partial results. Refine your query.",
     rename: "Rename",

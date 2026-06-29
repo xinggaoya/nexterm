@@ -291,6 +291,55 @@ describe("FileExplorer.vue", () => {
     expect(wrapper.find("[data-menu-action='rename']").exists()).toBe(false);
   });
 
+  it("shows the open-in-terminal action only for directories", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    // Directory row -> "Open Terminal" visible
+    await wrapper
+      .find("[data-explorer-row-path='/repo/src']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+    expect(wrapper.find("[data-menu-action='open-in-terminal']").exists()).toBe(
+      true,
+    );
+
+    // File row -> "Open Terminal" hidden
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+    expect(wrapper.find("[data-menu-action='open-in-terminal']").exists()).toBe(
+      false,
+    );
+  });
+
+  it("emits openInTerminal with the directory path and closes the menu", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/src']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+
+    await wrapper
+      .find("[data-menu-action='open-in-terminal']")
+      .trigger("click");
+    await flush();
+
+    expect(wrapper.emitted("openInTerminal")).toEqual([["/repo/src"]]);
+    expect(wrapper.find("[data-menu-action='open-in-terminal']").exists()).toBe(
+      false,
+    );
+  });
+
   it("closes the context menu when clicking outside it", async () => {
     const wrapper = mount(FileExplorer, {
       global: { plugins: [createPinia()] },
