@@ -155,6 +155,11 @@ function newTerminalTab() {
   tabs.newTab(workspaceRoot.value);
 }
 
+function openTerminalInDir(cwd: string) {
+  if (!cwd) return;
+  tabs.newTab(cwd);
+}
+
 function splitActivePane(dir: SplitDir) {
   const tab = activeTab.value;
   if (tab?.kind !== "terminal") return;
@@ -412,6 +417,7 @@ watch(
                   :workspace-root="workspaceRoot"
                   @open-file="openFileTab"
                   @open-markdown-preview="openMarkdownPreview"
+                  @open-in-terminal="openTerminalInDir"
                   @open-source-diff="openSourceDiff"
                   @open-source-history="openSourceHistory"
                 />

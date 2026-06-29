@@ -213,6 +213,7 @@ const zhCN = {
     newFolder: "新建文件夹",
     noMatches: "没有匹配项",
     open: "打开",
+    openInTerminal: "在终端中打开",
     openPreview: "打开预览",
     partialResults: "仅显示部分结果。请缩小搜索范围。",
     rename: "重命名",

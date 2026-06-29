@@ -57,6 +57,7 @@ const emit = defineEmits<{
   pathRenamed: [from: string, to: string];
   pathDeleted: [path: string];
   openMarkdownPreview: [path: string];
+  openInTerminal: [path: string];
 }>();
 
 const prefs = usePreferencesPiniaStore();
@@ -428,6 +429,11 @@ function closeMenu() {
   menu.value = null;
 }
 
+function openTerminalInDir(path: string) {
+  closeMenu();
+  emit("openInTerminal", path);
+}
+
 function moveSelection(index: number) {
   const paths = entryPaths.value;
   if (paths.length === 0) return;
@@ -695,6 +701,7 @@ onBeforeUnmount(() => {
       @close="closeMenu"
       @open-file="(path, pin) => emit('openFile', path, pin)"
       @open-markdown-preview="(path) => emit('openMarkdownPreview', path)"
+      @open-in-terminal="openTerminalInDir"
       @create="beginCreate"
       @rename="beginRename"
       @delete-path="deletePath"

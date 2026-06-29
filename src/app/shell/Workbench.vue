@@ -90,6 +90,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   "open-file": [path: string, pin: boolean];
   "open-markdown-preview": [path: string];
+  "open-in-terminal": [path: string];
   "open-source-diff": [
     input: {
       repoRoot: string;
@@ -290,6 +291,7 @@ defineExpose({ saveActiveEditor });
               :git-decorations="gitDecorations"
               @open-file="(path, pin) => emit('open-file', path, pin)"
               @open-markdown-preview="(path) => emit('open-markdown-preview', path)"
+              @open-in-terminal="(path) => emit('open-in-terminal', path)"
             />
           </template>
         </NSplit>
