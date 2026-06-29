@@ -9,7 +9,6 @@ const enUS = {
     default: "default",
     explorer: "Explorer",
     history: "History",
-    loading: "Loading...",
     local: "Local",
     noCurrentDirectory: "No current directory",
     paste: "Paste",
@@ -76,7 +75,6 @@ const enUS = {
   app: {
     header: {
       closeTab: "Close tab",
-      dragWindow: "Drag window",
       gitDiff: "Git diff",
       gitHistory: "Git history",
       markdown: "Markdown",
@@ -95,11 +93,9 @@ const enUS = {
       terminal: "Terminal",
       toggleExplorer: "Toggle file explorer panel",
       toggleSourceControl: "Toggle source control panel",
-      unsavedChanges: "Unsaved changes",
     },
     status: {
       noWorkspace: "No workspace",
-      openFolder: "Open folder",
     },
     workspaceOpen: {
       currentWindow: "Current window",
@@ -133,9 +129,6 @@ const enUS = {
       maximize: "Maximize",
       minimize: "Minimize",
       restore: "Restore",
-    },
-    deepLink: {
-      openFailed: "Could not open the workspace from the {scheme} link.",
     },
   },
   settings: {
@@ -221,6 +214,7 @@ const enUS = {
     open: "Open",
     openPreview: "Open Preview",
     partialResults: "Showing partial results. Refine your query.",
+    rename: "Rename",
     revealInFinder: "Reveal in Finder",
     searchFiles: "Search files...",
     searchFilesTitle: "Search files",
