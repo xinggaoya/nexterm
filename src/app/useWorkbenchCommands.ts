@@ -53,6 +53,7 @@ type WorkbenchCommandOptions = {
   saveActiveEditor: () => void | Promise<void>;
   openGotoLine: () => void;
   openFindInFiles: () => void;
+  openCommandPalette: (mode?: "commands" | "files") => void;
   resolveGitRepo: (root: string) => Promise<GitRepoInfo | null>;
   gitStatus: (repoRoot: string) => Promise<GitStatusSnapshot>;
   gitStage: (repoRoot: string, paths: string[]) => Promise<void>;
@@ -376,6 +377,9 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
         options.tabs.pinTab(tab.id);
         return;
       }
+      case "tab.restoreClosed":
+        options.tabs.restoreClosed();
+        return;
       case "editor.gotoLine":
         options.openGotoLine();
         return;
@@ -394,6 +398,11 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
       case "search.findInFiles":
         options.openFindInFiles();
         return;
+      case "files.recent": {
+        // 触发命令面板并预设搜索词 "recent"
+        options.openCommandPalette("files");
+        return;
+      }
     }
   }
 

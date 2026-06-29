@@ -49,5 +49,11 @@ export const TAB_COMMAND_SPECS: CommandSpec[] = [
     category: "tab",
     defaultKeybinding: null,
   },
+  {
+    id: "tab.restoreClosed",
+    titleKey: "commands.items.restoreClosedTab",
+    category: "tab",
+    defaultKeybinding: "Ctrl+Shift+T",
+  },
 ];
 

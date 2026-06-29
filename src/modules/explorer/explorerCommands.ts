@@ -22,4 +22,11 @@ export const EXPLORER_COMMAND_SPECS: CommandSpec[] = [
     defaultKeybinding: "Ctrl+Shift+F",
     workspaceRequired: true,
   },
+  {
+    id: "files.recent",
+    titleKey: "commands.items.openRecentFile",
+    category: "explorer",
+    defaultKeybinding: null,
+    workspaceRequired: true,
+  },
 ];
