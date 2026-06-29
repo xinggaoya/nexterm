@@ -27,6 +27,7 @@ const emit = defineEmits<{
   openFile: [path: string, pin: boolean];
   openMarkdownPreview: [path: string];
   openInTerminal: [path: string];
+  duplicate: [path: string];
   create: [parentPath: string, kind: "file" | "dir"];
   rename: [path: string];
   deletePath: [path: string];
@@ -87,6 +88,12 @@ function revealTarget() {
 function openInTerminal() {
   if (!props.target || !props.target.isDir) return;
   emit("openInTerminal", props.target.path);
+  close();
+}
+
+function duplicate() {
+  if (!props.target) return;
+  emit("duplicate", props.target.path);
   close();
 }
 
@@ -184,6 +191,14 @@ onBeforeUnmount(() => {
       @click="openInTerminal"
     >
       {{ t("explorer.openInTerminal") }}
+    </button>
+    <button
+      type="button"
+      data-menu-action="duplicate"
+      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+      @click="duplicate"
+    >
+      {{ t("explorer.duplicate") }}
     </button>
     <div class="my-1 h-px bg-border/70" />
     <button

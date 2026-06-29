@@ -5,6 +5,7 @@ import { nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FileExplorer from "./FileExplorer.vue";
 import {
+  copyFileTreePath,
   createFileTreeEntry,
   deleteFileTreePath,
   readFileTreeDir,
@@ -24,6 +25,7 @@ vi.mock("./lib/fileTreeService", async () => {
     createFileTreeEntry: vi.fn(),
     deleteFileTreePath: vi.fn(),
     renameFileTreePath: vi.fn(),
+    copyFileTreePath: vi.fn(),
     searchFileTree: vi.fn(),
   };
 });
@@ -65,6 +67,7 @@ describe("FileExplorer.vue", () => {
     vi.mocked(createFileTreeEntry).mockResolvedValue(undefined);
     vi.mocked(renameFileTreePath).mockResolvedValue(undefined);
     vi.mocked(deleteFileTreePath).mockResolvedValue(undefined);
+    vi.mocked(copyFileTreePath).mockResolvedValue(undefined);
     vi.mocked(searchFileTree).mockResolvedValue({
       hits: [
         {
@@ -625,5 +628,54 @@ describe("FileExplorer.vue", () => {
     ]);
     await flush();
     vi.useRealTimers();
+  });
+
+  it("duplicates a file via the context menu and emits pathDuplicated", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+
+    await wrapper.find("[data-menu-action='duplicate']").trigger("click");
+    await flush();
+
+    expect(copyFileTreePath).toHaveBeenCalledWith(
+      "/repo/README.md",
+      "/repo/README copy.md",
+    );
+    expect(wrapper.emitted("pathDuplicated")).toEqual([
+      ["/repo/README.md", "/repo/README copy.md"],
+    ]);
+  });
+
+  it("walks the copy counter series when the first candidate collides", async () => {
+    vi.mocked(copyFileTreePath)
+      .mockRejectedValueOnce("already exists: /repo/README copy.md")
+      .mockResolvedValueOnce(undefined);
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+
+    await wrapper.find("[data-menu-action='duplicate']").trigger("click");
+    await flush();
+
+    expect(copyFileTreePath).toHaveBeenCalledTimes(2);
+    expect(wrapper.emitted("pathDuplicated")?.[0]).toEqual([
+      "/repo/README.md",
+      "/repo/README copy 2.md",
+    ]);
   });
 });

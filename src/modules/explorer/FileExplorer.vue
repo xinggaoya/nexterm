@@ -27,9 +27,11 @@ import {
   type PendingCreate,
 } from "./lib/fileTreeRows";
 import {
+  copyFileTreePath,
   createFileTreeEntry,
   deleteFileTreePath,
   dirname,
+  generateCopyTarget,
   joinPath,
   readFileTreeDir,
   renameFileTreePath,
@@ -56,6 +58,7 @@ const emit = defineEmits<{
   openFile: [path: string, pin: boolean];
   pathRenamed: [from: string, to: string];
   pathDeleted: [path: string];
+  pathDuplicated: [from: string, to: string];
   openMarkdownPreview: [path: string];
   openInTerminal: [path: string];
 }>();
@@ -401,6 +404,31 @@ async function deletePath(path: string) {
   await loadChildren(dirname(path));
 }
 
+async function duplicatePath(path: string) {
+  let target = generateCopyTarget(path);
+  // If the candidate collides, walk the counter series to find a free
+  // name. fs_copy rejects "already exists" so we keep the user's intent
+  // ("give me a copy with a unique name") even when several copies exist.
+  for (let attempt = 0; attempt < 100; attempt++) {
+    try {
+      await copyFileTreePath(path, target);
+      emit("pathDuplicated", path, target);
+      await loadChildren(dirname(path));
+      return;
+    } catch (error) {
+      const message = typeof error === "string" ? error : String(error);
+      if (!message.toLowerCase().includes("already exists")) throw error;
+      const base = generateCopyTarget(path);
+      const dot = base.lastIndexOf(".");
+      const parent = base.slice(0, base.lastIndexOf("/") + 1);
+      const stem = dot > 0 ? base.slice(parent.length, dot) : base.slice(parent.length);
+      const ext = dot > 0 ? base.slice(dot) : "";
+      const next = attempt + 2;
+      target = `${parent}${stem.replace(/ copy( \d+)?$/, "")} copy ${next}${ext}`;
+    }
+  }
+}
+
 function handleRowContext(payload: { row: MenuRow; x: number; y: number }) {
   selectedPath.value = payload.row.path;
   menu.value = {
@@ -702,6 +730,7 @@ onBeforeUnmount(() => {
       @open-file="(path, pin) => emit('openFile', path, pin)"
       @open-markdown-preview="(path) => emit('openMarkdownPreview', path)"
       @open-in-terminal="openTerminalInDir"
+      @duplicate="duplicatePath"
       @create="beginCreate"
       @rename="beginRename"
       @delete-path="deletePath"

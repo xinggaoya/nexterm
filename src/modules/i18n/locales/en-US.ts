@@ -221,6 +221,7 @@ const enUS = {
     copyPath: "Copy Path",
     copyRelativePath: "Copy Relative Path",
     delete: "Delete",
+    duplicate: "Duplicate",
     loading: "Loading...",
     newFile: "New file",
     newFolder: "New folder",

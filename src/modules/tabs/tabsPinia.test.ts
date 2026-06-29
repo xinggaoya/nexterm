@@ -474,12 +474,13 @@ describe("tabs pinia store", () => {
     tabs.init();
     const id = tabs.activeId;
     tabs.splitActivePane(id, "row"); // active leaf becomes 4
-    expect(tabs.tabs[0].activeLeafId).toBe(4);
+    const activeId = () => (tabs.tabs[0] as { activeLeafId: number }).activeLeafId;
+    expect(activeId()).toBe(4);
 
     expect(tabs.focusDirection(id, 4, "left")).toBe(2);
-    expect(tabs.tabs[0].activeLeafId).toBe(2);
+    expect(activeId()).toBe(2);
     expect(tabs.focusDirection(id, 2, "right")).toBe(4);
-    expect(tabs.tabs[0].activeLeafId).toBe(4);
+    expect(activeId()).toBe(4);
     expect(tabs.focusDirection(id, 4, "left")).toBe(2);
     expect(tabs.focusDirection(id, 2, "left")).toBeNull();
   });
