@@ -191,3 +191,68 @@ export function siblingLeafOf(
 export function hasLeaf(tree: PaneNode, id: PaneId): boolean {
   return leafIds(tree).includes(id);
 }
+
+/**
+ * Find the leaf that lives in direction `dir` from `currentId`. Returns
+ * `null` if there is no neighbour in that direction.
+ *
+ * The search walks up the tree looking for the closest ancestor split
+ * along the requested axis. When the immediate parent split is already
+ * along that axis we just step to the previous/next child; otherwise we
+ * climb out of nested orthogonal splits and pick the first/last leaf of
+ * the neighbouring subtree so a 2x2 grid behaves as one logical surface.
+ */
+export function nextLeafInDir(
+  tree: PaneNode,
+  currentId: PaneId,
+  dir: "left" | "right" | "up" | "down",
+): PaneId | null {
+  const axis: SplitDir = dir === "up" || dir === "down" ? "col" : "row";
+  const wantPrevious = dir === "left" || dir === "up";
+
+  // Walks the tree, returning the first/last leaf of a subtree.
+  const firstLeaf = (n: PaneNode): PaneId | null => {
+    let cur: PaneNode = n;
+    while (!isLeaf(cur)) cur = cur.children[0];
+    return cur.id;
+  };
+  const lastLeaf = (n: PaneNode): PaneId | null => {
+    let cur: PaneNode = n;
+    while (!isLeaf(cur)) cur = cur.children[cur.children.length - 1];
+    return cur.id;
+  };
+
+  // Walk a subtree to find a node (leaf or split) containing `targetId`
+  // and return the containing split + its child index.
+  const findParentSplit = (
+    n: PaneNode,
+    targetId: PaneId,
+  ): { split: Extract<PaneNode, { kind: "split" }>; index: number } | null => {
+    if (isLeaf(n)) return null;
+    for (let i = 0; i < n.children.length; i++) {
+      const c = n.children[i];
+      if (c.id === targetId) return { split: n, index: i };
+      if (!isLeaf(c)) {
+        const r = findParentSplit(c, targetId);
+        if (r) return r;
+      }
+    }
+    return null;
+  };
+
+  let current = findParentSplit(tree, currentId);
+  if (!current) return null;
+  // Walk up the ancestor chain until we land on a split that runs along
+  // the requested axis. At that point stepping to the previous/next child
+  // is the move we actually want.
+  while (current && current.split.dir !== axis) {
+    const parent = findParentSplit(tree, current.split.id);
+    if (!parent) return null;
+    current = parent;
+  }
+  if (!current) return null;
+  const nextIdx = wantPrevious ? current.index - 1 : current.index + 1;
+  if (nextIdx < 0 || nextIdx >= current.split.children.length) return null;
+  const neighbour = current.split.children[nextIdx];
+  return wantPrevious ? lastLeaf(neighbour) : firstLeaf(neighbour);
+}

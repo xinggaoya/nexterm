@@ -322,6 +322,26 @@ function getSelection(): string | null {
   return current.state.sliceDoc(from, to);
 }
 
+function openGotoLine(): void {
+  const current = view.value;
+  if (!current) return;
+  current.focus();
+  // window.prompt is intentional for the first pass — a proper modal UI
+  // can be layered on later without changing the command contract.
+  const raw = window.prompt(t("editor.gotoLinePrompt"), String(line.value));
+  if (!raw) return;
+  const target = Number.parseInt(raw, 10);
+  if (!Number.isFinite(target) || target < 1) return;
+  const lineCount = current.state.doc.lines;
+  const clamped = Math.min(target, lineCount);
+  const lineInfo = current.state.doc.line(clamped);
+  current.dispatch({
+    selection: { anchor: lineInfo.from },
+    scrollIntoView: true,
+  });
+  line.value = clamped;
+}
+
 function setContentForTest(content: string) {
   const current = view.value;
   if (!current) {
@@ -360,6 +380,7 @@ defineExpose({
   focus,
   getSelection,
   setContentForTest,
+  openGotoLine,
 });
 </script>
 

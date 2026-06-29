@@ -125,7 +125,11 @@ async function saveActiveEditor() {
   await activeEditorPane.value?.save();
 }
 
-defineExpose({ saveActiveEditor });
+function openGotoLine() {
+  activeEditorPane.value?.openGotoLine();
+}
+
+defineExpose({ saveActiveEditor, openGotoLine });
 </script>
 
 <template>

@@ -15,4 +15,11 @@ export const EDITOR_COMMAND_SPECS: CommandSpec[] = [
     defaultKeybinding: null,
     workspaceRequired: true,
   },
+  {
+    id: "editor.gotoLine",
+    titleKey: "commands.items.gotoLine",
+    category: "editor",
+    defaultKeybinding: "Ctrl+G",
+    workspaceRequired: true,
+  },
 ];
