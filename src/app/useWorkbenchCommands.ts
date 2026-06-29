@@ -56,6 +56,8 @@ type WorkbenchCommandOptions = {
   openGotoLine: () => void;
   openFindInFiles: () => void;
   openCommandPalette: (mode?: "commands" | "files") => void;
+  openRenameDialog: (leafId: number, currentTitle: string) => void;
+  killActiveTerminal: () => void | Promise<void>;
   resolveGitRepo: (root: string) => Promise<GitRepoInfo | null>;
   gitStatus: (repoRoot: string) => Promise<GitStatusSnapshot>;
   gitStage: (repoRoot: string, paths: string[]) => Promise<void>;
@@ -423,6 +425,16 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
       case "terminal.runSnippet":
         options.openCommandPalette("commands");
         return;
+      case "terminal.rename": {
+        const tab = options.activeTab.value;
+        if (tab?.kind !== "terminal") return;
+        options.openRenameDialog(tab.activeLeafId, tab.terminalTitle ?? "");
+        return;
+      }
+      case "terminal.kill": {
+        await options.killActiveTerminal();
+        return;
+      }
     }
   }
 

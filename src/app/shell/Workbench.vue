@@ -209,8 +209,6 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
                     @focus-leaf="(tabId, leafId) => tabsStore.focusPane(tabId, leafId)"
                     @cwd="(leafId, cwd) => tabsStore.setLeafCwd(leafId, cwd)"
                     @title="(leafId, title) => tabsStore.setLeafTitle(leafId, title)"
-                    @rename="(leafId, title) => tabsStore.setLeafTitle(leafId, title)"
-                    @kill="(leafId) => killTerminal(leafId)"
                   />
                 </div>
 

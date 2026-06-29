@@ -71,4 +71,18 @@ export const TERMINAL_COMMAND_SPECS: CommandSpec[] = [
     defaultKeybinding: null,
     workspaceRequired: true,
   },
+  {
+    id: "terminal.rename",
+    titleKey: "terminal.rename",
+    category: "terminal",
+    defaultKeybinding: null,
+    workspaceRequired: true,
+  },
+  {
+    id: "terminal.kill",
+    titleKey: "terminal.kill",
+    category: "terminal",
+    defaultKeybinding: null,
+    workspaceRequired: true,
+  },
 ];

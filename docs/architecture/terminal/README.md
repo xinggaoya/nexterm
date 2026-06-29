@@ -13,7 +13,6 @@ src/modules/terminal/
   TerminalPane.vue            # 终端面板
   TerminalStack.vue           # 多终端栈容器
   PaneTreeV2.vue              # pane 拆分树渲染
-  TerminalToolbar.vue         # 终端工具条
   terminalCommands.ts         # 注册到 commands 的终端命令
   index.ts
   lib/
