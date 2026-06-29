@@ -47,6 +47,8 @@ import UnsavedCloseGuard from "./components/UnsavedCloseGuard.vue";
 import { readEditorDocument } from "@/modules/editor/lib/documentService";
 import { native } from "@/lib/native";
 import { applyTerminalSessionTheme } from "@/modules/terminal";
+import { copyToClipboard, relativePath } from "@/modules/explorer/lib/contextActions";
+import { notifyInfo } from "@/modules/notifications/notificationCenter";
 import { leafIds, type SplitDir } from "@/modules/terminal/lib/panes";
 import { buildNaiveThemeOverrides, getNaiveTheme } from "@/modules/theme/naiveTheme";
 import { readAppTokens, type AppTokens } from "@/styles/tokens";
@@ -158,6 +160,33 @@ function newTerminalTab() {
 function openTerminalInDir(cwd: string) {
   if (!cwd) return;
   tabs.newTab(cwd);
+}
+
+function duplicateTerminalTab(tabId: number) {
+  const tab = tabs.tabs.find((t) => t.id === tabId);
+  if (!tab || tab.kind !== "terminal") return;
+  tabs.newTab(tab.cwd);
+}
+
+function renameTabTitle(tabId: number, title: string) {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+  tabs.updateTab(tabId, { title: trimmed });
+}
+
+function startTabRename(tabId: number) {
+  // Placeholder: TabBar 的右键菜单只发起 requestRename，UI 入口
+  // （如 inline edit / modal dialog）在下一轮迭代时实现。本轮先
+  // 静默 no-op 以保证右键流程不会报错。
+  void tabId;
+}
+
+function notifyMoveToNewWindow(tabId: number) {
+  void tabId;
+  notifyInfo(
+    t("tabMenu.moveToNewWindow"),
+    t("tabMenu.moveToNewWindowHint"),
+  );
 }
 
 function splitActivePane(dir: SplitDir) {
@@ -396,9 +425,19 @@ watch(
                 :active-id="tabs.activeId"
                 :can-split="canSplitActiveTab"
                 :show-actions="hasWorkspace"
+                :workspace-root="workspaceRoot"
                 @select-tab="(id) => tabs.setActiveId(id)"
                 @close-tab="requestCloseTab"
+                @close-others="(id) => tabs.closeOthers(id)"
+                @close-to-right="(id) => tabs.closeToRight(id)"
+                @close-all="tabs.closeAll()"
+                @duplicate-terminal="duplicateTerminalTab"
+                @rename-tab="renameTabTitle"
+                @request-rename="startTabRename"
                 @pin-tab="(id) => tabs.pinTab(id)"
+                @copy-path="(path) => void copyToClipboard(path)"
+                @copy-relative-path="(root, path) => void copyToClipboard(relativePath(root, path))"
+                @move-to-new-window="notifyMoveToNewWindow"
                 @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement)"
                 @new-tab="newTerminalTab"
                 @split-pane="splitActivePane"
