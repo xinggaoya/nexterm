@@ -5,6 +5,7 @@ import {
   findLeafTitle,
   hasLeaf,
   leafIds,
+  nextLeafInDir,
   removeLeaf,
   setLeafCwd as setLeafCwdInTree,
   setLeafTitle as setLeafTitleInTree,
@@ -501,6 +502,19 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     );
   }
 
+  function focusDirection(
+    tabId: number,
+    leafId: number,
+    dir: "left" | "right" | "up" | "down",
+  ): number | null {
+    const tab = tabs.value.find((t) => t.id === tabId);
+    if (!tab || tab.kind !== "terminal") return null;
+    const target = nextLeafInDir(tab.paneTree, leafId, dir);
+    if (target === null) return null;
+    focusPane(tabId, target);
+    return target;
+  }
+
   function setLeafCwd(leafId: number, cwd: string): void {
     tabs.value = tabs.value.map((tab) => {
       if (tab.kind !== "terminal") return tab;
@@ -652,6 +666,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     cycleActive,
     restoreClosed,
     focusPane,
+    focusDirection,
     setLeafCwd,
     setLeafTitle,
     updateTab,

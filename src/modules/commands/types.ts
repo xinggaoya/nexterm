@@ -32,7 +32,12 @@ export type CommandId =
   | "tab.next"
   | "tab.previous"
   | "tab.duplicate"
-  | "tab.pin";
+  | "tab.pin"
+  | "editor.gotoLine"
+  | "terminal.focusLeft"
+  | "terminal.focusRight"
+  | "terminal.focusUp"
+  | "terminal.focusDown";
 
 export type CommandCategory =
   | "editor"

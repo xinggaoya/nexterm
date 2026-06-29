@@ -51,6 +51,7 @@ type WorkbenchCommandOptions = {
   openTaskConsole: () => void | Promise<void>;
   requestCloseTab: (id: number) => void;
   saveActiveEditor: () => void | Promise<void>;
+  openGotoLine: () => void;
   resolveGitRepo: (root: string) => Promise<GitRepoInfo | null>;
   gitStatus: (repoRoot: string) => Promise<GitStatusSnapshot>;
   gitStage: (repoRoot: string, paths: string[]) => Promise<void>;
@@ -372,6 +373,21 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
         const tab = options.activeTab.value;
         if (!tab || tab.kind !== "editor" || !tab.preview) return;
         options.tabs.pinTab(tab.id);
+        return;
+      }
+      case "editor.gotoLine":
+        options.openGotoLine();
+        return;
+      case "terminal.focusLeft":
+      case "terminal.focusRight":
+      case "terminal.focusUp":
+      case "terminal.focusDown": {
+        const tab = options.activeTab.value;
+        if (!tab || tab.kind !== "terminal") return;
+        const dir = id === "terminal.focusLeft" ? "left"
+          : id === "terminal.focusRight" ? "right"
+          : id === "terminal.focusUp" ? "up" : "down";
+        options.tabs.focusDirection(tab.id, tab.activeLeafId, dir);
         return;
       }
     }

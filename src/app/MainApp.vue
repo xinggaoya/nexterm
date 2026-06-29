@@ -230,6 +230,10 @@ async function saveActiveEditor() {
   await workbench.value?.saveActiveEditor();
 }
 
+function openGotoLine() {
+  workbench.value?.openGotoLine?.();
+}
+
 async function readWorkspaceTextFile(path: string): Promise<string | null> {
   const result = await readEditorDocument(path);
   return result.status === "ready" ? result.content : null;
@@ -343,6 +347,7 @@ const {
 
   requestCloseTab,
   saveActiveEditor,
+  openGotoLine,
   resolveGitRepo: native.gitResolveRepo,
   gitStatus: native.gitStatus,
   gitStage: native.gitStage,

@@ -468,4 +468,19 @@ describe("tabs pinia store", () => {
     tabs.init();
     expect(tabs.restoreClosed()).toBeNull();
   });
+
+  it("focusDirection moves to neighbouring panes", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init();
+    const id = tabs.activeId;
+    tabs.splitActivePane(id, "row"); // active leaf becomes 4
+    expect(tabs.tabs[0].activeLeafId).toBe(4);
+
+    expect(tabs.focusDirection(id, 4, "left")).toBe(2);
+    expect(tabs.tabs[0].activeLeafId).toBe(2);
+    expect(tabs.focusDirection(id, 2, "right")).toBe(4);
+    expect(tabs.tabs[0].activeLeafId).toBe(4);
+    expect(tabs.focusDirection(id, 4, "left")).toBe(2);
+    expect(tabs.focusDirection(id, 2, "left")).toBeNull();
+  });
 });
