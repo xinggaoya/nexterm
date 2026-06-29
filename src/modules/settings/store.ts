@@ -71,6 +71,7 @@ export type Preferences = {
   lastWslDistro: string | null;
   lastWorkspace: StoredWorkspace | null;
   recentWorkspaces: StoredWorkspace[];
+  recentFiles: string[];
   zoomLevel: number;
   sourceControlPanelWidth: number;
   explorerPanelWidth: number;
@@ -102,6 +103,7 @@ const KEY_KEYBINDINGS = "keybindings";
 const KEY_LAST_WSL_DISTRO = "lastWslDistro";
 const KEY_LAST_WORKSPACE = "lastWorkspace";
 const KEY_RECENT_WORKSPACES = "recentWorkspaces";
+const KEY_RECENT_FILES = "recentFiles";
 const KEY_ZOOM_LEVEL = "zoomLevel";
 const KEY_EDITOR_FONT_SIZE = "editorFontSize";
 const KEY_EDITOR_TAB_SIZE = "editorTabSize";
@@ -204,6 +206,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   lastWslDistro: null,
   lastWorkspace: null,
   recentWorkspaces: [],
+  recentFiles: [],
   zoomLevel: 1.0,
   sourceControlPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
   explorerPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
@@ -289,6 +292,8 @@ export async function loadPreferences(): Promise<Preferences> {
     recentWorkspaces:
       get<StoredWorkspace[]>(KEY_RECENT_WORKSPACES) ??
       DEFAULT_PREFERENCES.recentWorkspaces,
+    recentFiles:
+      get<string[]>(KEY_RECENT_FILES) ?? DEFAULT_PREFERENCES.recentFiles,
     zoomLevel: get<number>(KEY_ZOOM_LEVEL) ?? DEFAULT_PREFERENCES.zoomLevel,
     sourceControlPanelWidth: clampSidePanelWidth(
       get<number>(KEY_SOURCE_CONTROL_PANEL_WIDTH) ??
@@ -418,6 +423,10 @@ export async function setRecentWorkspaces(
   await writePref(KEY_RECENT_WORKSPACES, value);
 }
 
+export async function setRecentFiles(value: string[]): Promise<void> {
+  await writePref(KEY_RECENT_FILES, value);
+}
+
 export async function setZoomLevel(value: number): Promise<void> {
   await writePref(KEY_ZOOM_LEVEL, value);
 }
@@ -486,6 +495,7 @@ export async function onPreferencesChange(
     [KEY_LAST_WSL_DISTRO]: "lastWslDistro",
     [KEY_LAST_WORKSPACE]: "lastWorkspace",
     [KEY_RECENT_WORKSPACES]: "recentWorkspaces",
+    [KEY_RECENT_FILES]: "recentFiles",
     [KEY_ZOOM_LEVEL]: "zoomLevel",
     [KEY_SOURCE_CONTROL_PANEL_WIDTH]: "sourceControlPanelWidth",
     [KEY_EXPLORER_PANEL_WIDTH]: "explorerPanelWidth",

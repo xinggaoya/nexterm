@@ -33,6 +33,8 @@ export type CommandId =
   | "tab.previous"
   | "tab.duplicate"
   | "tab.pin"
+  | "tab.restoreClosed"
+  | "files.recent"
   | "editor.gotoLine"
   | "terminal.focusLeft"
   | "terminal.focusRight"

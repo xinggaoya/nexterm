@@ -13,6 +13,7 @@ import {
   setFileOpenMode,
   setKeybindings,
   setLanguage,
+  setRecentFiles,
   setRestoreWindowState,
   setShowHidden,
   setSourceControlPanelWidth,
@@ -83,6 +84,9 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const recentWorkspaces = ref<Preferences["recentWorkspaces"]>(
     DEFAULT_PREFERENCES.recentWorkspaces,
   );
+  const recentFiles = ref<Preferences["recentFiles"]>(
+    DEFAULT_PREFERENCES.recentFiles,
+  );
   const zoomLevel = ref<number>(DEFAULT_PREFERENCES.zoomLevel);
   const sourceControlPanelWidth = ref<number>(
     DEFAULT_PREFERENCES.sourceControlPanelWidth,
@@ -121,6 +125,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     lastWslDistro.value = snapshot.lastWslDistro;
     lastWorkspace.value = snapshot.lastWorkspace;
     recentWorkspaces.value = snapshot.recentWorkspaces;
+    recentFiles.value = snapshot.recentFiles;
     zoomLevel.value = snapshot.zoomLevel;
     sourceControlPanelWidth.value = snapshot.sourceControlPanelWidth;
     explorerPanelWidth.value = snapshot.explorerPanelWidth;
@@ -291,6 +296,24 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     await setEditorWordWrap(value);
   }
 
+  const RECENT_FILES_MAX = 50;
+
+  async function recordOpenedFile(path: string): Promise<void> {
+    if (!path) return;
+    const next = [path, ...recentFiles.value.filter((p) => p !== path)].slice(
+      0,
+      RECENT_FILES_MAX,
+    );
+    recentFiles.value = next;
+    patchPreferencesSnapshot("recentFiles", next);
+    await setRecentFiles(next);
+  }
+
+  function clearRecentFiles(): void {
+    recentFiles.value = [];
+    void setRecentFiles([]);
+  }
+
   function readPreferencesSnapshot(): Preferences {
     return {
       theme: theme.value,
@@ -313,6 +336,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
       lastWslDistro: lastWslDistro.value,
       lastWorkspace: lastWorkspace.value,
       recentWorkspaces: recentWorkspaces.value,
+    recentFiles: recentFiles.value,
       zoomLevel: zoomLevel.value,
       sourceControlPanelWidth: sourceControlPanelWidth.value,
       explorerPanelWidth: explorerPanelWidth.value,
@@ -344,6 +368,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     lastWslDistro,
     lastWorkspace,
     recentWorkspaces,
+    recentFiles,
     zoomLevel,
     sourceControlPanelWidth,
     explorerPanelWidth,
@@ -377,5 +402,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateEditorFontSize,
     updateEditorTabSize,
     updateEditorWordWrap,
+    recordOpenedFile,
+    clearRecentFiles,
   };
 });

@@ -198,6 +198,7 @@ function splitActivePane(dir: SplitDir) {
 function openFileTab(path: string, pin: boolean) {
   const shouldPin = pin || prefs.fileOpenMode === "pinned";
   tabs.openFileTab(path, shouldPin);
+  void prefs.recordOpenedFile(path);
 }
 
 function openMarkdownPreview(path: string) {
@@ -360,6 +361,7 @@ const {
   saveActiveEditor,
   openGotoLine,
   openFindInFiles,
+  openCommandPalette: (mode) => openCommandPalette(mode ?? "commands"),
   resolveGitRepo: native.gitResolveRepo,
   gitStatus: native.gitStatus,
   gitStage: native.gitStage,
