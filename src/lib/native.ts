@@ -176,6 +176,24 @@ export type FsSearchResult = {
   truncated: boolean;
 };
 
+export type FsGrepHit = {
+  path: string;
+  rel: string;
+  line: number;
+  text: string;
+};
+
+export type FsGrepResult = {
+  hits: FsGrepHit[];
+  truncated: boolean;
+  filesScanned: number;
+};
+
+export type FsGlobHit = {
+  path: string;
+  rel: string;
+};
+
 export type PtyOutputChunk = {
   startOffset: number;
   bytes: Uint8Array;
@@ -456,6 +474,35 @@ export const native = {
       path,
       workspace: currentWorkspaceEnv(),
     }),
+  fsCopy: (from: string, to: string) =>
+    invoke<void>("fs_copy", {
+      from,
+      to,
+      workspace: currentWorkspaceEnv(),
+    }),
+  fsGrep: (
+    pattern: string,
+    root: string,
+    options?: {
+      glob?: string[];
+      caseInsensitive?: boolean;
+      maxResults?: number;
+    },
+  ) =>
+    invoke<FsGrepResult>("fs_grep", {
+      pattern,
+      root,
+      glob: options?.glob ?? null,
+      caseInsensitive: options?.caseInsensitive ?? false,
+      maxResults: options?.maxResults ?? null,
+      workspace: currentWorkspaceEnv(),
+    }),
+  fsGlob: (pattern: string, root: string) =>
+    invoke<FsGlobHit[]>("fs_glob", {
+      pattern,
+      root,
+      workspace: currentWorkspaceEnv(),
+    }),
   fsSearch: (root: string, query: string, showHidden: boolean) =>
     invoke<FsSearchResult>("fs_search", {
       root,
@@ -547,6 +594,7 @@ export const native = {
       maxBytes,
     }),
   ptyClose: (id: number) => invoke<void>("pty_close", { id }),
+  ptyKill: (id: number) => invoke<void>("pty_kill", { id }),
 };
 
 function decodeOutputFrame(buf: ArrayBuffer): PtyOutputChunk {

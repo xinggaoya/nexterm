@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use tauri::State;
 
 use crate::modules::fs::watcher::{emit_workspace_fs_changed, FsWatcherState};
@@ -109,6 +111,62 @@ pub fn fs_delete(
 
     let parent = p.parent().unwrap_or(&p);
     notify_workspace_fs_changed(&registry, &watcher, parent, vec![path]);
+    Ok(())
+}
+
+/// Copies a file or directory recursively. Refuses to overwrite an
+/// existing destination so callers can choose the target name without
+/// surprise data loss.
+#[tauri::command]
+pub fn fs_copy(
+    from: String,
+    to: String,
+    workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
+    watcher: State<'_, FsWatcherState>,
+) -> Result<(), String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    let from_p = resolve_path(&from, &workspace);
+    let to_p = resolve_path(&to, &workspace);
+    if !from_p.exists() {
+        return Err(format!("not found: {}", from_p.display()));
+    }
+    if to_p.exists() {
+        return Err(format!("already exists: {}", to_p.display()));
+    }
+    let meta = std::fs::symlink_metadata(&from_p).map_err(|e| e.to_string())?;
+    if meta.is_dir() {
+        copy_dir_recursive(&from_p, &to_p)?;
+    } else {
+        std::fs::copy(&from_p, &to_p).map_err(|e| e.to_string())?;
+    }
+    // Emit both the source's parent and the destination's parent so
+    // watchers rooted at either ancestor refresh.
+    let parent = from_p.parent().unwrap_or(&from_p);
+    let dst_parent = to_p.parent().unwrap_or(&to_p);
+    if dst_parent == parent {
+        notify_workspace_fs_changed(&registry, &watcher, parent, vec![from, to]);
+    } else {
+        notify_workspace_fs_changed(&registry, &watcher, parent, vec![from]);
+        notify_workspace_fs_changed(&registry, &watcher, dst_parent, vec![to]);
+    }
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| format!("mkdir {}: {e}", dst.display()))?;
+    for entry in std::fs::read_dir(src).map_err(|e| format!("readdir {}: {e}", src.display()))? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let ft = entry.file_type().map_err(|e| e.to_string())?;
+        let child_src = entry.path();
+        let child_dst = dst.join(entry.file_name());
+        if ft.is_dir() {
+            copy_dir_recursive(&child_src, &child_dst)?;
+        } else if ft.is_file() {
+            std::fs::copy(&child_src, &child_dst)
+                .map_err(|e| format!("copy {}: {e}", child_src.display()))?;
+        }
+    }
     Ok(())
 }
 

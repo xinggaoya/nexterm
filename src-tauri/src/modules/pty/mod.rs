@@ -13,7 +13,7 @@ use std::thread;
 use serde::Serialize;
 use tauri::ipc::{Channel, Response};
 
-use crate::modules::lock::{mutex_lock, rwlock_write};
+use crate::modules::lock::{mutex_lock, rwlock_read, rwlock_write};
 use crate::modules::workspace::{authorize_spawn_cwd, WorkspaceEnv, WorkspaceRegistry};
 use session::Session;
 
@@ -109,6 +109,31 @@ pub fn pty_read_transcript(
         .inspect_err(|_| {
             log::warn!("pty_read_transcript: unknown id={id}");
         })
+}
+
+#[tauri::command]
+pub fn pty_kill(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
+    // Look up the session without removing it: pty_close handles cleanup,
+    // and pty_kill is the user-driven "force-quit this shell" action that
+    // intentionally leaves the session registered so the onExit channel
+    // can fire and the UI can transition to the exited state.
+    let session = rwlock_read(&state.sessions, "pty sessions")
+        .ok()
+        .and_then(|guard| guard.get(&id).cloned());
+    if let Some(s) = session {
+        match mutex_lock(&s.killer, "pty killer") {
+            Ok(mut killer) => {
+                if let Err(e) = killer.kill() {
+                    log::debug!("pty_kill id={id}: kill returned {e}");
+                }
+            }
+            Err(error) => log::warn!("pty_kill id={id}: {error}"),
+        }
+        log::info!("pty killed id={id}");
+    } else {
+        log::debug!("pty_kill: unknown id={id}");
+    }
+    Ok(())
 }
 
 #[tauri::command]
