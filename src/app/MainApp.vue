@@ -44,6 +44,7 @@ import {
 } from "@/modules/workspace";
 import WorkspaceWelcome from "./components/WorkspaceWelcome.vue";
 import UnsavedCloseGuard from "./components/UnsavedCloseGuard.vue";
+import RenameTerminalDialog from "./components/RenameTerminalDialog.vue";
 import { readEditorDocument } from "@/modules/editor/lib/documentService";
 import { native } from "@/lib/native";
 import { applyTerminalSessionTheme } from "@/modules/terminal";
@@ -193,6 +194,31 @@ function splitActivePane(dir: SplitDir) {
   const tab = activeTab.value;
   if (tab?.kind !== "terminal") return;
   tabs.splitActivePane(tab.id, dir);
+}
+
+const renameDialogState = ref<{ leafId: number; currentTitle: string } | null>(
+  null,
+);
+
+function openRenameDialog(leafId: number, currentTitle: string) {
+  renameDialogState.value = { leafId, currentTitle };
+}
+
+function commitRename(title: string) {
+  const state = renameDialogState.value;
+  if (!state) return;
+  tabs.setLeafTitle(state.leafId, title);
+  renameDialogState.value = null;
+}
+
+function cancelRename() {
+  renameDialogState.value = null;
+}
+
+async function killActiveTerminal() {
+  const tab = activeTab.value;
+  if (tab?.kind !== "terminal") return;
+  await workbench.value?.killTerminal(tab.activeLeafId);
 }
 
 function openFileTab(path: string, pin: boolean) {
@@ -362,6 +388,8 @@ const {
   openGotoLine,
   openFindInFiles,
   openCommandPalette: (mode) => openCommandPalette(mode ?? "commands"),
+  openRenameDialog,
+  killActiveTerminal,
   resolveGitRepo: native.gitResolveRepo,
   gitStatus: native.gitStatus,
   gitStage: native.gitStage,
@@ -588,6 +616,13 @@ watch(
                 />
               </NDrawerContent>
             </NDrawer>
+
+            <RenameTerminalDialog
+              :show="renameDialogState !== null"
+              :current-title="renameDialogState?.currentTitle ?? ''"
+              @submit="commitRename"
+              @cancel="cancelRename"
+            />
           </div>
         </NNotificationProvider>
       </NMessageProvider>

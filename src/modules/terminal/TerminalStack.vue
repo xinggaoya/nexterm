@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { SearchAddon } from "@xterm/addon-search";
 import { computed } from "vue";
 import type { Tab, TerminalTab } from "@/modules/tabs/tabsTypes";
 import PaneTreeV2 from "./PaneTreeV2.vue";
@@ -11,14 +10,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   focusLeaf: [tabId: number, leafId: number];
-  searchReady: [leafId: number, addon: SearchAddon];
   cwd: [leafId: number, cwd: string];
   title: [leafId: number, title: string];
-  exit: [leafId: number, code: number];
-  split: [tabId: number, leafId: number, dir: "row" | "col"];
-  close: [tabId: number, leafId: number];
-  rename: [leafId: number, title: string];
-  kill: [leafId: number];
+  exit: [tabId: number, code: number];
 }>();
 
 const terminalTabs = computed(() =>
@@ -45,14 +39,9 @@ const terminalTabs = computed(() =>
         :active-leaf-id="tab.activeLeafId"
         :tab-id="tab.id"
         @focus-leaf="(leafId) => emit('focusLeaf', tab.id, leafId)"
-        @search-ready="(leafId, addon) => emit('searchReady', leafId, addon)"
         @cwd="(leafId, cwd) => emit('cwd', leafId, cwd)"
         @title="(leafId, title) => emit('title', leafId, title)"
         @exit="(_leafId, code) => emit('exit', tab.id, code)"
-        @split="(leafId, dir) => emit('split', tab.id, leafId, dir)"
-        @close="(leafId) => emit('close', tab.id, leafId)"
-        @rename="(leafId, title) => emit('rename', leafId, title)"
-        @kill="(leafId) => emit('kill', leafId)"
       />
     </div>
   </div>

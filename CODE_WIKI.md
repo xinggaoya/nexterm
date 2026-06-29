@@ -108,7 +108,7 @@ nexterm/
 
 | 模块 | 职责 | 主要文件 |
 |------|------|----------|
-| `terminal` | 终端面板、xterm.js 渲染、PTY 桥接、pane 树 | `TerminalPane.vue` / `TerminalStack.vue` / `PaneTreeV2.vue` / `TerminalToolbar.vue` / `lib/panes.ts` / `lib/pty-bridge.ts` / `lib/rendererPool.ts` / `lib/terminalSessionCore.ts` |
+| `terminal` | 终端面板、xterm.js 渲染、PTY 桥接、pane 树 | `TerminalPane.vue` / `TerminalStack.vue` / `PaneTreeV2.vue` / `lib/panes.ts` / `lib/pty-bridge.ts` / `lib/rendererPool.ts` / `lib/terminalSessionCore.ts` |
 | `editor` | CodeMirror 6 编辑器、diff、状态条 | `EditorPane.vue` / `EditorToolbar.vue` / `EditorStatusBar.vue` / `DiffCodeMirror.vue` / `GitDiffPane.vue` / `GitDiffStack.vue` / `MarkdownEditorPreview.vue` / `lib/*` |
 | `explorer` | 文件树、搜索、右键菜单、内联重命名 | `FileExplorer.vue` / `FileTreeRow.vue` / `ExplorerContextMenu.vue` / `ExplorerSearch.vue` / `InlineTreeInput.vue` / `lib/fileIcons.ts` / `lib/fileTreeRows.ts` / `lib/iconResolver.ts` |
 | `tabs` | 标签状态、类型、拖拽、关闭守卫、pane split | `tabsPinia.ts` / `tabsTypes.ts` / `tabsReorder.ts` / `closeGuards.ts` / `tabLabel.ts` / `terminalDisposal.ts` |

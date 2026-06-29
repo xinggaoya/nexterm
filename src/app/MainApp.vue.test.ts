@@ -181,7 +181,7 @@ vi.mock("@/components/WindowControls.vue", () => ({
 vi.mock("@/modules/terminal/TerminalStack.vue", () => ({
   default: {
     props: ["tabs", "activeId"],
-    emits: ["focusLeaf", "cwd", "title", "exit", "searchReady"],
+    emits: ["focusLeaf", "cwd", "title", "exit"],
     template:
       '<div data-terminal-stack>{{ tabs.length }}:{{ activeId }}<button data-terminal-cd @click="$emit(\'cwd\', 2, \'/tmp\')"></button><button data-terminal-title @click="$emit(\'title\', 2, \'OpenAI Codex\')"></button></div>',
   },

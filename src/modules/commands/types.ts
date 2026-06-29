@@ -42,7 +42,9 @@ export type CommandId =
   | "terminal.focusUp"
   | "terminal.focusDown"
   | "search.findInFiles"
-  | "terminal.runSnippet";;
+  | "terminal.runSnippet"
+  | "terminal.rename"
+  | "terminal.kill";
 
 export type CommandCategory =
   | "editor"

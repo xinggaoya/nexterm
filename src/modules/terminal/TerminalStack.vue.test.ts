@@ -8,7 +8,7 @@ vi.mock("./TerminalPane.vue", () => ({
   default: {
     name: "TerminalPane",
     props: ["leafId", "visible", "focused", "initialCwd"],
-    emits: ["searchReady", "exit", "cwd", "title"],
+    emits: ["exit", "cwd", "title"],
     template:
       '<div class="terminal-pane" :data-leaf="leafId"><button data-terminal-cwd @click="$emit(\'cwd\', leafId, `/cwd/${leafId}`)" /><button data-terminal-title @click="$emit(\'title\', leafId, `title-${leafId}`)" /></div>',
   },
