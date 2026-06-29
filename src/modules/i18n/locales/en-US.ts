@@ -47,6 +47,7 @@ const enUS = {
       createBranch: "Create Branch",
       duplicateTab: "Duplicate Terminal Tab",
       fetch: "Git Fetch",
+      findInFiles: "Find in Files",
       focusDown: "Focus Pane Down",
       focusLeft: "Focus Pane Left",
       focusRight: "Focus Pane Right",
@@ -235,6 +236,15 @@ const enUS = {
     searchFiles: "Search files...",
     searchFilesTitle: "Search files",
     searching: "Searching...",
+  },
+  findInFiles: {
+    caseInsensitive: "Aa",
+    includePlaceholder: "Include: *.ts, *.tsx",
+    noResults: "No matches",
+    prompt: "Type a pattern to search workspace content.",
+    searchPlaceholder: "Find in files (regex)",
+    summary: "{count} results in {files} files (scanned {scanned})",
+    truncated: "Results truncated — refine the pattern or include filters.",
   },
   tasks: {
     commandPlaceholder: "Run a command",

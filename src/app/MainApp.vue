@@ -204,6 +204,12 @@ function openMarkdownPreview(path: string) {
   tabs.newMarkdownTab(path);
 }
 
+function openSearchResult(path: string, _line: number) {
+  // 本轮不实现 openAtLine 精准跳行；先打开文件，后续轮次扩展。
+  // 参数前导下划线表明有意未使用。
+  tabs.openFileTab(path, true);
+}
+
 function openSourceDiff(input: {
   repoRoot: string;
   path: string;
@@ -232,6 +238,11 @@ async function saveActiveEditor() {
 
 function openGotoLine() {
   workbench.value?.openGotoLine?.();
+}
+
+function openFindInFiles() {
+  // 资源管理器未挂载时静默 no-op
+  workbench.value?.openFindInFiles?.();
 }
 
 async function readWorkspaceTextFile(path: string): Promise<string | null> {
@@ -348,6 +359,7 @@ const {
   requestCloseTab,
   saveActiveEditor,
   openGotoLine,
+  openFindInFiles,
   resolveGitRepo: native.gitResolveRepo,
   gitStatus: native.gitStatus,
   gitStage: native.gitStage,
@@ -462,6 +474,7 @@ watch(
                   @open-file="openFileTab"
                   @open-markdown-preview="openMarkdownPreview"
                   @open-in-terminal="openTerminalInDir"
+                  @open-search-result="openSearchResult"
                   @open-source-diff="openSourceDiff"
                   @open-source-history="openSourceHistory"
                 />

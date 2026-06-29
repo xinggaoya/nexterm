@@ -15,4 +15,11 @@ export const EXPLORER_COMMAND_SPECS: CommandSpec[] = [
     defaultKeybinding: null,
     workspaceRequired: true,
   },
+  {
+    id: "search.findInFiles",
+    titleKey: "commands.items.findInFiles",
+    category: "explorer",
+    defaultKeybinding: "Ctrl+Shift+F",
+    workspaceRequired: true,
+  },
 ];

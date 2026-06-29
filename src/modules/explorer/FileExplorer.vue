@@ -17,6 +17,7 @@ import ExplorerContextMenu, {
   type ExplorerContextMenuTarget,
 } from "./ExplorerContextMenu.vue";
 import ExplorerSearch from "./ExplorerSearch.vue";
+import { FindInFilesPanel } from "@/modules/search";
 import FileTreeRow from "./FileTreeRow.vue";
 import {
   buildFileTreeRows,
@@ -61,6 +62,7 @@ const emit = defineEmits<{
   pathDuplicated: [from: string, to: string];
   openMarkdownPreview: [path: string];
   openInTerminal: [path: string];
+  openSearchResult: [path: string, line: number];
 }>();
 
 const prefs = usePreferencesPiniaStore();
@@ -71,6 +73,7 @@ const renaming = ref<string | null>(null);
 const selectedPath = ref<string | null>(null);
 const isSearchOpen = ref(false);
 const isSearchActive = ref(false);
+const mode = ref<"files" | "content">("files");
 const menu = ref<ExplorerContextMenuTarget | null>(null);
 let fsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 const pendingFsEventPaths = new Set<string>();
@@ -583,6 +586,17 @@ watch(rows, () => {
 onBeforeUnmount(() => {
   clearScheduledTreeRefresh();
 });
+
+function setMode(next: "files" | "content") {
+  mode.value = next;
+  if (next === "files") {
+    isSearchOpen.value = false;
+  } else {
+    isSearchOpen.value = false;
+  }
+}
+
+defineExpose({ setMode });
 </script>
 
 <template>
@@ -621,7 +635,20 @@ onBeforeUnmount(() => {
           data-toggle-search
           :aria-label="t('explorer.searchFilesTitle')"
           :disabled="!rootPath"
-          @click="isSearchOpen = !isSearchOpen"
+          @click="isSearchOpen = !isSearchOpen; mode = 'files'"
+        >
+          <template #icon><NIcon :component="SearchOutline" /></template>
+        </NButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('findInFiles.searchPlaceholder')">
+        <NButton
+          size="tiny"
+          quaternary
+          data-toggle-content-search
+          :aria-label="t('findInFiles.searchPlaceholder')"
+          :disabled="!rootPath"
+          :class="mode === 'content' ? 'bg-accent text-foreground' : ''"
+          @click="mode = mode === 'content' ? 'files' : 'content'; isSearchOpen = false"
         >
           <template #icon><NIcon :component="SearchOutline" /></template>
         </NButton>
@@ -671,6 +698,7 @@ onBeforeUnmount(() => {
 
     <template v-else>
       <ExplorerSearch
+        v-if="mode === 'files'"
         :root-path="rootPath"
         :open="isSearchOpen"
         @request-close="isSearchOpen = false"
@@ -678,8 +706,14 @@ onBeforeUnmount(() => {
         @open-file="(path, pin) => emit('openFile', path, pin)"
       />
 
+      <FindInFilesPanel
+        v-else
+        :root-path="rootPath"
+        @open-result="(path, line) => emit('openSearchResult', path, line)"
+      />
+
       <div
-        v-show="!isSearchActive"
+        v-show="!isSearchActive && mode === 'files'"
         class="min-h-0 flex-1 overflow-y-auto py-1"
         @scroll.passive="closeMenu"
         @contextmenu.prevent="openRootMenu"
