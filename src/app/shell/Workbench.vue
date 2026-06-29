@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, type ComputedRef, type Ref } from "vue";
 import { NSplit } from "naive-ui";
-import type { WorkspaceFsChangedEvent } from "@/lib/native";
+import { native, type WorkspaceFsChangedEvent } from "@/lib/native";
+import { getPtyIdForLeaf } from "@/modules/terminal";
 import EditorPane from "@/modules/editor/EditorPane.vue";
 import GitDiffStack from "@/modules/editor/GitDiffStack.vue";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
@@ -135,7 +136,17 @@ function openFindInFiles() {
   fileExplorerRef.value?.setMode("content");
 }
 
-defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles });
+async function killTerminal(leafId: number) {
+  const ptyId = getPtyIdForLeaf(leafId);
+  if (ptyId === null) return;
+  try {
+    await native.ptyKill(ptyId);
+  } catch (error) {
+    console.warn("killTerminal failed", error);
+  }
+}
+
+defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
 </script>
 
 <template>
@@ -198,6 +209,8 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles });
                     @focus-leaf="(tabId, leafId) => tabsStore.focusPane(tabId, leafId)"
                     @cwd="(leafId, cwd) => tabsStore.setLeafCwd(leafId, cwd)"
                     @title="(leafId, title) => tabsStore.setLeafTitle(leafId, title)"
+                    @rename="(leafId, title) => tabsStore.setLeafTitle(leafId, title)"
+                    @kill="(leafId) => killTerminal(leafId)"
                   />
                 </div>
 

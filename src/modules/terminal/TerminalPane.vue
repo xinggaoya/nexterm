@@ -19,6 +19,7 @@ import {
   mountTerminalSession,
   updateTerminalSessionVisibility,
 } from "./lib/terminalSessionCore";
+import TerminalToolbar from "./TerminalToolbar.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -27,11 +28,13 @@ const props = withDefaults(
     focused?: boolean;
     initialCwd?: string;
     startupInput?: string;
+    terminalTitle?: string;
   }>(),
   {
     focused: true,
     initialCwd: undefined,
     startupInput: undefined,
+    terminalTitle: "",
   },
 );
 
@@ -40,6 +43,10 @@ const emit = defineEmits<{
   exit: [leafId: number, code: number];
   cwd: [leafId: number, cwd: string];
   title: [leafId: number, title: string];
+  split: [leafId: number, dir: "row" | "col"];
+  close: [leafId: number];
+  rename: [leafId: number, title: string];
+  kill: [leafId: number];
 }>();
 
 const prefs = usePreferencesPiniaStore();
@@ -137,6 +144,16 @@ function handleContextSelectAll() {
   closeContextMenu();
 }
 
+function handleClearFromToolbar() {
+  const handle = createTerminalSessionHandle(props.leafId);
+  handle.write("\x1b[H\x1b[2J\x1b[3J\x1b[H");
+}
+
+function handleResetFromToolbar() {
+  const handle = createTerminalSessionHandle(props.leafId);
+  handle.write("\x1bc");
+}
+
 onMounted(() => {
   const host = container.value;
   if (!host) return;
@@ -232,6 +249,17 @@ defineExpose({
     <div
       ref="container"
       class="nexterm-terminal-scrollbar zoom-exempt flex h-full w-full items-center justify-center rounded-sm bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-terminal-focus"
+    />
+    <TerminalToolbar
+      :leaf-id="leafId"
+      :pane-count="1"
+      :current-title="terminalTitle"
+      @split="(dir) => emit('split', leafId, dir)"
+      @close="emit('close', leafId)"
+      @clear="handleClearFromToolbar"
+      @reset="handleResetFromToolbar"
+      @rename="(title) => emit('rename', leafId, title)"
+      @kill="emit('kill', leafId)"
     />
     <div
       v-if="contextMenu"

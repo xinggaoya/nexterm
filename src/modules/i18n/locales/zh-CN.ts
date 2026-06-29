@@ -415,7 +415,11 @@ const zhCN = {
     moveToNewWindow: "移动到新窗口",
     moveToNewWindowHint: "多窗口支持即将推出。",
   },
-  terminal: {},
+  terminal: {
+    kill: "终止进程",
+    rename: "重命名终端",
+    renamePlaceholder: "终端名称",
+  },
 } satisfies MessageSchema;
 
 export default zhCN;

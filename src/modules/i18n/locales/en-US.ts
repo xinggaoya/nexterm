@@ -417,7 +417,11 @@ const enUS = {
     moveToNewWindow: "Move to New Window",
     moveToNewWindowHint: "Multi-window support is coming soon.",
   },
-  terminal: {},
+  terminal: {
+    kill: "Kill Process",
+    rename: "Rename Terminal",
+    renamePlaceholder: "Terminal name",
+  },
 } as const;
 
 export default enUS;

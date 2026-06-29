@@ -4,6 +4,7 @@ export {
   applyTerminalSessionTheme,
   createTerminalSessionHandle,
   disposeSession,
+  getPtyIdForLeaf,
   respawnSession,
   type TerminalSessionHandle,
 } from "./lib/terminalSessionCore";
