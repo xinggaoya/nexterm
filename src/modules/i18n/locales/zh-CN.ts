@@ -49,6 +49,7 @@ const zhCN = {
       createBranch: "创建分支",
       duplicateTab: "复制终端标签",
       fetch: "拉取远程引用",
+      findInFiles: "在工作区中查找",
       focusDown: "向下聚焦面板",
       focusLeft: "向左聚焦面板",
       focusRight: "向右聚焦面板",
@@ -236,6 +237,15 @@ const zhCN = {
     searchFiles: "搜索文件...",
     searchFilesTitle: "搜索文件",
     searching: "搜索中...",
+  },
+  findInFiles: {
+    caseInsensitive: "Aa",
+    includePlaceholder: "包含：*.ts, *.tsx",
+    noResults: "无匹配",
+    prompt: "输入正则表达式以搜索工作区内容。",
+    searchPlaceholder: "在工作区中查找（正则）",
+    summary: "在 {files} 个文件中命中 {count} 处（已扫描 {scanned}）",
+    truncated: "结果被截断 — 请缩小模式或调整包含过滤。",
   },
   tasks: {
     commandPlaceholder: "运行命令",

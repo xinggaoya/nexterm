@@ -37,7 +37,8 @@ export type CommandId =
   | "terminal.focusLeft"
   | "terminal.focusRight"
   | "terminal.focusUp"
-  | "terminal.focusDown";
+  | "terminal.focusDown"
+  | "search.findInFiles";
 
 export type CommandCategory =
   | "editor"

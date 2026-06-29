@@ -91,6 +91,7 @@ const emit = defineEmits<{
   "open-file": [path: string, pin: boolean];
   "open-markdown-preview": [path: string];
   "open-in-terminal": [path: string];
+  "open-search-result": [path: string, line: number];
   "open-source-diff": [
     input: {
       repoRoot: string;
@@ -104,6 +105,7 @@ const emit = defineEmits<{
 }>();
 
 const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
+const fileExplorerRef = ref<InstanceType<typeof import("@/modules/explorer/FileExplorer.vue").default> | null>(null);
 const gitDecorations = ref<GitDecorationMap>(new Map());
 
 function isActiveKind(kind: Tab["kind"]): boolean {
@@ -129,7 +131,11 @@ function openGotoLine() {
   activeEditorPane.value?.openGotoLine();
 }
 
-defineExpose({ saveActiveEditor, openGotoLine });
+function openFindInFiles() {
+  fileExplorerRef.value?.setMode("content");
+}
+
+defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles });
 </script>
 
 <template>
@@ -289,6 +295,7 @@ defineExpose({ saveActiveEditor, openGotoLine });
           </template>
           <template #2>
             <FileExplorer
+              ref="fileExplorerRef"
               v-show="layout.rightPanelOpen.value"
               :root-path="workspaceRoot"
               :fs-event="workspaceFsEvent"
@@ -296,6 +303,7 @@ defineExpose({ saveActiveEditor, openGotoLine });
               @open-file="(path, pin) => emit('open-file', path, pin)"
               @open-markdown-preview="(path) => emit('open-markdown-preview', path)"
               @open-in-terminal="(path) => emit('open-in-terminal', path)"
+              @open-search-result="(path, line) => emit('open-search-result', path, line)"
             />
           </template>
         </NSplit>

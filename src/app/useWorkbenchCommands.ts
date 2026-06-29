@@ -52,6 +52,7 @@ type WorkbenchCommandOptions = {
   requestCloseTab: (id: number) => void;
   saveActiveEditor: () => void | Promise<void>;
   openGotoLine: () => void;
+  openFindInFiles: () => void;
   resolveGitRepo: (root: string) => Promise<GitRepoInfo | null>;
   gitStatus: (repoRoot: string) => Promise<GitStatusSnapshot>;
   gitStage: (repoRoot: string, paths: string[]) => Promise<void>;
@@ -390,6 +391,9 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
         options.tabs.focusDirection(tab.id, tab.activeLeafId, dir);
         return;
       }
+      case "search.findInFiles":
+        options.openFindInFiles();
+        return;
     }
   }
 
