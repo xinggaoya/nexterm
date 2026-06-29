@@ -1,88 +1,92 @@
-# 编辑器模块
+# 编辑器 editor
 
-## 概述
+## 1. 概述
 
-编辑器模块提供基于 CodeMirror 6 的代码编辑功能，支持语法高亮、自动补全、diff 视图等。
+编辑器模块基于 CodeMirror 6 提供文本编辑、diff、Markdown 实时预览，并通过 `tabsPinia` 注册为 `EditorTab`。文件 IO 委托给 `@/lib/native`，Git diff 数据来自 `source-control` 模块。
 
-## 主要组件
+## 2. 目录与文件
 
-### 前端组件
-
-- `src/modules/editor/` - 编辑器模块根目录
-- `EditorPane.vue` - 编辑器面板组件
-- `EditorView.vue` - CodeMirror 视图组件
-- `useEditor.ts` - 编辑器组合式函数
-- `editorTypes.ts` - 类型定义
-- `editorThemes.ts` - 主题配置
-- `editorLanguages.ts` - 语言支持
-
-### 后端模块
-
-- `src-tauri/src/modules/fs/` - 文件系统操作
-- `src-tauri/src/modules/git/` - Git 操作
-
-## 依赖关系
-
-### 前端依赖
-
-- `@codemirror/*` - CodeMirror 核心和扩展
-- `@uiw/codemirror-themes-*` - 主题包
-- `@/lib/native` - Tauri IPC 封装
-
-### 后端依赖
-
-- `fs` 模块 - 文件读写
-- `git` 模块 - Git 操作
-
-## 接口定义
-
-### Tauri 命令
-
-| 命令 | 参数 | 返回值 | 描述 |
-|------|------|--------|------|
-| `fs_read_file` | `path: String` | `FileContent` | 读取文件内容 |
-| `fs_write_file` | `path: String, content: String` | `void` | 写入文件内容 |
-| `git_diff_content` | `path: String` | `DiffContent` | 获取文件 diff |
-
-### 前端接口
-
-```typescript
-interface EditorInstance {
-  id: number
-  view: EditorView
-  state: EditorState
-  config: EditorConfig
-}
-
-interface EditorConfig {
-  language: string
-  theme: string
-  fontSize: number
-  tabSize: number
-  lineNumbers: boolean
-  wordWrap: boolean
-  vimMode: boolean
-}
+```
+src/modules/editor/
+  EditorPane.vue             # 文本编辑器
+  EditorToolbar.vue          # 顶部工具条
+  EditorStatusBar.vue        # 底部状态条（光标位置、语言、行尾）
+  DiffCodeMirror.vue         # 文本 diff 渲染
+  GitDiffPane.vue            # Git diff 标签
+  GitDiffStack.vue           # Git diff 栈容器
+  MarkdownEditorPreview.vue  # Markdown 编辑 + 预览
+  editorCommands.ts          # 注册到 commands
+  editorTypes.ts
+  index.ts
+  lib/
+    documentService.ts       # 文件读写（经 native）
+    diffCache.ts             # diff 缓存
+    diffStats.ts             # diff 行数统计
+    extensions.ts            # CodeMirror 扩展集合
+    languageResolver.ts      # 文件名 -> 语言包
+    themes.ts                # CodeMirror 主题
+    vim.ts                   # vim 模式封装
 ```
 
-## 配置选项
+## 3. 依赖
 
-### 编辑器配置
+### 3.1 内部
 
-```typescript
-interface EditorSettings {
-  fontSize: number
-  fontFamily: string
-  tabSize: number
-  insertSpaces: boolean
-  lineNumbers: boolean
-  wordWrap: 'off' | 'on' | 'wordWrapColumn'
-  minimap: boolean
-  autoSave: boolean
-  formatOnSave: boolean
-}
+- `@/lib/native` -- 文件读写
+- `@/lib/path` -- basename / dirname
+- `@/modules/settings/preferencesPinia` -- 字号 / 缩进 / 换行 / vim
+- `@/modules/tabs` -- EditorTab 状态
+- `@/modules/source-control` -- Git diff 数据源
+
+### 3.2 外部
+
+- `@codemirror/state` / `@codemirror/view` / `@codemirror/commands` / `@codemirror/search` / `@codemirror/lint` / `@codemirror/merge` / `@codemirror/lang-*`
+- `@uiw/codemirror-themes` / `@uiw/codemirror-theme-*`
+- `@replit/codemirror-vim`
+
+## 4. 数据契约
+
+### 4.1 公共类型
+
+```ts
+// editorTypes.ts
+type EditorLanguage = "typescript" | "rust" | "python" | "json" | ...;
 ```
 
-## 相关文档
+### 4.2 Tauri 命令（间接）
+
+不直接 invoke；通过 `@/lib/native` 调用 `fsReadFile` / `fsWriteFile` / `fsStat` 等。
+
+### 4.3 事件
+
+无独立事件。
+
+## 5. Pinia 状态
+
+无独立 store。最近文件、当前光标位置在 `documentService` 内部 ref；未保存标记在 `tabsPinia` 的 `EditorTab.dirty` 上。
+
+## 6. 关键算法
+
+- `languageResolver` 根据文件后缀选择 CodeMirror 语言包。
+- `extensions.ts` 组合基础扩展 + 语言 + 主题 + vim 模式。
+- `documentService` 包装 `native.fsReadFile/Write`，做 dirty 跟踪、自动保存标记。
+- `DiffCodeMirror` 用 `@codemirror/merge` 的 `MergeView` 渲染 diff。
+
+## 7. 配置项
+
+从 `preferencesPinia` 读：
+
+- `editorFontSize` / `editorTabSize` / `editorWordWrap` / `vimMode`
+- `editorTheme`（影响 `themes.ts` 的选择）
+
+## 8. 测试
+
+- `lib/documentService.test.ts` -- 文件 IO
+- `lib/languageResolver.test.ts` -- 语言解析
+- `EditorPane.vue.test.ts` / `GitDiffPane.vue.test.ts` / `diffStacks.vue.test.ts` -- 组件
+- `editorVueBoundary.test.ts` -- 边界
+- `diffRuntimeBoundary.test.ts` -- diff runtime 边界
+
+## 9. 相关文档
 
 - [详细设计](./detailed-design.md)

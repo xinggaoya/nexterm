@@ -1,66 +1,96 @@
-# 源代码控制模块
+# 源代码控制 source-control
 
-## 概述
+## 1. 概述
 
-源代码控制模块提供 Git 操作的 UI 界面，支持文件暂存、提交、分支管理等功能。
+源代码控制模块提供 Git 状态面板：变更列表、暂存 / 取消暂存、提交、分支工作流、远程同步。底层命令经 `native.git*`；FS watcher 事件触发自动刷新。
 
-## 主要组件
+## 2. 目录与文件
 
-### 前端组件
-
-- `src/modules/source-control/` - 模块根目录
-- `SourceControlPanel.vue` - 主面板组件
-- `SourceControlChangeList.vue` - 文件变更列表
-- `SourceControlCommitBox.vue` - 提交消息输入框
-- `SourceControlGitWorkflows.vue` - Git 工作流操作
-- `SourceControlToolbar.vue` - 工具栏
-- `useSourceControlState.ts` - 状态管理
-- `useSourceControlActions.ts` - Git 操作
-- `useSourceControlGitMetadata.ts` - Git 元数据
-
-## 依赖关系
-
-- `@/lib/native` - Tauri IPC 调用
-- `@/modules/i18n/translate` - 国际化
-- `@/modules/notifications/notificationCenter` - 通知系统
-- `@/modules/commands/types` - 命令类型定义
-
-## 接口定义
-
-### 数据类型
-
-```typescript
-type SourceControlFileEntry = {
-  key: string
-  group: SourceControlGroupId
-  path: string
-  originalPath: string | null
-  statusCode: string
-  statusLabel: string
-  statusKind: SourceControlStatusKind
-  diffMode: DiffMode
-  checkState: CheckState
-  staged: boolean
-  unstaged: boolean
-  untracked: boolean
-}
-
-type GitDecorationMap = Map<string, GitPathDecoration>
+```
+src/modules/source-control/
+  SourceControlPanel.vue            # 主面板
+  SourceControlChangeList.vue       # 变更列表
+  SourceControlChangeRow.vue        # 单行
+  SourceControlCommitBox.vue        # 提交输入
+  SourceControlGitWorkflows.vue     # fetch/pull/push 工作流
+  SourceControlToolbar.vue          # 工具条
+  sourceControlCommands.ts          # 注册到 commands
+  sourceControlModel.ts             # 数据模型
+  sourceControlFormat.ts            # 状态码 -> 标签
+  gitDecorations.ts                 # 装饰映射
+  useSourceControlState.ts          # 状态 composable
+  useSourceControlActions.ts        # 动作 composable
+  useSourceControlGitMetadata.ts    # 元数据 composable
+  index.ts
 ```
 
-### 事件
+## 3. 依赖
 
-- `decorationsChange` - Git 装饰变化
-- `openDiff` - 打开 diff 视图
-- `openHistory` - 打开历史视图
-- `committed` - 提交完成
+### 3.1 内部
 
-## 配置选项
+- `@/lib/native` -- `git*` 命令
+- `@/modules/explorer/lib/iconResolver` -- 文件图标
+- `@/modules/i18n/translate` -- 国际化
+- `@/modules/notifications/notificationCenter`
+- `@/modules/commands/types` -- CommandSpec
+- `@/modules/editor` -- 打开 diff 标签
+- `@/modules/tabs` -- GitDiffTab 状态
 
-- `rootPath: string | null` - 工作区根路径
-- `fsEvent: WorkspaceFsChangedEvent | null` - 文件系统事件
-- 自动刷新延迟：Git 事件 80ms，非 Git 事件 500ms
+## 4. 数据契约
 
-## 相关文档
+### 4.1 公共类型
+
+```ts
+type SourceControlFileEntry = {
+  key: string;
+  group: SourceControlGroupId;
+  path: string;
+  originalPath: string | null;
+  statusCode: string;
+  statusLabel: string;
+  statusKind: SourceControlStatusKind;
+  diffMode: DiffMode;
+  checkState: CheckState;
+  staged: boolean;
+  unstaged: boolean;
+  untracked: boolean;
+};
+
+type GitDecorationMap = Map<string, GitPathDecoration>;
+type SourceControlGroupId = "merge" | "index" | "working" | "untracked";
+```
+
+### 4.2 Tauri 命令
+
+`gitResolveRepo` / `gitPanelSnapshot` / `gitStatus` / `gitDiff` / `gitDiffContent` / `gitStage` / `gitUnstage` / `gitDiscard` / `gitCommit` / `gitFetch` / `gitPullFfOnly` / `gitPush` / `gitBranchList` / `gitCheckoutBranch` / `gitCreateBranch` / `gitStashList` / `gitStashPush` / `gitStashPop` / `gitStashDrop`。
+
+### 4.3 事件
+
+- 内部 `decorationsChange` / `openDiff` / `openHistory` / `committed`，由 composable 之间共享。
+- 监听 `nexterm://workspace-fs-changed` 触发自动刷新。
+
+## 5. Pinia 状态
+
+无独立 store。状态由 `useSourceControlState` composable 维护（组件作用域 ref），跨组件通过 props 传递或在 `MainApp` 中提升。
+
+## 6. 关键算法
+
+- `useSourceControlState` 拉 `gitPanelSnapshot` 拿到全部数据后，按 `SourceControlGroupId` 分组。
+- 自动刷新延迟：Git 事件 80ms，非 Git 事件 500ms（防抖）。
+- 装饰（`gitDecorations`）根据 status code 映射到 `{color, letter, tooltip}`。
+
+## 7. 配置项
+
+- `rootPath: string | null` -- 工作区根
+- 刷新延迟（内部常量）
+
+## 8. 测试
+
+- `gitDecorations.test.ts` / `sourceControlFormat.test.ts` / `sourceControlModel.test.ts`
+- `useSourceControlState.test.ts` / `useSourceControlActions.test.ts`
+- `SourceControlPanel.vue.test.ts`（main 上有 1 个预存在失败）
+- `sourceControlVueBoundary.test.ts`
+
+## 9. 相关文档
 
 - [详细设计](./detailed-design.md)

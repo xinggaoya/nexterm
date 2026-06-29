@@ -1,46 +1,72 @@
-# 国际化模块
+# 国际化 i18n
 
-## 概述
+## 1. 概述
 
-国际化模块提供多语言支持，基于 vue-i18n。
+i18n 模块基于 vue-i18n 9，提供 `zh-CN` / `en-US` 两种语言。`system` 偏好会根据 `navigator.languages` 自动解析。用户切换时同步更新 Naive UI 的 locale。
 
-## 主要组件
+## 2. 目录与文件
 
-### 前端组件
-
-- `src/modules/i18n/` - 模块根目录
-- `index.ts` - i18n 实例
-- `translate.ts` - 翻译函数
-- `types.ts` - 类型定义
-- `naive.ts` - Naive UI 适配
-- `locales/en-US.ts` - 英文翻译
-- `locales/zh-CN.ts` - 中文翻译
-
-## 依赖关系
-
-- `vue-i18n` - 国际化框架
-- Vue - 组件系统
-
-## 接口定义
-
-### 类型
-
-```typescript
-type LanguagePref = "system" | "zh-CN" | "en-US"
-type AppLocale = "zh-CN" | "en-US"
-
-function t(key: string, params?: Record<string, unknown>): string
-function currentLocale(): string
-function applyLanguagePreference(preference: LanguagePref): Promise<AppLocale>
-function resolveAppLocale(preference: LanguagePref, systemLanguages: string[]): AppLocale
+```
+src/modules/i18n/
+  index.ts              # i18n 实例 + applyLanguagePreference
+  translate.ts          # t() 包装
+  types.ts              # LanguagePref / AppLocale
+  naive.ts              # Naive UI locale 适配
+  locales/
+    zh-CN.ts
+    en-US.ts
 ```
 
-## 配置选项
+## 3. 依赖
 
-- 支持的语言：简体中文、英文
-- 系统语言检测：通过 `navigator.languages`
-- 中文检测：`zh` 或 `zh-*` 前缀
+### 3.1 内部
 
-## 相关文档
+- `vue-i18n` -- i18n 框架
+- `naive-ui` -- locale 适配
+- `@/modules/settings/preferencesPinia` -- `language`
+
+## 4. 数据契约
+
+### 4.1 公共类型
+
+```ts
+type LanguagePref = "system" | "zh-CN" | "en-US";
+type AppLocale = "zh-CN" | "en-US";
+
+interface LanguageConfig {
+  label: string;
+  value: AppLocale;
+  systemMatch: string[];   // 匹配 navigator.languages 的前缀
+}
+```
+
+### 4.2 Tauri 命令
+
+不直接 invoke。
+
+### 4.3 事件
+
+无；通过 `preferencesPinia.language` 触发。
+
+## 5. Pinia 状态
+
+无独立 store。
+
+## 6. 关键算法
+
+- `applyLanguagePreference(pref)` 解析 `system` -> `AppLocale`，再调 `i18n.global.locale.value`。
+- `resolveAppLocale(pref, systemLanguages)` 支持 `zh` / `zh-*` 前缀匹配。
+
+## 7. 配置项
+
+- 默认 `LanguagePref` = "system"
+- 默认 fallback locale：`en-US`
+
+## 8. 测试
+
+- `locale.test.ts` -- 语言解析
+- `src/lib/translationTraces.test.ts` -- 边界（无 React 命名）
+
+## 9. 相关文档
 
 - [详细设计](./detailed-design.md)

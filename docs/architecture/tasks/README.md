@@ -1,68 +1,94 @@
-# 任务管理模块
+# 任务管理 tasks
 
-## 概述
+## 1. 概述
 
-任务管理模块负责发现、执行和管理项目任务。
+任务模块负责发现工作区中的"可运行命令"（pnpm/yarn/bun/npm scripts、cargo、make targets）并执行它们。运行实例由 `useTaskConsoleController` 的 `createTaskRunStore` 工厂创建。
 
-## 主要组件
+## 2. 目录与文件
 
-### 前端组件
+```
+src/modules/tasks/
+  TaskConsole.vue
+  taskDiscovery.ts        # 任务发现
+  taskRunStore.ts         # 任务运行实例 store（工厂）
+  taskTypes.ts
+  taskCommands.ts         # 注册到 commands
+  taskConsoleTypes.ts
+  index.ts
+```
 
-- `src/modules/tasks/` - 模块根目录
-- `TaskConsole.vue` - 任务控制台
-- `taskDiscovery.ts` - 任务自动发现
-- `taskRunStore.ts` - 任务运行状态
-- `taskCommands.ts` - 任务命令
-- `taskTypes.ts` - 任务类型
+## 3. 依赖
 
-## 依赖关系
+### 3.1 内部
 
-- `@/lib/native` - Shell 命令调用
-- `@/modules/commands/types` - 命令规范
+- `@/lib/native` -- `shellBgSpawn` / `shellBgLogs` / `shellBgKill` / `shellBgList`
+- `@/modules/commands/types` -- CommandSpec
+- `@/modules/notifications/notificationCenter`
 
-## 接口定义
+## 4. 数据契约
 
-### 数据类型
+### 4.1 公共类型
 
-```typescript
+```ts
 type WorkspaceTask = {
-  id: string
-  title: string
-  command: string
-  source: "package" | "cargo" | "make"
-  detail: string
-}
+  id: string;
+  title: string;
+  command: string;
+  source: "package" | "cargo" | "make";
+  detail: string;
+};
 
 type TaskRun = {
-  id: number
-  handle: number | null
-  groupId: number | null
-  task: WorkspaceTask | null
-  title: string
-  command: string
-  cwd: string
-  status: TaskRunStatus
-  exitCode: number | null
-  startedAtMs: number
-  log: string
-  logOffset: number
-  droppedBytes: number
-  error: string | null
-}
+  id: number;
+  handle: number | null;
+  groupId: number | null;
+  task: WorkspaceTask | null;
+  title: string;
+  command: string;
+  cwd: string;
+  status: TaskRunStatus;
+  exitCode: number | null;
+  startedAtMs: number;
+  log: string;
+  logOffset: number;
+  droppedBytes: number;
+  error: string | null;
+};
 ```
 
-### 工厂函数
+### 4.2 Tauri 命令
 
-```typescript
-createTaskRunStore(options?: TaskRunStoreOptions): TaskRunStore
-```
+| 命令 | 说明 |
+|------|------|
+| `shell_bg_spawn` | 启动后台进程 |
+| `shell_bg_logs` | 增量拉日志 |
+| `shell_bg_kill` | 终止 |
+| `shell_bg_list` | 列所有 |
 
-## 配置选项
+### 4.3 事件
 
-- `autoPoll: boolean` (默认 true) - 自动轮询
-- `pollIntervalMs: number` (默认 800ms) - 轮询间隔
-- 支持的任务源：pnpm/yarn/bun/npm scripts, cargo, make targets
+无；用轮询 + `shell_bg_logs` 拉日志。
 
-## 相关文档
+## 5. Pinia 状态
+
+`createTaskRunStore(options?)` 工厂：每个调用方各自 `useXxx()`。可配置 `autoPoll` / `pollIntervalMs`。
+
+## 6. 关键算法
+
+- `taskDiscovery` 读 `package.json` / `Cargo.toml` / `Makefile`，把脚本 / 目标转成 `WorkspaceTask`。
+- `taskRunStore` 用 `setInterval` 周期调 `shell_bg_logs`，合并到本地 `log`，避免整段重传。
+- 退出时调 `shell_bg_kill` + 清轮询。
+
+## 7. 配置项
+
+- `autoPoll: boolean`（默认 `true`）
+- `pollIntervalMs: number`（默认 800）
+
+## 8. 测试
+
+- `taskDiscovery.test.ts` / `taskRunStore.test.ts`
+- `TaskConsole.vue.test.ts`
+
+## 9. 相关文档
 
 - [详细设计](./detailed-design.md)
