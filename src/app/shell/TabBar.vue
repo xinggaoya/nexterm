@@ -14,12 +14,16 @@ import { t } from "@/modules/i18n/translate";
 import type { TabDropPlacement } from "@/modules/tabs/tabsReorder";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import type { SplitDir } from "@/modules/terminal/lib/panes";
+import TabContextMenu, {
+  type TabContextMenuTarget,
+} from "./TabContextMenu.vue";
 
 const props = defineProps<{
   tabs: Tab[];
   activeId: number;
   canSplit: boolean;
   showActions: boolean;
+  workspaceRoot?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -29,6 +33,15 @@ const emit = defineEmits<{
   newTab: [];
   reorderTab: [sourceId: number, targetId: number, placement: TabDropPlacement];
   splitPane: [dir: SplitDir];
+  closeOthers: [id: number];
+  closeToRight: [id: number];
+  closeAll: [];
+  duplicateTerminal: [tabId: number];
+  renameTab: [tabId: number, title: string];
+  requestRename: [tabId: number];
+  copyPath: [path: string];
+  copyRelativePath: [rootPath: string, path: string];
+  moveToNewWindow: [tabId: number];
 }>();
 
 
@@ -182,6 +195,27 @@ function pinPreviewTab(tab: Tab) {
   if (tab.kind === "editor" && tab.preview) emit("pinTab", tab.id);
 }
 
+// --- Right-click context menu ---
+
+const tabContextMenu = ref<TabContextMenuTarget | null>(null);
+
+function handleTabContextMenu(event: MouseEvent, tab: Tab) {
+  event.preventDefault();
+  const idx = props.tabs.findIndex((t) => t.id === tab.id);
+  if (idx < 0) return;
+  tabContextMenu.value = {
+    tab,
+    x: event.clientX,
+    y: event.clientY,
+    index: idx,
+    total: props.tabs.length,
+  };
+}
+
+function closeTabContextMenu() {
+  tabContextMenu.value = null;
+}
+
 onBeforeUnmount(removePointerListeners);
 
 // --- Split dropdown ---
@@ -226,6 +260,7 @@ function handleSplitSelect(key: string | number) {
           ]"
           @click="handleTabClick(tab)"
           @dblclick="pinPreviewTab(tab)"
+          @contextmenu.prevent="handleTabContextMenu($event, tab)"
           @pointerdown="handleTabPointerDown($event, tab)"
         >
           <span class="flex min-w-0 flex-1 items-center gap-1.5 truncate">
@@ -314,5 +349,22 @@ function handleSplitSelect(key: string | number) {
       />
       <span class="min-w-0 truncate">{{ tabLabel(dragGhost.tab) }}</span>
     </div>
+
+    <TabContextMenu
+      :target="tabContextMenu"
+      :root-path="workspaceRoot ?? null"
+      @close="closeTabContextMenu"
+      @close-tab="(id) => emit('closeTab', id)"
+      @close-others="(id) => emit('closeOthers', id)"
+      @close-to-right="(id) => emit('closeToRight', id)"
+      @close-all="emit('closeAll')"
+      @duplicate-terminal="(id) => emit('duplicateTerminal', id)"
+      @rename-tab="(id, title) => emit('renameTab', id, title)"
+      @request-rename="(id) => emit('requestRename', id)"
+      @pin-editor="(id) => emit('pinTab', id)"
+      @copy-path="(path) => emit('copyPath', path)"
+      @copy-relative-path="(root, path) => emit('copyRelativePath', root, path)"
+      @move-to-new-window="(id) => emit('moveToNewWindow', id)"
+    />
   </div>
 </template>

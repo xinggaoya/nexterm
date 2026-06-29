@@ -389,4 +389,83 @@ describe("tabs pinia store", () => {
       terminalTitle: "left cli",
     });
   });
+
+  it("closeOthers keeps only the target tab and disposes the rest", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init();
+    const a = tabs.newTab("/a");
+    tabs.newTab("/b");
+
+    tabs.closeOthers(a);
+
+    expect(tabs.tabs.map((t) => t.id)).toEqual([a]);
+    expect(tabs.activeId).toBe(a);
+    expect(disposeTerminalSession).toHaveBeenCalled();
+  });
+
+  it("closeToRight drops tabs to the right of the target", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init();
+    const a = tabs.newTab("/a");
+    const b = tabs.newTab("/b");
+    const c = tabs.newTab("/c");
+
+    tabs.closeToRight(b);
+
+    expect(tabs.tabs.map((t) => t.id)).toEqual([1, a, b]);
+    expect(disposeTerminalSession).toHaveBeenCalledWith(c + 1);
+  });
+
+  it("closeAll resets to a single fresh terminal tab", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init("/repo");
+    tabs.newTab("/a");
+    tabs.newTab("/b");
+
+    tabs.closeAll();
+
+    expect(tabs.tabs).toHaveLength(1);
+    expect(tabs.tabs[0].kind).toBe("terminal");
+    expect(tabs.activeId).toBe(tabs.tabs[0].id);
+  });
+
+  it("cycleActive moves the active tab forward and backward", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init();
+    const a = tabs.newTab("/a");
+    const b = tabs.newTab("/b");
+
+    // active is now b (the most-recently-added tab)
+    expect(tabs.activeId).toBe(b);
+    tabs.cycleActive(1);
+    expect(tabs.activeId).toBe(1);
+    tabs.cycleActive(1);
+    expect(tabs.activeId).toBe(a);
+    tabs.cycleActive(-1);
+    expect(tabs.activeId).toBe(1);
+    tabs.cycleActive(-1);
+    expect(tabs.activeId).toBe(b);
+  });
+
+  it("restoreClosed re-adds a closed terminal tab with fresh ids", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init("/repo");
+    const a = tabs.newTab("/a");
+    const b = tabs.newTab("/b");
+
+    tabs.closeTab(b);
+    expect(tabs.tabs.map((t) => t.id)).toEqual([1, a]);
+
+    const restored = tabs.restoreClosed();
+    expect(restored).not.toBeNull();
+    expect(restored?.kind).toBe("terminal");
+    expect(tabs.tabs.map((t) => t.id)).toContain(restored!.id);
+    expect(tabs.activeId).toBe(restored!.id);
+  });
+
+  it("restoreClosed returns null when the stack is empty", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init();
+    expect(tabs.restoreClosed()).toBeNull();
+  });
 });

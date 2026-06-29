@@ -335,6 +335,45 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
       case "git.stash.pop":
         await stashPopFromCommand();
         return;
+      case "tab.close": {
+        const tab = options.activeTab.value;
+        if (!tab) return;
+        options.requestCloseTab(tab.id);
+        return;
+      }
+      case "tab.closeOthers": {
+        const tab = options.activeTab.value;
+        if (!tab) return;
+        options.tabs.closeOthers(tab.id);
+        return;
+      }
+      case "tab.closeToRight": {
+        const tab = options.activeTab.value;
+        if (!tab) return;
+        options.tabs.closeToRight(tab.id);
+        return;
+      }
+      case "tab.closeAll":
+        options.tabs.closeAll();
+        return;
+      case "tab.next":
+        options.tabs.cycleActive(1);
+        return;
+      case "tab.previous":
+        options.tabs.cycleActive(-1);
+        return;
+      case "tab.duplicate": {
+        const tab = options.activeTab.value;
+        if (!tab || tab.kind !== "terminal") return;
+        options.tabs.newTab(tab.cwd);
+        return;
+      }
+      case "tab.pin": {
+        const tab = options.activeTab.value;
+        if (!tab || tab.kind !== "editor" || !tab.preview) return;
+        options.tabs.pinTab(tab.id);
+        return;
+      }
     }
   }
 

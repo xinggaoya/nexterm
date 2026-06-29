@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
+import { ref, toRaw } from "vue";
 import {
   findLeafCwd,
   findLeafTitle,
@@ -72,6 +72,8 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
   const tabs = ref<Tab[]>([]);
   const activeId = ref(1);
   const nextId = ref(3);
+  const closedStack = ref<Tab[]>([]);
+  const CLOSED_STACK_MAX = 20;
 
   function init(cwd?: string): void {
     if (initialized.value) return;
@@ -371,6 +373,13 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     const idx = tabs.value.findIndex((tab) => tab.id === id);
     if (idx < 0) return;
     const target = tabs.value[idx];
+    // Push a deep-cloned snapshot onto the undo stack BEFORE the tab is
+    // removed. structuredClone rejects Vue's reactive proxy wrappers, so
+    // we strip the proxy via toRaw first. The clone keeps the terminal
+    // paneTree intact so restore can respawn sessions later (the pty
+    // itself is dropped — see comment on restoreClosed).
+    const snapshot = JSON.parse(JSON.stringify(toRaw(target))) as Tab;
+    closedStack.value = [...closedStack.value, snapshot].slice(-CLOSED_STACK_MAX);
     const toDispose =
       target.kind === "terminal" ? leafIds(target.paneTree) : [];
     const next = tabs.value.filter((tab) => tab.id !== id);
@@ -379,6 +388,102 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
       activeId.value = next[Math.max(0, idx - 1)]?.id ?? next[0]?.id ?? id;
     }
     for (const leafId of toDispose) disposeTerminalSession(leafId);
+  }
+
+  function closeOthers(id: number): void {
+    if (tabs.value.length <= 1) return;
+    const keep = tabs.value.find((tab) => tab.id === id);
+    if (!keep) return;
+    for (const tab of tabs.value) {
+      if (tab.id === id) continue;
+      if (tab.kind === "terminal") {
+        for (const leafId of leafIds(tab.paneTree)) {
+          disposeTerminalSession(leafId);
+        }
+      }
+    }
+    tabs.value = [keep];
+    activeId.value = id;
+  }
+
+  function closeToRight(id: number): void {
+    const idx = tabs.value.findIndex((tab) => tab.id === id);
+    if (idx < 0 || idx >= tabs.value.length - 1) return;
+    const toClose = tabs.value.slice(idx + 1);
+    for (const tab of toClose) {
+      if (tab.kind === "terminal") {
+        for (const leafId of leafIds(tab.paneTree)) {
+          disposeTerminalSession(leafId);
+        }
+      }
+    }
+    tabs.value = tabs.value.slice(0, idx + 1);
+    if (!tabs.value.some((tab) => tab.id === activeId.value)) {
+      activeId.value = id;
+    }
+  }
+
+  function closeAll(): void {
+    if (tabs.value.length === 0) return;
+    for (const tab of tabs.value) {
+      if (tab.kind === "terminal") {
+        for (const leafId of leafIds(tab.paneTree)) {
+          disposeTerminalSession(leafId);
+        }
+      }
+    }
+    // Reset to a single fresh terminal tab so the workbench always has
+    // somewhere to put the next new tab.
+    const tabId = nextId.value++;
+    const leafId = nextId.value++;
+    const freshTab: TerminalTab = {
+      id: tabId,
+      kind: "terminal",
+      title: "shell",
+      paneTree: { kind: "leaf", id: leafId },
+      activeLeafId: leafId,
+    };
+    tabs.value = [freshTab];
+    activeId.value = tabId;
+  }
+
+  function cycleActive(direction: 1 | -1): void {
+    if (tabs.value.length <= 1) return;
+    const idx = tabs.value.findIndex((tab) => tab.id === activeId.value);
+    if (idx < 0) {
+      activeId.value = tabs.value[0].id;
+      return;
+    }
+    const next = (idx + direction + tabs.value.length) % tabs.value.length;
+    activeId.value = tabs.value[next].id;
+  }
+
+  function restoreClosed(): Tab | null {
+    const restored = closedStack.value[closedStack.value.length - 1];
+    if (!restored) return null;
+    closedStack.value = closedStack.value.slice(0, -1);
+    // Allocate fresh ids to avoid colliding with any still-open tabs.
+    const reId = (oldId: number): number => {
+      if (tabs.value.some((t) => t.id === oldId)) return nextId.value++;
+      return oldId;
+    };
+    const clone = JSON.parse(JSON.stringify(restored)) as Tab;
+    clone.id = reId(clone.id);
+    if (clone.kind === "terminal") {
+      const visit = (node: typeof clone.paneTree) => {
+        if (node.kind === "leaf") {
+          node.id = reId(node.id);
+        } else {
+          node.id = reId(node.id);
+          for (const child of node.children) visit(child);
+        }
+      };
+      visit(clone.paneTree);
+      clone.activeLeafId = reId(clone.activeLeafId);
+    }
+    tabs.value = [...tabs.value, clone];
+    activeId.value = clone.id;
+    return clone;
   }
 
   function focusPane(tabId: number, leafId: number): void {
@@ -526,6 +631,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     tabs,
     activeId,
     nextId,
+    closedStack,
     init,
     resetWorkspace,
     setActiveId,
@@ -540,6 +646,11 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     openCommitHistoryTab,
     openCommitFileDiffTab,
     closeTab,
+    closeOthers,
+    closeToRight,
+    closeAll,
+    cycleActive,
+    restoreClosed,
     focusPane,
     setLeafCwd,
     setLeafTitle,

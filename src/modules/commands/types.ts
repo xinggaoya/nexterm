@@ -24,7 +24,15 @@ export type CommandId =
   | "git.branch.checkout"
   | "git.branch.create"
   | "git.stash.save"
-  | "git.stash.pop";
+  | "git.stash.pop"
+  | "tab.close"
+  | "tab.closeOthers"
+  | "tab.closeToRight"
+  | "tab.closeAll"
+  | "tab.next"
+  | "tab.previous"
+  | "tab.duplicate"
+  | "tab.pin";
 
 export type CommandCategory =
   | "editor"
@@ -34,7 +42,8 @@ export type CommandCategory =
   | "panel"
   | "settings"
   | "tasks"
-  | "git";
+  | "git"
+  | "tab";
 
 export type CommandSpec = {
   id: CommandId;
