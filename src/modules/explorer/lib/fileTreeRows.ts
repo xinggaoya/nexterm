@@ -144,6 +144,13 @@ export type FileTreeSnapshot = {
  * find the row range occupied by its subtree, rebuild just that fragment,
  * and splice it in place.
  *
+ * The root path is special-cased: it never appears in `entryIndexByPath`
+ * (because it isn't a child of any other row), so its children are patched
+ * by doing a full `buildFileTreeRows` and replacing the rows wholesale.
+ * Without this branch a silent refresh of the root directory — which is
+ * exactly what `FileExplorer.scheduleTreeRefresh` does whenever a file
+ * event bubbles up to the workspace root — is a silent no-op.
+ *
  * Returns the updated snapshot. If none of the changedPaths are visible,
  * returns the same rows array unchanged.
  */
@@ -151,6 +158,7 @@ export function updateFileTreeRows(
   prev: FileTreeSnapshot,
   changedPaths: string[],
   params: {
+    rootPath: string;
     nodes: FileTreeState;
     expanded: Set<string>;
     pendingCreate: PendingCreate | null;
@@ -173,6 +181,24 @@ export function updateFileTreeRows(
   const sorted = [...changedPaths].sort((a, b) => b.length - a.length);
 
   for (const dirPath of sorted) {
+    // Root refresh: rebuild the entire visible tree. `entryIndexByPath`
+    // is also reset so any later subtree patches in this call look up
+    // their dirIdx in the freshly rebuilt index.
+    if (dirPath === params.rootPath) {
+      const fresh = buildFileTreeRows({
+        rootPath: params.rootPath,
+        nodes: params.nodes,
+        expanded: params.expanded,
+        pendingCreate: params.pendingCreate,
+        renaming: params.renaming,
+        gitDecorations: params.gitDecorations,
+      });
+      mutated = true;
+      rows = fresh.rows;
+      entryIndexByPath = fresh.entryIndexByPath;
+      continue;
+    }
+
     // Materialize the working copy of the index lazily, on the first
     // splice that needs to mutate it. `maybeEntryIndexByPath` is the
     // original Map from `prev`; once we've cloned it the variable

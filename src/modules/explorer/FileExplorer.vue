@@ -36,6 +36,7 @@ import {
   joinPath,
   readFileTreeDir,
   renameFileTreePath,
+  type DirEntry,
 } from "./lib/fileTreeService";
 import { folderIconUrl } from "./lib/iconResolver";
 
@@ -116,6 +117,7 @@ function patchTreeSnapshot(changedPaths: string[]) {
     return;
   }
   const result = updateFileTreeRows(treeSnapshot.value, changedPaths, {
+    rootPath: props.rootPath,
     nodes,
     expanded,
     pendingCreate: pendingCreate.value,
@@ -193,7 +195,18 @@ async function loadChildren(path: string, options: LoadChildrenOptions = {}) {
     const entries = await readFileTreeDir(path, prefs.showHidden);
     nodes[path] = { status: "loaded", entries };
     if (silent) {
-      patchTreeSnapshot([path]);
+      // Pick patch vs rebuild based on whether the membership of this
+      // directory changed. mtime/size-only changes still take the fast
+      // patch path; add/remove/rename forces a full rebuild so any
+      // newly visible entry is rendered with the current selection,
+      // rename state, and pending-create state — none of which the
+      // incremental patch path can synthesize reliably for entries
+      // that didn't exist before.
+      if (entriesMembershipChanged(current?.entries, entries)) {
+        rebuildTreeSnapshot();
+      } else {
+        patchTreeSnapshot([path]);
+      }
     } else {
       rebuildTreeSnapshot();
     }
@@ -209,8 +222,44 @@ async function loadChildren(path: string, options: LoadChildrenOptions = {}) {
   }
 }
 
+// Compare the membership (name + kind) of two `readFileTreeDir` snapshots.
+// We intentionally ignore size and mtime here: a content-only edit doesn't
+// need a rebuild, but a brand-new file or a removed one does.
+function entriesMembershipChanged(
+  prev: DirEntry[] | undefined,
+  next: DirEntry[],
+): boolean {
+  if (!prev) return true;
+  if (prev.length !== next.length) return true;
+  const prevKeys = new Set<string>();
+  for (const entry of prev) prevKeys.add(entryMembershipKey(entry));
+  for (const entry of next) {
+    if (!prevKeys.has(entryMembershipKey(entry))) return true;
+  }
+  return false;
+}
+
+function entryMembershipKey(entry: DirEntry): string {
+  return `${entry.kind}:${entry.name}`;
+}
+
 function refreshPath(path: string | null = props.rootPath) {
-  if (path) void loadChildren(path);
+  if (!path) return;
+  const targets = Object.entries(nodes)
+    .filter(([, state]) => isRefreshableState(state))
+    .map(([p]) => p);
+  // Cover the case where nothing has been loaded yet (e.g. the user
+  // mashes refresh before the initial load resolves).
+  if (targets.length === 0) {
+    void loadChildren(path);
+    return;
+  }
+  // Deepest first so the in-flight dedupe in `loadChildren` coalesces
+  // ancestor refreshes with child refreshes instead of fighting them.
+  targets.sort((a, b) => b.length - a.length);
+  for (const target of targets) {
+    void loadChildren(target, { silent: true });
+  }
 }
 
 function isSameRoot(a: string | null, b: string | null): boolean {
