@@ -120,10 +120,16 @@ pub(super) fn workspace_fs_event_from_wsl_json_line(
     let git_related = has_git_repo
         || helper_event.git_related
         || paths.iter().any(|path| is_wsl_git_path(path));
+    // The WSL helper binary doesn't currently report per-path kinds, so
+    // we conservatively emit `Modify`. The file explorer already upgrades
+    // silent refreshes to a full rebuild when the directory's membership
+    // actually changes, so this default can't mask a real create/delete.
+    let kinds = vec![super::events::FsChangeKind::Modify; paths.len()];
     Ok(Some(WorkspaceFsChangedEvent {
         root_path: normalize_frontend_path(root_path),
         paths,
         git_related,
+        kinds,
     }))
 }
 
@@ -321,6 +327,7 @@ fn run_fallback_polling(
                     root_path: root_path.clone(),
                     paths: Vec::new(),
                     git_related: true,
+                    kinds: Vec::new(),
                 };
                 if event_tx.send(event).is_err() {
                     break;

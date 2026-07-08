@@ -1,4 +1,4 @@
-mod events;
+pub(crate) mod events;
 mod local;
 mod polling;
 mod wsl;
@@ -13,7 +13,7 @@ use crate::modules::workspace::{
     normalize_host_path, resolve_path, WorkspaceEnv, WorkspaceRegistry,
 };
 
-use self::events::{normalize_frontend_path, run_event_batcher, WorkspaceFsChangedEvent};
+use self::events::{normalize_frontend_path, run_event_batcher, FsChangeKind, WorkspaceFsChangedEvent};
 
 #[cfg(test)]
 use self::events::{
@@ -88,7 +88,7 @@ pub fn fs_watch_workspace(
         .name("nexterm-fs-event-batcher".into())
         .spawn(move || run_event_batcher(batch_app, event_rx))
         .map_err(|e| format!("spawn workspace event batcher: {e}"))?;
-    let source = start_refresh_source(&context, event_tx.clone());
+    let source = start_refresh_source(&app, &context, event_tx.clone());
 
     let mut active = mutex_lock(&state.active, "fs watcher state")?;
     *active = Some(ActiveWatcher {
@@ -114,11 +114,28 @@ pub fn fs_unwatch_workspace(state: State<'_, FsWatcherState>) -> Result<(), Stri
 /// and source-control panel update immediately without depending on the
 /// OS-level `notify` round-trip. Falls back to a no-op if no watcher is
 /// active for the given root.
+///
+/// `kinds` is a parallel vector to `paths`; when omitted, callers that
+/// don't care about per-path kind default every entry to `Modify`.
 pub fn emit_workspace_fs_changed(
     state: &FsWatcherState,
     root_path: &str,
     paths: Vec<String>,
     git_related: bool,
+) {
+    emit_workspace_fs_changed_with_kinds(state, root_path, paths, git_related, None);
+}
+
+/// Like [`emit_workspace_fs_changed`] but allows the caller to pin the
+/// per-path `FsChangeKind`. Internal `fs_create_*`/`fs_rename`/`fs_delete`
+/// commands use this to advertise Create/Delete to the file explorer so
+/// its silent refresh can decide to rebuild instead of patch.
+pub fn emit_workspace_fs_changed_with_kinds(
+    state: &FsWatcherState,
+    root_path: &str,
+    paths: Vec<String>,
+    git_related: bool,
+    kinds: Option<Vec<FsChangeKind>>,
 ) {
     let active = match mutex_lock(&state.active, "fs watcher state") {
         Ok(active) => active,
@@ -133,15 +150,18 @@ pub fn emit_workspace_fs_changed(
     let Some(event_tx) = active.event_tx.as_ref() else {
         return;
     };
+    let mut sorted_paths = paths;
+    sorted_paths.sort();
+    sorted_paths.dedup();
+    let kinds = match kinds {
+        Some(k) => k,
+        None => vec![FsChangeKind::Modify; sorted_paths.len()],
+    };
     let event = WorkspaceFsChangedEvent {
         root_path: normalize_frontend_path(root_path),
-        paths: {
-            let mut paths = paths;
-            paths.sort();
-            paths.dedup();
-            paths
-        },
+        paths: sorted_paths,
         git_related,
+        kinds,
     };
     if event_tx.send(event).is_err() {
         log::debug!("workspace refresh batch receiver closed during proactive emit");
@@ -200,6 +220,7 @@ fn detect_git_repo(
 }
 
 fn start_refresh_source(
+    app: &AppHandle,
     context: &WorkspaceRefreshContext,
     event_tx: mpsc::Sender<WorkspaceFsChangedEvent>,
 ) -> ActiveRefreshSource {
@@ -215,6 +236,7 @@ fn start_refresh_source(
                 ));
             };
             match local::start_local_watcher(
+                app.clone(),
                 context.root_path.clone(),
                 local_root,
                 has_git_repo,
@@ -232,6 +254,12 @@ fn start_refresh_source(
             }
         }
         WorkspaceEnv::Wsl { distro } => {
+            // The WSL helper doesn't surface per-path change kinds today, so
+            // it only feeds the aggregated `fsEvent` channel. The file
+            // explorer still works on WSL thanks to the aggregated
+            // batch's `kinds: vec![Modify]` default — see
+            // `workspace_fs_event_from_wsl_json_line`.
+            let _ = app;
             match wsl::start_wsl_helper(distro, context.root_path.clone(), has_git_repo, event_tx.clone()) {
                 Ok(source) => ActiveRefreshSource::Wsl(source),
                 Err(error) => {
@@ -343,6 +371,7 @@ mod tests {
                 "/tmp/repo/src/a.rs".to_string(),
             ],
             git_related: false,
+            kinds: vec![FsChangeKind::Modify; 2],
         });
         batch.add(WorkspaceFsChangedEvent {
             root_path: "/tmp/repo".to_string(),
@@ -351,6 +380,7 @@ mod tests {
                 "/tmp/repo/.git/index".to_string(),
             ],
             git_related: true,
+            kinds: vec![FsChangeKind::Modify, FsChangeKind::Modify],
         });
 
         let event = batch.into_event().expect("batch should contain paths");
@@ -365,6 +395,7 @@ mod tests {
             ]
         );
         assert!(event.git_related);
+        assert_eq!(event.kinds.len(), event.paths.len());
     }
 
     #[test]
@@ -383,18 +414,20 @@ mod tests {
                 .map(|idx| format!("/tmp/repo/generated/{idx}.ts"))
                 .collect(),
             git_related: false,
+            kinds: vec![FsChangeKind::Modify; MAX_BATCH_EVENT_PATHS + 1],
         });
 
         let event = batch.into_event().expect("root refresh should emit");
 
         assert_eq!(event.root_path, "/tmp/repo");
         assert!(event.paths.is_empty());
+        assert!(event.kinds.is_empty());
         assert!(!event.git_related);
     }
 
     #[test]
     fn notify_events_without_paths_become_root_refreshes() {
-        let event = workspace_fs_event_from_notify(
+        let broken_down = workspace_fs_event_from_notify(
             "/tmp/repo",
             Path::new("/tmp/repo"),
             false,
@@ -402,13 +435,14 @@ mod tests {
         )
         .expect("notify event should become a workspace event");
 
-        assert_eq!(event.root_path, "/tmp/repo");
-        assert!(event.paths.is_empty());
+        assert_eq!(broken_down.batch.root_path, "/tmp/repo");
+        assert!(broken_down.batch.paths.is_empty());
+        assert!(broken_down.file_changes.is_empty());
     }
 
     #[test]
     fn non_git_paths_marked_git_related_when_workspace_is_a_repo() {
-        let event = workspace_fs_event_from_notify(
+        let broken_down = workspace_fs_event_from_notify(
             "/tmp/repo",
             Path::new("/tmp/repo"),
             true,
@@ -417,7 +451,27 @@ mod tests {
         )
         .expect("notify event should become a workspace event");
 
-        assert!(event.git_related, "source changes inside a git repo must trigger git status refresh");
+        assert!(broken_down.batch.git_related, "source changes inside a git repo must trigger git status refresh");
+        assert_eq!(broken_down.file_changes.len(), 1);
+        assert_eq!(broken_down.file_changes[0].path, "/tmp/repo/src/main.rs");
+        assert_eq!(broken_down.file_changes[0].kind, FsChangeKind::Modify);
+    }
+
+    #[test]
+    fn notify_create_event_emits_file_changed_with_create_kind() {
+        let broken_down = workspace_fs_event_from_notify(
+            "/tmp/repo",
+            Path::new("/tmp/repo"),
+            false,
+            Event::new(EventKind::Create(notify::event::CreateKind::File))
+                .add_path(Path::new("/tmp/repo/new.ts").to_path_buf()),
+        )
+        .expect("notify event should become a workspace event");
+
+        assert_eq!(broken_down.batch.paths, vec!["/tmp/repo/new.ts".to_string()]);
+        assert_eq!(broken_down.batch.kinds, vec![FsChangeKind::Create]);
+        assert_eq!(broken_down.file_changes.len(), 1);
+        assert_eq!(broken_down.file_changes[0].kind, FsChangeKind::Create);
     }
 
     #[test]

@@ -145,6 +145,21 @@ export type WorkspaceFsChangedEvent = {
   rootPath: string;
   paths: string[];
   gitRelated: boolean;
+  /**
+   * Parallel to `paths` — entries are `"create" | "modify" | "delete"`.
+   * The webview's file explorer reads this to decide whether a silent
+   * refresh should rebuild (a create/delete membership change) or just
+   * patch (a content-only modify). Absent on root-refresh batches
+   * (`paths` empty) and on legacy emitters — callers should treat a
+   * missing `kinds` as `"modify"`.
+   */
+  kinds?: Array<"create" | "modify" | "delete">;
+};
+
+export type WorkspaceFileChangedEvent = {
+  rootPath: string;
+  path: string;
+  kind: "create" | "modify" | "delete";
 };
 
 export type GitDiscardEntry = {
@@ -232,6 +247,14 @@ export type RawPtyTranscriptRead = {
 export const PTY_TRANSCRIPT_READ_CHUNK = 1024 * 1024;
 export const FS_SEARCH_DEFAULT_LIMIT = 200;
 export const WORKSPACE_FS_CHANGED_EVENT = "nexterm://workspace-fs-changed";
+/**
+ * Per-path file-change event. Emitted by the watcher *before* the
+ * aggregated `WORKSPACE_FS_CHANGED_EVENT` so subscribers that only care
+ * about tree refresh (e.g. the file explorer) can react without waiting
+ * for the 200ms batch window. The frontend may subscribe to either or
+ * both; `useWorkspaceLifecycle` only forwards the aggregated event.
+ */
+export const WORKSPACE_FILE_CHANGED_EVENT = "nexterm://workspace-file-changed";
 
 /**
  * Event name emitted by the Tauri backend (`src-tauri/src/lib.rs`) when a

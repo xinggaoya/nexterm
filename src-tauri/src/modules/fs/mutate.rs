@@ -2,7 +2,9 @@ use std::path::Path;
 
 use tauri::State;
 
-use crate::modules::fs::watcher::{emit_workspace_fs_changed, FsWatcherState};
+use crate::modules::fs::watcher::{
+    emit_workspace_fs_changed_with_kinds, events::FsChangeKind, FsWatcherState,
+};
 use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
 
 /// Creates a new empty file. Fails if the file already exists.
@@ -22,7 +24,13 @@ pub fn fs_create_file(
         log::debug!("fs_create_file({}) failed: {e}", p.display());
         e.to_string()
     })?;
-    notify_workspace_fs_changed(&registry, &watcher, &p, vec![path.clone()]);
+    notify_workspace_fs_changed(
+        &registry,
+        &watcher,
+        &p,
+        vec![path.clone()],
+        vec![FsChangeKind::Create],
+    );
     Ok(())
 }
 
@@ -45,7 +53,13 @@ pub fn fs_create_dir(
         log::debug!("fs_create_dir({}) failed: {e}", p.display());
         e.to_string()
     })?;
-    notify_workspace_fs_changed(&registry, &watcher, &p, vec![path.clone()]);
+    notify_workspace_fs_changed(
+        &registry,
+        &watcher,
+        &p,
+        vec![path.clone()],
+        vec![FsChangeKind::Create],
+    );
     Ok(())
 }
 
@@ -75,10 +89,17 @@ pub fn fs_rename(
         );
         e.to_string()
     })?;
-    // Emit both the old and new paths so a directory refresh rooted at
-    // either ancestor picks up the change.
+    // The old path is gone (Delete) and the new path appeared (Create),
+    // so emit both kinds so the file explorer's silent refresh always
+    // rebuilds instead of trusting the patch path's stale snapshot.
     let parent = from_p.parent().unwrap_or(&from_p);
-    notify_workspace_fs_changed(&registry, &watcher, parent, vec![from.clone(), to]);
+    notify_workspace_fs_changed(
+        &registry,
+        &watcher,
+        parent,
+        vec![from.clone(), to],
+        vec![FsChangeKind::Delete, FsChangeKind::Create],
+    );
     Ok(())
 }
 
@@ -110,7 +131,13 @@ pub fn fs_delete(
     })?;
 
     let parent = p.parent().unwrap_or(&p);
-    notify_workspace_fs_changed(&registry, &watcher, parent, vec![path]);
+    notify_workspace_fs_changed(
+        &registry,
+        &watcher,
+        parent,
+        vec![path],
+        vec![FsChangeKind::Delete],
+    );
     Ok(())
 }
 
@@ -140,16 +167,18 @@ pub fn fs_copy(
     } else {
         std::fs::copy(&from_p, &to_p).map_err(|e| e.to_string())?;
     }
-    // Emit both the source's parent and the destination's parent so
-    // watchers rooted at either ancestor refresh.
-    let parent = from_p.parent().unwrap_or(&from_p);
+    // Copying introduces new paths on the destination side. Treat them
+    // as Creates so the explorer never confuses a duplicate with a
+    // modify. The source side is unmodified, so we leave it out of the
+    // emit entirely.
     let dst_parent = to_p.parent().unwrap_or(&to_p);
-    if dst_parent == parent {
-        notify_workspace_fs_changed(&registry, &watcher, parent, vec![from, to]);
-    } else {
-        notify_workspace_fs_changed(&registry, &watcher, parent, vec![from]);
-        notify_workspace_fs_changed(&registry, &watcher, dst_parent, vec![to]);
-    }
+    notify_workspace_fs_changed(
+        &registry,
+        &watcher,
+        dst_parent,
+        vec![to],
+        vec![FsChangeKind::Create],
+    );
     Ok(())
 }
 
@@ -175,9 +204,10 @@ fn notify_workspace_fs_changed(
     watcher: &FsWatcherState,
     host_path: &std::path::Path,
     paths: Vec<String>,
+    kinds: Vec<FsChangeKind>,
 ) {
     let Some(root) = registry.longest_authorized_root(host_path) else {
         return;
     };
-    emit_workspace_fs_changed(watcher, &root, paths, true);
+    emit_workspace_fs_changed_with_kinds(watcher, &root, paths, true, Some(kinds));
 }
