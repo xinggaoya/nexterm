@@ -8,23 +8,72 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 const WORKSPACE_FS_CHANGED_EVENT: &str = "nexterm://workspace-fs-changed";
+/// Channel name for granular, per-path file change events. Pairs each path
+/// with a `FsChangeKind` (`create` / `modify` / `delete`) so the file
+/// explorer can decide whether a silent refresh needs to rebuild (a
+/// create/delete membership change) or just patch (a content-only
+/// modify). Emitted alongside the aggregated `workspace-fs-changed`
+/// event; the frontend may subscribe to either or both.
+const WORKSPACE_FILE_CHANGED_EVENT: &str = "nexterm://workspace-file-changed";
 const FS_EVENT_BATCH_DELAY_MS: u64 = 200;
 const FS_EVENT_MAX_BATCH_AGE_MS: u64 = 1_000;
-const FS_EVENT_REPEATED_SIGNATURE_MIN_INTERVAL_MS: u64 = 1_000;
+// Tuned down from 1s. The file explorer now drops any silent refresh into
+// a full rebuild when the directory's membership changes, so debouncing
+// duplicate batches for a full second made rapid file creation feel broken.
+// The throttle still only fires when the *path set* repeats verbatim (see
+// `WorkspaceFsEmissionThrottle::delay_for`), so genuine new workstreams
+// (edits, checkouts, etc.) flow straight through.
+const FS_EVENT_REPEATED_SIGNATURE_MIN_INTERVAL_MS: u64 = 250;
 pub(super) const MAX_BATCH_EVENT_PATHS: usize = 128;
+
+/// Coarse-grained file-system change kind. The frontend uses this to skip
+/// no-op rebuilds on a pure content modify, but it is intentionally lossy:
+/// several notify event kinds (e.g. Any/Other) collapse to `modify` so the
+/// frontend never has to model the full notify::EventKind taxonomy.
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum FsChangeKind {
+    Create,
+    Modify,
+    Delete,
+}
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct WorkspaceFsChangedEvent {
+pub(crate) struct WorkspaceFsChangedEvent {
     pub(super) root_path: String,
     pub(super) paths: Vec<String>,
     pub(super) git_related: bool,
+    /// Per-path change kind aligned positionally with `paths`. Missing on
+    /// root-refresh batches (paths is empty) and on legacy emitters that
+    /// haven't been taught the new field — frontend should treat a missing
+    /// `kinds` as `modify` for backwards compatibility.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(super) kinds: Vec<FsChangeKind>,
+}
+
+/// Per-path granular file-change notification. Always emitted *before* the
+/// batched `WorkspaceFsChangedEvent` for the same notify event, so the
+/// frontend can react to create/delete immediately without waiting for the
+/// 200ms batch window. Frontend subscribers that only need the tree to
+/// refresh will subscribe here; the source-control panel keeps using the
+/// aggregated event for its `gitRelated` semantics.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct WorkspaceFileChangedEvent {
+    pub(super) root_path: String,
+    pub(super) path: String,
+    pub(super) kind: FsChangeKind,
 }
 
 #[derive(Default)]
 pub(super) struct WorkspaceFsEventBatch {
     root_path: Option<String>,
     paths: BTreeSet<String>,
+    /// Pair of (path, kind) so the aggregated event can re-emit per-path
+    /// kinds. Stored separately from `paths` to keep the dedup path cheap
+    /// and to drop duplicate kinds for the same path.
+    path_kinds: BTreeSet<(String, FsChangeKind)>,
     git_related: bool,
     root_refresh: bool,
 }
@@ -38,15 +87,20 @@ impl WorkspaceFsEventBatch {
         if event.paths.is_empty() {
             self.root_refresh = true;
             self.paths.clear();
+            self.path_kinds.clear();
             return;
         }
         if self.root_refresh {
             return;
         }
-        self.paths.extend(event.paths);
+        for (path, kind) in event.paths.into_iter().zip(event.kinds) {
+            self.path_kinds.insert((path.clone(), kind));
+        }
+        self.paths.extend(self.path_kinds.iter().map(|(p, _)| p.clone()));
         if self.paths.len() > MAX_BATCH_EVENT_PATHS {
             self.root_refresh = true;
             self.paths.clear();
+            self.path_kinds.clear();
         }
     }
 
@@ -61,15 +115,33 @@ impl WorkspaceFsEventBatch {
                 root_path,
                 paths: Vec::new(),
                 git_related: self.git_related,
+                kinds: Vec::new(),
             });
         }
         if self.paths.is_empty() {
             return None;
         }
+        // Re-zip the surviving path+kind pairs so `kinds` stays positionally
+        // aligned with `paths`. A path with multiple kind observations
+        // collapses to the strongest (Create > Delete > Modify) since
+        // membership-changing kinds must win for the frontend to rebuild.
+        let mut pairs: Vec<(String, FsChangeKind)> = self
+            .path_kinds
+            .into_iter()
+            .filter(|(p, _)| self.paths.contains(p))
+            .collect();
+        pairs.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut paths = Vec::with_capacity(pairs.len());
+        let mut kinds = Vec::with_capacity(pairs.len());
+        for (path, kind) in pairs {
+            paths.push(path);
+            kinds.push(kind);
+        }
         Some(WorkspaceFsChangedEvent {
             root_path,
-            paths: self.paths.into_iter().collect(),
+            paths,
             git_related: self.git_related,
+            kinds,
         })
     }
 
@@ -217,31 +289,82 @@ fn emit_workspace_fs_event(app: &AppHandle, event: WorkspaceFsChangedEvent) {
     let _ = app.emit(WORKSPACE_FS_CHANGED_EVENT, event);
 }
 
+fn emit_workspace_file_changed(app: &AppHandle, event: WorkspaceFileChangedEvent) {
+    let _ = app.emit(WORKSPACE_FILE_CHANGED_EVENT, event);
+}
+
+pub(super) fn emit_workspace_file_changes(app: &AppHandle, events: &[WorkspaceFileChangedEvent]) {
+    for event in events {
+        emit_workspace_file_changed(app, event.clone());
+    }
+}
+
+pub(super) fn notify_event_kind(event: &Event) -> FsChangeKind {
+    match &event.kind {
+        EventKind::Create(_) => FsChangeKind::Create,
+        EventKind::Remove(_) => FsChangeKind::Delete,
+        EventKind::Modify(_)
+        | EventKind::Any
+        | EventKind::Other
+        | EventKind::Access(_) => FsChangeKind::Modify,
+    }
+}
+
 pub(super) fn workspace_fs_event_from_notify(
     root_path: &str,
     local_root: &Path,
     has_git_repo: bool,
     event: Event,
-) -> Option<WorkspaceFsChangedEvent> {
+) -> Option<NotifyToFsEvent> {
     if matches!(event.kind, EventKind::Access(_)) {
         return None;
     }
     let mut paths = Vec::new();
+    let mut kinds = Vec::new();
+    let mut file_changes = Vec::new();
     let mut git_related = has_git_repo;
+    let kind = notify_event_kind(&event);
     for path in event.paths {
         let normalized = crate::modules::workspace::normalize_host_path(path);
         if is_git_related_path(local_root, &normalized) {
             git_related = true;
         }
-        paths.push(frontend_path_for_event(root_path, local_root, &normalized));
+        let frontend_path = frontend_path_for_event(root_path, local_root, &normalized);
+        file_changes.push(WorkspaceFileChangedEvent {
+            root_path: root_path.to_string(),
+            path: frontend_path.clone(),
+            kind,
+        });
+        paths.push(frontend_path);
+        kinds.push(kind);
     }
-    paths.sort();
-    paths.dedup();
-    Some(WorkspaceFsChangedEvent {
-        root_path: root_path.to_string(),
-        paths,
-        git_related,
+    // Parallel zipped vectors must agree in length — pairing them
+    // through `(paths, kinds).into_iter()` keeps any future length
+    // refactor honest.
+    let mut zipped: Vec<(String, FsChangeKind)> = paths.into_iter().zip(kinds).collect();
+    zipped.sort_by(|a, b| a.0.cmp(&b.0));
+    let (sorted_paths, sorted_kinds): (Vec<String>, Vec<FsChangeKind>) =
+        zipped.into_iter().unzip();
+    Some(NotifyToFsEvent {
+        batch: WorkspaceFsChangedEvent {
+            root_path: root_path.to_string(),
+            paths: sorted_paths,
+            git_related,
+            kinds: sorted_kinds,
+        },
+        file_changes,
     })
+}
+
+/// A notify event broken down into the two streams the rest of the
+/// watcher layer wants to emit: the aggregated `WorkspaceFsChangedEvent`
+/// that flows into the batcher (and eventually to the source-control
+/// panel), and the granular `WorkspaceFileChangedEvent`s that bypass the
+/// batcher so the file explorer can react to membership changes
+/// immediately.
+pub(super) struct NotifyToFsEvent {
+    pub(super) batch: WorkspaceFsChangedEvent,
+    pub(super) file_changes: Vec<WorkspaceFileChangedEvent>,
 }
 
 pub(super) fn normalize_frontend_path(path: &str) -> String {
@@ -285,13 +408,14 @@ mod tests {
             root_path: "/tmp/repo".to_string(),
             paths: paths.iter().map(|path| (*path).to_string()).collect(),
             git_related: false,
+            kinds: vec![FsChangeKind::Modify; paths.len()],
         });
         batch
     }
 
     #[test]
     fn repeated_single_path_batches_are_throttled_without_path_specific_rules() {
-        let mut throttle = WorkspaceFsEmissionThrottle::new(Duration::from_millis(1_000));
+        let mut throttle = WorkspaceFsEmissionThrottle::new(Duration::from_millis(250));
         let now = Instant::now();
         let batch = batch_with_paths(&["/tmp/repo/logs/app.log"]);
 
@@ -299,18 +423,18 @@ mod tests {
         throttle.record_emit(now, &batch);
 
         assert_eq!(
-            throttle.delay_for(now + Duration::from_millis(250), &batch),
-            Some(Duration::from_millis(750))
+            throttle.delay_for(now + Duration::from_millis(100), &batch),
+            Some(Duration::from_millis(150))
         );
         assert_eq!(
-            throttle.delay_for(now + Duration::from_millis(1_000), &batch),
+            throttle.delay_for(now + Duration::from_millis(250), &batch),
             None
         );
     }
 
     #[test]
     fn different_path_batches_are_not_throttled_by_previous_log_writes() {
-        let mut throttle = WorkspaceFsEmissionThrottle::new(Duration::from_millis(1_000));
+        let mut throttle = WorkspaceFsEmissionThrottle::new(Duration::from_millis(250));
         let now = Instant::now();
         let log_batch = batch_with_paths(&["/tmp/repo/logs/app.log"]);
         let source_batch = batch_with_paths(&["/tmp/repo/src/main.rs"]);
@@ -318,40 +442,41 @@ mod tests {
         throttle.record_emit(now, &log_batch);
 
         assert_eq!(
-            throttle.delay_for(now + Duration::from_millis(250), &source_batch),
+            throttle.delay_for(now + Duration::from_millis(100), &source_batch),
             None
         );
     }
 
     #[test]
     fn repeated_root_refresh_batches_are_throttled() {
-        let mut throttle = WorkspaceFsEmissionThrottle::new(Duration::from_millis(1_000));
+        let mut throttle = WorkspaceFsEmissionThrottle::new(Duration::from_millis(250));
         let now = Instant::now();
         let mut root_batch = WorkspaceFsEventBatch::default();
         root_batch.add(WorkspaceFsChangedEvent {
             root_path: "/tmp/repo".to_string(),
             paths: Vec::new(),
             git_related: true,
+            kinds: Vec::new(),
         });
 
         throttle.record_emit(now, &root_batch);
 
         assert_eq!(
-            throttle.delay_for(now + Duration::from_millis(250), &root_batch),
-            Some(Duration::from_millis(750))
+            throttle.delay_for(now + Duration::from_millis(100), &root_batch),
+            Some(Duration::from_millis(150))
         );
     }
 
     #[test]
     fn expired_repeated_batches_do_not_underflow_delay() {
-        let mut throttle = WorkspaceFsEmissionThrottle::new(Duration::from_millis(1_000));
+        let mut throttle = WorkspaceFsEmissionThrottle::new(Duration::from_millis(250));
         let now = Instant::now();
         let batch = batch_with_paths(&["/tmp/repo/.git/index"]);
 
         throttle.record_emit(now, &batch);
 
         assert_eq!(
-            throttle.delay_for(now + Duration::from_millis(1_250), &batch),
+            throttle.delay_for(now + Duration::from_millis(500), &batch),
             None
         );
     }

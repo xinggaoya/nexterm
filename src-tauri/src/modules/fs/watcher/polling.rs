@@ -31,10 +31,15 @@ pub(super) fn start_polling_refresh(
         match stop_rx.recv_timeout(FALLBACK_REFRESH_INTERVAL) {
             Ok(_) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {
+                // Polling is a fallback that doesn't observe individual
+                // file changes; emit a root-refresh batch with empty
+                // paths so the explorer rebuilds and the source-control
+                // panel re-runs git status.
                 let event = WorkspaceFsChangedEvent {
                     root_path: root_path.clone(),
                     paths: Vec::new(),
                     git_related,
+                    kinds: Vec::new(),
                 };
                 if event_tx.send(event).is_err() {
                     break;
