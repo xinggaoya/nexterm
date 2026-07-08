@@ -30,6 +30,7 @@ function makeExpanded(): Set<string> {
 
 function makeParams(nodes: FileTreeState, expanded: Set<string>) {
   return {
+    rootPath: "/repo",
     nodes,
     expanded,
     pendingCreate: null as never,
@@ -374,6 +375,7 @@ describe("updateFileTreeRows", () => {
     };
 
     const result = updateFileTreeRows(prev, ["/repo/src"], {
+      rootPath: "/repo",
       nodes: updatedNodes,
       expanded,
       pendingCreate: null,
@@ -411,6 +413,7 @@ describe("updateFileTreeRows", () => {
     }
 
     const params = {
+      rootPath: root,
       nodes,
       expanded,
       pendingCreate: null,
@@ -443,5 +446,120 @@ describe("updateFileTreeRows", () => {
     expect(Object.fromEntries(result.entryIndexByPath)).toEqual(
       Object.fromEntries(fullRebuild.entryIndexByPath),
     );
+  });
+
+  it("patches the root directory in place of a full rebuild", () => {
+    const nodes = makeTreeNodes();
+    const expanded = makeExpanded();
+    const prev = buildFileTreeRows({
+      rootPath: "/repo",
+      nodes,
+      expanded,
+      ...{ pendingCreate: null, renaming: null },
+    });
+
+    // Add a brand-new file to root (e.g. user just saved into the
+    // workspace root) and verify the patch path actually surfaces it.
+    const updatedNodes: FileTreeState = {
+      ...nodes,
+      "/repo": {
+        status: "loaded",
+        entries: [
+          { name: "src", kind: "dir", size: 0, mtime: 1 },
+          { name: "README.md", kind: "file", size: 10, mtime: 2 },
+          { name: "package.json", kind: "file", size: 20, mtime: 3 },
+          { name: "new-at-root.txt", kind: "file", size: 5, mtime: 7 },
+        ],
+      },
+    };
+
+    const result = updateFileTreeRows(
+      prev,
+      ["/repo"],
+      makeParams(updatedNodes, expanded),
+    );
+
+    // Root patch must replace rows wholesale so the new entry is visible.
+    expect(result).not.toBe(prev);
+    const paths = result.rows
+      .filter((r) => r.kind === "entry")
+      .map((r) => r.path);
+    expect(paths).toContain("/repo/new-at-root.txt");
+    expect(paths).toContain("/repo/src/main.ts");
+
+    // index for the new entry should be defined
+    expect(result.entryIndexByPath.get("/repo/new-at-root.txt")).toBeDefined();
+
+    // And it must agree with a from-scratch build.
+    const fullRebuild = buildFileTreeRows({
+      rootPath: "/repo",
+      nodes: updatedNodes,
+      expanded,
+      pendingCreate: null,
+      renaming: null,
+    });
+    expect(result.rows).toEqual(fullRebuild.rows);
+    expect(Object.fromEntries(result.entryIndexByPath)).toEqual(
+      Object.fromEntries(fullRebuild.entryIndexByPath),
+    );
+  });
+
+  it("root patch handles newly visible directories in nested expansions", () => {
+    // Build a tree where /repo/src is expanded and we then *introduce*
+    // /repo/docs into root's entries. The patch path must surface the
+    // new directory at the right depth without losing the existing
+    // expansion.
+    const nodes: FileTreeState = {
+      "/repo": {
+        status: "loaded",
+        entries: [
+          { name: "src", kind: "dir", size: 0, mtime: 1 },
+          { name: "README.md", kind: "file", size: 10, mtime: 2 },
+        ],
+      },
+      "/repo/src": {
+        status: "loaded",
+        entries: [{ name: "main.ts", kind: "file", size: 100, mtime: 3 }],
+      },
+    };
+    const expanded = new Set(["/repo/src"]);
+    const prev = buildFileTreeRows({
+      rootPath: "/repo",
+      nodes,
+      expanded,
+      ...{ pendingCreate: null, renaming: null },
+    });
+
+    const updatedNodes: FileTreeState = {
+      ...nodes,
+      "/repo": {
+        status: "loaded",
+        entries: [
+          { name: "docs", kind: "dir", size: 0, mtime: 10 },
+          { name: "src", kind: "dir", size: 0, mtime: 1 },
+          { name: "README.md", kind: "file", size: 10, mtime: 2 },
+        ],
+      },
+    };
+
+    const result = updateFileTreeRows(
+      prev,
+      ["/repo"],
+      makeParams(updatedNodes, expanded),
+    );
+
+    const paths = result.rows
+      .filter((r) => r.kind === "entry")
+      .map((r) => r.path);
+    expect(paths).toContain("/repo/docs");
+    expect(paths).toContain("/repo/src/main.ts");
+
+    // docs should appear collapsed (we never expanded it) but at the
+    // root's depth, and src's child main.ts should still be visible.
+    const docsRow = result.rows.find(
+      (r) => r.kind === "entry" && r.path === "/repo/docs",
+    );
+    expect(docsRow?.kind === "entry" && docsRow.isExpanded).toBe(false);
+    expect(docsRow?.kind === "entry" && docsRow.depth).toBe(0);
   });
 });

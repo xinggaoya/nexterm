@@ -562,6 +562,162 @@ describe("FileExplorer.vue", () => {
     vi.useRealTimers();
   });
 
+  it("surfaces a newly created file at the workspace root via fsEvent", async () => {
+    // Regression for the silent-root-patch bug: pre-fix, `patchTreeSnapshot([root])`
+    // was a no-op because root is not present in `entryIndexByPath`.
+    // The fix adds a root-path branch in `updateFileTreeRows` that
+    // rebuilds the entire visible tree, which is what we want whenever
+    // the silent refresh's target *is* the workspace root.
+    vi.useFakeTimers();
+    let rootReads = 0;
+    vi.mocked(readFileTreeDir).mockImplementation(async (path) => {
+      if (path === "/repo") {
+        rootReads += 1;
+        // First read happens at mount; subsequent reads happen when the
+        // fsEvent kicks off a silent refresh.
+        const base: DirEntry[] = [
+          { name: "src", kind: "dir", size: 0, mtime: 1 },
+          { name: "README.md", kind: "file", size: 10, mtime: 2 },
+        ];
+        if (rootReads > 1) {
+          base.push({ name: "fresh.md", kind: "file", size: 5, mtime: 9 });
+        }
+        return base;
+      }
+      if (path === "/repo/src") {
+        return [{ name: "main.ts", kind: "file", size: 100, mtime: 3 }];
+      }
+      return [];
+    });
+
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo", fsEvent: null },
+    });
+    await flush();
+
+    expect(wrapper.text()).not.toContain("fresh.md");
+
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/fresh.md"],
+        gitRelated: false,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(240);
+    await flush();
+
+    expect(wrapper.text()).toContain("fresh.md");
+    expect(
+      wrapper.find("[data-explorer-row-path='/repo/fresh.md']").exists(),
+    ).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("surfaces a newly created directory in an expanded subtree via fsEvent", async () => {
+    vi.useFakeTimers();
+    let srcReads = 0;
+    vi.mocked(readFileTreeDir).mockImplementation(async (path) => {
+      if (path === "/repo") {
+        return [{ name: "src", kind: "dir", size: 0, mtime: 1 }];
+      }
+      if (path === "/repo/src") {
+        srcReads += 1;
+        const base: DirEntry[] = [
+          { name: "main.ts", kind: "file", size: 100, mtime: 3 },
+        ];
+        if (srcReads > 1) {
+          base.push({ name: "components", kind: "dir", size: 0, mtime: 5 });
+        }
+        return base;
+      }
+      return [];
+    });
+
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo", fsEvent: null },
+    });
+    await flush();
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+    expect(wrapper.text()).not.toContain("components");
+
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/src/components"],
+        gitRelated: false,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(240);
+    await flush();
+
+    expect(wrapper.text()).toContain("components");
+    expect(
+      wrapper.find("[data-explorer-row-path='/repo/src/components']").exists(),
+    ).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("manual refresh re-reads every loaded directory", async () => {
+    // Regression for the manual refresh bug: pre-fix, the toolbar
+    // refresh button only re-read root, so a file created deep in an
+    // expanded subtree was invisible until the user collapsed and
+    // re-expanded it.
+    vi.useFakeTimers();
+    let srcReads = 0;
+    vi.mocked(readFileTreeDir).mockImplementation(async (path) => {
+      if (path === "/repo") {
+        return [{ name: "src", kind: "dir", size: 0, mtime: 1 }];
+      }
+      if (path === "/repo/src") {
+        srcReads += 1;
+        const base: DirEntry[] = [
+          { name: "main.ts", kind: "file", size: 100, mtime: 3 },
+        ];
+        if (srcReads > 1) {
+          base.push({
+            name: "new-at-subtree.ts",
+            kind: "file",
+            size: 5,
+            mtime: 9,
+          });
+        }
+        return base;
+      }
+      return [];
+    });
+
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo", fsEvent: null },
+    });
+    await flush();
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+    expect(wrapper.text()).not.toContain("new-at-subtree.ts");
+    vi.mocked(readFileTreeDir).mockClear();
+
+    // Click the toolbar refresh button (the only entry that exercises
+    // `refreshPath` with its default argument).
+    const refreshButton = wrapper
+      .find("[data-explorer-header]")
+      .findAll("button")
+      .find((b) => b.attributes("aria-label") === "Refresh");
+    expect(refreshButton).toBeDefined();
+    await refreshButton!.trigger("click");
+    await vi.advanceTimersByTimeAsync(0);
+    await flush();
+
+    // Both root and the expanded subtree must be re-read.
+    expect(readFileTreeDir).toHaveBeenCalledWith("/repo", false);
+    expect(readFileTreeDir).toHaveBeenCalledWith("/repo/src", false);
+    expect(wrapper.text()).toContain("new-at-subtree.ts");
+    vi.useRealTimers();
+  });
+
   it("coalesces repeated fs refreshes while a directory read is in flight", async () => {
     vi.useFakeTimers();
     let srcReads = 0;
