@@ -6,8 +6,6 @@
 
 export { default as TerminalWorkspace } from "./TerminalWorkspace.vue";
 export { default as TerminalPane } from "./TerminalPane.vue";
-export { default as TerminalPaneHeader } from "./TerminalPaneHeader.vue";
-export { default as TerminalPaneFooter } from "./TerminalPaneFooter.vue";
 export { default as TerminalResizer } from "./TerminalResizer.vue";
 export { default as TerminalSearch } from "./TerminalSearch.vue";
 export { default as TerminalContextMenu } from "./TerminalContextMenu.vue";
