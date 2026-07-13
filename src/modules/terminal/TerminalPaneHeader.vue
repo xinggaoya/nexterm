@@ -1,5 +1,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { NIcon } from "naive-ui";
+import {
+  CloseOutline,
+  RefreshOutline,
+  TabletLandscapeOutline,
+  TabletPortraitOutline,
+} from "@vicons/ionicons5";
 import type { SessionState } from "./lib/sessions";
 
 const props = defineProps<{
@@ -58,7 +65,7 @@ const stateClass = computed(() => `state-${props.state}`);
         title="Restart Shell"
         @click="emit('restart')"
       >
-        ↺
+        <NIcon :component="RefreshOutline" :size="14" />
       </button>
       <button
         type="button"
@@ -66,7 +73,7 @@ const stateClass = computed(() => `state-${props.state}`);
         title="Split Right"
         @click="emit('split', 'row')"
       >
-        ▏■
+        <NIcon :component="TabletLandscapeOutline" :size="14" />
       </button>
       <button
         type="button"
@@ -74,7 +81,7 @@ const stateClass = computed(() => `state-${props.state}`);
         title="Split Down"
         @click="emit('split', 'col')"
       >
-        ▬▬
+        <NIcon :component="TabletPortraitOutline" :size="14" />
       </button>
       <button
         type="button"
@@ -82,7 +89,7 @@ const stateClass = computed(() => `state-${props.state}`);
         title="Close Pane"
         @click="emit('close')"
       >
-        ×
+        <NIcon :component="CloseOutline" :size="15" />
       </button>
     </div>
   </header>

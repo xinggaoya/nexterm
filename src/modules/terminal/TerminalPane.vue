@@ -256,6 +256,7 @@ defineExpose({
   position: relative;
   background: var(--term-bg);
   overflow: hidden;
+  padding: 4px 8px;
 }
 .terminal-pane.focused .terminal-pane-body {
   outline: 0;
