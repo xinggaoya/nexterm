@@ -328,6 +328,32 @@ html[data-chrome="borderless"][data-window-edge-to-edge="true"] #root {
   display: none !important;
 }
 
+/* xterm 6 renders a VS Code style overlay scrollbar inside
+ * `.xterm-scrollable-element`. Its default track is chunky, so slim it to a
+ * thin rounded thumb that fades with the terminal foreground color. */
+.xterm .xterm-scrollable-element > .scrollbar.vertical {
+  width: 10px !important;
+}
+.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  width: 6px !important;
+  left: 2px !important;
+  border-radius: 999px !important;
+  background: color-mix(in oklch, var(--term-fg) 26%, transparent) !important;
+  transition: background 120ms ease;
+}
+.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider:hover {
+  background: color-mix(in oklch, var(--term-fg) 44%, transparent) !important;
+}
+.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider.active {
+  background: color-mix(in oklch, var(--term-fg) 58%, transparent) !important;
+}
+.xterm .xterm-scrollable-element > .scrollbar.horizontal {
+  display: none !important;
+}
+.xterm .xterm-scrollable-element > .scrollbar > .scra {
+  display: none !important;
+}
+
 .no-scrollbar {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;

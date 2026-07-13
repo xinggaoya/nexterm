@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, computed } from "vue";
+import { ref, onMounted, onBeforeUnmount, watch } from "vue";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import { readClipboardText, writeClipboardText } from "@/lib/clipboard";
 import { createSession, trackSession, getSessionForLeaf } from "./lib/sessions";
 import type { PtySessionHandle, SessionState } from "./lib/sessions";
 import { applyTerminalTheme, watchTerminalTheme } from "./lib/theme";
 import { attachClipboardShortcuts } from "./lib/shortcuts";
-import TerminalPaneHeader from "./TerminalPaneHeader.vue";
-import TerminalPaneFooter from "./TerminalPaneFooter.vue";
+import TerminalContextMenu from "./TerminalContextMenu.vue";
 
 const props = defineProps<{
   leafId: string;
@@ -32,13 +32,8 @@ const emit = defineEmits<{
 
 const container = ref<HTMLElement>();
 const state = ref<SessionState>("connecting");
-const exitCode = ref<number | null>(null);
-const dims = ref<{ cols: number; rows: number }>({ cols: 0, rows: 0 });
-const shellName = computed(() => {
-  const t = props.title ?? "";
-  const slash = Math.max(t.lastIndexOf("/"), t.lastIndexOf("\\"));
-  return slash >= 0 ? t.slice(slash + 1) : t;
-});
+
+const menu = ref<{ x: number; y: number; selection: string } | null>(null);
 
 const prefs = usePreferencesPiniaStore();
 
@@ -53,9 +48,8 @@ async function ensureSession(): Promise<void> {
   const sessionCallbacks = {
     onCwd: (cwd: string) => emit("cwd", cwd),
     onTitle: (title: string) => emit("title", title),
-    onStateChange: (next: SessionState, code?: number) => {
+    onStateChange: (next: SessionState) => {
       state.value = next;
-      if (code !== undefined) exitCode.value = code;
     },
   };
   const existing = getSessionForLeaf(props.leafId);
@@ -63,7 +57,6 @@ async function ensureSession(): Promise<void> {
     session = existing;
     existing.setCallbacks(sessionCallbacks);
     state.value = existing.getState();
-    exitCode.value = existing.getExitCode() ?? null;
     syncSessionCallbacks();
     return;
   }
@@ -105,15 +98,9 @@ function attachWebgl() {
   }
 }
 
-function recordDims(): void {
-  if (!term) return;
-  dims.value = { cols: term.cols, rows: term.rows };
-}
-
 async function refreshLayout(): Promise<void> {
   if (!fitAddon || !term) return;
   fitAddon.fit();
-  recordDims();
   if (session) session.resize(term.cols, term.rows);
 }
 
@@ -186,20 +173,38 @@ function handleFocus() {
   emit("focus");
 }
 
-function handleHeaderCwdClick() {
-  if (props.cwd) {
-    void import("@/lib/clipboard").then((m) =>
-      m.writeClipboardText(props.cwd!),
-    );
-  }
+function openContextMenu(event: MouseEvent) {
+  if (!prefs.terminalContextMenuEnabled || !term) return;
+  event.preventDefault();
+  menu.value = {
+    x: event.clientX,
+    y: event.clientY,
+    selection: term.getSelection(),
+  };
 }
 
-function handleHeaderSplit(dir: "row" | "col") {
-  emit("split", dir);
+function closeContextMenu() {
+  menu.value = null;
 }
 
-function handleHeaderRestart() {
-  session?.restart();
+function handleMenuCopy() {
+  const selection = menu.value?.selection;
+  if (selection) void writeClipboardText(selection).catch(() => {});
+  closeContextMenu();
+}
+
+function handleMenuPaste() {
+  void readClipboardText()
+    .then((text) => {
+      if (text) session?.write(text);
+    })
+    .catch(() => {});
+  closeContextMenu();
+}
+
+function handleMenuSelectAll() {
+  term?.selectAll();
+  closeContextMenu();
 }
 
 defineExpose({
@@ -214,24 +219,21 @@ defineExpose({
     :class="{ focused: isFocused, exited: state === 'exited' }"
     :style="{ flex: String(flex) }"
     @mousedown="handleFocus"
+    @contextmenu="openContextMenu"
   >
-    <TerminalPaneHeader
-      :leaf-id="leafId"
-      :cwd="cwd"
-      :shell-name="shellName"
-      :state="state"
-      :exit-code="exitCode"
-      @close="emit('close')"
-      @split="handleHeaderSplit"
-      @restart="handleHeaderRestart"
-      @cwd-click="handleHeaderCwdClick"
-    />
     <div ref="container" class="terminal-pane-body" />
-    <TerminalPaneFooter
-      :state="state"
-      :exit-code="exitCode"
-      :dims="dims"
-    />
+    <Teleport to="body">
+      <TerminalContextMenu
+        v-if="menu"
+        :x="menu.x"
+        :y="menu.y"
+        :selection="menu.selection"
+        @close="closeContextMenu"
+        @copy="handleMenuCopy"
+        @paste="handleMenuPaste"
+        @select-all="handleMenuSelectAll"
+      />
+    </Teleport>
   </div>
 </template>
 
@@ -240,7 +242,7 @@ defineExpose({
   position: relative;
   overflow: hidden;
   contain: layout style;
-  background: var(--term-pane-bg);
+  background: var(--term-bg);
   color: var(--term-pane-fg);
   min-width: 0;
   min-height: 0;
@@ -256,7 +258,7 @@ defineExpose({
   position: relative;
   background: var(--term-bg);
   overflow: hidden;
-  padding: 4px 8px;
+  padding: 6px 8px 4px;
 }
 .terminal-pane.focused .terminal-pane-body {
   outline: 0;

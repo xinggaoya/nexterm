@@ -1,47 +1,44 @@
 <script setup lang="ts">
-import { writeClipboardText, readClipboardText } from "@/lib/clipboard";
-
-const props = defineProps<{
+defineProps<{
+  x: number;
+  y: number;
   selection: string;
 }>();
 
 const emit = defineEmits<{
   close: [];
-  paste: [text: string];
+  copy: [];
+  paste: [];
+  selectAll: [];
 }>();
-
-async function handleCopy() {
-  if (props.selection) {
-    await writeClipboardText(props.selection);
-  }
-  emit("close");
-}
-
-async function handlePaste() {
-  const text = await readClipboardText();
-  if (text) emit("paste", text);
-  emit("close");
-}
-
-function handleSelectAll() {
-  emit("close");
-}
 </script>
 
 <template>
-  <div ref="root" class="terminal-context-menu">
-    <button type="button" :disabled="!selection" @click="handleCopy">Copy</button>
-    <button type="button" @click="handlePaste">Paste</button>
-    <button type="button" @click="handleSelectAll">Select All</button>
+  <div
+    class="terminal-context-menu-backdrop"
+    @mousedown.self="emit('close')"
+    @contextmenu.prevent.self="emit('close')"
+  >
+    <div class="terminal-context-menu" :style="{ top: `${y}px`, left: `${x}px` }">
+      <button type="button" :disabled="!selection" @click="emit('copy')">
+        Copy
+      </button>
+      <button type="button" @click="emit('paste')">Paste</button>
+      <button type="button" @click="emit('selectAll')">Select All</button>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.terminal-context-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
 .terminal-context-menu {
   position: fixed;
-  z-index: 50;
   background: var(--term-pane-header-bg);
-  border: 1px solid var(--term-pane-divider-active);
+  border: 1px solid var(--term-pane-divider);
   border-radius: 6px;
   padding: 4px;
   display: flex;
@@ -60,7 +57,7 @@ function handleSelectAll() {
   border-radius: 4px;
   font-size: 12px;
 }
-.terminal-context-menu button:hover {
+.terminal-context-menu button:hover:not(:disabled) {
   background: var(--term-pane-hover-bg);
 }
 .terminal-context-menu button:disabled {

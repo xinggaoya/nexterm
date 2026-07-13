@@ -53,7 +53,6 @@ export function buildTerminalTheme(): ITheme {
     cursor: v["--term-cursor"],
     cursorAccent: v["--term-cursor-accent"],
     selectionBackground: v["--term-selection"],
-    selectionForeground: v["--term-bg"],
     black: v["--term-black"],
     red: v["--term-red"],
     green: v["--term-green"],
