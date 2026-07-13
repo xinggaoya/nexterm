@@ -209,20 +209,8 @@ export type FsGlobHit = {
   rel: string;
 };
 
-export type PtyOutputChunk = {
-  startOffset: number;
-  bytes: Uint8Array;
-};
-
-export type PtyTranscriptRead = {
-  startOffset: number;
-  nextOffset: number;
-  totalOffset: number;
-  bytes: Uint8Array;
-};
-
 export type PtyHandlers = {
-  onData: (chunk: PtyOutputChunk) => void;
+  onData: (chunk: string) => void;
   onExit?: (code: number) => void;
 };
 
@@ -230,21 +218,9 @@ export type PtySession = {
   id: number;
   write: (data: string) => Promise<void>;
   resize: (cols: number, rows: number) => Promise<void>;
-  readTranscript: (
-    sinceOffset: number,
-    maxBytes?: number,
-  ) => Promise<PtyTranscriptRead>;
   close: () => Promise<void>;
 };
 
-export type RawPtyTranscriptRead = {
-  startOffset: number;
-  nextOffset: number;
-  totalOffset: number;
-  dataBase64: string;
-};
-
-export const PTY_TRANSCRIPT_READ_CHUNK = 1024 * 1024;
 export const FS_SEARCH_DEFAULT_LIMIT = 200;
 export const WORKSPACE_FS_CHANGED_EVENT = "nexterm://workspace-fs-changed";
 /**
@@ -550,7 +526,7 @@ export const native = {
     handlers: PtyHandlers,
     cwd?: string,
   ): Promise<PtySession> => {
-    const onData = new Channel<ArrayBuffer>();
+    const onData = new Channel<string>();
     const onExit = new Channel<number>();
     let released = false;
     const noop = () => {};
@@ -560,7 +536,7 @@ export const native = {
       onData.onmessage = noop;
       onExit.onmessage = noop;
     };
-    onData.onmessage = (buf) => handlers.onData(decodeOutputFrame(buf));
+    onData.onmessage = (chunk) => handlers.onData(chunk);
     onExit.onmessage = (code) => {
       handlers.onExit?.(code);
       releaseHandlers();
@@ -579,22 +555,6 @@ export const native = {
       write: (data: string) => invoke("pty_write", { id, data }),
       resize: (c: number, r: number) =>
         invoke("pty_resize", { id, cols: c, rows: r }),
-      readTranscript: async (
-        sinceOffset,
-        maxBytes = PTY_TRANSCRIPT_READ_CHUNK,
-      ): Promise<PtyTranscriptRead> => {
-        const raw = await invoke<RawPtyTranscriptRead>("pty_read_transcript", {
-          id,
-          sinceOffset,
-          maxBytes,
-        });
-        return {
-          startOffset: raw.startOffset,
-          nextOffset: raw.nextOffset,
-          totalOffset: raw.totalOffset,
-          bytes: decodeBase64(raw.dataBase64),
-        };
-      },
       close: async () => {
         if (closed) return;
         closed = true;
@@ -610,36 +570,6 @@ export const native = {
     invoke<void>("pty_write", { id, data }),
   ptyResize: (id: number, cols: number, rows: number) =>
     invoke<void>("pty_resize", { id, cols, rows }),
-  ptyReadTranscript: (id: number, sinceOffset: number, maxBytes: number) =>
-    invoke<RawPtyTranscriptRead>("pty_read_transcript", {
-      id,
-      sinceOffset,
-      maxBytes,
-    }),
   ptyClose: (id: number) => invoke<void>("pty_close", { id }),
   ptyKill: (id: number) => invoke<void>("pty_kill", { id }),
 };
-
-function decodeOutputFrame(buf: ArrayBuffer): PtyOutputChunk {
-  if (buf.byteLength < 8) {
-    return { startOffset: 0, bytes: new Uint8Array() };
-  }
-  const view = new DataView(buf);
-  const startOffset = Number(view.getBigUint64(0, true));
-  return {
-    startOffset,
-    bytes: new Uint8Array(buf, 8),
-  };
-}
-
-function decodeBase64(value: string): Uint8Array {
-  if (typeof atob === "undefined") {
-    return new Uint8Array();
-  }
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}

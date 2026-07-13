@@ -145,6 +145,45 @@
     --card-header-bg: oklch(0.235 0.008 260);
     --card-hover: oklch(0.25 0.008 260);
     --pane-handle-hover: oklch(0.55 0.12 250 / 0.45);
+
+    /* v2 terminal tokens — dark. */
+    --term-pane-bg: oklch(0.16 0.005 260);
+    --term-pane-header-bg: oklch(0.18 0.005 260);
+    --term-pane-active-bg: oklch(0.22 0.005 260);
+    --term-pane-hover-bg: oklch(0.24 0.005 260);
+    --term-pane-divider: oklch(0.25 0.005 260);
+    --term-pane-divider-active: oklch(0.55 0.10 250);
+    --term-pane-header-fg: oklch(0.92 0.01 260);
+    --term-pane-header-fg-muted: oklch(0.65 0.01 260);
+    --term-pane-header-fg-on-accent: oklch(0.99 0.005 260);
+    --term-pane-footer-bg: oklch(0.14 0.005 260);
+
+    --term-bg: oklch(0.14 0.005 260);
+    --term-fg: oklch(0.92 0.01 260);
+    --term-cursor: oklch(0.92 0.01 260);
+    --term-cursor-accent: oklch(0.14 0.005 260);
+    --term-selection: oklch(0.50 0.10 250 / 0.40);
+
+    --term-state-running: oklch(0.72 0.18 145);
+    --term-state-connecting: oklch(0.78 0.15 75);
+    --term-state-exited: oklch(0.70 0.20 25);
+
+    --term-black: oklch(0.15 0.005 260);
+    --term-red: oklch(0.70 0.22 25);
+    --term-green: oklch(0.70 0.18 145);
+    --term-yellow: oklch(0.82 0.16 85);
+    --term-blue: oklch(0.70 0.20 260);
+    --term-magenta: oklch(0.70 0.22 320);
+    --term-cyan: oklch(0.74 0.15 200);
+    --term-white: oklch(0.88 0.005 260);
+    --term-bright-black: oklch(0.45 0.01 260);
+    --term-bright-red: oklch(0.80 0.23 25);
+    --term-bright-green: oklch(0.80 0.19 145);
+    --term-bright-yellow: oklch(0.88 0.17 85);
+    --term-bright-blue: oklch(0.80 0.21 260);
+    --term-bright-magenta: oklch(0.80 0.23 320);
+    --term-bright-cyan: oklch(0.84 0.16 200);
+    --term-bright-white: oklch(0.98 0.005 260);
 }
 
 @layer base {
@@ -198,15 +237,51 @@
     background-color: var(--background);
   }
 }
-
 :root {
-  --app-zoom: 1;
+    --app-zoom: 1;
+    /* v2 terminal pane tokens. Read by terminal/lib/theme.ts to construct
+     * xterm's ITheme without needing oklch→rgb decoding on our side. */
+    --term-pane-bg: oklch(0.985 0.002 260);
+    --term-pane-header-bg: oklch(0.965 0.003 260);
+    --term-pane-active-bg: oklch(0.94 0.004 260);
+    --term-pane-hover-bg: oklch(0.92 0.003 260);
+    --term-pane-divider: oklch(0.88 0.004 260);
+    --term-pane-divider-active: oklch(0.55 0.10 250);
+    --term-pane-header-fg: oklch(0.25 0.02 260);
+    --term-pane-header-fg-muted: oklch(0.55 0.01 260);
+    --term-pane-header-fg-on-accent: oklch(0.99 0.005 260);
+    --term-pane-footer-bg: oklch(0.97 0.003 260);
+
+    --term-bg: oklch(0.985 0.002 260);
+    --term-fg: oklch(0.20 0.02 260);
+    --term-cursor: oklch(0.20 0.02 260);
+    --term-cursor-accent: oklch(0.985 0.002 260);
+    --term-selection: oklch(0.55 0.10 250 / 0.32);
+
+    --term-state-running: oklch(0.65 0.18 145);
+    --term-state-connecting: oklch(0.78 0.16 75);
+    --term-state-exited: oklch(0.62 0.20 25);
+
+    /* ANSI 16 — light. */
+    --term-black: oklch(0.20 0.005 260);
+    --term-red: oklch(0.55 0.20 25);
+    --term-green: oklch(0.55 0.17 145);
+    --term-yellow: oklch(0.70 0.15 85);
+    --term-blue: oklch(0.55 0.18 260);
+    --term-magenta: oklch(0.55 0.20 320);
+    --term-cyan: oklch(0.60 0.13 200);
+    --term-white: oklch(0.92 0.005 260);
+    --term-bright-black: oklch(0.45 0.01 260);
+    --term-bright-red: oklch(0.62 0.22 25);
+    --term-bright-green: oklch(0.62 0.18 145);
+    --term-bright-yellow: oklch(0.78 0.16 85);
+    --term-bright-blue: oklch(0.62 0.20 260);
+    --term-bright-magenta: oklch(0.62 0.22 320);
+    --term-bright-cyan: oklch(0.70 0.15 200);
+    --term-bright-white: oklch(0.98 0.005 260);
 }
 .zoom-content {
   zoom: var(--app-zoom);
-}
-.zoom-exempt {
-  zoom: calc(1 / var(--app-zoom));
 }
 
 /* Custom window chrome (Linux/Windows): the OS gives us a transparent
@@ -228,22 +303,18 @@ html[data-chrome="borderless"][data-window-edge-to-edge="true"] #root {
   border: 0;
 }
 
-/*
- * xterm.js overrides — kept outside @layer so they win against the addon's
- * own stylesheet (which is not in any layer and would otherwise override).
- *
- * Newer xterm renders scrollbars as real <div class="scrollbar vertical|horizontal">
- * children rather than relying on native overflow scrollbars. Both code paths exist
- * across versions, so we hide both.
- */
-.xterm .scrollbar,
-.xterm .scrollbar.vertical,
-.xterm .scrollbar.horizontal {
-  display: none !important;
-  visibility: hidden !important;
-  width: 0 !important;
-  height: 0 !important;
-  pointer-events: none !important;
+/* ---------------------------------------------------------------
+ * xterm.js overrides — kept outside @layer so they win against the
+ * addon's own stylesheet. v2 only needs the canvas to fill its host
+ * and to suppress the focus outline / native viewport scrollbar —
+ * everything else (chrome colors, scrollbar color) is configured
+ * through the CSS variables above and read by terminal/lib/theme.ts.
+ * --------------------------------------------------------------- */
+.xterm,
+.xterm-screen,
+.xterm:focus,
+.xterm.focus {
+  outline: none !important;
 }
 .xterm .xterm-viewport,
 .xterm-viewport {
@@ -256,17 +327,12 @@ html[data-chrome="borderless"][data-window-edge-to-edge="true"] #root {
   height: 0 !important;
   display: none !important;
 }
-.xterm,
-.xterm-screen,
-.xterm:focus,
-.xterm.focus {
-  outline: none !important;
-}
 
 .no-scrollbar {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
 }
+
 .no-scrollbar::-webkit-scrollbar {
   width: 0 !important;
   height: 0 !important;
@@ -278,6 +344,7 @@ html[data-chrome="borderless"][data-window-edge-to-edge="true"] #root {
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
 }
+
 .no-scrollbar-deep::-webkit-scrollbar,
 .no-scrollbar-deep *::-webkit-scrollbar {
   width: 0 !important;
@@ -364,144 +431,6 @@ html *::-webkit-scrollbar {
 .nexterm-editor-scrollbar .cm-editor::-webkit-scrollbar-thumb:active,
 .nexterm-editor-scrollbar .cm-scroller::-webkit-scrollbar-thumb:active {
   background: var(--nexterm-editor-scrollbar-thumb-active) !important;
-}
-
-/*
- * Terminal panes opt back into a compact scroll affordance. xterm 6 exposes a
- * VS Code style scrollbar, while older renderer paths still use the viewport's
- * native scrollbar. Keep both scoped so the app-wide hidden-scrollbar policy
- * stays intact outside terminals.
- */
-.nexterm-terminal-scrollbar {
-  --nexterm-terminal-scrollbar-track-size: 6px;
-  --nexterm-terminal-scrollbar-thumb-size: 4px;
-  --nexterm-terminal-scrollbar-track: transparent;
-  --nexterm-terminal-scrollbar-thumb: color-mix(
-    in oklch,
-    var(--muted-foreground) 36%,
-    transparent
-  );
-  --nexterm-terminal-scrollbar-thumb-hover: color-mix(
-    in oklch,
-    var(--muted-foreground) 56%,
-    transparent
-  );
-  --nexterm-terminal-scrollbar-thumb-active: color-mix(
-    in oklch,
-    var(--foreground) 64%,
-    transparent
-  );
-}
-
-.nexterm-terminal-scrollbar .xterm .xterm-scrollable-element > .scrollbar.vertical {
-  display: block !important;
-  visibility: visible !important;
-  width: var(--nexterm-terminal-scrollbar-track-size) !important;
-  height: 100% !important;
-  pointer-events: auto !important;
-}
-
-.nexterm-terminal-scrollbar
-  .xterm
-  .xterm-scrollable-element
-  > .scrollbar.vertical
-  > .slider {
-  width: var(--nexterm-terminal-scrollbar-thumb-size) !important;
-  left: auto !important;
-  right: 1px !important;
-}
-
-.nexterm-terminal-scrollbar
-  .xterm
-  .xterm-scrollable-element
-  > .scrollbar.vertical.visible {
-  opacity: 0.62 !important;
-}
-
-.nexterm-terminal-scrollbar:hover
-  .xterm
-  .xterm-scrollable-element
-  > .scrollbar.vertical.visible,
-.nexterm-terminal-scrollbar
-  .xterm.focus
-  .xterm-scrollable-element
-  > .scrollbar.vertical.visible {
-  opacity: 0.9 !important;
-}
-
-.nexterm-terminal-scrollbar
-  .xterm
-  .xterm-scrollable-element
-  > .scrollbar.vertical.invisible {
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-
-.nexterm-terminal-scrollbar .xterm .xterm-scrollable-element > .scrollbar.horizontal {
-  display: none !important;
-  height: 0 !important;
-  pointer-events: none !important;
-}
-
-.nexterm-terminal-scrollbar
-  .xterm
-  .xterm-scrollable-element
-  > .scrollbar
-  > .slider {
-  border-radius: 999px !important;
-  background: var(--nexterm-terminal-scrollbar-thumb) !important;
-}
-
-.nexterm-terminal-scrollbar
-  .xterm
-  .xterm-scrollable-element
-  > .scrollbar
-  > .slider:hover {
-  background: var(--nexterm-terminal-scrollbar-thumb-hover) !important;
-}
-
-.nexterm-terminal-scrollbar
-  .xterm
-  .xterm-scrollable-element
-  > .scrollbar
-  > .slider.active {
-  background: var(--nexterm-terminal-scrollbar-thumb-active) !important;
-}
-
-.nexterm-terminal-scrollbar .xterm .xterm-viewport,
-.nexterm-terminal-scrollbar .xterm-viewport {
-  scrollbar-width: thin !important;
-  scrollbar-color: var(--nexterm-terminal-scrollbar-thumb)
-    var(--nexterm-terminal-scrollbar-track) !important;
-}
-
-.nexterm-terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar,
-.nexterm-terminal-scrollbar .xterm-viewport::-webkit-scrollbar {
-  width: var(--nexterm-terminal-scrollbar-track-size) !important;
-  height: var(--nexterm-terminal-scrollbar-track-size) !important;
-  display: block !important;
-}
-
-.nexterm-terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar-track,
-.nexterm-terminal-scrollbar .xterm-viewport::-webkit-scrollbar-track {
-  background: var(--nexterm-terminal-scrollbar-track) !important;
-}
-
-.nexterm-terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar-thumb,
-.nexterm-terminal-scrollbar .xterm-viewport::-webkit-scrollbar-thumb {
-  min-height: 28px !important;
-  border-radius: 999px !important;
-  background: var(--nexterm-terminal-scrollbar-thumb) !important;
-}
-
-.nexterm-terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover,
-.nexterm-terminal-scrollbar .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: var(--nexterm-terminal-scrollbar-thumb-hover) !important;
-}
-
-.nexterm-terminal-scrollbar .xterm .xterm-viewport::-webkit-scrollbar-thumb:active,
-.nexterm-terminal-scrollbar .xterm-viewport::-webkit-scrollbar-thumb:active {
-  background: var(--nexterm-terminal-scrollbar-thumb-active) !important;
 }
 
 @keyframes nexterm-collapsible-down {

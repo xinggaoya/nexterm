@@ -1,4 +1,4 @@
-import type { PaneNode } from "@/modules/terminal/lib/panes";
+import type { PaneNode } from "@/modules/terminal/lib/layout";
 
 export const MAX_PANES_PER_TAB = 4;
 

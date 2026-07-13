@@ -1,4 +1,3 @@
-mod da_filter;
 mod io;
 #[cfg(windows)]
 mod job;
@@ -8,28 +7,15 @@ pub(crate) mod shell_init;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
-use std::thread;
 
-use serde::Serialize;
-use tauri::ipc::{Channel, Response};
+use tauri::ipc::Channel;
 
 use crate::modules::lock::{mutex_lock, rwlock_read, rwlock_write};
 use crate::modules::workspace::{authorize_spawn_cwd, WorkspaceEnv, WorkspaceRegistry};
 use session::Session;
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PtyTranscriptRead {
-    pub start_offset: u64,
-    pub next_offset: u64,
-    pub total_offset: u64,
-    pub data_base64: String,
-}
-
 pub struct PtyState {
     sessions: RwLock<HashMap<u32, Arc<Session>>>,
-    // Starts at 1 so freshly-handed-out ids are never 0, which the frontend
-    // sometimes treats as "unset". Increments monotonically; never reused.
     next_id: AtomicU32,
 }
 
@@ -51,7 +37,7 @@ pub async fn pty_open(
     rows: u16,
     cwd: Option<String>,
     workspace: Option<WorkspaceEnv>,
-    on_data: Channel<Response>,
+    on_data: Channel<String>,
     on_exit: Channel<i32>,
 ) -> Result<u32, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
@@ -60,7 +46,7 @@ pub async fn pty_open(
         e
     })?;
     let session = tauri::async_runtime::spawn_blocking(move || {
-        session::spawn(cols, rows, cwd, workspace, on_data, on_exit).map(|(s, _)| s)
+        session::spawn(cols, rows, cwd, workspace, on_data, on_exit)
     })
     .await
     .map_err(|e| {
@@ -70,7 +56,8 @@ pub async fn pty_open(
     .map_err(|e| {
         log::error!("pty_open failed: {e}");
         e
-    })?;
+    })?
+    .0;
     let id = state.next_id.fetch_add(1, Ordering::Relaxed);
     rwlock_write(&state.sessions, "pty sessions")?.insert(id, session);
     log::info!("pty opened id={id} cols={cols} rows={rows}");
@@ -80,7 +67,6 @@ pub async fn pty_open(
 #[tauri::command]
 pub fn pty_write(state: tauri::State<PtyState>, id: u32, data: String) -> Result<(), String> {
     state.write_session(id, &data).inspect_err(|e| {
-        // EPIPE is expected if the child already exited.
         log::debug!("pty_write id={id} failed: {e}");
     })
 }
@@ -98,25 +84,7 @@ pub fn pty_resize(
 }
 
 #[tauri::command]
-pub fn pty_read_transcript(
-    state: tauri::State<PtyState>,
-    id: u32,
-    since_offset: u64,
-    max_bytes: usize,
-) -> Result<PtyTranscriptRead, String> {
-    state
-        .read_transcript(id, since_offset, max_bytes)
-        .inspect_err(|_| {
-            log::warn!("pty_read_transcript: unknown id={id}");
-        })
-}
-
-#[tauri::command]
 pub fn pty_kill(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
-    // Look up the session without removing it: pty_close handles cleanup,
-    // and pty_kill is the user-driven "force-quit this shell" action that
-    // intentionally leaves the session registered so the onExit channel
-    // can fire and the UI can transition to the exited state.
     let session = rwlock_read(&state.sessions, "pty sessions")
         .ok()
         .and_then(|guard| guard.get(&id).cloned());
@@ -143,33 +111,15 @@ pub fn pty_close(state: tauri::State<PtyState>, id: u32) -> Result<(), String> {
         match mutex_lock(&s.killer, "pty killer") {
             Ok(mut killer) => {
                 if let Err(e) = killer.kill() {
-                    // Non-fatal: the child may already have exited on its own (e.g. the
-                    // user ran `exit`). Log so this isn't invisible during debugging.
                     log::debug!("pty_close: kill id={id} returned {e}");
                 }
             }
             Err(error) => log::warn!("pty_close: {error}"),
         }
         log::info!("pty closed id={id}");
-        // Drop the Arc on a detached thread. On Windows `MasterPty`'s Drop
-        // calls `ClosePseudoConsole`, which can block until conhost finishes
-        // draining its output buffer. Doing it here would freeze the Tauri
-        // worker thread that handled this command — and on Windows that
-        // sometimes manifests as the closed pane refusing to disappear from
-        // the React tree because subsequent IPC stalls behind it.
-        if let Err(error) = thread::Builder::new()
-            .name(format!("nexterm-pty-drop-{id}"))
-            .spawn(move || {
-                let t0 = std::time::Instant::now();
-                drop(s);
-                log::info!(
-                    "pty session id={id} dropped in {}ms",
-                    t0.elapsed().as_millis()
-                );
-            })
-        {
-            log::warn!("spawn pty drop thread failed for id={id}: {error}");
-        }
+        std::thread::spawn(move || {
+            drop(s);
+        });
     } else {
         log::debug!("pty_close: unknown id={id}");
     }

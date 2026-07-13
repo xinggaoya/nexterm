@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, type ComputedRef, type Ref } from "vue";
+import { ref, computed, type ComputedRef, type Ref } from "vue";
 import { NSplit } from "naive-ui";
 import { native, type WorkspaceFsChangedEvent } from "@/lib/native";
-import { getPtyIdForLeaf } from "@/modules/terminal";
+import { getPtyIdForLeaf, TerminalWorkspace, disposeSession } from "@/modules/terminal";
 import EditorPane from "@/modules/editor/EditorPane.vue";
 import GitDiffStack from "@/modules/editor/GitDiffStack.vue";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
@@ -15,8 +15,7 @@ import type { TaskRun, TaskRunGroup } from "@/modules/tasks";
 import TaskConsole from "@/modules/tasks/TaskConsole.vue";
 import type { TaskConsoleView } from "@/modules/tasks/taskConsoleTypes";
 import type { WorkspaceTask } from "@/modules/tasks/taskTypes";
-import type { Tab } from "@/modules/tabs/tabsTypes";
-import TerminalStack from "@/modules/terminal/TerminalStack.vue";
+import type { Tab, TerminalTab } from "@/modules/tabs/tabsTypes";
 
 type WorkbenchLayoutBinding = {
   explorerPaneClass: ComputedRef<string>;
@@ -138,13 +137,22 @@ function openFindInFiles() {
 
 async function killTerminal(leafId: number) {
   const ptyId = getPtyIdForLeaf(leafId);
-  if (ptyId === null) return;
+  if (ptyId === null) {
+    disposeSession(leafId.toString());
+    return;
+  }
   try {
     await native.ptyKill(ptyId);
   } catch (error) {
     console.warn("killTerminal failed", error);
   }
 }
+
+const activeTerminalTab = computed<TerminalTab | null>(() =>
+  props.activeTab && props.activeTab.kind === "terminal"
+    ? (props.activeTab as TerminalTab)
+    : null,
+);
 
 defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
 </script>
@@ -203,12 +211,10 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
                   ]"
                   :aria-hidden="!isActiveKind('terminal')"
                 >
-                  <TerminalStack
-                    :tabs="tabs"
-                    :active-id="activeId"
-                    @focus-leaf="(tabId, leafId) => tabsStore.focusPane(tabId, leafId)"
-                    @cwd="(leafId, cwd) => tabsStore.setLeafCwd(leafId, cwd)"
-                    @title="(leafId, title) => tabsStore.setLeafTitle(leafId, title)"
+                  <TerminalWorkspace
+                    v-if="activeTerminalTab"
+                    :tab="activeTerminalTab"
+                    :is-active="isActiveKind('terminal')"
                   />
                 </div>
 

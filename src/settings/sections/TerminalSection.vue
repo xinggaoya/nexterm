@@ -32,7 +32,6 @@ const scrollbackOptions = computed(() =>
     value,
   })),
 );
-
 </script>
 
 <template>
@@ -48,33 +47,6 @@ const scrollbackOptions = computed(() =>
 
     <NCard size="small" :title="t('settings.general.terminal')" embedded>
       <NForm label-placement="left" label-width="150" size="small">
-        <NFormItem :label="t('settings.general.webglRenderer')">
-          <NSwitch
-            :value="prefs.terminalWebglEnabled"
-            @update:value="prefs.updateTerminalWebglEnabled"
-          />
-        </NFormItem>
-        <NFormItem :label="t('settings.general.terminalContextMenu')">
-          <NSwitch
-            :value="prefs.terminalContextMenuEnabled"
-            @update:value="prefs.updateTerminalContextMenuEnabled"
-          />
-        </NFormItem>
-        <NFormItem :label="t('settings.general.terminalNotifications')">
-          <NSwitch
-            :value="prefs.terminalNotificationEnabled"
-            @update:value="prefs.updateTerminalNotificationEnabled"
-          />
-        </NFormItem>
-        <NFormItem
-          v-if="prefs.terminalNotificationEnabled"
-          :label="t('settings.general.terminalNotificationSound')"
-        >
-          <NSwitch
-            :value="prefs.terminalNotificationSoundEnabled"
-            @update:value="prefs.updateTerminalNotificationSoundEnabled"
-          />
-        </NFormItem>
         <NFormItem :label="t('settings.general.fontFamily')">
           <NSelect
             :value="prefs.terminalFontFamily"
@@ -99,20 +71,24 @@ const scrollbackOptions = computed(() =>
             />
           </NSpace>
         </NFormItem>
-        <NFormItem :label="t('settings.general.letterSpacing')">
-          <NInputNumber
-            :value="prefs.terminalLetterSpacing"
-            :min="-10"
-            :max="10"
-            @update:value="(value) => prefs.updateTerminalLetterSpacing(value ?? 0)"
-          />
-        </NFormItem>
         <NFormItem :label="t('settings.general.scrollback')">
           <NSelect
             :value="prefs.terminalScrollback"
             :options="scrollbackOptions"
             tag
             @update:value="(value) => prefs.updateTerminalScrollback(Number(value))"
+          />
+        </NFormItem>
+        <NFormItem :label="t('settings.general.webglRenderer')">
+          <NSwitch
+            :value="prefs.terminalWebglEnabled"
+            @update:value="prefs.updateTerminalWebglEnabled"
+          />
+        </NFormItem>
+        <NFormItem :label="t('settings.general.terminalContextMenu')">
+          <NSwitch
+            :value="prefs.terminalContextMenuEnabled"
+            @update:value="prefs.updateTerminalContextMenuEnabled"
           />
         </NFormItem>
       </NForm>

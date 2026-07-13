@@ -50,7 +50,7 @@ import { native } from "@/lib/native";
 import { applyTerminalSessionTheme } from "@/modules/terminal";
 import { copyToClipboard, relativePath } from "@/modules/explorer/lib/contextActions";
 import { notifyInfo } from "@/modules/notifications/notificationCenter";
-import { leafIds, type SplitDir } from "@/modules/terminal/lib/panes";
+import { leafIds, type SplitDir } from "@/modules/terminal/lib/layout";
 import { buildNaiveThemeOverrides, getNaiveTheme } from "@/modules/theme/naiveTheme";
 import { readAppTokens, type AppTokens } from "@/styles/tokens";
 import SettingsPanel from "@/settings/SettingsPanel.vue";

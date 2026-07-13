@@ -30,8 +30,8 @@ import {
   pathsToStage,
   pathsToUnstage,
 } from "@/modules/source-control/sourceControlModel";
-import type { SplitDir } from "@/modules/terminal/lib/panes";
-import { createTerminalSessionHandle } from "@/modules/terminal/lib/terminalSessionCore";
+import type { SplitDir } from "@/modules/terminal/lib/layout";
+import { createTerminalSessionHandle } from "@/modules/terminal";
 import { DEFAULT_TERMINAL_SNIPPETS } from "@/modules/snippets";
 import type { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { Tab } from "@/modules/tabs/tabsTypes";
