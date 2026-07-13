@@ -13,7 +13,7 @@ import { tabLabel } from "@/modules/tabs/tabLabel";
 import { t } from "@/modules/i18n/translate";
 import type { TabDropPlacement } from "@/modules/tabs/tabsReorder";
 import type { Tab } from "@/modules/tabs/tabsTypes";
-import type { SplitDir } from "@/modules/terminal/lib/panes";
+import type { SplitDir } from "@/modules/terminal/lib/layout";
 import TabContextMenu, {
   type TabContextMenuTarget,
 } from "./TabContextMenu.vue";

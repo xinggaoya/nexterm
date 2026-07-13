@@ -1,268 +1,276 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { readClipboardText, writeClipboardText } from "@/lib/clipboard";
-import { useTouchDevicePreference } from "@/lib/touchDevice";
-import { t as translate } from "@/modules/i18n/translate";
+import { ref, onMounted, onBeforeUnmount, watch, computed } from "vue";
+import { Terminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
+import { SearchAddon } from "@xterm/addon-search";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
-import {
-  applyFontFamily,
-  applyFontSize,
-  applyLetterSpacing,
-  applyScrollback,
-  applyWebglPreference,
-  getLeafTerm,
-} from "./lib/rendererPool";
-import {
-  createTerminalSessionHandle,
-  applyTerminalSessionScrollback,
-  mountTerminalSession,
-  updateTerminalSessionVisibility,
-} from "./lib/terminalSessionCore";
+import { createSession, trackSession, getSessionForLeaf } from "./lib/sessions";
+import type { PtySessionHandle, SessionState } from "./lib/sessions";
+import { applyTerminalTheme, watchTerminalTheme } from "./lib/theme";
+import { attachClipboardShortcuts } from "./lib/shortcuts";
+import TerminalPaneHeader from "./TerminalPaneHeader.vue";
+import TerminalPaneFooter from "./TerminalPaneFooter.vue";
 
-const props = withDefaults(
-  defineProps<{
-    leafId: number;
-    visible: boolean;
-    focused?: boolean;
-    initialCwd?: string;
-    startupInput?: string;
-  }>(),
-  {
-    focused: true,
-    initialCwd: undefined,
-    startupInput: undefined,
-  },
-);
-
-const emit = defineEmits<{
-  exit: [leafId: number, code: number];
-  cwd: [leafId: number, cwd: string];
-  title: [leafId: number, title: string];
+const props = defineProps<{
+  leafId: string;
+  cwd?: string;
+  title?: string;
+  isActive: boolean;
+  isFocused: boolean;
+  flex: number;
 }>();
 
+const emit = defineEmits<{
+  cwd: [string];
+  title: [string];
+  focus: [];
+  split: ["row" | "col"];
+  close: [];
+}>();
+
+const container = ref<HTMLElement>();
+const state = ref<SessionState>("connecting");
+const exitCode = ref<number | null>(null);
+const dims = ref<{ cols: number; rows: number }>({ cols: 0, rows: 0 });
+const shellName = computed(() => {
+  const t = props.title ?? "";
+  const slash = Math.max(t.lastIndexOf("/"), t.lastIndexOf("\\"));
+  return slash >= 0 ? t.slice(slash + 1) : t;
+});
+
 const prefs = usePreferencesPiniaStore();
-const { effectiveTouch } = useTouchDevicePreference();
-const container = ref<HTMLDivElement | null>(null);
-const contextMenu = ref<{ x: number; y: number; hasSelection: boolean } | null>(null);
-const menuEl = ref<HTMLElement | null>(null);
-let cleanup: (() => void) | undefined;
-let touchLastY = 0;
-const WHEEL_SENSITIVITY = 1;
 
-function syncCurrentVisibility() {
-  updateTerminalSessionVisibility(props.leafId, props.visible, props.focused);
-}
+let term: Terminal | null = null;
+let fitAddon: FitAddon | null = null;
+let session: PtySessionHandle | null = null;
+let resizeObserver: ResizeObserver | null = null;
+let detachThemeWatch: (() => void) | null = null;
 
-function dispatchWheel(deltaY: number) {
-  const host = container.value;
-  if (!host) return;
-  const wheel = new WheelEvent("wheel", {
-    deltaY: deltaY * WHEEL_SENSITIVITY,
-    bubbles: true,
-    cancelable: true,
-  });
-  host.dispatchEvent(wheel);
-}
-
-function handleTouchMove(event: TouchEvent) {
-  if (!effectiveTouch.value) return;
-  if (event.touches.length !== 1) return;
-  const touch = event.touches[0];
-  const deltaY = touch.clientY - touchLastY;
-  touchLastY = touch.clientY;
-  if (Math.abs(deltaY) < 0.5) return;
-  event.preventDefault();
-  // Touch moves down (clientY increases) should scroll the terminal buffer up,
-  // which in wheel semantics is a negative deltaY.
-  dispatchWheel(-deltaY);
-}
-
-function getSelectionText(): string {
-  return getLeafTerm(props.leafId)?.getSelection() ?? "";
-}
-
-function handleContextMenu(event: MouseEvent) {
-  // When the user disables the custom terminal context menu in settings, let
-  // the browser/xterm default menu take over (it ships copy / paste / select
-  // all out of the box). We deliberately don't preventDefault so the native
-  // menu can render and so the global `preventNativeContextMenu` handler in
-  // MainApp.vue doesn't have to know about this preference.
-  if (!prefs.terminalContextMenuEnabled) return;
-  event.preventDefault();
-  const host = container.value;
-  if (!host) return;
-  const rect = host.getBoundingClientRect();
-  contextMenu.value = {
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top,
-    hasSelection: getSelectionText() !== "",
-  };
-}
-
-function closeContextMenu() {
-  contextMenu.value = null;
-}
-
-function handleDocumentPointerDown(event: PointerEvent) {
-  if (!contextMenu.value) return;
-  const target = event.target as Node | null;
-  if (target && menuEl.value && menuEl.value.contains(target)) return;
-  closeContextMenu();
-}
-
-async function handleContextCopy() {
-  const text = getSelectionText();
-  if (!text) return;
-  await writeClipboardText(text);
-  closeContextMenu();
-}
-
-async function handleContextPaste() {
-  const term = getLeafTerm(props.leafId);
-  if (!term) return;
-  const text = await readClipboardText();
-  if (text) term.paste(text);
-  closeContextMenu();
-}
-
-function handleContextSelectAll() {
-  const term = getLeafTerm(props.leafId);
-  if (!term) return;
-  term.selectAll();
-  if (contextMenu.value) {
-    contextMenu.value = { ...contextMenu.value, hasSelection: true };
+async function ensureSession(): Promise<void> {
+  if (session || !term) return;
+  const existing = getSessionForLeaf(props.leafId);
+  if (existing) {
+    session = existing;
+    syncSessionCallbacks();
+    return;
   }
-  closeContextMenu();
-}
-
-onMounted(() => {
-  const host = container.value;
-  if (!host) return;
-  cleanup = mountTerminalSession({
-    leafId: props.leafId,
-    container: host,
-    initialCwd: props.initialCwd,
-    startupInput: props.startupInput,
+  const handle = await createSession({
+    term,
+    cwd: props.cwd,
     callbacks: {
-      onExit: (code) => emit("exit", props.leafId, code),
-      onCwd: (cwd) => emit("cwd", props.leafId, cwd),
-      onTitle: (title) => emit("title", props.leafId, title),
+      onCwd: (cwd) => emit("cwd", cwd),
+      onTitle: (title) => emit("title", title),
+      onStateChange: (next, code) => {
+        state.value = next;
+        if (code !== undefined) exitCode.value = code;
+      },
     },
   });
-  syncCurrentVisibility();
-  host.addEventListener("touchmove", handleTouchMove, { passive: false });
-  host.addEventListener("contextmenu", handleContextMenu);
-  document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+  session = handle;
+  trackSession(props.leafId, handle);
+  syncSessionCallbacks();
+}
+
+function syncSessionCallbacks() {
+  if (!term || !session) return;
+  attachClipboardShortcuts({
+    term,
+    session,
+    enabled: prefs.terminalContextMenuEnabled,
+  });
+}
+
+function attachWebgl() {
+  if (!term) return;
+  if (!prefs.terminalWebglEnabled) return;
+  try {
+    const addon = new WebglAddon();
+    addon.onContextLoss(() => {
+      try {
+        addon.dispose();
+      } catch {
+        // re-attach path tries again below
+      }
+      requestAnimationFrame(attachWebgl);
+    });
+    term.loadAddon(addon);
+  } catch {
+    // WebGL unavailable; canvas addon takes over automatically.
+  }
+}
+
+function recordDims(): void {
+  if (!term) return;
+  dims.value = { cols: term.cols, rows: term.rows };
+}
+
+async function refreshLayout(): Promise<void> {
+  if (!fitAddon || !term) return;
+  fitAddon.fit();
+  recordDims();
+  if (session) session.resize(term.cols, term.rows);
+}
+
+onMounted(async () => {
+  if (!container.value) return;
+  term = new Terminal({
+    cursorBlink: true,
+    fontSize: prefs.terminalFontSize,
+    fontFamily:
+      prefs.terminalFontFamily ||
+      'JetBrainsMono Nerd Font, "JetBrains Mono", SFMono-Regular, Menlo, monospace',
+    scrollback: prefs.terminalScrollback,
+    allowProposedApi: true,
+    convertEol: false,
+  });
+  applyTerminalTheme(term);
+  fitAddon = new FitAddon();
+  term.loadAddon(fitAddon);
+  term.loadAddon(new WebLinksAddon());
+  term.loadAddon(new SearchAddon());
+  attachWebgl();
+
+  term.open(container.value);
+  await refreshLayout();
+  await ensureSession();
+
+  detachThemeWatch = watchTerminalTheme(() => {
+    if (term) applyTerminalTheme(term);
+  });
+
+  resizeObserver = new ResizeObserver(() => {
+    if (props.isActive) void refreshLayout();
+  });
+  resizeObserver.observe(container.value);
 });
 
 onBeforeUnmount(() => {
-  cleanup?.();
-  closeContextMenu();
-  const host = container.value;
-  if (host) {
-    host.removeEventListener("touchmove", handleTouchMove);
-    host.removeEventListener("contextmenu", handleContextMenu);
-  }
-  document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
+  detachThemeWatch?.();
+  resizeObserver?.disconnect();
+  term?.dispose();
+  term = null;
+  fitAddon = null;
+  session = null;
 });
+
 watch(
-  () => [props.leafId, props.visible, props.focused] as const,
-  ([leafId, visible, focused]) => {
-    updateTerminalSessionVisibility(leafId, visible, focused);
-    if (!focused) closeContextMenu();
+  () => props.isActive,
+  (active) => {
+    if (active) requestAnimationFrame(() => void refreshLayout());
   },
 );
 
 watch(
-  () => [prefs.terminalFontSize, prefs.zoomLevel] as const,
-  ([fontSize, zoomLevel]) => {
-    applyFontSize(Math.max(4, Math.round(fontSize * zoomLevel)));
-  },
-  { immediate: true },
+  () => prefs.terminalFontSize,
+  () => requestAnimationFrame(() => void refreshLayout()),
 );
-
 watch(
   () => prefs.terminalFontFamily,
-  (fontFamily) => applyFontFamily(fontFamily),
-  { immediate: true },
+  () => requestAnimationFrame(() => void refreshLayout()),
 );
-
-watch(
-  () => prefs.terminalLetterSpacing,
-  (letterSpacing) => applyLetterSpacing(letterSpacing),
-  { immediate: true },
-);
-
 watch(
   () => prefs.terminalScrollback,
-  (scrollback) => {
-    applyScrollback(scrollback);
-    applyTerminalSessionScrollback(scrollback);
+  (n) => {
+    if (term) term.options.scrollback = n;
   },
   { immediate: true },
 );
 
-watch(
-  () => prefs.terminalWebglEnabled,
-  (enabled) => applyWebglPreference(enabled),
-  { immediate: true },
-);
+function handleFocus() {
+  emit("focus");
+}
+
+function handleHeaderCwdClick() {
+  if (props.cwd) {
+    void import("@/lib/clipboard").then((m) =>
+      m.writeClipboardText(props.cwd!),
+    );
+  }
+}
+
+function handleHeaderSplit(dir: "row" | "col") {
+  emit("split", dir);
+}
+
+function handleHeaderRestart() {
+  session?.restart();
+}
 
 defineExpose({
-  write: (data: string) => createTerminalSessionHandle(props.leafId).write(data),
-  focus: () => createTerminalSessionHandle(props.leafId).focus(),
-  getBuffer: (maxLines?: number) =>
-    createTerminalSessionHandle(props.leafId).getBuffer(maxLines),
-  getSelection: () => createTerminalSessionHandle(props.leafId).getSelection(),
-  applyTheme: () => createTerminalSessionHandle(props.leafId).applyTheme(),
+  focus: () => term?.focus(),
+  write: (data: string) => term?.write(data),
 });
 </script>
 
 <template>
   <div
-    class="relative h-full w-full"
-    :style="{
-      visibility: visible ? 'visible' : 'hidden',
-      pointerEvents: visible ? 'auto' : 'none',
-    }"
+    class="terminal-pane flex flex-col"
+    :class="{ focused: isFocused, exited: state === 'exited' }"
+    :style="{ flex: String(flex) }"
+    @mousedown="handleFocus"
   >
-    <div
-      ref="container"
-      class="nexterm-terminal-scrollbar zoom-exempt flex h-full w-full items-center justify-center rounded-sm bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-terminal-focus"
+    <TerminalPaneHeader
+      :leaf-id="leafId"
+      :cwd="cwd"
+      :shell-name="shellName"
+      :state="state"
+      :exit-code="exitCode"
+      @close="emit('close')"
+      @split="handleHeaderSplit"
+      @restart="handleHeaderRestart"
+      @cwd-click="handleHeaderCwdClick"
     />
-    <div
-      v-if="contextMenu"
-      ref="menuEl"
-      data-terminal-context-menu
-      role="menu"
-      class="pointer-events-auto absolute z-30 min-w-32 rounded-md border border-border/60 bg-card py-1 text-foreground shadow-md"
-      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
-    >
-      <button
-        type="button"
-        data-terminal-context-action="copy"
-        :disabled="!contextMenu.hasSelection"
-        class="block w-full px-3 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-        @click="handleContextCopy"
-      >
-        {{ translate("common.copy") }}
-      </button>
-      <button
-        type="button"
-        data-terminal-context-action="paste"
-        class="block w-full px-3 py-1 text-left text-xs hover:bg-accent"
-        @click="handleContextPaste"
-      >
-        {{ translate("common.paste") }}
-      </button>
-      <button
-        type="button"
-        data-terminal-context-action="select-all"
-        class="block w-full px-3 py-1 text-left text-xs hover:bg-accent"
-        @click="handleContextSelectAll"
-      >
-        {{ translate("common.selectAll") }}
-      </button>
-    </div>
+    <div ref="container" class="terminal-pane-body" />
+    <TerminalPaneFooter
+      :state="state"
+      :exit-code="exitCode"
+      :dims="dims"
+    />
   </div>
 </template>
+
+<style scoped>
+.terminal-pane {
+  position: relative;
+  overflow: hidden;
+  contain: layout style;
+  background: var(--term-pane-bg);
+  color: var(--term-pane-fg);
+  min-width: 0;
+  min-height: 0;
+}
+.terminal-pane.exited .terminal-pane-body {
+  opacity: 0.55;
+  filter: grayscale(0.4);
+}
+.terminal-pane-body {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+  background: var(--term-bg);
+  overflow: hidden;
+}
+.terminal-pane.focused .terminal-pane-body {
+  outline: 0;
+}
+</style>
+
+<style>
+.terminal-pane-body .xterm,
+.terminal-pane-body .xterm-viewport,
+.terminal-pane-body .xterm-screen,
+.terminal-pane-body .xterm .xterm-screen {
+  height: 100% !important;
+  width: 100% !important;
+  padding: 0 !important;
+}
+.terminal-pane-body .xterm-viewport {
+  background-color: transparent !important;
+}
+.terminal-pane-body .xterm .xterm-screen canvas {
+  outline: none;
+}
+</style>

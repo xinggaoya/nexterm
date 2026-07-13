@@ -1,5 +1,5 @@
 # nexterm-shell-integration (PowerShell)
-# Emits OSC 7 (cwd) + OSC 133 A/B/D so the host tracks cwd and prompt boundaries.
+# Emits OSC 7 (cwd) so the host tracks the current working directory.
 
 if ($global:__NEXTERM_HOOKS_LOADED) { return }
 $global:__NEXTERM_HOOKS_LOADED = $true
@@ -33,14 +33,7 @@ function global:__nexterm_urlencode {
 }
 
 function global:prompt {
-    $lec = $LASTEXITCODE
-    if ($null -eq $lec) { $lec = if ($?) { 0 } else { 1 } }
     $esc = [char]27
-
-    $oscD = "$esc]133;D;$lec$esc\"
-    $oscA = "$esc]133;A$esc\"
-    $oscB = "$esc]133;B$esc\"
-
     $loc = Get-Location
     $osc7 = ''
     if ($loc.Provider.Name -eq 'FileSystem') {
@@ -57,6 +50,5 @@ function global:prompt {
         "PS $((Get-Location).Path)> "
     }
 
-    $global:LASTEXITCODE = $lec
-    "$oscD$oscA$osc7${original}${oscB}"
+    "${osc7}${original}"
 }

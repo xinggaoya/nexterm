@@ -12,7 +12,7 @@ import {
   siblingLeafOf,
   splitLeaf,
   type SplitDir,
-} from "@/modules/terminal/lib/panes";
+} from "@/modules/terminal/lib/layout";
 import { disposeTerminalSession } from "./terminalDisposal";
 import { reorderTabs, type TabDropPlacement } from "./tabsReorder";
 import {
@@ -463,7 +463,6 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     const restored = closedStack.value[closedStack.value.length - 1];
     if (!restored) return null;
     closedStack.value = closedStack.value.slice(0, -1);
-    // Allocate fresh ids to avoid colliding with any still-open tabs.
     const reId = (oldId: number): number => {
       if (tabs.value.some((t) => t.id === oldId)) return nextId.value++;
       return oldId;
@@ -473,9 +472,9 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     if (clone.kind === "terminal") {
       const visit = (node: typeof clone.paneTree) => {
         if (node.kind === "leaf") {
-          node.id = reId(node.id);
+          node.id = reId(node.id as number);
         } else {
-          node.id = reId(node.id);
+          node.id = reId(node.id as number);
           for (const child of node.children) visit(child);
         }
       };
@@ -488,6 +487,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
   }
 
   function focusPane(tabId: number, leafId: number): void {
+    void leafId;
     tabs.value = tabs.value.map((tab) =>
       tab.id === tabId && tab.kind === "terminal" && hasLeaf(tab.paneTree, leafId)
         ? {
@@ -511,8 +511,9 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     if (!tab || tab.kind !== "terminal") return null;
     const target = nextLeafInDir(tab.paneTree, leafId, dir);
     if (target === null) return null;
-    focusPane(tabId, target);
-    return target;
+    const targetId = target as number;
+    focusPane(tabId, targetId);
+    return targetId;
   }
 
   function setLeafCwd(leafId: number, cwd: string): void {
@@ -586,16 +587,17 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
       const splitId = nextId.value++;
       const leafId = nextId.value++;
       newLeafId = leafId;
+      const { tree } = splitLeaf(
+        tab.paneTree,
+        tab.activeLeafId,
+        dir,
+        leafId,
+        tab.cwd,
+        splitId,
+      );
       return {
         ...tab,
-        paneTree: splitLeaf(
-          tab.paneTree,
-          tab.activeLeafId,
-          splitId,
-          leafId,
-          dir,
-          tab.cwd,
-        ),
+        paneTree: tree,
         activeLeafId: leafId,
       };
     });
@@ -621,10 +623,12 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
       return true;
     }
 
-    const remaining = leafIds(nextTree);
+    const remaining: number[] = leafIds(nextTree) as number[];
     const sibling = siblingLeafOf(tab.paneTree, targetLeafId);
-    const activeLeafId =
-      sibling && remaining.includes(sibling) ? sibling : remaining[0];
+    const activeLeafId: number | undefined =
+      sibling !== null && remaining.includes(sibling as number)
+        ? (sibling as number)
+        : (remaining[0] ?? targetLeafId);
     const cwd = findLeafCwd(nextTree, activeLeafId);
     tabs.value = tabs.value.map((item) =>
       item.id === tabId && item.kind === "terminal"
@@ -638,6 +642,42 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     );
     disposeTerminalSession(targetLeafId);
     return false;
+  }
+
+  function closeLeafInTab(tabId: number, leafId: number): void {
+    const tabIndex = tabs.value.findIndex((tab) => tab.id === tabId);
+    const tab = tabs.value[tabIndex];
+    if (!tab || tab.kind !== "terminal") return;
+    const nextTree = removeLeaf(tab.paneTree, leafId);
+    if (nextTree === null) {
+      if (tabs.value.length <= 1) return;
+      const nextTabs = tabs.value.filter((item) => item.id !== tabId);
+      tabs.value = nextTabs;
+      if (activeId.value === tabId) {
+        activeId.value =
+          nextTabs[Math.max(0, tabIndex - 1)]?.id ?? nextTabs[0]?.id ?? tabId;
+      }
+      disposeTerminalSession(leafId);
+      return;
+    }
+    const remaining: number[] = leafIds(nextTree) as number[];
+    const sibling = siblingLeafOf(tab.paneTree, leafId);
+    const activeLeafId: number | undefined =
+      sibling !== null && remaining.includes(sibling as number)
+        ? (sibling as number)
+        : (remaining[0] ?? leafId);
+    const cwd = findLeafCwd(nextTree, activeLeafId);
+    tabs.value = tabs.value.map((item) =>
+      item.id === tabId && item.kind === "terminal"
+        ? {
+            ...item,
+            paneTree: nextTree,
+            activeLeafId,
+            ...(cwd !== undefined ? { cwd } : {}),
+          }
+        : item,
+    );
+    disposeTerminalSession(leafId);
   }
 
   return {
@@ -672,5 +712,6 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     updateTab,
     splitActivePane,
     closeActivePane,
+    closeLeafInTab,
   };
 });

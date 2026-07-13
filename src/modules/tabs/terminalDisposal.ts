@@ -1,4 +1,5 @@
-type TerminalSessionDisposer = (leafId: number) => void;
+type LeafId = string | number;
+type TerminalSessionDisposer = (leafId: LeafId) => void;
 
 let disposer: TerminalSessionDisposer = () => {};
 
@@ -11,6 +12,6 @@ export function configureTerminalSessionDisposer(
   };
 }
 
-export function disposeTerminalSession(leafId: number): void {
+export function disposeTerminalSession(leafId: LeafId): void {
   disposer(leafId);
 }

@@ -164,7 +164,6 @@ pub fn run() {
             pty::pty_open,
             pty::pty_write,
             pty::pty_resize,
-            pty::pty_read_transcript,
             pty::pty_close,
             pty::pty_kill,
             fs::tree::fs_read_dir,

@@ -1,39 +1,30 @@
 import type { CommandSpec } from "@/modules/commands/types";
 
+/**
+ * Terminal command specs exposed in the command palette. Each command
+ * delegates to a handler supplied at registration time via the workbench
+ * command wiring. i18n keys map to existing strings in `locales/*.ts`.
+ */
 export const TERMINAL_COMMAND_SPECS: CommandSpec[] = [
   {
     id: "terminal.new",
     titleKey: "commands.items.newTerminal",
     category: "terminal",
-    defaultKeybinding: null,
+    defaultKeybinding: "Ctrl+Shift+`",
     workspaceRequired: true,
   },
   {
     id: "terminal.splitHorizontal",
     titleKey: "commands.items.splitRight",
     category: "terminal",
-    defaultKeybinding: null,
+    defaultKeybinding: "Ctrl+Shift+5",
     workspaceRequired: true,
   },
   {
     id: "terminal.splitVertical",
     titleKey: "commands.items.splitDown",
     category: "terminal",
-    defaultKeybinding: null,
-    workspaceRequired: true,
-  },
-  {
-    id: "terminal.clear",
-    titleKey: "commands.items.clearTerminal",
-    category: "terminal",
-    defaultKeybinding: null,
-    workspaceRequired: true,
-  },
-  {
-    id: "terminal.reset",
-    titleKey: "commands.items.resetTerminal",
-    category: "terminal",
-    defaultKeybinding: null,
+    defaultKeybinding: "Ctrl+Shift+D",
     workspaceRequired: true,
   },
   {
@@ -65,15 +56,15 @@ export const TERMINAL_COMMAND_SPECS: CommandSpec[] = [
     workspaceRequired: true,
   },
   {
-    id: "terminal.runSnippet",
-    titleKey: "snippets.runSnippetTitle",
+    id: "terminal.clear",
+    titleKey: "commands.items.clearTerminal",
     category: "terminal",
     defaultKeybinding: null,
     workspaceRequired: true,
   },
   {
-    id: "terminal.rename",
-    titleKey: "terminal.rename",
+    id: "terminal.reset",
+    titleKey: "commands.items.resetTerminal",
     category: "terminal",
     defaultKeybinding: null,
     workspaceRequired: true,
@@ -81,6 +72,13 @@ export const TERMINAL_COMMAND_SPECS: CommandSpec[] = [
   {
     id: "terminal.kill",
     titleKey: "terminal.kill",
+    category: "terminal",
+    defaultKeybinding: null,
+    workspaceRequired: true,
+  },
+  {
+    id: "terminal.runSnippet",
+    titleKey: "snippets.runSnippetTitle",
     category: "terminal",
     defaultKeybinding: null,
     workspaceRequired: true,

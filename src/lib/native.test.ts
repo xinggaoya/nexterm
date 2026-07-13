@@ -291,15 +291,10 @@ describe("native PTY wrappers", () => {
     expect(typeof args?.onData).toBe("object");
     expect(typeof args?.onExit).toBe("object");
 
-    // Simulate an onData channel message with the startOffset prefix
-    const { onData } = args as { onData: { onmessage: (buf: ArrayBuffer) => void } };
-    const buf = new ArrayBuffer(8 + 4);
-    new DataView(buf).setBigUint64(0, 42n, true);
-    onData.onmessage(buf);
-    expect(handlers.onData).toHaveBeenCalledWith({
-      startOffset: 42,
-      bytes: expect.any(Uint8Array),
-    });
+    // Simulate an onData channel message carrying the raw PTY output.
+    const { onData } = args as { onData: { onmessage: (chunk: string) => void } };
+    onData.onmessage("hello\n");
+    expect(handlers.onData).toHaveBeenCalledWith("hello\n");
 
     // Write/resize/close proxy through the session and forward to invoke
     vi.mocked(invoke).mockResolvedValueOnce(undefined);
@@ -314,30 +309,16 @@ describe("native PTY wrappers", () => {
       rows: 30,
     });
 
-    vi.mocked(invoke).mockResolvedValueOnce({
-      startOffset: 0,
-      nextOffset: 0,
-      totalOffset: 0,
-      dataBase64: "",
-    });
-    await session.readTranscript(0);
-    expect(invoke).toHaveBeenLastCalledWith("pty_read_transcript", {
-      id: 7,
-      sinceOffset: 0,
-      maxBytes: 1024 * 1024,
-    });
-
     vi.mocked(invoke).mockResolvedValueOnce(undefined);
     await session.close();
     expect(invoke).toHaveBeenLastCalledWith("pty_close", { id: 7 });
   });
 
-  it("exposes raw PTY write/resize/read/close helpers", async () => {
+  it("exposes raw PTY write/resize/close helpers", async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
 
     await native.ptyWrite(7, "echo");
     await native.ptyResize(7, 80, 24);
-    await native.ptyReadTranscript(7, 0, 1024);
     await native.ptyClose(7);
 
     expect(invoke).toHaveBeenNthCalledWith(1, "pty_write", {
@@ -349,11 +330,6 @@ describe("native PTY wrappers", () => {
       cols: 80,
       rows: 24,
     });
-    expect(invoke).toHaveBeenNthCalledWith(3, "pty_read_transcript", {
-      id: 7,
-      sinceOffset: 0,
-      maxBytes: 1024,
-    });
-    expect(invoke).toHaveBeenNthCalledWith(4, "pty_close", { id: 7 });
+    expect(invoke).toHaveBeenNthCalledWith(3, "pty_close", { id: 7 });
   });
 });
