@@ -38,7 +38,7 @@ function updateTitle(leafId: string | number, title: string) {
 </script>
 
 <template>
-  <div v-if="tree" class="terminal-workspace h-full w-full overflow-hidden">
+  <div v-if="tree" class="terminal-workspace flex h-full w-full overflow-hidden">
     <TerminalTreeNode
       :node="tree"
       :tab="tab"

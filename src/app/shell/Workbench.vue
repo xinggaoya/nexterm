@@ -148,10 +148,8 @@ async function killTerminal(leafId: number) {
   }
 }
 
-const activeTerminalTab = computed<TerminalTab | null>(() =>
-  props.activeTab && props.activeTab.kind === "terminal"
-    ? (props.activeTab as TerminalTab)
-    : null,
+const terminalTabs = computed<TerminalTab[]>(() =>
+  props.tabs.filter((tab): tab is TerminalTab => tab.kind === "terminal"),
 );
 
 defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
@@ -211,11 +209,17 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
                   ]"
                   :aria-hidden="!isActiveKind('terminal')"
                 >
-                  <TerminalWorkspace
-                    v-if="activeTerminalTab"
-                    :tab="activeTerminalTab"
-                    :is-active="isActiveKind('terminal')"
-                  />
+                  <div
+                    v-for="terminalTab in terminalTabs"
+                    v-show="terminalTab.id === activeId"
+                    :key="terminalTab.id"
+                    class="absolute inset-0"
+                  >
+                    <TerminalWorkspace
+                      :tab="terminalTab"
+                      :is-active="isActiveKind('terminal') && terminalTab.id === activeId"
+                    />
+                  </div>
                 </div>
 
                 <div
