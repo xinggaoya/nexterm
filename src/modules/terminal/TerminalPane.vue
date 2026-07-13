@@ -50,23 +50,27 @@ let detachThemeWatch: (() => void) | null = null;
 
 async function ensureSession(): Promise<void> {
   if (session || !term) return;
+  const sessionCallbacks = {
+    onCwd: (cwd: string) => emit("cwd", cwd),
+    onTitle: (title: string) => emit("title", title),
+    onStateChange: (next: SessionState, code?: number) => {
+      state.value = next;
+      if (code !== undefined) exitCode.value = code;
+    },
+  };
   const existing = getSessionForLeaf(props.leafId);
   if (existing) {
     session = existing;
+    existing.setCallbacks(sessionCallbacks);
+    state.value = existing.getState();
+    exitCode.value = existing.getExitCode() ?? null;
     syncSessionCallbacks();
     return;
   }
   const handle = await createSession({
     term,
     cwd: props.cwd,
-    callbacks: {
-      onCwd: (cwd) => emit("cwd", cwd),
-      onTitle: (title) => emit("title", title),
-      onStateChange: (next, code) => {
-        state.value = next;
-        if (code !== undefined) exitCode.value = code;
-      },
-    },
+    callbacks: sessionCallbacks,
   });
   session = handle;
   trackSession(props.leafId, handle);

@@ -26,6 +26,21 @@ describe("OSC parsing", () => {
     expect(before.events).toEqual([{ type: "cwd", value: "C:/Users" }]);
   });
 
+  it("decodes percent-encoded Windows drive letters (D%3A -> D:)", () => {
+    const before = handleOscData(
+      "\x1b]7;file:///D%3A/dev/rust/nexterm\x07",
+      "",
+    );
+    expect(before.events).toEqual([
+      { type: "cwd", value: "D:/dev/rust/nexterm" },
+    ]);
+  });
+
+  it("decodes percent-encoded spaces in the cwd", () => {
+    const before = handleOscData("\x1b]7;file://host/tmp/a%20b\x07", "");
+    expect(before.events).toEqual([{ type: "cwd", value: "/tmp/a b" }]);
+  });
+
   it("preserves OSC sequences that span a chunk boundary", () => {
     const first = handleOscData("pre\x1b]7;file://host/tmp", "");
     expect(first.pendingBuffer).toContain("\x1b");

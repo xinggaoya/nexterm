@@ -93,7 +93,12 @@ function parseOscPayload(payload: string): OscEvent | null {
   if (code === "7") {
     const pathMatch = value.match(/^file:\/\/[^\/]*(\/.*)$/);
     if (pathMatch) {
-      const raw = pathMatch[1];
+      let raw = pathMatch[1];
+      try {
+        raw = decodeURIComponent(raw);
+      } catch {
+        // Malformed percent-encoding — keep the raw path rather than crash.
+      }
       const fixed = /^\/[A-Za-z]:/.test(raw) ? raw.slice(1) : raw;
       return { type: "cwd", value: fixed };
     }

@@ -32,6 +32,11 @@ export interface PtySessionHandle {
   write: (data: string) => void;
   resize: (cols: number, rows: number) => void;
   restart: () => void;
+  /** Last known lifecycle state; lets a remounted pane recover its badge. */
+  getState: () => SessionState;
+  getExitCode: () => number | undefined;
+  /** Re-point the session's cwd/title/state callbacks at a new pane. */
+  setCallbacks: (callbacks: SessionCallbacks) => void;
 }
 
 export interface ActiveSession {
@@ -55,6 +60,12 @@ export async function createSession(
   const onData = new Channel<string>();
   const onExit = new Channel<number>();
 
+  // Callbacks/state are mutable so a pane that remounts (e.g. after a tab
+  // switch) can re-subscribe and recover the badge without respawning.
+  let callbacks = opts.callbacks;
+  let state: SessionState = "connecting";
+  let exitCode: number | undefined;
+
   onData.onmessage = (chunk) => {
     const { cleaned, events } = handleOscData(chunk, "");
     // OSC bookkeeping is local to the parser — combining across chunks uses
@@ -62,12 +73,14 @@ export async function createSession(
     // each chunk verbatim; the only stateful thing left is OSC spanning a
     // chunk boundary, which we re-thread by passing empty each time.
     // (handleOscData ignores prevPending when the chunk is clean.)
-    for (const ev of events) emitOsc(ev, opts.callbacks);
+    for (const ev of events) emitOsc(ev, callbacks);
     if (cleaned) opts.term.write(cleaned);
   };
 
   onExit.onmessage = (code) => {
-    opts.callbacks.onStateChange("exited", code);
+    state = "exited";
+    exitCode = code;
+    callbacks.onStateChange("exited", code);
   };
 
   const id = await invoke<number>("pty_open", {
@@ -79,7 +92,12 @@ export async function createSession(
     onExit,
   });
 
-  opts.callbacks.onStateChange("running");
+  // A very fast-exiting shell can fire onExit during the await above; only
+  // promote to "running" when it hasn't already reported an exit.
+  if ((state as SessionState) !== "exited") {
+    state = "running";
+    callbacks.onStateChange("running");
+  }
 
   const handle: PtySessionHandle = {
     leafId: id.toString(),
@@ -94,6 +112,11 @@ export async function createSession(
     },
     restart: () => {
       void invoke("pty_kill", { id }).catch(() => {});
+    },
+    getState: () => state,
+    getExitCode: () => exitCode,
+    setCallbacks: (next) => {
+      callbacks = next;
     },
   };
 
