@@ -1,11 +1,28 @@
 <script setup lang="ts">
-import { CopyOutline, DocumentOutline, OpenOutline, RefreshOutline } from "@vicons/ionicons5";
+import {
+  CopyOutline,
+  DocumentOutline,
+  GitBranchOutline,
+  OpenOutline,
+  RefreshOutline,
+} from "@vicons/ionicons5";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { NButton, NDrawer, NDrawerContent, NIcon, NInput, NSpin, NTag } from "naive-ui";
+import {
+  NButton,
+  NDrawer,
+  NDrawerContent,
+  NIcon,
+  NInput,
+  NSelect,
+  NSpin,
+  NTag,
+  type SelectOption,
+} from "naive-ui";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import {
   native,
+  type GitBranchInfo,
   type GitCommitFileChange,
   type GitLogEntry,
 } from "@/lib/native";
@@ -37,12 +54,23 @@ type FilesEntry =
   | { state: "loaded"; files: GitCommitFileChange[] }
   | { state: "error"; error: string };
 
-const props = defineProps<{
-  repoRoot: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    repoRoot: string;
+    /** Git ref name (branch/tag/rev) to scope the log. */
+    refName?: string | null;
+    /** When true, fetch across every branch (overrides refName). */
+    allRefs?: boolean;
+  }>(),
+  {
+    refName: null,
+    allRefs: false,
+  },
+);
 
 const emit = defineEmits<{
   openCommitFile: [input: CommitFileDiffOpenInput];
+  changeRef: [input: { refName: string | null; allRefs: boolean }];
 }>();
 
 const PAGE_SIZE = 30;
@@ -53,9 +81,49 @@ const error = ref<string | null>(null);
 const selectedSha = ref<string | null>(null);
 const detailOpen = ref(false);
 const search = ref("");
-const endReached = ref(false);
+const hasMore = ref(false);
+const offset = ref(0);
+const branches = ref<GitBranchInfo[]>([]);
+const branchesLoading = ref(false);
+const branchesRequestId = ref(0);
+// Monotonic request counter so stale responses can be discarded.
+const logRequestId = ref(0);
 const remoteWeb = ref<RemoteWebInfo | null>(null);
 const filesBySha = reactive(new Map<string, FilesEntry>());
+
+const refOptions = computed<SelectOption[]>(() => {
+  const opts: SelectOption[] = [];
+  if (props.allRefs) {
+    opts.push({
+      label: t("gitHistory.allBranches"),
+      value: "__all__",
+    });
+  } else if (props.refName) {
+    opts.push({
+      label: props.refName,
+      value: `ref:${props.refName}`,
+    });
+  } else {
+    opts.push({
+      label: t("gitHistory.headShort"),
+      value: "__head__",
+    });
+  }
+  for (const branch of branches.value) {
+    if (branch.isRemote) continue;
+    opts.push({
+      label: branch.name,
+      value: `branch:${branch.name}`,
+    });
+  }
+  return opts;
+});
+
+const refSelectorValue = computed<string>(() => {
+  if (props.allRefs) return "__all__";
+  if (props.refName) return `ref:${props.refName}`;
+  return "__head__";
+});
 
 const graphRows = computed(() => {
   const { rows } = layoutGraph(commits.value);
@@ -159,19 +227,96 @@ function statusClass(status: string): string {
   }
 }
 
+function refKindClass(kind: string): string {
+  switch (kind.toLowerCase()) {
+    case "tag":
+      return "border-amber-300/60 bg-amber-100/60 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200";
+    case "remote":
+      return "border-sky-300/60 bg-sky-100/60 text-sky-900 dark:border-sky-500/40 dark:bg-sky-500/15 dark:text-sky-200";
+    default:
+      return "border-emerald-300/60 bg-emerald-100/60 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200";
+  }
+}
+
+async function loadBranches() {
+  const root = props.repoRoot;
+  const myId = ++branchesRequestId.value;
+  branchesLoading.value = true;
+  try {
+    const list = await native.gitBranchList(root);
+    if (myId !== branchesRequestId.value) return;
+    branches.value = list;
+  } catch {
+    if (myId !== branchesRequestId.value) return;
+    branches.value = [];
+  } finally {
+    if (myId === branchesRequestId.value) branchesLoading.value = false;
+  }
+}
+
 async function loadInitial() {
+  // Bump the request id so any in-flight response is ignored.
+  const myId = ++logRequestId.value;
   loadStatus.value = "initial";
   error.value = null;
-  endReached.value = false;
   selectedSha.value = null;
   detailOpen.value = false;
   filesBySha.clear();
   try {
-    const entries = await native.gitLog(props.repoRoot, { limit: PAGE_SIZE });
-    commits.value = entries;
-    endReached.value = entries.length < PAGE_SIZE;
+    const page = await native.gitLog(props.repoRoot, {
+      limit: PAGE_SIZE,
+      offset: 0,
+      refName: props.allRefs ? null : props.refName,
+      all: props.allRefs,
+    });
+    if (myId !== logRequestId.value) return;
+    commits.value = page.entries;
+    // `loadInitial` always requests `limit: PAGE_SIZE` at offset 0, so the
+    // next page begins at PAGE_SIZE regardless of how many rows the
+    // backend returned.
+    offset.value = PAGE_SIZE;
+    hasMore.value = page.hasMore;
     loadStatus.value = "idle";
   } catch (err) {
+    if (myId !== logRequestId.value) return;
+    error.value = normalizeError(err);
+    loadStatus.value = "error";
+  }
+}
+
+async function loadMore() {
+  if (!hasMore.value) return;
+  const myId = ++logRequestId.value;
+  loadStatus.value = "more";
+  const requestedOffset = offset.value;
+  try {
+    const page = await native.gitLog(props.repoRoot, {
+      limit: PAGE_SIZE,
+      offset: requestedOffset,
+      refName: props.allRefs ? null : props.refName,
+      all: props.allRefs,
+    });
+    if (myId !== logRequestId.value) return;
+    // Dedup by SHA so re-issued requests don't double-append.
+    const seen = new Set(commits.value.map((entry) => entry.sha));
+    const fresh: GitLogEntry[] = [];
+    for (const entry of page.entries) {
+      if (seen.has(entry.sha)) continue;
+      seen.add(entry.sha);
+      fresh.push(entry);
+    }
+    if (fresh.length > 0) {
+      commits.value = [...commits.value, ...fresh];
+    }
+    // Advance the cursor by PAGE_SIZE — the next request will start at
+    // `requestedOffset + PAGE_SIZE` regardless of how many fresh entries
+    // we appended. This matches Rust's limit/offset pagination model and
+    // keeps the test invariant stable when a page returns fewer rows.
+    offset.value = requestedOffset + PAGE_SIZE;
+    hasMore.value = page.hasMore;
+    loadStatus.value = "idle";
+  } catch (err) {
+    if (myId !== logRequestId.value) return;
     error.value = normalizeError(err);
     loadStatus.value = "error";
   }
@@ -221,17 +366,55 @@ function openSelectedRemote() {
   void openUrl(selectedWebUrl.value).catch(console.error);
 }
 
+function selectRef(value: string) {
+  if (value === "__all__") {
+    emitRefChoice({ refName: null, allRefs: true });
+    return;
+  }
+  if (value === "__head__") {
+    emitRefChoice({ refName: null, allRefs: false });
+    return;
+  }
+  if (value.startsWith("branch:")) {
+    const name = value.slice("branch:".length);
+    emitRefChoice({ refName: name, allRefs: false });
+    return;
+  }
+  if (value.startsWith("ref:")) {
+    const name = value.slice("ref:".length);
+    emitRefChoice({ refName: name, allRefs: false });
+    return;
+  }
+}
+
+function emitRefChoice(next: { refName: string | null; allRefs: boolean }) {
+  // Bubble the choice up — the parent (Stack → Workbench → MainApp) is
+  // responsible for updating the active tab's identity via the store.
+  emit("changeRef", next);
+}
+
 watch(
   () => props.repoRoot,
   () => {
     void loadInitial();
     void loadRemote();
+    void loadBranches();
+  },
+);
+
+// Switching the ref or scope cancels whatever is in flight and rebuilds
+// the list from page zero.
+watch(
+  () => [props.refName, props.allRefs] as const,
+  () => {
+    void loadInitial();
   },
 );
 
 onMounted(() => {
   void loadInitial();
   void loadRemote();
+  void loadBranches();
 });
 </script>
 
@@ -246,6 +429,22 @@ onMounted(() => {
           {{ props.repoRoot }}
         </div>
       </div>
+      <TooltipTitle :label="t('gitHistory.refSelector')">
+        <NSelect
+          data-ref-selector
+          size="tiny"
+          class="max-w-44"
+          :value="refSelectorValue"
+          :options="refOptions"
+          :loading="branchesLoading"
+          :consistent-menu-width="false"
+          @update:value="selectRef"
+        >
+          <template #arrow>
+            <NIcon :component="GitBranchOutline" />
+          </template>
+        </NSelect>
+      </TooltipTitle>
       <NInput
         v-model:value="search"
         size="tiny"
@@ -300,9 +499,9 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-else class="flex min-h-0 flex-1">
-      <div class="min-w-0 flex-1 overflow-auto">
-        <div class="grid h-6 items-center gap-3 border-b border-border/40 bg-card/55 px-3 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70 [grid-template-columns:68px_72px_minmax(0,1fr)_160px_96px_116px]">
+    <div v-else class="flex min-h-0 min-w-0 flex-1">
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div class="grid h-6 shrink-0 items-center gap-3 border-b border-border/40 bg-card/55 px-3 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70 [grid-template-columns:68px_72px_minmax(0,1fr)_160px_96px_116px]">
           <div />
           <div>{{ t("gitHistory.sha") }}</div>
           <div>{{ t("gitHistory.subject") }}</div>
@@ -311,53 +510,89 @@ onMounted(() => {
           <div class="text-right">{{ t("gitHistory.changes") }}</div>
         </div>
 
-        <button
-          v-for="commit in filteredCommits"
-          :key="commit.sha"
-          type="button"
-          :data-commit-row="commit.sha"
-          :class="[
-            'grid h-8 w-full items-center gap-3 border-l-2 px-3 text-left transition-colors [grid-template-columns:68px_72px_minmax(0,1fr)_160px_96px_116px]',
-            selectedSha === commit.sha
-              ? 'border-l-primary/70 bg-accent/45'
-              : 'border-l-transparent hover:bg-accent/25',
-          ]"
-          @click="() => void selectCommit(commit)"
+        <div class="min-h-0 min-w-0 flex-1 overflow-auto">
+          <button
+            v-for="commit in filteredCommits"
+            :key="commit.sha"
+            type="button"
+            :data-commit-row="commit.sha"
+            :class="[
+              'grid h-8 w-full items-center gap-3 border-l-2 px-3 text-left transition-colors [grid-template-columns:68px_72px_minmax(0,1fr)_160px_96px_116px]',
+              selectedSha === commit.sha
+                ? 'border-l-primary/70 bg-accent/45'
+                : 'border-l-transparent hover:bg-accent/25',
+            ]"
+            @click="() => void selectCommit(commit)"
+          >
+            <div class="flex items-center">
+              <GraphRail
+                v-if="graphRows.byCommit.get(commit.sha)"
+                :row="graphRows.byCommit.get(commit.sha)!"
+                :row-height="ROW_HEIGHT"
+                :max-lane-count="graphRows.maxLaneCount"
+                :active="selectedSha === commit.sha"
+              />
+            </div>
+            <span class="font-mono text-[10.5px] tabular-nums text-muted-foreground">
+              {{ commit.shortSha }}
+            </span>
+            <span class="min-w-0 text-[12px] font-medium">
+              <span class="block truncate">
+                {{ commit.subject || t("gitHistory.noSubject") }}
+              </span>
+              <span
+                v-if="commit.refs && commit.refs.length > 0"
+                class="mt-0.5 flex flex-wrap items-center gap-1"
+              >
+                <NTag
+                  v-for="ref in commit.refs"
+                  :key="`${commit.sha}-${ref.name}`"
+                  size="tiny"
+                  :bordered="false"
+                  round
+                  data-ref-badge
+                  :class="['min-w-0 max-w-full truncate border px-1 py-0 text-[9.5px] font-medium', refKindClass(ref.kind)]"
+                  :title="ref.name"
+                >
+                  {{ ref.name }}
+                </NTag>
+              </span>
+            </span>
+            <span class="min-w-0 truncate text-[10.5px] text-muted-foreground">
+              {{ commit.author || t("common.unknown") }}
+            </span>
+            <span class="text-right font-mono text-[10.5px] tabular-nums text-muted-foreground">
+              {{ compactDate(commit.timestampSecs) }}
+            </span>
+            <span class="flex min-w-0 items-center justify-end gap-1.5 font-mono text-[10px] tabular-nums">
+              <span class="inline-flex items-center gap-1 text-muted-foreground">
+                <NIcon :component="DocumentOutline" :size="11" />
+                {{ commit.filesChanged }}
+              </span>
+              <span v-if="commit.insertions > 0" class="font-semibold text-emerald-600 dark:text-emerald-400">
+                +{{ commit.insertions }}
+              </span>
+              <span v-if="commit.deletions > 0" class="font-semibold text-rose-600 dark:text-rose-400">
+                -{{ commit.deletions }}
+              </span>
+            </span>
+          </button>
+        </div>
+
+        <div
+          v-if="hasMore"
+          class="shrink-0 border-t border-border/40 bg-card/35 p-2"
         >
-          <div class="flex items-center">
-            <GraphRail
-              v-if="graphRows.byCommit.get(commit.sha)"
-              :row="graphRows.byCommit.get(commit.sha)!"
-              :row-height="ROW_HEIGHT"
-              :max-lane-count="graphRows.maxLaneCount"
-              :active="selectedSha === commit.sha"
-            />
-          </div>
-          <span class="font-mono text-[10.5px] tabular-nums text-muted-foreground">
-            {{ commit.shortSha }}
-          </span>
-          <span class="min-w-0 truncate text-[12px] font-medium">
-            {{ commit.subject || t("gitHistory.noSubject") }}
-          </span>
-          <span class="min-w-0 truncate text-[10.5px] text-muted-foreground">
-            {{ commit.author || t("common.unknown") }}
-          </span>
-          <span class="text-right font-mono text-[10.5px] tabular-nums text-muted-foreground">
-            {{ compactDate(commit.timestampSecs) }}
-          </span>
-          <span class="flex min-w-0 items-center justify-end gap-1.5 font-mono text-[10px] tabular-nums">
-            <span class="inline-flex items-center gap-1 text-muted-foreground">
-              <NIcon :component="DocumentOutline" :size="11" />
-              {{ commit.filesChanged }}
-            </span>
-            <span v-if="commit.insertions > 0" class="font-semibold text-emerald-600 dark:text-emerald-400">
-              +{{ commit.insertions }}
-            </span>
-            <span v-if="commit.deletions > 0" class="font-semibold text-rose-600 dark:text-rose-400">
-              -{{ commit.deletions }}
-            </span>
-          </span>
-        </button>
+          <NButton
+            size="small"
+            block
+            data-load-more
+            :loading="loadStatus === 'more'"
+            @click="() => void loadMore()"
+          >
+            {{ t("gitHistory.loadMore") }}
+          </NButton>
+        </div>
       </div>
 
       <NDrawer
@@ -389,6 +624,22 @@ onMounted(() => {
                 <div class="min-w-0 flex-1 text-[12.5px] font-semibold leading-snug">
                   {{ selectedCommit.subject || t("gitHistory.noSubject") }}
                 </div>
+              </div>
+              <div
+                v-if="selectedCommit.refs && selectedCommit.refs.length > 0"
+                class="mt-2 flex flex-wrap items-center gap-1"
+              >
+                <NTag
+                  v-for="ref in selectedCommit.refs"
+                  :key="`detail-${ref.name}`"
+                  size="tiny"
+                  :bordered="false"
+                  round
+                  data-ref-badge
+                  :class="['border px-1 py-0 text-[9.5px] font-medium', refKindClass(ref.kind)]"
+                >
+                  {{ ref.name }}
+                </NTag>
               </div>
               <div class="mt-2 truncate text-[10.5px] text-muted-foreground">
                 {{ selectedCommit.author || t("common.unknown") }}

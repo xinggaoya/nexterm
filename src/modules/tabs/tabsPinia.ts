@@ -68,6 +68,12 @@ function taskTitle(command: string): string {
   return `task: ${title}`;
 }
 
+function gitHistoryTitle(refName: string | null, allRefs: boolean): string {
+  if (allRefs) return "All branches";
+  if (refName) return `History · ${refName}`;
+  return "Git History";
+}
+
 export const useTabsPiniaStore = defineStore("tabs", () => {
   const initialized = ref(false);
   const tabs = ref<Tab[]>([]);
@@ -295,12 +301,31 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
 
   function openCommitHistoryTab(input: {
     repoRoot: string;
+    /** @deprecated Use `refName` + `allRefs` instead. Kept so command-palette
+     *  and source-control emitters continue to work — translated into
+     *  `refName = branch ?? null`, `allRefs = false`. */
     branch?: string | null;
+    refName?: string | null;
+    allRefs?: boolean;
   }): number {
     if (!initialized.value) init();
-    const title = input.branch ? `History · ${input.branch}` : "Git History";
+    const allRefs = input.allRefs ?? false;
+    // `allRefs` semantically overrides refName — when the pane asks for
+    // "every branch" the named ref is meaningless, so we collapse the
+    // refName to null. Keeps the dedup key stable regardless of which
+    // branch the caller happened to also pass.
+    const refName = allRefs
+      ? null
+      : input.refName !== undefined
+        ? input.refName
+        : input.branch ?? null;
+    const title = gitHistoryTitle(refName, allRefs);
     const existing = tabs.value.find(
-      (tab) => tab.kind === "git-history" && tab.repoRoot === input.repoRoot,
+      (tab) =>
+        tab.kind === "git-history" &&
+        tab.repoRoot === input.repoRoot &&
+        tab.refName === refName &&
+        tab.allRefs === allRefs,
     );
     if (existing) {
       tabs.value = tabs.value.map((tab) =>
@@ -315,10 +340,38 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
       kind: "git-history",
       title,
       repoRoot: input.repoRoot,
+      refName,
+      allRefs,
     };
     tabs.value.push(tab);
     activeId.value = id;
     return id;
+  }
+
+  // Update an existing git-history tab's refName/allRefs in place. Used by
+  // the pane's ref selector when the user re-targets the same repo at a
+  // different branch — creating a duplicate tab would be confusing.
+  // Returns `true` when the target tab exists and was patched.
+  function updateGitHistoryTabRef(
+    id: number,
+    fields: { refName?: string | null; allRefs?: boolean },
+  ): boolean {
+    let updated = false;
+    tabs.value = tabs.value.map((tab) => {
+      if (tab.id !== id || tab.kind !== "git-history") return tab;
+      const refName =
+        fields.refName !== undefined ? fields.refName : tab.refName;
+      const allRefs =
+        fields.allRefs !== undefined ? fields.allRefs : tab.allRefs;
+      updated = true;
+      return {
+        ...tab,
+        refName,
+        allRefs,
+        title: gitHistoryTitle(refName, allRefs),
+      };
+    });
+    return updated;
   }
 
   function openCommitFileDiffTab(input: {
@@ -698,6 +751,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     newMarkdownTab,
     openGitDiffTab,
     openCommitHistoryTab,
+    updateGitHistoryTabRef,
     openCommitFileDiffTab,
     closeTab,
     closeOthers,

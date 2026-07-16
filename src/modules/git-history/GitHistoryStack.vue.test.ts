@@ -6,10 +6,10 @@ import type { Tab } from "@/modules/tabs/tabsTypes";
 
 vi.mock("./GitHistoryPane.vue", () => ({
   default: {
-    props: ["repoRoot"],
+    props: ["repoRoot", "refName", "allRefs"],
     emits: ["openCommitFile"],
     template:
-      '<section data-git-history-pane>{{ repoRoot }}<button data-open-commit-file @click="$emit(\'openCommitFile\', { repoRoot, sha: \'abcdef\', shortSha: \'abcdef1\', subject: \'Change\', path: \'src/main.ts\', originalPath: null })">open</button></section>',
+      '<section data-git-history-pane data-repo-root="repoRoot" data-ref-name="refName" data-all-refs="allRefs">{{ repoRoot }}|{{ refName ?? "NONE" }}|{{ String(allRefs) }}<button data-open-commit-file @click="$emit(\'openCommitFile\', { repoRoot, sha: \'abcdef\', shortSha: \'abcdef1\', subject: \'Change\', path: \'src/main.ts\', originalPath: null })">open</button></section>',
   },
 }));
 
@@ -26,6 +26,24 @@ const tabs: Tab[] = [
     kind: "git-history",
     title: "History",
     repoRoot: "/repo",
+    refName: null,
+    allRefs: false,
+  },
+  {
+    id: 4,
+    kind: "git-history",
+    title: "All branches",
+    repoRoot: "/repo",
+    refName: null,
+    allRefs: true,
+  },
+  {
+    id: 5,
+    kind: "git-history",
+    title: "History · feature/x",
+    repoRoot: "/repo",
+    refName: "feature/x",
+    allRefs: false,
   },
 ];
 
@@ -35,7 +53,9 @@ describe("GitHistoryStack.vue", () => {
       props: { tabs, activeId: 3 },
     });
 
-    expect(wrapper.find("[data-git-history-pane]").text()).toContain("/repo");
+    const pane = wrapper.find("[data-git-history-pane]");
+    expect(pane.exists()).toBe(true);
+    expect(pane.text()).toContain("/repo");
 
     await wrapper.find("[data-open-commit-file]").trigger("click");
 
@@ -59,5 +79,28 @@ describe("GitHistoryStack.vue", () => {
     });
 
     expect(wrapper.find("[data-git-history-pane]").exists()).toBe(false);
+  });
+
+  it("forwards refName and allRefs to the active history pane", () => {
+    const featureWrapper = mount(GitHistoryStack, {
+      props: { tabs, activeId: 5 },
+    });
+    expect(featureWrapper.find("[data-git-history-pane]").text()).toContain(
+      "/repo|feature/x|false",
+    );
+
+    const allRefsWrapper = mount(GitHistoryStack, {
+      props: { tabs, activeId: 4 },
+    });
+    expect(allRefsWrapper.find("[data-git-history-pane]").text()).toContain(
+      "/repo|NONE|true",
+    );
+
+    const defaultWrapper = mount(GitHistoryStack, {
+      props: { tabs, activeId: 3 },
+    });
+    expect(defaultWrapper.find("[data-git-history-pane]").text()).toContain(
+      "/repo|NONE|false",
+    );
   });
 });

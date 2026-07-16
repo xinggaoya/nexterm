@@ -50,6 +50,19 @@ export type GitHistoryTab = {
   kind: "git-history";
   title: string;
   repoRoot: string;
+  /**
+   * Git ref name used to scope the log (a branch, tag, or any rev).
+   * `null` means "HEAD of the working tree" — Rust resolves it from
+   * `git rev-parse HEAD` when the field is omitted.
+   */
+  refName: string | null;
+  /**
+   * When `true`, the history spans every local/remote ref instead of a
+   * single branch. Used for the "All branches" pane and other multi-ref
+   * views. Persists into the tab identity so two `All branches` views
+   * stay coalesced.
+   */
+  allRefs: boolean;
 };
 
 export type GitCommitFileDiffTab = {

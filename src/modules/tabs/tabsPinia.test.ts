@@ -168,7 +168,7 @@ describe("tabs pinia store", () => {
     const markdownId = tabs.newMarkdownTab("/repo/readme.md");
     const sameMarkdownId = tabs.newMarkdownTab("/repo/readme.md");
     const historyId = tabs.openCommitHistoryTab({ repoRoot: "/repo", branch: "main" });
-    const sameHistoryId = tabs.openCommitHistoryTab({ repoRoot: "/repo", branch: "dev" });
+    const sameHistoryId = tabs.openCommitHistoryTab({ repoRoot: "/repo", branch: "main" });
 
     expect(previewId).toBe(3);
     expect(tabs.tabs.find((tab) => tab.id === previewId)).toMatchObject({
@@ -182,8 +182,103 @@ describe("tabs pinia store", () => {
     expect(sameHistoryId).toBe(5);
     expect(tabs.tabs.find((tab) => tab.id === historyId)).toMatchObject({
       kind: "git-history",
-      title: "History · dev",
+      title: "History · main",
       repoRoot: "/repo",
+      refName: "main",
+      allRefs: false,
+    });
+  });
+
+  it("opens separate history tabs for the same repo with different refs", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init();
+
+    const mainId = tabs.openCommitHistoryTab({
+      repoRoot: "/repo",
+      refName: "main",
+      allRefs: false,
+    });
+    const featureId = tabs.openCommitHistoryTab({
+      repoRoot: "/repo",
+      refName: "feature/x",
+      allRefs: false,
+    });
+    const reopenedMainId = tabs.openCommitHistoryTab({
+      repoRoot: "/repo",
+      refName: "main",
+      allRefs: false,
+    });
+
+    expect(mainId).not.toBe(featureId);
+    expect(reopenedMainId).toBe(mainId);
+    expect(
+      tabs.tabs.filter((tab) => tab.kind === "git-history"),
+    ).toHaveLength(2);
+    expect(tabs.tabs.find((tab) => tab.id === mainId)).toMatchObject({
+      kind: "git-history",
+      title: "History · main",
+      repoRoot: "/repo",
+      refName: "main",
+      allRefs: false,
+    });
+    expect(tabs.tabs.find((tab) => tab.id === featureId)).toMatchObject({
+      kind: "git-history",
+      title: "History · feature/x",
+      repoRoot: "/repo",
+      refName: "feature/x",
+      allRefs: false,
+    });
+  });
+
+  it("deduplicates history tabs by repo + ref + scope (allRefs)", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init();
+
+    const branchId = tabs.openCommitHistoryTab({
+      repoRoot: "/repo",
+      refName: "main",
+      allRefs: false,
+    });
+    const allRefsId = tabs.openCommitHistoryTab({
+      repoRoot: "/repo",
+      refName: "main",
+      allRefs: true,
+    });
+    const branchAgain = tabs.openCommitHistoryTab({
+      repoRoot: "/repo",
+      refName: "main",
+      allRefs: false,
+    });
+
+    expect(branchId).not.toBe(allRefsId);
+    expect(branchAgain).toBe(branchId);
+    expect(
+      tabs.tabs.filter((tab) => tab.kind === "git-history"),
+    ).toHaveLength(2);
+    expect(tabs.tabs.find((tab) => tab.id === branchId)).toMatchObject({
+      title: "History · main",
+      refName: "main",
+      allRefs: false,
+    });
+    expect(tabs.tabs.find((tab) => tab.id === allRefsId)).toMatchObject({
+      title: "All branches",
+      refName: null,
+      allRefs: true,
+    });
+  });
+
+  it("treats the legacy `branch` field as refName with allRefs=false", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.init();
+
+    const id = tabs.openCommitHistoryTab({ repoRoot: "/repo", branch: "legacy" });
+
+    expect(tabs.tabs.find((tab) => tab.id === id)).toMatchObject({
+      kind: "git-history",
+      repoRoot: "/repo",
+      refName: "legacy",
+      allRefs: false,
+      title: "History · legacy",
     });
   });
 
