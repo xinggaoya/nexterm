@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { NSpin, useDialog } from "naive-ui";
-import { computed, shallowRef, toRef, watch } from "vue";
+import { NSelect, NSpin, useDialog, type SelectOption } from "naive-ui";
+import { computed, h, shallowRef, toRef, watch } from "vue";
 import {
   native,
   type GitCommitResult,
   type GitDiscardEntry,
+  type GitWorkspaceRepo,
   type WorkspaceFsChangedEvent,
 } from "@/lib/native";
 import { t } from "@/modules/i18n/translate";
@@ -18,14 +19,20 @@ import type {
 } from "./sourceControlModel";
 import { getPrimaryDiffMode } from "./sourceControlModel";
 import type { GitDecorationMap } from "./gitDecorations";
+import { useGitRepositoryRegistry } from "./useGitRepositoryRegistry";
 import { useSourceControlActions } from "./useSourceControlActions";
 import { useSourceControlGitMetadata } from "./useSourceControlGitMetadata";
 import { useSourceControlState } from "./useSourceControlState";
 
-const props = defineProps<{
-  rootPath: string | null;
-  fsEvent?: WorkspaceFsChangedEvent | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    rootPath: string | null;
+    activeRepoRoot?: string | null;
+    workspaceScope?: string;
+    fsEvent?: WorkspaceFsChangedEvent | null;
+  }>(),
+  { activeRepoRoot: null, workspaceScope: "local" },
+);
 
 const emit = defineEmits<{
   decorationsChange: [decorations: GitDecorationMap];
@@ -38,14 +45,34 @@ const emit = defineEmits<{
       title: string;
     },
   ];
-  openHistory: [input: { repoRoot: string; branch: string | null }];
+  openHistory: [
+    input: {
+      repoRoot: string;
+      /** @deprecated Use `refName` + `allRefs` instead. */
+      branch: string | null;
+      refName: string | null;
+      allRefs: boolean;
+    },
+  ];
   committed: [result: GitCommitResult];
+  "repo-selected": [repoRoot: string | null];
 }>();
 
 const dialog = useDialog();
+const rootPath = toRef(props, "rootPath");
+const workspaceScope = toRef(props, "workspaceScope");
+const fsEvent = toRef(props, "fsEvent");
+const selectedRepoRoot = toRef(props, "activeRepoRoot");
+const repositoryRegistry = useGitRepositoryRegistry({
+  rootPath,
+  workspaceScope,
+  fsEvent,
+  native,
+});
 const state = useSourceControlState({
-  rootPath: toRef(props, "rootPath"),
-  fsEvent: toRef(props, "fsEvent"),
+  rootPath,
+  repoRoot: selectedRepoRoot,
+  fsEvent,
   native,
   t,
 });
@@ -95,9 +122,61 @@ const {
   stashChanges,
   popStash,
   dropStash,
+  applyStash,
   commit,
   handleCommitKeydown,
 } = actions;
+
+type RepositoryOption = SelectOption & { repository: GitWorkspaceRepo };
+
+const repositoryOptions = computed<RepositoryOption[]>(() =>
+  repositoryRegistry.repositories.value.map((repository) => ({
+    label: repository.relativePath,
+    value: repository.repoRoot,
+    repository,
+  })),
+);
+
+function renderRepositoryLabel(option: SelectOption) {
+  const repository = (option as RepositoryOption).repository;
+  if (!repository) return String(option.label ?? "");
+  return h("div", { class: "flex min-w-0 items-center justify-between gap-2" }, [
+    h(
+      "span",
+      { class: "min-w-0 truncate text-[12px] text-foreground" },
+      repository.relativePath,
+    ),
+    h(
+      "span",
+      { class: "shrink-0 truncate text-[10px] text-muted-foreground" },
+      repository.isDetached ? "detached" : repository.branch,
+    ),
+  ]);
+}
+
+function selectRepository(value: string | number | null) {
+  if (typeof value === "string") emit("repo-selected", value);
+}
+
+watch(
+  [
+    repositoryRegistry.repositories,
+    repositoryRegistry.loading,
+    selectedRepoRoot,
+  ],
+  ([repositories, loading, selected]) => {
+    if (!repositoryRegistry.isCurrentWorkspaceList()) {
+      if (!loading && selected !== null) emit("repo-selected", null);
+      return;
+    }
+    if (loading) return;
+    const next = repositoryRegistry.isValidRepoRoot(selected)
+      ? selected
+      : repositories[0]?.repoRoot ?? null;
+    if (next !== selected) emit("repo-selected", next);
+  },
+  { immediate: true },
+);
 
 // Selection state. `selectedKeySet` is the live source of truth — the
 // child list reads an array view of it for prop stability. The two are
@@ -109,6 +188,10 @@ const selectedKeys = computed(() => Array.from(selectedKeySet.value));
 function syncSelectedKeys(next: Set<string>) {
   selectedKeySet.value = next;
 }
+
+watch(selectedRepoRoot, () => {
+  if (selectedKeySet.value.size > 0) syncSelectedKeys(new Set());
+});
 
 const effectiveStagePaths = computed<string[]>(() => {
   const set = selectedKeySet.value;
@@ -213,9 +296,12 @@ function openDiff(entry: SourceControlFileEntry) {
 function openHistory() {
   const root = repoRoot.value;
   if (!root) return;
+  const branch = status.value?.branch ?? null;
   emit("openHistory", {
     repoRoot: root,
-    branch: status.value?.branch ?? null,
+    branch,
+    refName: branch,
+    allRefs: false,
   });
 }
 
@@ -262,6 +348,22 @@ function confirmDiscardEffective() {
 
 <template>
   <aside class="flex h-full w-full min-h-0 flex-col bg-transparent text-foreground">
+    <div
+      v-if="repositoryRegistry.repositories.value.length >= 2"
+      class="flex min-w-0 border-b border-border/60 px-2 py-1.5"
+    >
+      <NSelect
+        data-repository-selector
+        :aria-label="t('sourceControl.repositorySelector')"
+        class="w-full min-w-0 max-w-[280px]"
+        size="small"
+        :value="activeRepoRoot"
+        :options="repositoryOptions"
+        :render-label="renderRepositoryLabel"
+        :disabled="busyAction !== null"
+        @update:value="selectRepository"
+      />
+    </div>
     <SourceControlToolbar
       :branch-label="branchLabel"
       :changed-count="changedCount"
@@ -311,9 +413,10 @@ function confirmDiscardEffective() {
         :changed-count="changedCount"
         @checkout-branch="checkoutBranch"
         @create-branch="createBranch"
-        @stash-save="() => stashChanges(null)"
-        @stash-pop="popStash"
-        @stash-drop="dropStash"
+        @stash-save="stashChanges"
+        @stash-pop="({ selector, fullSha }) => popStash(selector, fullSha)"
+        @stash-drop="({ selector, fullSha }) => dropStash(selector, fullSha)"
+        @stash-apply="({ selector, fullSha }) => applyStash(selector, fullSha)"
       />
       <SourceControlChangeList
         :entries="entries"
