@@ -1,16 +1,22 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from "vue";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
-import { SearchAddon } from "@xterm/addon-search";
-import { WebLinksAddon } from "@xterm/addon-web-links";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
-import { readClipboardText, writeClipboardText } from "@/lib/clipboard";
+import { writeClipboardText } from "@/lib/clipboard";
 import { createSession, trackSession, getSessionForLeaf } from "./lib/sessions";
 import type { PtySessionHandle, SessionState } from "./lib/sessions";
-import { applyTerminalTheme, watchTerminalTheme } from "./lib/theme";
-import { attachClipboardShortcuts } from "./lib/shortcuts";
+import {
+  applyTerminalTheme,
+  buildTerminalTheme,
+  watchTerminalTheme,
+} from "./lib/theme";
+import {
+  attachClipboardShortcuts,
+  pasteClipboardIntoTerminal,
+} from "./lib/shortcuts";
+import {
+  createTerminalRenderer,
+  type TerminalRenderer,
+} from "./lib/renderer";
 import TerminalContextMenu from "./TerminalContextMenu.vue";
 
 const props = defineProps<{
@@ -37,13 +43,15 @@ const menu = ref<{ x: number; y: number; selection: string } | null>(null);
 
 const prefs = usePreferencesPiniaStore();
 
-let term: Terminal | null = null;
-let fitAddon: FitAddon | null = null;
+let renderer: TerminalRenderer | null = null;
 let session: PtySessionHandle | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let detachThemeWatch: (() => void) | null = null;
+let detachClipboardShortcuts: (() => void) | null = null;
+let mountRevision = 0;
 
 async function ensureSession(): Promise<void> {
+  const term = renderer?.term;
   if (session || !term) return;
   const sessionCallbacks = {
     onCwd: (cwd: string) => emit("cwd", cwd),
@@ -57,7 +65,7 @@ async function ensureSession(): Promise<void> {
     session = existing;
     existing.setCallbacks(sessionCallbacks);
     state.value = existing.getState();
-    syncSessionCallbacks();
+    existing.resize(term.cols, term.rows);
     return;
   }
   const handle = await createSession({
@@ -67,106 +75,84 @@ async function ensureSession(): Promise<void> {
   });
   session = handle;
   trackSession(props.leafId, handle);
-  syncSessionCallbacks();
 }
 
-function syncSessionCallbacks() {
-  if (!term || !session) return;
-  attachClipboardShortcuts({
-    term,
-    session,
-    enabled: prefs.terminalContextMenuEnabled,
-  });
-}
-
-function attachWebgl() {
-  if (!term) return;
-  if (!prefs.terminalWebglEnabled) return;
-  try {
-    const addon = new WebglAddon();
-    addon.onContextLoss(() => {
-      try {
-        addon.dispose();
-      } catch {
-        // re-attach path tries again below
-      }
-      requestAnimationFrame(attachWebgl);
-    });
-    term.loadAddon(addon);
-  } catch {
-    // WebGL unavailable; canvas addon takes over automatically.
-  }
-}
-
-async function refreshLayout(): Promise<void> {
-  if (!fitAddon || !term) return;
-  fitAddon.fit();
-  if (session) session.resize(term.cols, term.rows);
+function refreshLayout(): void {
+  renderer?.fit();
 }
 
 onMounted(async () => {
-  if (!container.value) return;
-  term = new Terminal({
-    cursorBlink: true,
-    fontSize: prefs.terminalFontSize,
-    fontFamily:
-      prefs.terminalFontFamily ||
-      'JetBrainsMono Nerd Font, "JetBrains Mono", SFMono-Regular, Menlo, monospace',
-    scrollback: prefs.terminalScrollback,
-    allowProposedApi: true,
-    convertEol: false,
+  const host = container.value;
+  if (!host) return;
+  const revision = ++mountRevision;
+  const nextRenderer = await createTerminalRenderer({
+    container: host,
+    preferences: {
+      fontFamily: prefs.terminalFontFamily,
+      fontSize: prefs.terminalFontSize,
+      letterSpacing: prefs.terminalLetterSpacing,
+      scrollback: prefs.terminalScrollback,
+      webglEnabled: prefs.terminalWebglEnabled,
+    },
+    theme: buildTerminalTheme(),
+    onResize: (cols, rows) => session?.resize(cols, rows),
   });
-  applyTerminalTheme(term);
-  fitAddon = new FitAddon();
-  term.loadAddon(fitAddon);
-  term.loadAddon(new WebLinksAddon());
-  term.loadAddon(new SearchAddon());
-  attachWebgl();
-
-  term.open(container.value);
-  await refreshLayout();
+  if (revision !== mountRevision || container.value !== host) {
+    nextRenderer.dispose();
+    return;
+  }
+  renderer = nextRenderer;
+  detachClipboardShortcuts = attachClipboardShortcuts({
+    term: nextRenderer.term,
+  });
   await ensureSession();
 
   detachThemeWatch = watchTerminalTheme(() => {
-    if (term) applyTerminalTheme(term);
+    if (renderer) applyTerminalTheme(renderer.term);
   });
 
   resizeObserver = new ResizeObserver(() => {
-    if (props.isActive) void refreshLayout();
+    if (props.isActive) refreshLayout();
   });
-  resizeObserver.observe(container.value);
+  resizeObserver.observe(host);
 });
 
 onBeforeUnmount(() => {
+  mountRevision += 1;
   detachThemeWatch?.();
+  detachClipboardShortcuts?.();
   resizeObserver?.disconnect();
-  term?.dispose();
-  term = null;
-  fitAddon = null;
+  renderer?.dispose();
+  renderer = null;
   session = null;
 });
 
 watch(
   () => props.isActive,
   (active) => {
-    if (active) requestAnimationFrame(() => void refreshLayout());
+    if (active) requestAnimationFrame(refreshLayout);
   },
 );
 
 watch(
-  () => prefs.terminalFontSize,
-  () => requestAnimationFrame(() => void refreshLayout()),
-);
-watch(
-  () => prefs.terminalFontFamily,
-  () => requestAnimationFrame(() => void refreshLayout()),
+  () => [
+    prefs.terminalFontFamily,
+    prefs.terminalFontSize,
+    prefs.terminalLetterSpacing,
+  ] as const,
+  ([fontFamily, fontSize, letterSpacing]) => {
+    void renderer?.applyTypography({ fontFamily, fontSize, letterSpacing });
+  },
 );
 watch(
   () => prefs.terminalScrollback,
   (n) => {
-    if (term) term.options.scrollback = n;
+    renderer?.setScrollback(n);
   },
-  { immediate: true },
+);
+watch(
+  () => prefs.terminalWebglEnabled,
+  (enabled) => renderer?.setWebglEnabled(enabled),
 );
 
 function handleFocus() {
@@ -174,6 +160,7 @@ function handleFocus() {
 }
 
 function openContextMenu(event: MouseEvent) {
+  const term = renderer?.term;
   if (!prefs.terminalContextMenuEnabled || !term) return;
   event.preventDefault();
   menu.value = {
@@ -194,22 +181,19 @@ function handleMenuCopy() {
 }
 
 function handleMenuPaste() {
-  void readClipboardText()
-    .then((text) => {
-      if (text) session?.write(text);
-    })
-    .catch(() => {});
+  const term = renderer?.term;
+  if (term) void pasteClipboardIntoTerminal(term).catch(() => {});
   closeContextMenu();
 }
 
 function handleMenuSelectAll() {
-  term?.selectAll();
+  renderer?.term.selectAll();
   closeContextMenu();
 }
 
 defineExpose({
-  focus: () => term?.focus(),
-  write: (data: string) => term?.write(data),
+  focus: () => renderer?.term.focus(),
+  write: (data: string) => session?.write(data),
 });
 </script>
 
@@ -266,13 +250,9 @@ defineExpose({
 </style>
 
 <style>
-.terminal-pane-body .xterm,
-.terminal-pane-body .xterm-viewport,
-.terminal-pane-body .xterm-screen,
-.terminal-pane-body .xterm .xterm-screen {
+.terminal-pane-body > .xterm {
   height: 100% !important;
   width: 100% !important;
-  padding: 0 !important;
 }
 .terminal-pane-body .xterm-viewport {
   background-color: transparent !important;

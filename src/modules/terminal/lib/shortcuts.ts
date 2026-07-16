@@ -7,17 +7,12 @@
 import type { Terminal } from "@xterm/xterm";
 
 import { writeClipboardText, readClipboardText } from "@/lib/clipboard";
-import type { PtySessionHandle } from "./sessions";
 
 interface AttachOptions {
   term: Terminal;
-  session: PtySessionHandle | null;
-  enabled: boolean;
 }
 
 export function attachClipboardShortcuts(opts: AttachOptions): () => void {
-  if (!opts.enabled) return () => {};
-
   const handler = (event: KeyboardEvent): boolean => {
     if (event.type !== "keydown") return true;
     const mod = event.ctrlKey || event.metaKey;
@@ -32,11 +27,7 @@ export function attachClipboardShortcuts(opts: AttachOptions): () => void {
       return false;
     }
     if (key === "V") {
-      void readClipboardText()
-        .then((text) => {
-          if (text) opts.session?.write(text);
-        })
-        .catch(() => {});
+      void pasteClipboardIntoTerminal(opts.term);
       event.preventDefault();
       return false;
     }
@@ -45,4 +36,9 @@ export function attachClipboardShortcuts(opts: AttachOptions): () => void {
 
   opts.term.attachCustomKeyEventHandler(handler);
   return () => opts.term.attachCustomKeyEventHandler(() => true);
+}
+
+export async function pasteClipboardIntoTerminal(term: Terminal): Promise<void> {
+  const text = await readClipboardText();
+  if (text) term.paste(text);
 }

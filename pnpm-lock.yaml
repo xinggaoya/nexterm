@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@azurity/pure-nerd-font':
+        specifier: ^3.0.5
+        version: 3.0.5
       '@babel/runtime':
         specifier: ^7.29.2
         version: 7.29.2
@@ -170,6 +173,9 @@ importers:
       '@xterm/addon-serialize':
         specifier: ^0.14.0
         version: 0.14.0
+      '@xterm/addon-unicode11':
+        specifier: ^0.9.0
+        version: 0.9.0
       '@xterm/addon-web-links':
         specifier: ^0.12.0
         version: 0.12.0
@@ -260,6 +266,9 @@ packages:
 
   '@asamuzakjp/nwsapi@2.3.9':
     resolution: {integrity: sha512-n8GuYSrI9bF7FFZ/SjhwevlHc8xaVlb/7HmHelnc/PZXBD2ZR49NnN9sMMuDdEGPeeRQ5d0hqlSlEpgCX3Wl0Q==}
+
+  '@azurity/pure-nerd-font@3.0.5':
+    resolution: {integrity: sha512-/uiaszK8TN9hf5OG+UUiijXkxykjgKEh4+b937jdOWwfXIelgAjYOOS/o1X1+SYD4DwTvgFsW5iHxE7PqlEkqA==}
 
   '@babel/code-frame@7.29.0':
     resolution: {integrity: sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw==}
@@ -1614,6 +1623,9 @@ packages:
 
   '@xterm/addon-serialize@0.14.0':
     resolution: {integrity: sha512-uteyTU1EkrQa2Ux6P/uFl2fzmXI46jy5uoQMKEOM0fKTyiW7cSn0WrFenHm5vO5uEXX/GpwW/FgILvv3r0WbkA==}
+
+  '@xterm/addon-unicode11@0.9.0':
+    resolution: {integrity: sha512-FxDnYcyuXhNl+XSqGZL/t0U9eiNb/q3EWT5rYkQT/zuig8Gz/VagnQANKHdDWFM2lTMk9ly0EFQxxxtZUoRetw==}
 
   '@xterm/addon-web-links@0.12.0':
     resolution: {integrity: sha512-4Smom3RPyVp7ZMYOYDoC/9eGJJJqYhnPLGGqJ6wOBfB8VxPViJNSKdgRYb8NpaM6YSelEKbA2SStD7lGyqaobw==}
@@ -3535,6 +3547,8 @@ snapshots:
 
   '@asamuzakjp/nwsapi@2.3.9': {}
 
+  '@azurity/pure-nerd-font@3.0.5': {}
+
   '@babel/code-frame@7.29.0':
     dependencies:
       '@babel/helper-validator-identifier': 7.28.5
@@ -4891,6 +4905,8 @@ snapshots:
   '@xterm/addon-search@0.16.0': {}
 
   '@xterm/addon-serialize@0.14.0': {}
+
+  '@xterm/addon-unicode11@0.9.0': {}
 
   '@xterm/addon-web-links@0.12.0': {}
 

@@ -11,10 +11,7 @@
  */
 
 import type { Terminal } from "@xterm/xterm";
-import { Channel } from "@tauri-apps/api/core";
-import { invoke } from "@tauri-apps/api/core";
-import type { WorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
-import { currentWorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
+import { native } from "@/lib/native";
 import { handleOscData } from "./osc";
 import type { OscEvent } from "./osc";
 
@@ -50,47 +47,41 @@ export interface ActiveSession {
 interface CreateSessionOptions {
   term: Terminal;
   cwd?: string;
-  workspace?: WorkspaceEnv;
   callbacks: SessionCallbacks;
 }
 
 export async function createSession(
   opts: CreateSessionOptions,
 ): Promise<PtySessionHandle> {
-  const onData = new Channel<string>();
-  const onExit = new Channel<number>();
-
   // Callbacks/state are mutable so a pane that remounts (e.g. after a tab
   // switch) can re-subscribe and recover the badge without respawning.
   let callbacks = opts.callbacks;
   let state: SessionState = "connecting";
   let exitCode: number | undefined;
+  let pendingOsc = "";
 
-  onData.onmessage = (chunk) => {
-    const { cleaned, events } = handleOscData(chunk, "");
-    // OSC bookkeeping is local to the parser — combining across chunks uses
-    // the pendingBuffer argument. We don't need it here because Tauri sends
-    // each chunk verbatim; the only stateful thing left is OSC spanning a
-    // chunk boundary, which we re-thread by passing empty each time.
-    // (handleOscData ignores prevPending when the chunk is clean.)
-    for (const ev of events) emitOsc(ev, callbacks);
-    if (cleaned) opts.term.write(cleaned);
-  };
-
-  onExit.onmessage = (code) => {
-    state = "exited";
-    exitCode = code;
-    callbacks.onStateChange("exited", code);
-  };
-
-  const id = await invoke<number>("pty_open", {
-    cols: opts.term.cols,
-    rows: opts.term.rows,
-    cwd: opts.cwd ?? null,
-    workspace: opts.workspace ?? currentWorkspaceEnv(),
-    onData,
-    onExit,
-  });
+  const pty = await native.ptyOpen(
+    opts.term.cols,
+    opts.term.rows,
+    {
+      onData: (chunk) => {
+        const { cleaned, events, pendingBuffer } = handleOscData(
+          chunk,
+          pendingOsc,
+        );
+        pendingOsc = pendingBuffer;
+        for (const ev of events) emitOsc(ev, callbacks);
+        if (cleaned) opts.term.write(cleaned);
+      },
+      onExit: (code) => {
+        state = "exited";
+        exitCode = code;
+        callbacks.onStateChange("exited", code);
+      },
+    },
+    opts.cwd,
+  );
+  const id = pty.id;
 
   // A very fast-exiting shell can fire onExit during the await above; only
   // promote to "running" when it hasn't already reported an exit.
@@ -102,16 +93,16 @@ export async function createSession(
   const handle: PtySessionHandle = {
     leafId: id.toString(),
     dispose: () => {
-      void invoke("pty_close", { id }).catch(() => {});
+      void pty.close().catch(() => {});
     },
     write: (data) => {
-      void invoke("pty_write", { id, data }).catch(() => {});
+      void pty.write(data).catch(() => {});
     },
     resize: (cols, rows) => {
-      void invoke("pty_resize", { id, cols, rows }).catch(() => {});
+      void pty.resize(cols, rows).catch(() => {});
     },
     restart: () => {
-      void invoke("pty_kill", { id }).catch(() => {});
+      void native.ptyKill(id).catch(() => {});
     },
     getState: () => state,
     getExitCode: () => exitCode,
