@@ -5,7 +5,12 @@ import path from "path";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { NaiveUiResolver } from "unplugin-vue-components/resolvers";
+import monacoEditorPluginRaw from "vite-plugin-monaco-editor";
 import { defineConfig } from "vite";
+
+const monacoEditorPlugin =
+  (monacoEditorPluginRaw as unknown as { default?: typeof monacoEditorPluginRaw }).default ??
+  monacoEditorPluginRaw;
 
 const host = process.env.TAURI_DEV_HOST;
 const packageJson = JSON.parse(
@@ -24,6 +29,9 @@ export default defineConfig(async ({ mode }) => ({
     Components({
       resolvers: [NaiveUiResolver()],
       dts: "src/components.d.ts",
+    }),
+    monacoEditorPlugin({
+      languageWorkers: ["editorWorkerService", "typescript", "json", "html", "css"],
     }),
     tailwindcss(),
   ],
@@ -54,11 +62,11 @@ export default defineConfig(async ({ mode }) => ({
 
           if (id.includes("/xterm/") || id.includes("@xterm/")) return "xterm";
           if (
-            id.includes("@codemirror/") ||
-            id.includes("@uiw/codemirror") ||
-            id.includes("@replit/codemirror")
+            id.includes("/monaco-editor/") ||
+            id.includes("/monaco-vim/") ||
+            id.includes("/monaco-themes/")
           )
-            return "codemirror";
+            return "monaco";
           if (
             id.includes("/vue/") ||
             id.includes("/@vue/") ||
