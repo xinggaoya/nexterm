@@ -1404,25 +1404,32 @@ import { initVimMode, Vim } from "monaco-vim";
 
 export type VimHandlers = { save: () => void; close: () => void };
 
+const handlersByEditor = new WeakMap<monaco.editor.IStandaloneCodeEditor, VimHandlers>();
 let initialized = false;
 
 function ensureInit() {
   if (initialized) return;
   initialized = true;
 
-  Vim.defineEx("write", "w", (cm: { vim?: any }) => {
-    cm.vim?.__handlers?.save?.();
+  Vim.defineEx("write", "w", (cm: { cm6?: monaco.editor.IStandaloneCodeEditor }) => {
+    if (cm.cm6) handlersByEditor.get(cm.cm6)?.save();
   });
-  Vim.defineEx("quit", "q", (cm: { vim?: any }) => {
-    cm.vim?.__handlers?.close?.();
+  Vim.defineEx("quit", "q", (cm: { cm6?: monaco.editor.IStandaloneCodeEditor }) => {
+    if (cm.cm6) handlersByEditor.get(cm.cm6)?.close();
   });
-  Vim.defineEx("wq", "wq", (cm: { vim?: any }) => {
-    cm.vim?.__handlers?.save?.();
-    cm.vim?.__handlers?.close?.();
+  Vim.defineEx("wq", "wq", (cm: { cm6?: monaco.editor.IStandaloneCodeEditor }) => {
+    if (cm.cm6) {
+      const h = handlersByEditor.get(cm.cm6);
+      h?.save();
+      h?.close();
+    }
   });
-  Vim.defineEx("xit", "x", (cm: { vim?: any }) => {
-    cm.vim?.__handlers?.save?.();
-    cm.vim?.__handlers?.close?.();
+  Vim.defineEx("xit", "x", (cm: { cm6?: monaco.editor.IStandaloneCodeEditor }) => {
+    if (cm.cm6) {
+      const h = handlersByEditor.get(cm.cm6);
+      h?.save();
+      h?.close();
+    }
   });
 
   Vim.map("<Up>", "k", "normal");
@@ -1444,6 +1451,8 @@ export function attachVim(
   handlers: VimHandlers,
 ): VimAttachment {
   ensureInit();
+  handlersByEditor.set(editor, handlers);
+
   const statusNode = document.createElement("div");
   statusNode.style.position = "absolute";
   statusNode.style.bottom = "4px";
@@ -1454,12 +1463,12 @@ export function attachVim(
   document.body.appendChild(statusNode);
 
   const vim = initVimMode(editor, statusNode);
-  (vim as any).__handlers = handlers;
 
   return {
     dispose() {
       vim.dispose();
       statusNode.remove();
+      handlersByEditor.delete(editor);
     },
   };
 }

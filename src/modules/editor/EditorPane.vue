@@ -1,16 +1,5 @@
 <script setup lang="ts">
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { autocompletion, closeBrackets } from "@codemirror/autocomplete";
-import { bracketMatching, foldGutter } from "@codemirror/language";
-import { searchKeymap } from "@codemirror/search";
-import { EditorState, type Extension } from "@codemirror/state";
-import {
-  EditorView,
-  highlightActiveLine,
-  highlightActiveLineGutter,
-  keymap,
-  lineNumbers,
-} from "@codemirror/view";
+import * as monaco from "monaco-editor";
 import { NSpin, useDialog } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
@@ -25,14 +14,18 @@ import {
   writeEditorDocument,
   type EditorDocumentState,
 } from "./lib/documentService";
-import { buildSharedExtensions, languageCompartment } from "./lib/extensions";
+import { buildMonacoEditorOptions } from "./lib/editorConfig";
 import {
-  isMarkdownPath,
-  languageLabelForPath,
-  resolveLanguage,
-  resolveLanguageSync,
-} from "./lib/languageResolver";
-import { EDITOR_THEME_EXT } from "./lib/themes";
+  disposeEditor,
+  mountMonacoEditor,
+  safeReplaceValue,
+  type EditorMount,
+} from "./lib/editorRuntime";
+import { isMarkdownPath, resolveMonacoLanguageId } from "./lib/languageMap";
+import { registerMonacoThemes } from "./lib/themes";
+import { attachVim, type VimAttachment } from "./lib/vim";
+
+registerMonacoThemes(monaco);
 
 const props = defineProps<{
   path: string;
@@ -47,7 +40,8 @@ const emit = defineEmits<{
 const dialog = useDialog();
 const prefs = usePreferencesPiniaStore();
 const host = ref<HTMLDivElement | null>(null);
-const view = shallowRef<EditorView | null>(null);
+const mount = shallowRef<EditorMount | null>(null);
+const vimAttachment = shallowRef<VimAttachment | null>(null);
 const doc = ref<EditorDocumentState>({ status: "loading" });
 const savedContent = ref("");
 const buffer = ref("");
@@ -64,7 +58,9 @@ const fileName = computed(() => {
 });
 
 const markdown = computed(() => isMarkdownPath(props.path));
-const languageLabel = computed(() => languageLabelForPath(props.path));
+const languageLabel = computed(
+  () => resolveMonacoLanguageId(props.path) ?? "Plain Text",
+);
 
 const sourcePaneClass = computed(() => {
   if (!markdown.value || mode.value === "source") return "h-full w-full";
@@ -96,122 +92,39 @@ function setDirty(next: boolean) {
 function setMode(next: EditorViewMode) {
   if (!markdown.value && next !== "source") return;
   mode.value = next;
-  void nextTick(() => view.value?.requestMeasure());
+  void nextTick(() => mount.value?.editor.layout());
 }
 
-function destroyEditor() {
-  view.value?.destroy();
-  view.value = null;
-  if (host.value) host.value.innerHTML = "";
-}
-
-function replaceEditorContent(content: string) {
-  const current = view.value;
-  if (!current) return false;
-  const selection = current.state.selection;
-  const scroller = current.scrollDOM;
-  const scrollTop = scroller.scrollTop;
-  const scrollLeft = scroller.scrollLeft;
-  const wasFocused = current.hasFocus;
-  current.dispatch({
-    changes: { from: 0, to: current.state.doc.length, insert: content },
-    selection,
-    scrollIntoView: false,
-  });
-  requestAnimationFrame(() => {
-    scroller.scrollTop = scrollTop;
-    scroller.scrollLeft = scrollLeft;
-    if (wasFocused) current.focus();
-  });
-  return true;
-}
-
-function updateCursorInfo(state: EditorState) {
-  const selection = state.selection.main;
-  const lineInfo = state.doc.lineAt(selection.head);
-  line.value = lineInfo.number;
-  column.value = selection.head - lineInfo.from + 1;
-  selectionLength.value = Math.abs(selection.to - selection.from);
-}
-
-function editorBaseExtensions(language: Extension | null): Extension[] {
-  const theme = EDITOR_THEME_EXT[prefs.editorTheme] ?? EDITOR_THEME_EXT.atomone;
-  return [
-    lineNumbers(),
-    foldGutter(),
-    highlightActiveLineGutter(),
-    history(),
-    bracketMatching(),
-    closeBrackets(),
-    autocompletion(),
-    highlightActiveLine(),
-    ...buildSharedExtensions(),
-    languageCompartment.of(language ?? []),
-    theme,
-    EditorView.theme({
-      "&": { height: "100%" },
-      ".cm-scroller": {
-        fontSize: "13px",
-        lineHeight: "1.55",
-        overflow: "auto",
-      },
-      ".cm-content": {
-        minWidth: "max-content",
-      },
-      ".cm-line": {
-        whiteSpace: "pre",
-      },
-    }),
-    EditorView.updateListener.of((update) => {
-      if (update.docChanged) {
-        const next = update.state.doc.toString();
-        buffer.value = next;
-        setDirty(next !== savedContent.value);
-      }
-      if (update.docChanged || update.selectionSet) {
-        updateCursorInfo(update.state);
-      }
-    }),
-    keymap.of([
-      {
-        key: "Mod-s",
-        preventDefault: true,
-        run: () => {
-          void save();
-          return true;
-        },
-      },
-      indentWithTab,
-      ...searchKeymap,
-      ...historyKeymap,
-      ...defaultKeymap,
-    ]),
-  ];
-}
-
-async function mountEditor(content: string) {
+async function createEditor(content: string) {
   await nextTick();
   if (!host.value) return;
-  destroyEditor();
-  const initialLanguage = resolveLanguageSync(props.path);
-  const state = EditorState.create({
-    doc: content,
-    extensions: editorBaseExtensions(initialLanguage),
-  });
-  view.value = new EditorView({ state, parent: host.value });
-  updateCursorInfo(state);
-
-  if (initialLanguage) return;
-  const currentPath = props.path;
-  const language = await resolveLanguage(currentPath);
-  if (props.path !== currentPath || !view.value) return;
-  view.value.dispatch({
-    effects: languageCompartment.reconfigure(language ?? []),
-  });
+  disposeEditor(mount.value);
+  mount.value = null;
+  const opts = buildMonacoEditorOptions(
+    prefs,
+    resolveMonacoLanguageId(props.path),
+  );
+  const fresh = mountMonacoEditor(host.value, opts, content);
+  fresh.disposables.push(
+    fresh.editor.onDidChangeModelContent(() => {
+      const next = fresh.editor.getValue();
+      buffer.value = next;
+      setDirty(next !== savedContent.value);
+    }),
+    fresh.editor.onDidChangeCursorPosition((e) => {
+      line.value = e.position.lineNumber;
+      column.value = e.position.column;
+      const sel = fresh.editor.getSelection();
+      const model = fresh.editor.getModel();
+      if (sel && model) selectionLength.value = model.getValueLengthInRange(sel);
+    }),
+  );
+  mount.value = fresh;
 }
 
 async function load() {
-  destroyEditor();
+  disposeEditor(mount.value);
+  mount.value = null;
   doc.value = { status: "loading" };
   externalChangePending.value = false;
   mode.value = isMarkdownPath(props.path) ? "split" : "source";
@@ -225,7 +138,7 @@ async function load() {
   if (result.status === "ready") {
     savedContent.value = result.content;
     buffer.value = result.content;
-    await mountEditor(result.content);
+    await createEditor(result.content);
   }
 }
 
@@ -242,47 +155,27 @@ function fsEventTouchesPath(event: WorkspaceFsChangedEvent, path: string): boole
   return event.paths.some((eventPath) => normalizePath(eventPath) === current);
 }
 
-async function reloadExternalChange() {
-  if (dirty.value) {
+async function reloadExternalChange(force = false) {
+  if (dirty.value && !force) {
     externalChangePending.value = true;
     return;
   }
   const currentPath = props.path;
   const result = await readEditorDocument(currentPath);
-  if (props.path !== currentPath || dirty.value) return;
+  if (props.path !== currentPath || (dirty.value && !force)) return;
   doc.value = result;
   externalChangePending.value = false;
   if (result.status === "ready") {
     buffer.value = result.content;
     savedContent.value = result.content;
     setDirty(false);
-    if (!replaceEditorContent(result.content)) {
-      await mountEditor(result.content);
-    }
+    if (mount.value) safeReplaceValue(mount.value.editor, result.content);
+    else await createEditor(result.content);
   } else {
     savedContent.value = "";
     buffer.value = "";
-    destroyEditor();
-  }
-}
-
-async function forceReloadExternalChange() {
-  const currentPath = props.path;
-  externalChangePending.value = false;
-  const result = await readEditorDocument(currentPath);
-  if (props.path !== currentPath) return;
-  doc.value = result;
-  setDirty(false);
-  if (result.status === "ready") {
-    buffer.value = result.content;
-    savedContent.value = result.content;
-    if (!replaceEditorContent(result.content)) {
-      await mountEditor(result.content);
-    }
-  } else {
-    savedContent.value = "";
-    buffer.value = "";
-    destroyEditor();
+    disposeEditor(mount.value);
+    mount.value = null;
   }
 }
 
@@ -311,47 +204,41 @@ async function save() {
 }
 
 function focus() {
-  view.value?.focus();
+  mount.value?.editor.focus();
 }
 
 function getSelection(): string | null {
-  const current = view.value;
-  if (!current) return null;
-  const { from, to } = current.state.selection.main;
-  if (from === to) return null;
-  return current.state.sliceDoc(from, to);
+  const editor = mount.value?.editor;
+  if (!editor) return null;
+  const sel = editor.getSelection();
+  if (!sel || sel.isEmpty()) return null;
+  return editor.getModel()?.getValueInRange(sel) ?? null;
 }
 
 function openGotoLine(): void {
-  const current = view.value;
-  if (!current) return;
-  current.focus();
-  // window.prompt is intentional for the first pass — a proper modal UI
-  // can be layered on later without changing the command contract.
+  const editor = mount.value?.editor;
+  if (!editor) return;
+  editor.focus();
   const raw = window.prompt(t("editor.gotoLinePrompt"), String(line.value));
   if (!raw) return;
   const target = Number.parseInt(raw, 10);
   if (!Number.isFinite(target) || target < 1) return;
-  const lineCount = current.state.doc.lines;
-  const clamped = Math.min(target, lineCount);
-  const lineInfo = current.state.doc.line(clamped);
-  current.dispatch({
-    selection: { anchor: lineInfo.from },
-    scrollIntoView: true,
-  });
+  const model = editor.getModel();
+  if (!model) return;
+  const clamped = Math.min(target, model.getLineCount());
+  editor.setPosition({ lineNumber: clamped, column: 1 });
+  editor.revealLine(clamped);
   line.value = clamped;
 }
 
 function setContentForTest(content: string) {
-  const current = view.value;
-  if (!current) {
+  const editor = mount.value?.editor;
+  if (!editor) {
     buffer.value = content;
     setDirty(content !== savedContent.value);
     return;
   }
-  current.dispatch({
-    changes: { from: 0, to: current.state.doc.length, insert: content },
-  });
+  safeReplaceValue(editor, content);
 }
 
 watch(() => props.path, () => void load(), { immediate: true });
@@ -367,12 +254,40 @@ watch(
 watch(
   () => prefs.editorTheme,
   () => {
-    if (doc.value.status === "ready") void mountEditor(buffer.value);
+    if (!mount.value) return;
+    monaco.editor.setTheme(prefs.editorTheme);
   },
 );
 
+watch(
+  () => [prefs.editorFontSize, prefs.editorTabSize, prefs.editorWordWrap],
+  () => {
+    if (doc.value.status === "ready") void createEditor(buffer.value);
+  },
+);
+
+watch(
+  () => prefs.vimMode,
+  (enabled) => {
+    vimAttachment.value?.dispose();
+    vimAttachment.value = null;
+    if (enabled && mount.value) {
+      vimAttachment.value = attachVim(mount.value.editor, {
+        save: () => void save(),
+        close: () => {
+          emit("dirtyChange", false);
+        },
+      });
+    }
+  },
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
-  destroyEditor();
+  vimAttachment.value?.dispose();
+  vimAttachment.value = null;
+  disposeEditor(mount.value);
+  mount.value = null;
 });
 
 defineExpose({
@@ -381,6 +296,9 @@ defineExpose({
   getSelection,
   setContentForTest,
   openGotoLine,
+  reload: () => reloadExternalChange(true),
+  undo: () => mount.value?.editor.trigger("keyboard", "undo", null),
+  redo: () => mount.value?.editor.trigger("keyboard", "redo", null),
 });
 </script>
 
@@ -394,12 +312,15 @@ defineExpose({
       :is-markdown="markdown"
       :mode="mode"
       @dismiss-external-change="externalChangePending = false"
-      @reload-external-change="() => void forceReloadExternalChange()"
+      @reload-external-change="() => void reloadExternalChange(true)"
       @save="() => void save()"
       @mode-change="setMode"
     />
 
-    <div v-if="doc.status === 'loading'" class="grid min-h-0 flex-1 place-items-center">
+    <div
+      v-if="doc.status === 'loading'"
+      class="grid min-h-0 flex-1 place-items-center"
+    >
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
         <NSpin size="small" />
         <span>{{ t("editor.loadingFile") }}</span>
