@@ -1,7 +1,7 @@
-mod modules;
+pub mod modules;
 mod panic_report;
 
-use modules::{fs, git, pty, shell, workspace};
+use modules::{fs, git, lsp, pty, shell, workspace};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -160,6 +160,7 @@ pub fn run() {
             registry
         })
         .manage(LaunchDir(Mutex::new(launch_dir)))
+        .manage(lsp::LspRegistry::default())
         .invoke_handler(tauri::generate_handler![
             pty::pty_open,
             pty::pty_write,
@@ -212,6 +213,11 @@ pub fn run() {
             workspace::wsl_list_distros,
             workspace::wsl_home,
             workspace::workspace_authorize,
+            lsp::commands::lsp_start,
+            lsp::commands::lsp_write,
+            lsp::commands::lsp_stop,
+            lsp::commands::lsp_list,
+            lsp::commands::lsp_resolve_command,
             get_launch_dir,
         ])
         .run(tauri::generate_context!())

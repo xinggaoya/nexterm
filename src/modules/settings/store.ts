@@ -50,6 +50,8 @@ export const EDITOR_THEME_LABELS: Record<EditorThemeId, string> = {
   "xcode-light": "Xcode Light",
 };
 
+export type EditorLspTypescriptMode = "builtin" | "lsp";
+
 export type Preferences = {
   theme: ThemePref;
   language: LanguagePref;
@@ -78,6 +80,7 @@ export type Preferences = {
   touchOptimizations: TouchMode;
   editorFontSize: number;
   editorTabSize: number;
+  editorLspTypescriptMode: EditorLspTypescriptMode;
   editorWordWrap: boolean;
 };
 
@@ -213,6 +216,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   touchOptimizations: "off",
   editorFontSize: EDITOR_FONT_SIZE_DEFAULT,
   editorTabSize: EDITOR_TAB_SIZE_DEFAULT,
+  editorLspTypescriptMode: "builtin",
   editorWordWrap: false,
 };
 
@@ -251,6 +255,9 @@ export async function loadPreferences(): Promise<Preferences> {
       get<boolean>(KEY_RESTORE_WINDOW) ??
       DEFAULT_PREFERENCES.restoreWindowState,
     vimMode: get<boolean>(KEY_VIM_MODE) ?? DEFAULT_PREFERENCES.vimMode,
+    editorLspTypescriptMode:
+      get<EditorLspTypescriptMode>(KEY_EDITOR_LSP_TYPESCRIPT_MODE) ??
+      DEFAULT_PREFERENCES.editorLspTypescriptMode,
     fileOpenMode:
       get<FileOpenMode>(KEY_FILE_OPEN_MODE) ?? DEFAULT_PREFERENCES.fileOpenMode,
     showHidden:
@@ -336,6 +343,14 @@ export async function setRestoreWindowState(value: boolean): Promise<void> {
 
 export async function setVimMode(value: boolean): Promise<void> {
   await writePref(KEY_VIM_MODE, value);
+}
+
+const KEY_EDITOR_LSP_TYPESCRIPT_MODE = "editorLspTypescriptMode";
+
+export async function setEditorLspTypescriptMode(
+  value: EditorLspTypescriptMode,
+): Promise<void> {
+  await writePref(KEY_EDITOR_LSP_TYPESCRIPT_MODE, value);
 }
 
 export async function setFileOpenMode(value: FileOpenMode): Promise<void> {
