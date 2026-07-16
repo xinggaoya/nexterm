@@ -24,6 +24,7 @@ import {
 import { isMarkdownPath, resolveMonacoLanguageId } from "./lib/languageMap";
 import { registerMonacoThemes } from "./lib/themes";
 import { attachVim, type VimAttachment } from "./lib/vim";
+import { attachOrDetachLsp } from "./lib/editorPaneLsp";
 
 registerMonacoThemes(monaco);
 
@@ -283,9 +284,24 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => [prefs.editorLspTypescriptMode, props.path],
+  () => {
+    if (!mount.value || doc.value.status !== "ready") return;
+    void attachOrDetachLsp(
+      mount.value.editor,
+      props.path,
+      prefs.editorLspTypescriptMode,
+    );
+  },
+);
+
 onBeforeUnmount(() => {
   vimAttachment.value?.dispose();
   vimAttachment.value = null;
+  if (mount.value) {
+    void attachOrDetachLsp(mount.value.editor, props.path, "builtin").catch(() => undefined);
+  }
   disposeEditor(mount.value);
   mount.value = null;
 });
