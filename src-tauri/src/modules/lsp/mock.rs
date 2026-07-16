@@ -1,10 +1,10 @@
-use std::io::{self, BufReader, Write};
+use std::io::{self, BufReader};
 
 use super::errors::LspError;
 use super::framing::{read_frame, write_frame};
 
 fn to_io(e: LspError) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, e.to_string())
+    io::Error::other(e.to_string())
 }
 
 /// mock-lsp 入口：把任何读到的 LSP 帧按请求类型回一份最小 JSON-RPC 响应。
