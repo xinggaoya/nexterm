@@ -9,6 +9,7 @@ import {
   setExplorerPanelWidth,
   setEditorFontSize,
   setEditorTabSize,
+  setEditorLspTypescriptMode,
   setEditorWordWrap,
   setFileOpenMode,
   setKeybindings,
@@ -28,6 +29,7 @@ import {
   setTheme,
   setTouchOptimizations,
   setVimMode,
+  type EditorLspTypescriptMode,
   type EditorThemeId,
   type FileOpenMode,
   type LanguagePref,
@@ -50,6 +52,9 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     DEFAULT_PREFERENCES.restoreWindowState,
   );
   const vimMode = ref<boolean>(DEFAULT_PREFERENCES.vimMode);
+  const editorLspTypescriptMode = ref<EditorLspTypescriptMode>(
+    DEFAULT_PREFERENCES.editorLspTypescriptMode,
+  );
   const fileOpenMode = ref<FileOpenMode>(DEFAULT_PREFERENCES.fileOpenMode);
   const showHidden = ref<boolean>(DEFAULT_PREFERENCES.showHidden);
   const terminalWebglEnabled = ref<boolean>(
@@ -111,6 +116,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     autostart.value = snapshot.autostart;
     restoreWindowState.value = snapshot.restoreWindowState;
     vimMode.value = snapshot.vimMode;
+    editorLspTypescriptMode.value = snapshot.editorLspTypescriptMode;
     fileOpenMode.value = snapshot.fileOpenMode;
     showHidden.value = snapshot.showHidden;
     terminalWebglEnabled.value = snapshot.terminalWebglEnabled;
@@ -184,6 +190,14 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     vimMode.value = value;
     patchPreferencesSnapshot("vimMode", value);
     await setVimMode(value);
+  }
+
+  async function updateEditorLspTypescriptMode(
+    value: EditorLspTypescriptMode,
+  ): Promise<void> {
+    editorLspTypescriptMode.value = value;
+    patchPreferencesSnapshot("editorLspTypescriptMode", value);
+    await setEditorLspTypescriptMode(value);
   }
 
   async function updateFileOpenMode(value: FileOpenMode): Promise<void> {
@@ -322,6 +336,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
       autostart: autostart.value,
       restoreWindowState: restoreWindowState.value,
       vimMode: vimMode.value,
+      editorLspTypescriptMode: editorLspTypescriptMode.value,
       fileOpenMode: fileOpenMode.value,
       showHidden: showHidden.value,
       terminalWebglEnabled: terminalWebglEnabled.value,
@@ -354,6 +369,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     autostart,
     restoreWindowState,
     vimMode,
+    editorLspTypescriptMode,
     fileOpenMode,
     showHidden,
     terminalWebglEnabled,
@@ -376,6 +392,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     editorFontSize,
     editorTabSize,
     editorWordWrap,
+    updateEditorLspTypescriptMode,
     hydrated,
     listening,
     hydrate,

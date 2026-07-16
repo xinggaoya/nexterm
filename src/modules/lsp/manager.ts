@@ -30,13 +30,14 @@ export async function attachLspToEditor(
     return { attached: false, reason: "no-server-binary" };
   }
 
-  const channelName = `lsp-${language}-${Date.now()}`;
+  // Channel 的 onmessage callback 由 TauriChannelReader 在 listen() 中注入；
+  // 这里提供一个空回调占位，避免 Tauri 立即认为 channel 关闭。
   const channel = new Channel<{
     kind: string;
     payload?: string;
     message?: string;
     code?: number;
-  }>(channelName);
+  }>(() => undefined);
 
   const connection = await createLspConnection({
     spec: {
