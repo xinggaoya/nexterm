@@ -10,7 +10,7 @@ import type {
   GitStashPushOptions,
   GitStashResult,
 } from "@/lib/native";
-import { notifyError, notifySuccess } from "@/modules/notifications/notificationCenter";
+import { notifyError, notifyInfo, notifySuccess } from "@/modules/notifications/notificationCenter";
 import type { SourceControlFileEntry } from "./sourceControlModel";
 import {
   normalizeError,
@@ -37,8 +37,21 @@ type SourceControlActionNative = {
     repoRoot: string,
     options: GitStashPushOptions,
   ) => Promise<GitStashResult>;
-  gitStashPop: (repoRoot: string, selector: string) => Promise<GitStashResult>;
-  gitStashDrop: (repoRoot: string, selector: string) => Promise<GitStashResult>;
+  gitStashPop: (
+    repoRoot: string,
+    selector: string,
+    expectedSha?: string | null,
+  ) => Promise<GitStashResult>;
+  gitStashDrop: (
+    repoRoot: string,
+    selector: string,
+    expectedSha?: string | null,
+  ) => Promise<GitStashResult>;
+  gitStashApply: (
+    repoRoot: string,
+    selector: string,
+    expectedSha?: string | null,
+  ) => Promise<GitStashResult>;
 };
 
 type DialogApi = {
@@ -253,11 +266,21 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     });
   }
 
-  async function checkoutBranch(branch: Pick<GitBranchInfo, "name" | "isRemote">) {
+  async function checkoutBranch(
+    branch: Pick<GitBranchInfo, "name" | "isRemote">,
+  ) {
     const root = options.state.repoRoot.value;
     if (!root) return;
     await runWithBusy(`checkout:${branch.name}`, async () => {
-      const result = await options.native.gitCheckoutBranch(root, branch.name, branch.isRemote);
+      // `branch.name` for remote-tracking entries arrives as `origin/main`,
+      // which is what the backend needs to decide between switching to an
+      // existing local branch (`main`) and `switch --track origin/main`.
+      // `isRemote` is preserved so the backend can apply that logic.
+      const result = await options.native.gitCheckoutBranch(
+        root,
+        branch.name,
+        branch.isRemote,
+      );
       const detail = options.t("sourceControl.branchCheckoutDetail", {
         branch: result.branch,
       });
@@ -284,41 +307,134 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     });
   }
 
-  async function stashChanges(message: string | null = null) {
+  type StashActionInput =
+    | string
+    | { selector: string; fullSha: string };
+
+  function normalizeStashActionInput(
+    input: StashActionInput,
+    expectedSha: string | null,
+  ): { selector: string; expectedSha: string | null } {
+    if (typeof input === "string") {
+      return { selector: input, expectedSha };
+    }
+    return { selector: input.selector, expectedSha: input.fullSha || null };
+  }
+
+  function reportStashResult(
+    result: GitStashResult,
+    successKey:
+      | "sourceControl.stashSaveSuccess"
+      | "sourceControl.stashPopSuccess"
+      | "sourceControl.stashDropSuccess"
+      | "sourceControl.stashApplySuccess",
+  ) {
+    actionMessage.value = result.message;
+    if (result.stashed) {
+      notifySuccess(options.t(successKey), result.message);
+    } else {
+      notifyInfo(options.t("sourceControl.stashNoChanges"), result.message);
+    }
+  }
+
+  async function refreshStashState() {
+    await options.state.refreshStatus();
+    await options.refreshGitMetadata?.();
+  }
+
+  async function stashChanges(
+    input: GitStashPushOptions | string | null = null,
+    legacyKeepIndex = false,
+  ) {
     const root = options.state.repoRoot.value;
     if (!root) return;
+    const stashOptions: GitStashPushOptions =
+      input && typeof input === "object"
+        ? {
+            message: input.message?.trim() || null,
+            includeUntracked: input.includeUntracked,
+            keepIndex: input.keepIndex ?? false,
+          }
+        : {
+            message: typeof input === "string" ? input.trim() || null : null,
+            includeUntracked: true,
+            ...(legacyKeepIndex ? { keepIndex: true } : {}),
+          };
     await runWithBusy("stash-save", async () => {
-      const result = await options.native.gitStashPush(root, {
-        message: message?.trim() || null,
-        includeUntracked: true,
-      });
-      actionMessage.value = result.message;
-      notifySuccess(options.t("sourceControl.stashSaveSuccess"), result.message);
-      await options.state.refreshStatus();
-      await options.refreshGitMetadata?.();
+      try {
+        const result = await options.native.gitStashPush(root, stashOptions);
+        reportStashResult(result, "sourceControl.stashSaveSuccess");
+      } finally {
+        await refreshStashState();
+      }
     });
   }
 
-  async function popStash(selector: string) {
+  async function popStash(
+    input: StashActionInput,
+    expectedSha: string | null = null,
+  ) {
     const root = options.state.repoRoot.value;
     if (!root) return;
+    const { selector, expectedSha: sha } = normalizeStashActionInput(input, expectedSha);
     await runWithBusy(`stash-pop:${selector}`, async () => {
-      const result = await options.native.gitStashPop(root, selector);
-      actionMessage.value = result.message;
-      notifySuccess(options.t("sourceControl.stashPopSuccess"), result.message);
-      await options.state.refreshStatus();
-      await options.refreshGitMetadata?.();
+      try {
+        const result = sha
+          ? await options.native.gitStashPop(root, selector, sha)
+          : await options.native.gitStashPop(root, selector);
+        reportStashResult(result, "sourceControl.stashPopSuccess");
+      } finally {
+        await refreshStashState();
+      }
     });
   }
 
-  async function dropStash(selector: string) {
+  async function executeDrop(selector: string, expectedSha: string | null) {
     const root = options.state.repoRoot.value;
     if (!root) return;
     await runWithBusy(`stash-drop:${selector}`, async () => {
-      const result = await options.native.gitStashDrop(root, selector);
-      actionMessage.value = result.message;
-      notifySuccess(options.t("sourceControl.stashDropSuccess"), result.message);
-      await options.refreshGitMetadata?.();
+      try {
+        const result = expectedSha
+          ? await options.native.gitStashDrop(root, selector, expectedSha)
+          : await options.native.gitStashDrop(root, selector);
+        reportStashResult(result, "sourceControl.stashDropSuccess");
+      } finally {
+        await refreshStashState();
+      }
+    });
+  }
+
+  async function dropStash(
+    input: StashActionInput,
+    expectedSha: string | null = null,
+  ) {
+    if (options.state.busyAction.value) return;
+    const { selector, expectedSha: sha } = normalizeStashActionInput(input, expectedSha);
+    await options.dialog.warning({
+      title: options.t("sourceControl.stashDropConfirmTitle"),
+      content: options.t("sourceControl.stashDropConfirmContent", { selector }),
+      positiveText: options.t("sourceControl.stashDrop"),
+      negativeText: options.t("common.cancel"),
+      onPositiveClick: () => executeDrop(selector, sha),
+    });
+  }
+
+  async function applyStash(
+    input: StashActionInput,
+    expectedSha: string | null = null,
+  ) {
+    const root = options.state.repoRoot.value;
+    if (!root) return;
+    const { selector, expectedSha: sha } = normalizeStashActionInput(input, expectedSha);
+    await runWithBusy(`stash-apply:${selector}`, async () => {
+      try {
+        const result = sha
+          ? await options.native.gitStashApply(root, selector, sha)
+          : await options.native.gitStashApply(root, selector);
+        reportStashResult(result, "sourceControl.stashApplySuccess");
+      } finally {
+        await refreshStashState();
+      }
     });
   }
 
@@ -367,6 +483,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     stashChanges,
     popStash,
     dropStash,
+    applyStash,
     commit,
     handleCommitKeydown,
   };
@@ -382,5 +499,6 @@ function errorTitleForBusy(busy: BusyAction): string {
   if (busy === "stash-save") return "sourceControl.stashSaveFailed";
   if (busy.startsWith("stash-pop:")) return "sourceControl.stashPopFailed";
   if (busy.startsWith("stash-drop:")) return "sourceControl.stashDropFailed";
+  if (busy.startsWith("stash-apply:")) return "sourceControl.stashApplyFailed";
   return "sourceControl.actionFailed";
 }
