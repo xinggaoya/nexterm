@@ -11,6 +11,7 @@ vi.mock("@/lib/native", () => ({
     gitLog: vi.fn(),
     gitCommitFiles: vi.fn(),
     gitRemoteUrl: vi.fn(),
+    gitBranchList: vi.fn(),
   },
 }));
 
@@ -19,27 +20,35 @@ vi.mock("@/lib/clipboard", () => ({
 }));
 
 async function flush() {
-  await Promise.resolve();
-  await nextTick();
+  for (let i = 0; i < 4; i += 1) {
+    await Promise.resolve();
+    await nextTick();
+  }
+}
+
+function makeCommit(sha: string, refs: { name: string; kind: string; isHead: boolean }[] = []) {
+  return {
+    sha,
+    shortSha: sha.slice(0, 7),
+    author: "Ada Lovelace",
+    authorEmail: "ada@example.com",
+    timestampSecs: 1_700_000_000,
+    parents: ["parent1"],
+    subject: `Commit ${sha}`,
+    filesChanged: 1,
+    insertions: 4,
+    deletions: 1,
+    refs,
+  };
 }
 
 describe("GitHistoryPane.vue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(native.gitLog).mockResolvedValue([
-      {
-        sha: "abcdef123456",
-        shortSha: "abcdef1",
-        author: "Ada Lovelace",
-        authorEmail: "ada@example.com",
-        timestampSecs: 1_700_000_000,
-        parents: ["parent1"],
-        subject: "Add terminal panes",
-        filesChanged: 2,
-        insertions: 12,
-        deletions: 3,
-      },
-    ]);
+    vi.mocked(native.gitLog).mockResolvedValue({
+      entries: [makeCommit("abcdef123456")],
+      hasMore: false,
+    });
     vi.mocked(native.gitCommitFiles).mockResolvedValue([
       {
         path: "src/main.ts",
@@ -52,6 +61,10 @@ describe("GitHistoryPane.vue", () => {
       },
     ]);
     vi.mocked(native.gitRemoteUrl).mockResolvedValue(null);
+    vi.mocked(native.gitBranchList).mockResolvedValue([
+      { name: "main", isCurrent: true, isRemote: false, upstream: null },
+      { name: "feature/x", isCurrent: false, isRemote: false, upstream: null },
+    ]);
   });
 
   afterEach(() => {
@@ -66,13 +79,18 @@ describe("GitHistoryPane.vue", () => {
     });
     await flush();
 
-    expect(native.gitLog).toHaveBeenCalledWith("/repo", { limit: 30 });
+    expect(native.gitLog).toHaveBeenLastCalledWith("/repo", {
+      limit: 30,
+      offset: 0,
+      refName: null,
+      all: false,
+    });
     expect(wrapper.find("[data-git-history]").exists()).toBe(true);
     expect(wrapper.text()).toContain("abcdef1");
-    expect(wrapper.text()).toContain("Add terminal panes");
+    expect(wrapper.text()).toContain("Commit abcdef123456");
     expect(wrapper.text()).toContain("Ada Lovelace");
-    expect(wrapper.text()).toContain("+12");
-    expect(wrapper.text()).toContain("-3");
+    expect(wrapper.text()).toContain("+4");
+    expect(wrapper.text()).toContain("-1");
   });
 
   it("opens commit details in a drawer and emits a commit-file open request", async () => {
@@ -107,7 +125,7 @@ describe("GitHistoryPane.vue", () => {
           repoRoot: "/repo",
           sha: "abcdef123456",
           shortSha: "abcdef1",
-          subject: "Add terminal panes",
+          subject: "Commit abcdef123456",
           path: "src/main.ts",
           originalPath: null,
         },
@@ -133,5 +151,148 @@ describe("GitHistoryPane.vue", () => {
     await flush();
 
     expect(writeClipboardText).toHaveBeenCalledWith("abcdef123456");
+  });
+
+  it("refetches when the refName prop changes", async () => {
+    const wrapper = mount(GitHistoryPane, {
+      props: { repoRoot: "/repo", refName: "main" },
+    });
+    await flush();
+
+    expect(native.gitLog).toHaveBeenLastCalledWith("/repo", {
+      limit: 30,
+      offset: 0,
+      refName: "main",
+      all: false,
+    });
+
+    await wrapper.setProps({ refName: "feature/x" });
+    await flush();
+
+    expect(native.gitLog).toHaveBeenLastCalledWith("/repo", {
+      limit: 30,
+      offset: 0,
+      refName: "feature/x",
+      all: false,
+    });
+  });
+
+  it("loads the next page when Load more is clicked and stops on hasMore=false", async () => {
+    vi.mocked(native.gitLog)
+      .mockReset()
+      .mockResolvedValueOnce({
+        entries: [makeCommit("aaaaaaa1")],
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        entries: [makeCommit("aaaaaaa2")],
+        hasMore: false,
+      });
+
+    const wrapper = mount(GitHistoryPane, { props: { repoRoot: "/repo" } });
+    await flush();
+
+    expect(native.gitLog).toHaveBeenLastCalledWith("/repo", {
+      limit: 30,
+      offset: 0,
+      refName: null,
+      all: false,
+    });
+    expect(wrapper.find("[data-commit-row='aaaaaaa1']").exists()).toBe(true);
+    expect(wrapper.find("[data-load-more]").exists()).toBe(true);
+
+    await wrapper.find("[data-load-more]").trigger("click");
+    await flush();
+
+    expect(native.gitLog).toHaveBeenLastCalledWith("/repo", {
+      limit: 30,
+      offset: 30,
+      refName: null,
+      all: false,
+    });
+    expect(wrapper.find("[data-commit-row='aaaaaaa1']").exists()).toBe(true);
+    expect(wrapper.find("[data-commit-row='aaaaaaa2']").exists()).toBe(true);
+    expect(wrapper.find("[data-load-more]").exists()).toBe(false);
+  });
+
+  it("deduplicates appended commits by sha", async () => {
+    vi.mocked(native.gitLog)
+      .mockReset()
+      .mockResolvedValueOnce({
+        entries: [makeCommit("aaaaaaa1"), makeCommit("aaaaaaa2")],
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        entries: [makeCommit("aaaaaaa1"), makeCommit("aaaaaaa3")],
+        hasMore: false,
+      });
+
+    const wrapper = mount(GitHistoryPane, { props: { repoRoot: "/repo" } });
+    await flush();
+
+    await wrapper.find("[data-load-more]").trigger("click");
+    await flush();
+
+    const rows = wrapper.findAll("[data-commit-row]");
+    const shas = rows.map((row) => row.attributes("data-commit-row"));
+    expect(shas).toEqual(["aaaaaaa1", "aaaaaaa2", "aaaaaaa3"]);
+  });
+
+  it("cancels in-flight requests when the ref changes mid-load", async () => {
+    const deferred: {
+      resolve?: (value: {
+        entries: ReturnType<typeof makeCommit>[];
+        hasMore: boolean;
+      }) => void;
+    } = {};
+    vi.mocked(native.gitLog)
+      .mockReset()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ entries: ReturnType<typeof makeCommit>[]; hasMore: boolean }>(
+            (resolve) => {
+              deferred.resolve = resolve;
+            },
+          ),
+      )
+      .mockResolvedValueOnce({
+        entries: [makeCommit("bbbbbbb1")],
+        hasMore: false,
+      });
+
+    const wrapper = mount(GitHistoryPane, {
+      props: { repoRoot: "/repo", refName: "main" },
+    });
+    await flush();
+
+    await wrapper.setProps({ refName: "feature/x" });
+    await flush();
+
+    deferred.resolve!({ entries: [makeCommit("ccccccc1")], hasMore: false });
+    await flush();
+
+    expect(wrapper.find("[data-commit-row='bbbbbbb1']").exists()).toBe(true);
+    expect(wrapper.find("[data-commit-row='ccccccc1']").exists()).toBe(false);
+  });
+
+  it("renders refs badges with NTag beside the subject", async () => {
+    vi.mocked(native.gitLog).mockReset().mockResolvedValueOnce({
+      entries: [
+        makeCommit("aaaaaaa1", [
+          { name: "main", kind: "branch", isHead: true },
+          { name: "v1.0", kind: "tag", isHead: false },
+        ]),
+      ],
+      hasMore: false,
+    });
+
+    const wrapper = mount(GitHistoryPane, { props: { repoRoot: "/repo" } });
+    await flush();
+
+    const row = wrapper.find("[data-commit-row='aaaaaaa1']");
+    expect(row.exists()).toBe(true);
+    expect(row.text()).toContain("main");
+    expect(row.text()).toContain("v1.0");
+    expect(row.find("[data-ref-badge]").exists()).toBe(true);
   });
 });

@@ -62,6 +62,8 @@ describe("tabLabel", () => {
     kind: "git-history",
     title: "feat: add foo",
     repoRoot: "/repo",
+    refName: null,
+    allRefs: false,
   };
 
   it("prefers terminalTitle over cwd and title", () => {
