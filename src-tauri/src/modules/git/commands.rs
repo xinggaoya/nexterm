@@ -3,9 +3,9 @@ use tauri::{AppHandle, Manager};
 use crate::modules::git::operations;
 use crate::modules::git::types::{
     DiscardEntry, GitBranchInfo, GitBranchResult, GitCommitFileChange, GitCommitResult,
-    GitDiffContentResult, GitDiffResult, GitFetchResult, GitLogEntry, GitPanelSnapshot,
-    GitPullResult, GitPushResult, GitRepoInfo, GitStashEntry, GitStashPushOptions, GitStashResult,
-    GitStatusSnapshot,
+    GitDiffContentResult, GitDiffResult, GitFetchResult, GitLogOptions, GitLogPage,
+    GitPanelSnapshot, GitPullResult, GitPushResult, GitRepoInfo, GitRepositoryDiscovery,
+    GitStashEntry, GitStashPushOptions, GitStashResult, GitStatusSnapshot,
 };
 use crate::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
 
@@ -268,12 +268,20 @@ pub async fn git_stash_push(
 pub async fn git_stash_pop(
     repo_root: String,
     selector: String,
+    expected_sha: Option<String>,
     workspace: Option<WorkspaceEnv>,
     app: AppHandle,
 ) -> Result<GitStashResult, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     blocking(app, move |r| {
-        operations::stash_pop(r, &repo_root, &selector, &workspace).map_err(Into::into)
+        operations::stash_pop(
+            r,
+            &repo_root,
+            &selector,
+            expected_sha.as_deref(),
+            &workspace,
+        )
+        .map_err(Into::into)
     })
     .await
 }
@@ -282,12 +290,42 @@ pub async fn git_stash_pop(
 pub async fn git_stash_drop(
     repo_root: String,
     selector: String,
+    expected_sha: Option<String>,
     workspace: Option<WorkspaceEnv>,
     app: AppHandle,
 ) -> Result<GitStashResult, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     blocking(app, move |r| {
-        operations::stash_drop(r, &repo_root, &selector, &workspace).map_err(Into::into)
+        operations::stash_drop(
+            r,
+            &repo_root,
+            &selector,
+            expected_sha.as_deref(),
+            &workspace,
+        )
+        .map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_stash_apply(
+    repo_root: String,
+    selector: String,
+    expected_sha: Option<String>,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<GitStashResult, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    blocking(app, move |r| {
+        operations::stash_apply(
+            r,
+            &repo_root,
+            &selector,
+            expected_sha.as_deref(),
+            &workspace,
+        )
+        .map_err(Into::into)
     })
     .await
 }
@@ -295,21 +333,13 @@ pub async fn git_stash_drop(
 #[tauri::command]
 pub async fn git_log(
     repo_root: String,
-    limit: Option<u32>,
-    before_sha: Option<String>,
+    options: GitLogOptions,
     workspace: Option<WorkspaceEnv>,
     app: AppHandle,
-) -> Result<Vec<GitLogEntry>, String> {
+) -> Result<GitLogPage, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     blocking(app, move |r| {
-        operations::log(
-            r,
-            &repo_root,
-            limit.unwrap_or(30),
-            before_sha.as_deref(),
-            &workspace,
-        )
-        .map_err(Into::into)
+        operations::log(r, &repo_root, &options, &workspace).map_err(Into::into)
     })
     .await
 }
@@ -377,6 +407,27 @@ pub async fn git_remote_url(
     let workspace = WorkspaceEnv::from_option(workspace);
     blocking(app, move |r| {
         operations::remote_url(r, &repo_root, &remote, &workspace).map_err(Into::into)
+    })
+    .await
+}
+
+const DEFAULT_DISCOVERY_DEPTH: u32 = 4;
+const DEFAULT_DISCOVERY_MAX_REPOS: u32 = 32;
+
+#[tauri::command]
+pub async fn git_discover_repositories(
+    root_path: String,
+    max_depth: Option<u32>,
+    max_repos: Option<u32>,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<GitRepositoryDiscovery, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    let depth = max_depth.unwrap_or(DEFAULT_DISCOVERY_DEPTH);
+    let limit = max_repos.unwrap_or(DEFAULT_DISCOVERY_MAX_REPOS);
+    blocking(app, move |r| {
+        operations::discover_repositories(r, &root_path, depth, limit, &workspace)
+            .map_err(Into::into)
     })
     .await
 }

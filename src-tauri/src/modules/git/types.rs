@@ -111,6 +111,36 @@ pub struct GitLogEntry {
     pub files_changed: u32,
     pub insertions: u32,
     pub deletions: u32,
+    #[serde(default)]
+    pub refs: Vec<GitLogRef>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitLogRef {
+    pub name: String,
+    pub kind: String,
+    pub is_head: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitLogPage {
+    pub entries: Vec<GitLogEntry>,
+    pub has_more: bool,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitLogOptions {
+    #[serde(default)]
+    pub limit: Option<u32>,
+    #[serde(default)]
+    pub offset: Option<u32>,
+    #[serde(default)]
+    pub ref_name: Option<String>,
+    #[serde(default)]
+    pub all: bool,
 }
 
 #[derive(Serialize)]
@@ -143,9 +173,15 @@ pub struct GitPullResult {
 #[serde(rename_all = "camelCase")]
 pub struct GitBranchInfo {
     pub name: String,
+    pub full_ref: String,
     pub upstream: Option<String>,
     pub is_current: bool,
     pub is_remote: bool,
+    pub last_commit_short_sha: String,
+    pub last_commit_subject: String,
+    pub last_commit_timestamp_secs: i64,
+    pub ahead: Option<u32>,
+    pub behind: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -158,6 +194,7 @@ pub struct GitBranchResult {
 #[serde(rename_all = "camelCase")]
 pub struct GitStashEntry {
     pub selector: String,
+    pub full_sha: String,
     pub short_sha: String,
     pub relative_time: String,
     pub message: String,
@@ -167,7 +204,10 @@ pub struct GitStashEntry {
 #[serde(rename_all = "camelCase")]
 pub struct GitStashPushOptions {
     pub message: Option<String>,
+    #[serde(default)]
     pub include_untracked: bool,
+    #[serde(default)]
+    pub keep_index: bool,
 }
 
 #[derive(Serialize)]
@@ -175,6 +215,25 @@ pub struct GitStashPushOptions {
 pub struct GitStashResult {
     pub stashed: bool,
     pub message: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorkspaceRepo {
+    pub repo_root: String,
+    pub relative_path: String,
+    pub name: String,
+    pub branch: String,
+    pub upstream: Option<String>,
+    pub is_detached: bool,
+    pub is_worktree: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRepositoryDiscovery {
+    pub repositories: Vec<GitWorkspaceRepo>,
+    pub truncated: bool,
 }
 
 pub(crate) struct GitOutput {
