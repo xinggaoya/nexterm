@@ -8,6 +8,7 @@ pub mod commands;
 pub mod errors;
 pub mod framing;
 pub mod mock;
+pub mod servers;
 pub mod session;
 
 pub use errors::LspError;
@@ -78,24 +79,19 @@ impl LspRegistry {
     }
 
     pub fn resolve_command(&self, language: &str) -> Option<LspResolvedCommand> {
-        match language {
-            "__mock-lsp__" | "__mock__" => Some(LspResolvedCommand {
-                command: std::env::current_exe()
-                    .ok()?
-                    .to_string_lossy()
-                    .into_owned(),
+        if matches!(language, "__mock-lsp__" | "__mock__") {
+            let command = std::env::current_exe().ok()?.to_string_lossy().into_owned();
+            return Some(LspResolvedCommand {
+                command,
                 args: vec!["--mock-lsp".into()],
-            }),
-            _ => {
-                if let Ok(path) = which::which("rust-analyzer") {
-                    return Some(LspResolvedCommand {
-                        command: path.to_string_lossy().into_owned(),
-                        args: Vec::new(),
-                    });
-                }
-                None
-            }
+            });
         }
+        let cwd = std::path::PathBuf::from(".");
+        let spec = self::servers::resolve_for_language(language, &cwd)?;
+        Some(LspResolvedCommand {
+            command: spec.command,
+            args: spec.args,
+        })
     }
 }
 
