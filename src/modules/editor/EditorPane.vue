@@ -23,6 +23,7 @@ import {
 } from "./lib/editorRuntime";
 import { isMarkdownPath, resolveMonacoLanguageId } from "./lib/languageMap";
 import { registerMonacoThemes } from "./lib/themes";
+import { attachVim, type VimAttachment } from "./lib/vim";
 
 registerMonacoThemes(monaco);
 
@@ -40,6 +41,7 @@ const dialog = useDialog();
 const prefs = usePreferencesPiniaStore();
 const host = ref<HTMLDivElement | null>(null);
 const mount = shallowRef<EditorMount | null>(null);
+const vimAttachment = shallowRef<VimAttachment | null>(null);
 const doc = ref<EditorDocumentState>({ status: "loading" });
 const savedContent = ref("");
 const buffer = ref("");
@@ -264,7 +266,26 @@ watch(
   },
 );
 
+watch(
+  () => prefs.vimMode,
+  (enabled) => {
+    vimAttachment.value?.dispose();
+    vimAttachment.value = null;
+    if (enabled && mount.value) {
+      vimAttachment.value = attachVim(mount.value.editor, {
+        save: () => void save(),
+        close: () => {
+          emit("dirtyChange", false);
+        },
+      });
+    }
+  },
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
+  vimAttachment.value?.dispose();
+  vimAttachment.value = null;
   disposeEditor(mount.value);
   mount.value = null;
 });
