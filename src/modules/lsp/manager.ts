@@ -1,0 +1,78 @@
+import type * as monaco from "monaco-editor";
+import { invoke, Channel } from "@tauri-apps/api/core";
+
+import { createLspConnection } from "./lspTransport";
+import { detectLspLanguage, type SupportedLanguage } from "./languageMap";
+
+type Client = {
+  language: SupportedLanguage;
+  dispose: () => void;
+};
+
+const clients = new WeakMap<monaco.editor.IStandaloneCodeEditor, Client>();
+
+export type LspAttachOutcome =
+  | { attached: true; language: SupportedLanguage }
+  | { attached: false; reason: string };
+
+export async function attachLspToEditor(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  filename: string,
+): Promise<LspAttachOutcome> {
+  const language = detectLspLanguage(filename);
+  if (!language) return { attached: false, reason: "no-lsp-language" };
+
+  const resolved = await invoke<{ command: string; args: string[] } | null>(
+    "lsp_resolve_command",
+    { language },
+  );
+  if (!resolved || !resolved.command) {
+    return { attached: false, reason: "no-server-binary" };
+  }
+
+  const channelName = `lsp-${language}-${Date.now()}`;
+  const channel = new Channel<{
+    kind: string;
+    payload?: string;
+    message?: string;
+    code?: number;
+  }>(channelName);
+
+  const connection = await createLspConnection({
+    spec: {
+      id: language,
+      language,
+      command: resolved.command,
+      args: resolved.args,
+    },
+    invoke: (cmd: string, args?: Record<string, unknown>) =>
+      invoke(cmd, args) as Promise<unknown>,
+    openChannel: async () => channel as unknown as never,
+  });
+
+  connection.listen();
+  const dispose = () => {
+    try {
+      connection.dispose();
+    } catch {
+      // ignore disposal errors
+    }
+  };
+  clients.set(editor, { language, dispose });
+  return { attached: true, language };
+}
+
+export async function detachLspFromEditor(
+  editor: monaco.editor.IStandaloneCodeEditor,
+): Promise<void> {
+  const client = clients.get(editor);
+  if (!client) return;
+  client.dispose();
+  clients.delete(editor);
+}
+
+export function isLspAttached(
+  editor: monaco.editor.IStandaloneCodeEditor,
+): boolean {
+  return clients.has(editor);
+}
