@@ -23,7 +23,7 @@ pub fn read_frame<R: BufRead>(reader: &mut R) -> Result<Option<String>, LspError
         if read == 0 {
             return Ok(None);
         }
-        let cleaned = line.trim_end_matches(|c| c == '\r' || c == '\n');
+        let cleaned = line.trim_end_matches(&['\r', '\n'][..]);
         if cleaned.is_empty() {
             break;
         }
