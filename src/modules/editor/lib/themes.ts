@@ -1,14 +1,8 @@
 import * as monaco from "monaco-editor";
-// monaco-themes 包的 themes/*.json 是 JSON 主题，esbuild 已支持原生 JSON import；
-// 用宽松 any 类型绕过 typescript 对 .json 的解析限制。
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const githubDark = require("monaco-themes/themes/GitHub Dark.json") as any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const githubLight = require("monaco-themes/themes/GitHub Light.json") as any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const xcodeDark = require("monaco-themes/themes/Xcode_Dark.json") as any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const xcodeLight = require("monaco-themes/themes/Xcode_default.json") as any;
+
+// monaco-themes 包的 themes/*.json 是 JSON 主题文件。Vite/esbuild 通过 alias 解析
+// monaco-themes 到本地 stub；这里直接以 unknown 的方式导入内置主题的 JSON 内容，
+// 不再依赖 monaco-themes 包的 .json 文件。GitHub / Xcode 主题用我们手写的 token 规则。
 
 type ThemeData = monaco.editor.IStandaloneThemeData;
 
@@ -44,8 +38,7 @@ function darkBase(_name: string, data: Partial<ThemeData>): ThemeData {
   };
 }
 
-// 在此文件中保留 lightBase 作为导出以便未来扩展；当前未引用，导出让 lint 工具识别。
-export function lightBase(_name: string, data: Partial<ThemeData>): ThemeData {
+function lightBase(_name: string, data: Partial<ThemeData>): ThemeData {
   return {
     base: "vs",
     inherit: true,
@@ -113,6 +106,52 @@ const copilot: ThemeData = darkBase("copilot", {
   ],
 });
 
+const githubDark: ThemeData = darkBase("github-dark", {
+  rules: [
+    { token: "comment", foreground: "8b949e", fontStyle: "italic" },
+    { token: "keyword", foreground: "ff7b72" },
+    { token: "string", foreground: "a5d6ff" },
+    { token: "number", foreground: "79c0ff" },
+    { token: "type", foreground: "ffa657" },
+    { token: "function", foreground: "d2a8ff" },
+    { token: "variable", foreground: "c9d1d9" },
+    { token: "tag", foreground: "7ee787" },
+    { token: "delimiter", foreground: "c9d1d9" },
+    { token: "regexp", foreground: "f97583" },
+  ],
+  colors: {
+    "editor.background": "#0d1117",
+    "editor.foreground": "#c9d1d9",
+    "editorLineNumber.foreground": "#484f58",
+    "editorCursor.foreground": "#c9d1d9",
+    "editor.selectionBackground": "#264f78",
+    "editor.lineHighlightBackground": "#161b22",
+    "editorGutter.background": "#0d1117",
+  },
+});
+
+const githubLight: ThemeData = lightBase("github-light", {
+  rules: [
+    { token: "comment", foreground: "6a737d", fontStyle: "italic" },
+    { token: "keyword", foreground: "d73a49" },
+    { token: "string", foreground: "032f62" },
+    { token: "number", foreground: "005cc5" },
+    { token: "type", foreground: "6f42c1" },
+    { token: "function", foreground: "6f42c1" },
+    { token: "variable", foreground: "e36209" },
+    { token: "tag", foreground: "22863a" },
+  ],
+  colors: {
+    "editor.background": "#ffffff",
+    "editor.foreground": "#24292e",
+    "editorLineNumber.foreground": "#1b1f23",
+    "editorCursor.foreground": "#24292e",
+    "editor.selectionBackground": "#c8e1ff",
+    "editor.lineHighlightBackground": "#f6f8fa",
+    "editorGutter.background": "#ffffff",
+  },
+});
+
 const nord: ThemeData = darkBase("nord", {
   rules: [
     { token: "comment", foreground: "616e88", fontStyle: "italic" },
@@ -157,16 +196,48 @@ const tokyoNight: ThemeData = darkBase("tokyo-night", {
   },
 });
 
+const xcodeDark: ThemeData = darkBase("xcode-dark", {
+  rules: [
+    { token: "comment", foreground: "7f8c98", fontStyle: "italic" },
+    { token: "keyword", foreground: "c455e5" },
+    { token: "string", foreground: "d44950" },
+    { token: "number", foreground: "3ec1f3" },
+    { token: "type", foreground: "21ab9d" },
+    { token: "function", foreground: "3f6f74" },
+    { token: "variable", foreground: "d0d0d0" },
+  ],
+  colors: {
+    "editor.background": "#292a30",
+    "editor.foreground": "#d0d0d0",
+  },
+});
+
+const xcodeLight: ThemeData = lightBase("xcode-light", {
+  rules: [
+    { token: "comment", foreground: "007400", fontStyle: "italic" },
+    { token: "keyword", foreground: "aa0d91" },
+    { token: "string", foreground: "c41a16" },
+    { token: "number", foreground: "1c00cf" },
+    { token: "type", foreground: "5c2696" },
+    { token: "function", foreground: "3f6f74" },
+    { token: "variable", foreground: "000000" },
+  ],
+  colors: {
+    "editor.background": "#ffffff",
+    "editor.foreground": "#000000",
+  },
+});
+
 const THEME_DATA: Record<string, ThemeData> = {
   atomone,
   aura,
   copilot,
-  "github-dark": githubDark as ThemeData,
-  "github-light": githubLight as ThemeData,
+  "github-dark": githubDark,
+  "github-light": githubLight,
   nord,
   "tokyo-night": tokyoNight,
-  "xcode-dark": xcodeDark as ThemeData,
-  "xcode-light": xcodeLight as ThemeData,
+  "xcode-dark": xcodeDark,
+  "xcode-light": xcodeLight,
 };
 
 let registered = false;

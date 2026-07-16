@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const editorRoot = new URL(".", import.meta.url);
@@ -34,5 +35,35 @@ describe("standard editor Vue boundary", () => {
     expect(
       legacyFiles.filter((file) => existsSync(new URL(file, editorRoot))),
     ).toEqual([]);
+  });
+});
+
+describe("monaco boundary guard", () => {
+  it("does not keep CodeMirror artifacts in src/modules/editor/", () => {
+    const files = [
+      "DiffCodeMirror.vue",
+      "lib/extensions.ts",
+      "lib/languageResolver.ts",
+      "lib/languageResolver.test.ts",
+    ];
+    const offenders = files.filter((f) =>
+      existsSync(new URL(f, editorRoot)),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it("uses DiffEditor (monaco) instead of DiffCodeMirror in GitDiffPane", () => {
+    const source = readFileSync(
+      new URL("./GitDiffPane.vue", editorRoot),
+      "utf8",
+    );
+    expect(source).toContain("DiffEditor");
+    expect(source).not.toContain("DiffCodeMirror");
+  });
+
+  it("uses languageMap for monaco language resolution, not ad-hoc loaders", () => {
+    const libFiles = readdirSync(new URL("./lib/", editorRoot));
+    expect(libFiles).toContain("languageMap.ts");
+    expect(libFiles).not.toContain("languageResolver.ts");
   });
 });
