@@ -1,5 +1,6 @@
 pub mod fs;
 pub mod git;
+pub mod lsp;
 pub(crate) mod lock;
 pub(crate) mod process;
 pub mod pty;

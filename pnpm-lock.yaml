@@ -113,6 +113,9 @@ importers:
       vite-plugin-monaco-editor:
         specifier: ^1.1.0
         version: 1.1.0(monaco-editor@0.52.0)
+      vscode-jsonrpc:
+        specifier: ^9.0.1
+        version: 9.0.1
       vue:
         specifier: ^3.5.34
         version: 3.5.34(typescript@5.8.3)
@@ -3168,6 +3171,10 @@ packages:
     peerDependencies:
       vue: ^3.0.0
 
+  vscode-jsonrpc@9.0.1:
+    resolution: {integrity: sha512-rfuA6T75H6m5EkbhtEPzre9pT0HPcDI2MMy4+nPFIBks5J8JBAUHD4tRYSgaBOijIEC7SRkC1kKyXTLqbmh9jw==}
+    engines: {node: '>=14.0.0'}
+
   vscode-uri@3.1.0:
     resolution: {integrity: sha512-/BpdSx+yCQGnCvecbyXdxHDkuk55/G3xwnC0GqY4gmQ3j+A+g8kzzgB4Nk/SINjqn6+waqw3EgbVF2QKExkRxQ==}
 
@@ -6108,6 +6115,8 @@ snapshots:
     dependencies:
       evtd: 0.2.4
       vue: 3.5.34(typescript@5.8.3)
+
+  vscode-jsonrpc@9.0.1: {}
 
   vscode-uri@3.1.0: {}
 

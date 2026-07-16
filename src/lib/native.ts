@@ -156,6 +156,26 @@ export type WorkspaceFsChangedEvent = {
   kinds?: Array<"create" | "modify" | "delete">;
 };
 
+// LSP server configuration and session metadata exposed to the webview.
+export type LspServerSpec = {
+  id: string;
+  language: string;
+  command: string;
+  args?: string[];
+  cwd?: string | null;
+};
+
+export type LspResolvedCommand = {
+  command: string;
+  args: string[];
+};
+
+export type LspSessionInfo = {
+  id: number;
+  language: string;
+  spec_id: string;
+};
+
 export type WorkspaceFileChangedEvent = {
   rootPath: string;
   path: string;
@@ -572,4 +592,13 @@ export const native = {
     invoke<void>("pty_resize", { id, cols, rows }),
   ptyClose: (id: number) => invoke<void>("pty_close", { id }),
   ptyKill: (id: number) => invoke<void>("pty_kill", { id }),
+
+  // LSP transport — Section 2.
+  lspStart: (spec: LspServerSpec) => invoke<number>("lsp_start", { spec }),
+  lspWrite: (id: number, message: string) =>
+    invoke<void>("lsp_write", { id, message }),
+  lspStop: (id: number) => invoke<void>("lsp_stop", { id }),
+  lspList: () => invoke<LspSessionInfo[]>("lsp_list"),
+  lspResolveCommand: (language: string) =>
+    invoke<LspResolvedCommand | null>("lsp_resolve_command", { language }),
 };

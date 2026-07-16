@@ -32,6 +32,9 @@ const whitelist: Record<string, true> = {
   "lib/launchDir.test.ts": true,
   "modules/editor/lib/documentService.test.ts": true,
   "modules/explorer/lib/fileTreeService.test.ts": true,
+  "modules/lsp/lspTransport.ts": true,
+  "modules/lsp/lspTransport.test.ts": true,
+  "modules/lsp/manager.ts": true,
   "modules/markdown/lib/markdownDocumentService.test.ts": true,
   "modules/workspace/workspaceEnvPinia.test.ts": true,
 };
