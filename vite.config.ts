@@ -71,9 +71,15 @@ export default defineConfig(async ({ mode }) => ({
             replacement: path.resolve(__dirname, "./tests/monaco-themes-stub.ts"),
           },
         ]
-      : {
-          "@": path.resolve(__dirname, "./src"),
-        },
+      : [
+          { find: "@", replacement: path.resolve(__dirname, "./src") },
+          // monaco-vim 的 browser 条件指向 UMD；Vite 会把它当作原生 ESM，
+          // 导致命名导入在页面启动时失败，因此浏览器构建固定使用真正的 ESM 入口。
+          {
+            find: /^monaco-vim$/,
+            replacement: path.resolve(__dirname, "./node_modules/monaco-vim/dist/index.mjs"),
+          },
+        ],
   },
   optimizeDeps: {
     exclude: ["monaco-editor", "monaco-vim", "monaco-themes"],
