@@ -16,7 +16,11 @@ const NERD_FONT_CANDIDATES = [
   "Hasklug Nerd Font",
 ];
 
-const FALLBACK_CHAIN = '"JetBrains Mono", SFMono-Regular, Menlo, monospace';
+export const NERD_SYMBOL_FONT_FAMILY = "Pure Nerd Font";
+export const DEFAULT_MONO_FONT_FAMILY =
+  '"JetBrains Mono", "Pure Nerd Font", SFMono-Regular, Menlo, monospace';
+
+const FALLBACK_CHAIN = DEFAULT_MONO_FONT_FAMILY;
 
 let detected: string | null = null;
 let monoReady: Promise<void> | null = null;
@@ -30,8 +34,32 @@ export function ensureMonoFontsLoaded(): Promise<void> {
   monoReady = Promise.allSettled([
     document.fonts.load('400 14px "JetBrains Mono"'),
     document.fonts.load('700 14px "JetBrains Mono"'),
+    document.fonts.load('400 14px "Pure Nerd Font"', "\ue0b0\uf120"),
   ]).then(() => undefined);
   return monoReady;
+}
+
+export async function ensureFontFamilyLoaded(
+  fontFamily: string,
+  fontSize: number,
+): Promise<void> {
+  if (typeof document === "undefined" || !document.fonts?.load) return;
+  await Promise.allSettled([
+    document.fonts.load(`400 ${fontSize}px ${fontFamily}`, "MW\u2500\u2502"),
+    document.fonts.load(`700 ${fontSize}px ${fontFamily}`, "MW\u2500\u2502"),
+    document.fonts.load(
+      `400 ${fontSize}px ${fontFamily}`,
+      "\ue0b0\ue0b1\uf120",
+    ),
+  ]);
+}
+
+export function buildTerminalFontFamily(preferred: string): string {
+  const trimmed = preferred.trim();
+  if (!trimmed || trimmed === "JetBrains Mono") return DEFAULT_MONO_FONT_FAMILY;
+  if (trimmed === NERD_SYMBOL_FONT_FAMILY) return FALLBACK_CHAIN;
+  const quoted = `"${trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  return `${quoted}, ${FALLBACK_CHAIN}`;
 }
 
 export function detectMonoFontFamily(): string {
