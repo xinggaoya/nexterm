@@ -260,6 +260,141 @@ describe("native filesystem wrappers", () => {
   });
 });
 
+describe("native git discovery wrapper", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setCurrentWorkspaceEnv(LOCAL_WORKSPACE);
+  });
+
+  it("passes discovery limits and current workspace to git_discover_repositories (local)", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({
+      repositories: [],
+      truncated: false,
+    });
+
+    const result = await native.gitDiscoverRepositories("/workspace", {
+      maxDepth: 4,
+      maxRepos: 32,
+    });
+
+    expect(result).toEqual({ repositories: [], truncated: false });
+    expect(invoke).toHaveBeenCalledWith("git_discover_repositories", {
+      rootPath: "/workspace",
+      maxDepth: 4,
+      maxRepos: 32,
+      workspace: { kind: "local" },
+    });
+  });
+
+  it("passes discovery limits and current workspace to git_discover_repositories (wsl)", async () => {
+    setCurrentWorkspaceEnv({ kind: "wsl", distro: "Ubuntu" });
+    vi.mocked(invoke).mockResolvedValueOnce({
+      repositories: [],
+      truncated: false,
+    });
+
+    await native.gitDiscoverRepositories("/workspace", {
+      maxDepth: 4,
+      maxRepos: 32,
+    });
+
+    expect(invoke).toHaveBeenCalledWith("git_discover_repositories", {
+      rootPath: "/workspace",
+      maxDepth: 4,
+      maxRepos: 32,
+      workspace: { kind: "wsl", distro: "Ubuntu" },
+    });
+  });
+});
+
+describe("native git log wrapper", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setCurrentWorkspaceEnv(LOCAL_WORKSPACE);
+  });
+
+  it("requests the first page with the default options", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ entries: [], hasMore: false });
+
+    const page = await native.gitLog("/repo");
+
+    expect(page).toEqual({ entries: [], hasMore: false });
+    expect(invoke).toHaveBeenCalledWith("git_log", {
+      repoRoot: "/repo",
+      options: {
+        limit: null,
+        offset: null,
+        refName: null,
+        all: false,
+      },
+      workspace: { kind: "local" },
+    });
+  });
+
+  it("forwards refName / all / offset options through to git_log", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({
+      entries: [
+        {
+          sha: "abcdef123456",
+          shortSha: "abcdef1",
+          author: "Ada",
+          authorEmail: "ada@example.com",
+          timestampSecs: 1,
+          parents: [],
+          subject: "Add feature",
+          filesChanged: 1,
+          insertions: 1,
+          deletions: 0,
+          refs: [{ name: "feature/x", kind: "local-branch", isHead: true }],
+        },
+      ],
+      hasMore: true,
+    });
+
+    const page = await native.gitLog("/repo", {
+      limit: 30,
+      offset: 30,
+      refName: "feature/x",
+      all: true,
+    });
+
+    expect(page.entries[0].refs?.[0]).toEqual({
+      name: "feature/x",
+      kind: "local-branch",
+      isHead: true,
+    });
+    expect(page.hasMore).toBe(true);
+    expect(invoke).toHaveBeenCalledWith("git_log", {
+      repoRoot: "/repo",
+      options: {
+        limit: 30,
+        offset: 30,
+        refName: "feature/x",
+        all: true,
+      },
+      workspace: { kind: "local" },
+    });
+  });
+
+  it("passes the current workspace context through to git_log (wsl)", async () => {
+    setCurrentWorkspaceEnv({ kind: "wsl", distro: "Ubuntu" });
+    vi.mocked(invoke).mockResolvedValueOnce({ entries: [], hasMore: false });
+
+    await native.gitLog("/repo", { limit: 5 });
+
+    expect(invoke).toHaveBeenCalledWith("git_log", {
+      repoRoot: "/repo",
+      options: {
+        limit: 5,
+        offset: null,
+        refName: null,
+        all: false,
+      },
+      workspace: { kind: "wsl", distro: "Ubuntu" },
+    });
+  });
+});
+
 describe("native PTY wrappers", () => {
   beforeEach(() => {
     vi.clearAllMocks();

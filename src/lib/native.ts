@@ -70,9 +70,15 @@ export type GitPullResult = {
 
 export type GitBranchInfo = {
   name: string;
+  fullRef?: string;
   upstream: string | null;
   isCurrent: boolean;
   isRemote: boolean;
+  lastCommitShortSha?: string;
+  lastCommitSubject?: string;
+  lastCommitTimestampSecs?: number;
+  ahead?: number | null;
+  behind?: number | null;
 };
 
 export type GitBranchResult = {
@@ -81,6 +87,7 @@ export type GitBranchResult = {
 
 export type GitStashEntry = {
   selector: string;
+  fullSha?: string;
   shortSha: string;
   relativeTime: string;
   message: string;
@@ -89,6 +96,7 @@ export type GitStashEntry = {
 export type GitStashPushOptions = {
   message: string | null;
   includeUntracked: boolean;
+  keepIndex?: boolean;
 };
 
 export type GitStashResult = {
@@ -107,6 +115,25 @@ export type GitLogEntry = {
   filesChanged: number;
   insertions: number;
   deletions: number;
+  refs?: GitLogRef[];
+};
+
+export type GitLogRef = {
+  name: string;
+  kind: string;
+  isHead: boolean;
+};
+
+export type GitLogPage = {
+  entries: GitLogEntry[];
+  hasMore: boolean;
+};
+
+export type GitLogOptions = {
+  limit?: number | null;
+  offset?: number | null;
+  refName?: string | null;
+  all?: boolean;
 };
 
 export type GitCommitFileChange = {
@@ -122,6 +149,21 @@ export type GitCommitFileChange = {
 export type GitPanelSnapshot = {
   repo: GitRepoInfo | null;
   status: GitStatusSnapshot | null;
+};
+
+export type GitWorkspaceRepo = {
+  repoRoot: string;
+  relativePath: string;
+  name: string;
+  branch: string;
+  upstream: string | null;
+  isDetached: boolean;
+  isWorktree: boolean;
+};
+
+export type GitRepositoryDiscovery = {
+  repositories: GitWorkspaceRepo[];
+  truncated: boolean;
 };
 
 export type ShellBgLogResponse = {
@@ -395,23 +437,48 @@ export const native = {
       options,
       workspace: currentWorkspaceEnv(),
     }),
-  gitStashPop: (repoRoot: string, selector: string) =>
+  gitStashPop: (
+    repoRoot: string,
+    selector: string,
+    expectedSha?: string | null,
+  ) =>
     invoke<GitStashResult>("git_stash_pop", {
       repoRoot,
       selector,
+      expectedSha: expectedSha ?? null,
       workspace: currentWorkspaceEnv(),
     }),
-  gitStashDrop: (repoRoot: string, selector: string) =>
+  gitStashDrop: (
+    repoRoot: string,
+    selector: string,
+    expectedSha?: string | null,
+  ) =>
     invoke<GitStashResult>("git_stash_drop", {
       repoRoot,
       selector,
+      expectedSha: expectedSha ?? null,
       workspace: currentWorkspaceEnv(),
     }),
-  gitLog: (repoRoot: string, options?: { limit?: number; beforeSha?: string }) =>
-    invoke<GitLogEntry[]>("git_log", {
+  gitStashApply: (
+    repoRoot: string,
+    selector: string,
+    expectedSha?: string | null,
+  ) =>
+    invoke<GitStashResult>("git_stash_apply", {
       repoRoot,
-      limit: options?.limit ?? null,
-      beforeSha: options?.beforeSha ?? null,
+      selector,
+      expectedSha: expectedSha ?? null,
+      workspace: currentWorkspaceEnv(),
+    }),
+  gitLog: (repoRoot: string, options?: GitLogOptions) =>
+    invoke<GitLogPage>("git_log", {
+      repoRoot,
+      options: {
+        limit: options?.limit ?? null,
+        offset: options?.offset ?? null,
+        refName: options?.refName ?? null,
+        all: options?.all ?? false,
+      },
       workspace: currentWorkspaceEnv(),
     }),
   gitCommitFiles: (repoRoot: string, sha: string) =>
@@ -437,6 +504,16 @@ export const native = {
     invoke<string | null>("git_remote_url", {
       repoRoot,
       name: name ?? null,
+      workspace: currentWorkspaceEnv(),
+    }),
+  gitDiscoverRepositories: (
+    rootPath: string,
+    options?: { maxDepth?: number; maxRepos?: number },
+  ) =>
+    invoke<GitRepositoryDiscovery>("git_discover_repositories", {
+      rootPath,
+      maxDepth: options?.maxDepth ?? 4,
+      maxRepos: options?.maxRepos ?? 32,
       workspace: currentWorkspaceEnv(),
     }),
   shellBgSpawn: (command: string, cwd?: string | null) =>
