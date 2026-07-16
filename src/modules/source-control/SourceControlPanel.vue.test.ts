@@ -3,6 +3,7 @@ import { mount } from "@vue/test-utils";
 import { h, nextTick, type VNodeChild } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SourceControlPanel from "./SourceControlPanel.vue";
+import SourceControlToolbar from "./SourceControlToolbar.vue";
 import { native, type GitChangedFile } from "@/lib/native";
 
 // NVirtualList (and the underlying vueuc virtual list) probes
@@ -148,6 +149,35 @@ vi.mock("naive-ui", async () => {
         return () => h("div", { "data-dropdown-mock": "" }, slots.default?.() ?? []);
       },
     },
+    NSelect: {
+      name: "NSelectMock",
+      props: ["value", "options", "renderLabel"],
+      emits: ["update:value"],
+      setup(
+        selectProps: {
+          options: Array<{ label: string; value: string }>;
+          renderLabel?: (option: { label: string; value: string }) => VNodeChild;
+        },
+        { emit }: { emit: (event: string, value: string) => void },
+      ) {
+        return () =>
+          h(
+            "div",
+            { "data-repository-selector-mock": "" },
+            selectProps.options.map((option) =>
+              h(
+                "button",
+                {
+                  type: "button",
+                  "data-repository-option": option.value,
+                  onClick: () => emit("update:value", option.value),
+                },
+                selectProps.renderLabel?.(option) ?? option.label,
+              ),
+            ),
+          );
+      },
+    },
     // The full NVirtualList is a vueuc-backed list that only renders rows
     // after a ResizeObserver round-trip. In jsdom that requires rAF +
     // MutationObserver to fire (and a couple of polyfills above). The
@@ -184,6 +214,7 @@ vi.mock("naive-ui", async () => {
 vi.mock("@/lib/native", () => ({
   native: {
     workspaceAuthorize: vi.fn(),
+    gitDiscoverRepositories: vi.fn(),
     gitPanelSnapshot: vi.fn(),
     gitStatus: vi.fn(),
     gitStage: vi.fn(),
@@ -200,6 +231,7 @@ vi.mock("@/lib/native", () => ({
     gitStashPush: vi.fn(),
     gitStashPop: vi.fn(),
     gitStashDrop: vi.fn(),
+    gitStashApply: vi.fn(),
   },
 }));
 
@@ -267,6 +299,20 @@ describe("SourceControlPanel.vue", () => {
     dialogConfirmMock.mockReset();
     dropdownSelectMock.mockReset();
     vi.mocked(native.workspaceAuthorize).mockResolvedValue("/repo");
+    vi.mocked(native.gitDiscoverRepositories).mockResolvedValue({
+      repositories: [
+        {
+          repoRoot: "/repo",
+          relativePath: ".",
+          name: "repo",
+          branch: "main",
+          upstream: "origin/main",
+          isDetached: false,
+          isWorktree: false,
+        },
+      ],
+      truncated: false,
+    });
     mockSnapshotFiles([
       file({
         path: "src/main.ts",
@@ -307,7 +353,8 @@ describe("SourceControlPanel.vue", () => {
     vi.mocked(native.gitStashList).mockResolvedValue([
       {
         selector: "stash@{0}",
-        shortSha: "abcdef1",
+        fullSha: "0123456789abcdef0123456789abcdef01234567",
+        shortSha: "0123456",
         relativeTime: "2 hours ago",
         message: "WIP on main: source control",
       },
@@ -344,7 +391,14 @@ describe("SourceControlPanel.vue", () => {
       ],
     ]);
     expect(wrapper.emitted("openHistory")).toEqual([
-      [{ repoRoot: "/repo", branch: "main" }],
+      [
+        {
+          repoRoot: "/repo",
+          branch: "main",
+          refName: "main",
+          allRefs: false,
+        },
+      ],
     ]);
   });
 
@@ -571,11 +625,16 @@ describe("SourceControlPanel.vue", () => {
   });
 
   it("renders branch and stash workflows and runs selected actions", async () => {
+    const fullSha = "0123456789abcdef0123456789abcdef01234567";
     vi.mocked(native.gitCheckoutBranch).mockResolvedValue({ branch: "feature/git-ui" });
     vi.mocked(native.gitCreateBranch).mockResolvedValue({ branch: "feature/new" });
     vi.mocked(native.gitStashPush).mockResolvedValue({
       stashed: true,
       message: "Saved working directory",
+    });
+    vi.mocked(native.gitStashApply).mockResolvedValue({
+      stashed: true,
+      message: "Applied stash@{0}",
     });
     vi.mocked(native.gitStashPop).mockResolvedValue({
       stashed: true,
@@ -598,9 +657,12 @@ describe("SourceControlPanel.vue", () => {
 
     await wrapper.find("[data-git-stash-save]").trigger("click");
     await flush();
+    document.body.querySelector<HTMLButtonElement>("[data-git-stash-submit]")?.click();
+    await flush();
     expect(native.gitStashPush).toHaveBeenCalledWith("/repo", {
       message: null,
       includeUntracked: true,
+      keepIndex: false,
     });
 
     await wrapper.find("[data-git-branch='feature/git-ui']").trigger("click");
@@ -619,13 +681,21 @@ describe("SourceControlPanel.vue", () => {
     await flush();
     expect(native.gitCreateBranch).toHaveBeenCalledWith("/repo", "feature/new");
 
+    await wrapper.find("[data-git-stash-apply='stash@{0}']").trigger("click");
+    await flush();
+    expect(native.gitStashApply).toHaveBeenCalledWith("/repo", "stash@{0}", fullSha);
+
     await wrapper.find("[data-git-stash-pop='stash@{0}']").trigger("click");
     await flush();
-    expect(native.gitStashPop).toHaveBeenCalledWith("/repo", "stash@{0}");
+    expect(native.gitStashPop).toHaveBeenCalledWith("/repo", "stash@{0}", fullSha);
 
+    dialogConfirmMock.mockImplementation(
+      ({ onPositiveClick }: { onPositiveClick: () => void | Promise<void> }) =>
+        onPositiveClick(),
+    );
     await wrapper.find("[data-git-stash-drop='stash@{0}']").trigger("click");
     await flush();
-    expect(native.gitStashDrop).toHaveBeenCalledWith("/repo", "stash@{0}");
+    expect(native.gitStashDrop).toHaveBeenCalledWith("/repo", "stash@{0}", fullSha);
   });
 
   it("refreshes status for workspace file events", async () => {
@@ -754,5 +824,195 @@ describe("SourceControlPanel.vue", () => {
     await flush();
 
     expect(wrapper.text()).toContain("Status results were truncated");
+  });
+
+  it("renders a compact repository selector and emits the selected root", async () => {
+    vi.mocked(native.gitDiscoverRepositories).mockResolvedValue({
+      repositories: [
+        {
+          repoRoot: "/workspace/apps/web",
+          relativePath: "apps/web",
+          name: "web",
+          branch: "main",
+          upstream: "origin/main",
+          isDetached: false,
+          isWorktree: false,
+        },
+        {
+          repoRoot: "/workspace/packages/core",
+          relativePath: "packages/core",
+          name: "core",
+          branch: "release",
+          upstream: null,
+          isDetached: true,
+          isWorktree: false,
+        },
+      ],
+      truncated: false,
+    });
+
+    const wrapper = mount(SourceControlPanel, {
+      props: {
+        rootPath: "/workspace",
+        activeRepoRoot: "/workspace/apps/web",
+      },
+    });
+    await flush();
+
+    const selector = wrapper.find("[data-repository-selector]");
+    expect(selector.exists()).toBe(true);
+    expect(selector.text()).toContain("apps/web");
+    expect(selector.text()).toContain("main");
+    expect(selector.text()).toContain("packages/core");
+    expect(selector.text()).toContain("detached");
+
+    await wrapper
+      .find("[data-repository-option='/workspace/packages/core']")
+      .trigger("click");
+
+    expect(wrapper.emitted("repo-selected")).toEqual([
+      ["/workspace/packages/core"],
+    ]);
+  });
+
+  it("selects the first discovered repository when the active root is invalid", async () => {
+    vi.mocked(native.gitDiscoverRepositories).mockResolvedValue({
+      repositories: [
+        {
+          repoRoot: "/workspace/repo-a",
+          relativePath: "repo-a",
+          name: "repo-a",
+          branch: "main",
+          upstream: null,
+          isDetached: false,
+          isWorktree: false,
+        },
+        {
+          repoRoot: "/workspace/repo-b",
+          relativePath: "repo-b",
+          name: "repo-b",
+          branch: "develop",
+          upstream: null,
+          isDetached: false,
+          isWorktree: false,
+        },
+      ],
+      truncated: false,
+    });
+
+    const wrapper = mount(SourceControlPanel, {
+      props: {
+        rootPath: "/workspace",
+        activeRepoRoot: "/workspace/removed",
+      },
+    });
+    await flush();
+
+    expect(wrapper.emitted("repo-selected")).toEqual([
+      ["/workspace/repo-a"],
+    ]);
+  });
+
+  it("clears selected file keys when the active repository changes", async () => {
+    const wrapper = mount(SourceControlPanel, {
+      props: { rootPath: "/repo", activeRepoRoot: "/repo" },
+    });
+    await flush();
+
+    const row = wrapper.findComponent({ name: "SourceControlChangeRow" });
+    expect(row.exists()).toBe(true);
+    row.vm.$emit("toggleEntrySelected", row.props("entry"), true);
+    await nextTick();
+    expect(
+      wrapper.findComponent({ name: "SourceControlChangeRow" }).props("selected"),
+    ).toBe(true);
+
+    await wrapper.setProps({ activeRepoRoot: "/repo/other" });
+    await flush();
+
+    expect(
+      wrapper.findComponent({ name: "SourceControlChangeRow" }).props("selected"),
+    ).toBe(false);
+  });
+
+  it("clears the active repository when the next workspace discovery fails", async () => {
+    vi.mocked(native.gitDiscoverRepositories).mockImplementation((root) => {
+      if (root === "/workspace-a") {
+        return Promise.resolve({
+          repositories: [
+            {
+              repoRoot: "/workspace-a/repo",
+              relativePath: "repo",
+              name: "repo",
+              branch: "main",
+              upstream: null,
+              isDetached: false,
+              isWorktree: false,
+            },
+          ],
+          truncated: false,
+        });
+      }
+      return Promise.reject(new Error("workspace B discovery failed"));
+    });
+
+    const wrapper = mount(SourceControlPanel, {
+      props: {
+        rootPath: "/workspace-a",
+        activeRepoRoot: "/workspace-a/repo",
+      },
+    });
+    await flush();
+    expect(wrapper.emitted("repo-selected")).toBeUndefined();
+
+    await wrapper.setProps({ rootPath: "/workspace-b" });
+    await flush();
+
+    expect(wrapper.emitted("repo-selected")).toEqual([[null]]);
+  });
+
+  it("clears the active repository when only the workspace scope changes", async () => {
+    vi.mocked(native.gitDiscoverRepositories)
+      .mockResolvedValueOnce({
+        repositories: [
+          {
+            repoRoot: "/workspace/repo",
+            relativePath: "repo",
+            name: "repo",
+            branch: "main",
+            upstream: null,
+            isDetached: false,
+            isWorktree: false,
+          },
+        ],
+        truncated: false,
+      })
+      .mockRejectedValueOnce(new Error("WSL discovery failed"));
+
+    const wrapper = mount(SourceControlPanel, {
+      props: {
+        rootPath: "/workspace",
+        activeRepoRoot: "/workspace/repo",
+        workspaceScope: "local",
+      },
+    });
+    await flush();
+    expect(wrapper.emitted("repo-selected")).toBeUndefined();
+
+    await wrapper.setProps({ workspaceScope: "wsl:Ubuntu" });
+    await flush();
+
+    expect(native.gitDiscoverRepositories).toHaveBeenCalledTimes(2);
+    expect(wrapper.emitted("repo-selected")).toEqual([[null]]);
+  });
+
+  it("does not change the toolbar layout for a single repository", async () => {
+    const wrapper = mount(SourceControlPanel, {
+      props: { rootPath: "/repo", activeRepoRoot: "/repo" },
+    });
+    await flush();
+
+    expect(wrapper.find("[data-repository-selector]").exists()).toBe(false);
+    expect(wrapper.findComponent(SourceControlToolbar).exists()).toBe(true);
   });
 });

@@ -43,7 +43,8 @@ export type BusyAction =
   | `discard:${string}`
   | `checkout:${string}`
   | `stash-pop:${string}`
-  | `stash-drop:${string}`;
+  | `stash-drop:${string}`
+  | `stash-apply:${string}`;
 export type SourceControlRuntimeState = {
   busyAction: Ref<BusyAction | null>;
   repoRoot: ReadonlyRef<string | null>;
@@ -66,6 +67,7 @@ type SourceControlStateNative = {
 
 type SourceControlStateOptions = {
   rootPath: Ref<string | null>;
+  repoRoot: ReadonlyRef<string | null>;
   fsEvent: Ref<WorkspaceFsChangedEvent | null | undefined>;
   native: SourceControlStateNative;
   t: SourceControlTranslate;
@@ -83,6 +85,9 @@ export function useSourceControlState(options: SourceControlStateOptions) {
   let pendingStatusRefresh = false;
   let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
+  const effectiveRoot = computed(
+    () => options.repoRoot.value ?? options.rootPath.value,
+  );
   const entries = computed(() =>
     buildSourceControlEntries(status.value?.changedFiles ?? []),
   );
@@ -127,8 +132,39 @@ export function useSourceControlState(options: SourceControlStateOptions) {
   const unstageAllPaths = computed(() => derived.value.unstageAllPaths);
   const discardAllEntries = computed(() => derived.value.discardAllEntries);
 
-  async function loadSnapshot(rootPath: string | null) {
+  function requestMatchesRoot(
+    currentId: number,
+    triggerRoot: string | null,
+  ): boolean {
+    const currentRoot = effectiveRoot.value;
+    const sameRoot =
+      currentRoot === null || triggerRoot === null
+        ? currentRoot === triggerRoot
+        : isSameRoot(currentRoot, triggerRoot);
+    return currentId === requestId.value && sameRoot;
+  }
+
+  function beginRootGeneration(rootPath: string | null): number {
     const currentId = ++requestId.value;
+    if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
+    autoRefreshTimer = null;
+    statusRefreshInFlight = null;
+    pendingStatusRefresh = false;
+    pendingAutoRefresh.value = false;
+    repo.value = null;
+    status.value = null;
+    gitDecorations.value = new Map();
+    errorMessage.value = null;
+    panelState.value = rootPath ? "loading" : "no-root";
+    return currentId;
+  }
+
+  async function loadSnapshot(
+    rootPath: string | null,
+    generationId?: number,
+  ) {
+    const currentId = generationId ?? ++requestId.value;
+    if (!requestMatchesRoot(currentId, rootPath)) return;
 
     if (!rootPath) {
       panelState.value = "no-root";
@@ -142,9 +178,9 @@ export function useSourceControlState(options: SourceControlStateOptions) {
     errorMessage.value = null;
     try {
       await options.native.workspaceAuthorize(rootPath);
-      if (currentId !== requestId.value) return;
+      if (!requestMatchesRoot(currentId, rootPath)) return;
       const snapshot = await options.native.gitPanelSnapshot(rootPath);
-      if (currentId !== requestId.value) return;
+      if (!requestMatchesRoot(currentId, rootPath)) return;
       repo.value = snapshot.repo;
       status.value = snapshot.status;
       gitDecorations.value = buildGitDecorationMap(
@@ -153,18 +189,20 @@ export function useSourceControlState(options: SourceControlStateOptions) {
       );
       panelState.value = snapshot.repo && snapshot.status ? "ready" : "no-repo";
     } catch (error) {
-      if (currentId !== requestId.value) return;
+      if (!requestMatchesRoot(currentId, rootPath)) return;
       repo.value = null;
       status.value = null;
+      gitDecorations.value = new Map();
       errorMessage.value = normalizeError(error, options.t);
       panelState.value = "error";
     }
   }
 
   async function refreshStatus() {
-    const root = repoRoot.value;
-    if (!root) {
-      await loadSnapshot(options.rootPath.value);
+    const triggerRoot = effectiveRoot.value;
+    const statusRoot = repoRoot.value;
+    if (!statusRoot) {
+      await loadSnapshot(triggerRoot);
       return;
     }
     if (statusRefreshInFlight) {
@@ -176,8 +214,8 @@ export function useSourceControlState(options: SourceControlStateOptions) {
     const currentId = ++requestId.value;
     const refresh = (async () => {
       try {
-        const next = await options.native.gitStatus(root);
-        if (currentId !== requestId.value) return;
+        const next = await options.native.gitStatus(statusRoot);
+        if (!requestMatchesRoot(currentId, triggerRoot)) return;
 
         // Only rebuild git decorations if changed files actually differ.
         // This avoids triggering downstream reactive updates when the
@@ -206,7 +244,7 @@ export function useSourceControlState(options: SourceControlStateOptions) {
         }
         panelState.value = "ready";
       } catch (error) {
-        if (currentId !== requestId.value) return;
+        if (!requestMatchesRoot(currentId, triggerRoot)) return;
         errorMessage.value = normalizeError(error, options.t);
         panelState.value = "error";
       }
@@ -219,6 +257,7 @@ export function useSourceControlState(options: SourceControlStateOptions) {
       if (statusRefreshInFlight === refresh) {
         statusRefreshInFlight = null;
       }
+      if (!requestMatchesRoot(currentId, triggerRoot)) return;
       if (pendingStatusRefresh) {
         pendingStatusRefresh = false;
         if (busyAction.value) {
@@ -235,7 +274,7 @@ export function useSourceControlState(options: SourceControlStateOptions) {
       await refreshStatus();
       return;
     }
-    await loadSnapshot(options.rootPath.value);
+    await loadSnapshot(effectiveRoot.value);
   }
 
   async function autoRefresh() {
@@ -247,7 +286,7 @@ export function useSourceControlState(options: SourceControlStateOptions) {
   }
 
   function scheduleAutoRefresh(delay = 260) {
-    if (!options.rootPath.value) return;
+    if (!effectiveRoot.value) return;
     if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
     autoRefreshTimer = setTimeout(() => {
       autoRefreshTimer = null;
@@ -256,16 +295,21 @@ export function useSourceControlState(options: SourceControlStateOptions) {
   }
 
   function dispose() {
+    requestId.value += 1;
     if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
     autoRefreshTimer = null;
+    statusRefreshInFlight = null;
+    pendingStatusRefresh = false;
+    pendingAutoRefresh.value = false;
   }
 
   watch(
-    options.rootPath,
+    effectiveRoot,
     (rootPath) => {
-      void loadSnapshot(rootPath);
+      const generationId = beginRootGeneration(rootPath);
+      void loadSnapshot(rootPath, generationId);
     },
-    { immediate: true },
+    { immediate: true, flush: "sync" },
   );
 
   watch(options.fsEvent, (event) => {

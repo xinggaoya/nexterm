@@ -78,6 +78,7 @@ const TASK_CONSOLE_HEIGHT = 280;
 
 const props = defineProps<{
   activeId: number;
+  activeRepoRoot: string | null;
   activeTab: Tab | null;
   layout: WorkbenchLayoutBinding;
   tabs: Tab[];
@@ -85,6 +86,7 @@ const props = defineProps<{
   taskConsole: TaskConsoleBinding;
   workspaceFsEvent: WorkspaceFsChangedEvent | null;
   workspaceRoot: string | null;
+  workspaceScope: string;
 }>();
 
 const emit = defineEmits<{
@@ -101,7 +103,19 @@ const emit = defineEmits<{
       title?: string;
     },
   ];
-  "open-source-history": [input: { repoRoot: string; branch?: string | null }];
+  "open-source-history": [
+    input: {
+      repoRoot: string;
+      /** @deprecated forwarded for backward compatibility. */
+      branch?: string | null;
+      refName?: string | null;
+      allRefs?: boolean;
+    },
+  ];
+  "history-ref-change": [
+    input: { tabId: number; refName: string | null; allRefs: boolean },
+  ];
+  "repo-selected": [repoRoot: string | null];
 }>();
 
 const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
@@ -121,6 +135,14 @@ function isActiveGitDiff(): boolean {
 
 function setGitDecorations(decorations: GitDecorationMap) {
   gitDecorations.value = decorations;
+}
+
+function handleHistoryRefChange(input: {
+  tabId: number;
+  refName: string | null;
+  allRefs: boolean;
+}) {
+  emit("history-ref-change", input);
 }
 
 async function saveActiveEditor() {
@@ -173,10 +195,13 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
       <SourceControlPanel
         v-show="layout.leftPanelOpen.value"
         :root-path="workspaceRoot"
+        :workspace-scope="workspaceScope"
+        :active-repo-root="activeRepoRoot"
         :fs-event="workspaceFsEvent"
         @decorations-change="setGitDecorations"
         @open-diff="(input) => emit('open-source-diff', input)"
         @open-history="(input) => emit('open-source-history', input)"
+        @repo-selected="(repoRoot) => emit('repo-selected', repoRoot)"
       />
     </template>
     <template #resize-trigger>
@@ -267,6 +292,7 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
                     :tabs="tabs"
                     :active-id="activeId"
                     @open-commit-file="(input) => tabsStore.openCommitFileDiffTab(input)"
+                    @change-ref="handleHistoryRefChange"
                   />
                 </div>
 

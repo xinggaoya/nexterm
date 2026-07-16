@@ -39,6 +39,7 @@ import {
   openWorkspaceInNewWindow,
   useWorkspaceEnvPiniaStore,
   useWorkspaceRootPiniaStore,
+  workspaceScopeKey,
   type WorkspaceEnv,
   type WorkspaceSelection,
 } from "@/modules/workspace";
@@ -115,6 +116,8 @@ const activeCwd = computed(() =>
   activeTab.value?.kind === "terminal" ? activeTab.value.cwd ?? null : null,
 );
 const workspaceRoot = computed(() => workspaceRootStore.rootPath);
+const workspaceScope = computed(() => workspaceScopeKey(workspaceEnv.env));
+const activeRepoRoot = ref<string | null>(null);
 const canSplitActiveTab = computed(() => {
   const tab = activeTab.value;
   if (!tab || tab.kind !== "terminal") return false;
@@ -247,8 +250,24 @@ function openSourceDiff(input: {
   tabs.openGitDiffTab(input);
 }
 
-function openSourceHistory(input: { repoRoot: string; branch?: string | null }) {
+function openSourceHistory(input: {
+  repoRoot: string;
+  branch?: string | null;
+  refName?: string | null;
+  allRefs?: boolean;
+}) {
   tabs.openCommitHistoryTab(input);
+}
+
+function onHistoryRefChange(input: {
+  tabId: number;
+  refName: string | null;
+  allRefs: boolean;
+}) {
+  tabs.updateGitHistoryTabRef(input.tabId, {
+    refName: input.refName,
+    allRefs: input.allRefs,
+  });
 }
 
 function requestCloseTab(id: number) {
@@ -372,6 +391,7 @@ const {
   keybindings: computed(() => prefs.keybindings),
   hasWorkspace,
   workspaceRoot,
+  activeRepoRoot,
   activeTab,
   leftPanelOpen,
   rightPanelOpen,
@@ -424,6 +444,12 @@ onUnmounted(() => {
   stopWorkspaceLifecycle();
 });
 
+watch(
+  [workspaceRoot, workspaceScope],
+  () => {
+    activeRepoRoot.value = null;
+  },
+);
 watch(resolvedTheme, syncDocumentTheme, { immediate: true });
 watch(
   () => prefs.language,
@@ -494,6 +520,7 @@ watch(
                   v-if="hasWorkspace"
                   ref="workbench"
                   :active-id="tabs.activeId"
+                  :active-repo-root="activeRepoRoot"
                   :active-tab="activeTab"
                   :layout="workbenchLayout"
                   :tabs="tabs.tabs"
@@ -501,12 +528,15 @@ watch(
                   :task-console="taskConsole"
                   :workspace-fs-event="workspaceFsEvent"
                   :workspace-root="workspaceRoot"
+                  :workspace-scope="workspaceScope"
                   @open-file="openFileTab"
                   @open-markdown-preview="openMarkdownPreview"
                   @open-in-terminal="openTerminalInDir"
                   @open-search-result="openSearchResult"
                   @open-source-diff="openSourceDiff"
                   @open-source-history="openSourceHistory"
+                  @history-ref-change="onHistoryRefChange"
+                  @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
                 />
                 <WorkspaceWelcome
                   v-else

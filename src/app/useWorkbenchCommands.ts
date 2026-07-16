@@ -41,6 +41,7 @@ type WorkbenchCommandOptions = {
   keybindings: ComputedRef<KeybindingOverrides>;
   hasWorkspace: ComputedRef<boolean>;
   workspaceRoot: ComputedRef<string | null>;
+  activeRepoRoot: Ref<string | null>;
   activeTab: ComputedRef<Tab | null>;
   leftPanelOpen: Ref<boolean>;
   rightPanelOpen: Ref<boolean>;
@@ -155,9 +156,25 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
   }
 
   async function resolveCurrentRepo(): Promise<GitRepoInfo | null> {
-    const root = options.workspaceRoot.value;
-    if (!root) return null;
-    return options.resolveGitRepo(root);
+    const activeRoot = options.activeRepoRoot.value;
+    let activeRejected = false;
+    let activeError: unknown;
+    if (activeRoot) {
+      try {
+        const activeRepo = await options.resolveGitRepo(activeRoot);
+        if (activeRepo) return activeRepo;
+      } catch (error) {
+        activeRejected = true;
+        activeError = error;
+      }
+    }
+
+    const workspaceRoot = options.workspaceRoot.value;
+    if (!workspaceRoot) {
+      if (activeRejected) throw activeError;
+      return null;
+    }
+    return options.resolveGitRepo(workspaceRoot);
   }
 
   async function openGitHistoryFromCommand() {
@@ -502,6 +519,7 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
     handleGlobalCommandKeydown,
     openCommandPalette,
     openFileFromCommandPalette,
+    resolveCurrentRepo,
     resolvedCommandKeybindings,
   };
 }
