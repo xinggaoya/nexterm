@@ -2,7 +2,7 @@
 import { NSpin, NTag } from "naive-ui";
 import { computed, ref, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
-import DiffCodeMirror from "./DiffCodeMirror.vue";
+import DiffEditor from "./DiffEditor.vue";
 import {
   commitDiffKey,
   fetchCommitDiff,
@@ -189,7 +189,7 @@ watch(
         class="min-h-full overflow-auto whitespace-pre-wrap p-4 font-mono text-[12px] leading-relaxed text-muted-foreground"
       >{{ loaded?.fallbackPatch || t("editor.diffFallbackUnavailable") }}</pre>
 
-      <DiffCodeMirror
+      <DiffEditor
         v-else-if="loaded"
         test-id="git-diff-host"
         :path="props.source.path"

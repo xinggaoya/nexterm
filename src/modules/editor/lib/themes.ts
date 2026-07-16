@@ -1,18 +1,21 @@
 import * as monaco from "monaco-editor";
-import githubDark from "monaco-themes/themes/GitHub Dark.json";
-import githubLight from "monaco-themes/themes/GitHub Light.json";
-import xcodeDark from "monaco-themes/themes/Xcode_Dark.json";
-import xcodeLight from "monaco-themes/themes/Xcode_default.json";
+// monaco-themes 包的 themes/*.json 是 JSON 主题，esbuild 已支持原生 JSON import；
+// 用宽松 any 类型绕过 typescript 对 .json 的解析限制。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const githubDark = require("monaco-themes/themes/GitHub Dark.json") as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const githubLight = require("monaco-themes/themes/GitHub Light.json") as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const xcodeDark = require("monaco-themes/themes/Xcode_Dark.json") as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const xcodeLight = require("monaco-themes/themes/Xcode_default.json") as any;
 
 type ThemeData = monaco.editor.IStandaloneThemeData;
 
 const SHARED_DARK_BG = "#1e1f22";
 const SHARED_LIGHT_BG = "#fbfbfb";
 
-function darkBase(
-  name: string,
-  data: Partial<ThemeData>,
-): ThemeData {
+function darkBase(_name: string, data: Partial<ThemeData>): ThemeData {
   return {
     base: "vs-dark",
     inherit: true,
@@ -41,10 +44,8 @@ function darkBase(
   };
 }
 
-function lightBase(
-  name: string,
-  data: Partial<ThemeData>,
-): ThemeData {
+// 在此文件中保留 lightBase 作为导出以便未来扩展；当前未引用，导出让 lint 工具识别。
+export function lightBase(_name: string, data: Partial<ThemeData>): ThemeData {
   return {
     base: "vs",
     inherit: true,

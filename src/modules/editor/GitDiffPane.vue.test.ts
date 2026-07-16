@@ -14,6 +14,39 @@ vi.mock("./lib/diffCache", async (importOriginal) => {
   };
 });
 
+vi.mock("monaco-editor", () => ({
+  editor: {
+    create: () => ({
+      getValue: () => "",
+      setValue: () => undefined,
+      getModel: () => ({ dispose: () => undefined, getLineCount: () => 1 }),
+      getSelection: () => ({ isEmpty: () => true }),
+      onDidChangeModelContent: () => ({ dispose: () => undefined }),
+      onDidChangeCursorPosition: () => ({ dispose: () => undefined }),
+      trigger: () => undefined,
+      focus: () => undefined,
+      layout: () => undefined,
+      setPosition: () => undefined,
+      revealLine: () => undefined,
+      executeEdits: () => undefined,
+    }),
+    createDiffEditor: () => ({
+      setModel: () => undefined,
+      dispose: () => undefined,
+      onDidUpdateDiff: () => ({ dispose: () => undefined }),
+      getLineChanges: () => null,
+      getModel: () => ({
+        original: { dispose: () => undefined },
+        modified: { dispose: () => undefined },
+      }),
+    }),
+    createModel: () => ({ dispose: () => undefined }),
+    setTheme: () => undefined,
+    defineTheme: () => undefined,
+  },
+  languages: { register: () => undefined },
+}));
+
 async function flush() {
   await Promise.resolve();
   await nextTick();
