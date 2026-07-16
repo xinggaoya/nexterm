@@ -21,62 +21,71 @@ vi.mock("./lib/documentService", () => ({
   writeEditorDocument: vi.fn(),
 }));
 
-vi.mock("monaco-editor", () => {
-  const noopDisposable = { dispose: () => undefined };
-  const fakeEditor: any = {
-    _value: "const value = 1;",
-    _onDidChangeContent: null as null | (() => void),
-    getValue() {
-      return this._value;
-    },
-    setValue(v: string) {
-      this._value = v;
-      this._onDidChangeContent?.();
-    },
-    getModel() {
-      return {
-        getValue: () => this._value,
-        getValueLengthInRange: () => 0,
-        getLineCount: () => 1,
-        getFullModelRange: () => ({
-          startLineNumber: 1,
-          endLineNumber: 1,
-          startColumn: 1,
-          endColumn: 1,
-        }),
-        dispose: () => undefined,
-      };
-    },
-    getSelection: () => ({ isEmpty: () => true }),
-    onDidChangeModelContent(cb: () => void) {
-      this._onDidChangeContent = cb;
-      return noopDisposable;
-    },
-    onDidChangeCursorPosition: () => noopDisposable,
-    trigger: () => undefined,
-    focus: () => undefined,
-    layout: () => undefined,
-    setPosition: () => undefined,
-    revealLine: () => undefined,
-    executeEdits(_source: string, edits: Array<{ text: string }>) {
-      const next = edits.map((e) => e.text).join("");
-      this._value = next;
-      this._onDidChangeContent?.();
-    },
-  };
-  return {
-    editor: {
-      create: () => fakeEditor,
-      createDiffEditor: () => ({}),
-      createModel: () => ({}),
-      setTheme: () => undefined,
-      defineTheme: () => undefined,
-    },
-    languages: {
-      register: () => undefined,
-    },
-  };
-});
+const noopDisposable = { dispose: () => undefined };
+const fakeEditor: any = {
+  _value: "const value = 1;",
+  _onDidChangeContent: null as null | (() => void),
+  getValue() {
+    return this._value;
+  },
+  setValue(v: string) {
+    this._value = v;
+    this._onDidChangeContent?.();
+  },
+  getModel() {
+    return {
+      getValue: () => this._value,
+      getValueLengthInRange: () => 0,
+      getLineCount: () => 1,
+      getFullModelRange: () => ({
+        startLineNumber: 1,
+        endLineNumber: 1,
+        startColumn: 1,
+        endColumn: 1,
+      }),
+      dispose: () => undefined,
+    };
+  },
+  getSelection: () => ({ isEmpty: () => true }),
+  onDidChangeModelContent(cb: () => void) {
+    this._onDidChangeContent = cb;
+    return noopDisposable;
+  },
+  onDidChangeCursorPosition: () => noopDisposable,
+  trigger: () => undefined,
+  focus: () => undefined,
+  layout: () => undefined,
+  setPosition: () => undefined,
+  revealLine: () => undefined,
+  executeEdits(_source: string, edits: Array<{ text: string }>) {
+    const next = edits.map((e) => e.text).join("");
+    this._value = next;
+    this._onDidChangeContent?.();
+  },
+};
+
+const fakeModel: any = { dispose: () => undefined };
+
+const fakeDiffEditor: any = {
+  setModel: () => undefined,
+  dispose: () => undefined,
+  onDidUpdateDiff: () => noopDisposable,
+  getLineChanges: () => null,
+  getModel: () => ({ original: fakeModel, modified: fakeModel }),
+};
+
+vi.mock("monaco-editor", () => ({
+  editor: {
+    create: () => fakeEditor,
+    createDiffEditor: () => fakeDiffEditor,
+    createModel: () => fakeModel,
+    setTheme: () => undefined,
+    defineTheme: () => undefined,
+  },
+  languages: {
+    register: () => undefined,
+  },
+}));
 
 async function flush() {
   await Promise.resolve();
@@ -87,6 +96,7 @@ describe("EditorPane.vue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dialogWarningMock.mockReset();
+    fakeEditor._value = "const value = 1;";
     vi.mocked(readEditorDocument).mockResolvedValue({
       status: "ready",
       content: "const value = 1;",

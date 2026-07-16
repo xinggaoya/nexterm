@@ -58,6 +58,5 @@ export function buildMonacoDiffOptions(
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
     renderLineHighlight: "all",
-    theme: getMonacoThemeId(prefs.editorTheme),
   };
 }
