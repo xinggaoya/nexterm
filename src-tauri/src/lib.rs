@@ -1,4 +1,4 @@
-mod modules;
+pub mod modules;
 mod panic_report;
 
 use modules::{fs, git, pty, shell, workspace};
