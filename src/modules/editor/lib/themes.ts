@@ -1,4 +1,4 @@
-import type * as monaco from "monaco-editor";
+import * as monaco from "monaco-editor";
 import githubDark from "monaco-themes/themes/GitHub Dark.json";
 import githubLight from "monaco-themes/themes/GitHub Light.json";
 import xcodeDark from "monaco-themes/themes/Xcode_Dark.json";
