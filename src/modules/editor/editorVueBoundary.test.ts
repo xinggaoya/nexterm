@@ -66,4 +66,15 @@ describe("monaco boundary guard", () => {
     expect(libFiles).toContain("languageMap.ts");
     expect(libFiles).not.toContain("languageResolver.ts");
   });
+
+  it("resolves monaco-vim through its ESM entry in the browser", () => {
+    const viteConfig = readFileSync(
+      new URL("../../../vite.config.ts", editorRoot),
+      "utf8",
+    );
+
+    expect(viteConfig).toContain(
+      'path.resolve(__dirname, "./node_modules/monaco-vim/dist/index.mjs")',
+    );
+  });
 });

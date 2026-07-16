@@ -191,3 +191,99 @@ Separate follow-up: stabilize MainApp Tauri/store mocks, align workbench width e
 - Related Files: src/app/MainApp.vue.test.ts, src/app/useWorkbenchLayout.test.ts, src/modules/explorer/FileExplorer.vue.test.ts
 
 ---
+
+## [ERR-20260716-006] grep_empty_file_type
+
+**Logged**: 2026-07-16T14:50:58+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tests
+
+### Summary
+调用 Grep 工具时传入空字符串 `type`，导致 ripgrep 将其解析为未知文件类型。
+
+### Error
+```text
+rg: unrecognized file type:
+```
+
+### Context
+- 搜索 `VimMode` 与 `monaco-vim` 的引用。
+- 同时已提供 `glob`，无需再传空的 `type` 参数。
+
+### Suggested Fix
+未使用文件类型筛选时省略 `type` 参数；需要筛选时传有效类型名。
+
+### Metadata
+- Reproducible: yes
+- Related Files: n/a
+
+### Resolution
+- **Resolved**: 2026-07-16T14:50:58+08:00
+- **Notes**: 改用有效的 TypeScript 文件类型并完成搜索。
+
+---
+
+## [ERR-20260716-007] node_direct_monaco_vim_import
+
+**Logged**: 2026-07-16T14:53:26+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: frontend
+
+### Summary
+用 Node 直接导入 `monaco-vim` ESM 入口时，Node 无法解析包内无扩展名的 Monaco 子路径。
+
+### Error
+```text
+ERR_MODULE_NOT_FOUND: monaco-editor/esm/vs/editor/editor.api
+```
+
+### Context
+- 该命令用于检查运行时导出名。
+- 这是 Node ESM 解析限制；Vite 会把同一路径解析为带 `.js` 的浏览器模块。
+
+### Suggested Fix
+对 Vite 应用依赖使用 Vite 实际转换结果验证，不用 Node 原生 ESM 直接导入代替浏览器解析。
+
+### Metadata
+- Reproducible: yes
+- Related Files: node_modules/monaco-vim/dist/index.mjs
+
+### Resolution
+- **Resolved**: 2026-07-16T14:53:26+08:00
+- **Notes**: 通过正在运行的 Vite 服务确认 ESM 入口被正确转换。
+
+---
+
+## [ERR-20260716-008] duplicate_vite_dev_server
+
+**Logged**: 2026-07-16T14:53:26+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: infra
+
+### Summary
+尝试启动诊断用 Vite 服务时，端口 `3180` 已由当前 Nexterm 进程监听。
+
+### Error
+```text
+Error: Port 3180 is already in use
+```
+
+### Context
+- 现有服务可直接用于获取 Vite 转换后的模块。
+- 未终止或修改用户正在运行的进程。
+
+### Suggested Fix
+先检查监听端口；需要独立验证时改用其他端口。
+
+### Metadata
+- Reproducible: yes
+- Related Files: vite.config.ts
+
+### Resolution
+- **Resolved**: 2026-07-16T14:53:26+08:00
+- **Notes**: 复用现有服务收集证据，后续独立验证使用其他端口。
+
+---
