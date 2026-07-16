@@ -2,10 +2,12 @@ import {
   AbstractMessageReader,
   AbstractMessageWriter,
   createMessageConnection,
-  type ConnectionOptions,
   type DataCallback,
+  type Logger,
   type Message,
   type MessageConnection,
+  type MessageReader,
+  type MessageWriter,
 } from "vscode-jsonrpc";
 import type { Channel } from "@tauri-apps/api/core";
 
@@ -18,14 +20,14 @@ export type LspTransportOptions = {
   spec: LspServerSpec;
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   openChannel: <T>(name: string) => Promise<Channel<T>>;
-  logger?: ConnectionOptions["logger"];
+  logger?: Logger;
 };
 
 /**
  * 把 Tauri Channel 上的 frame 事件喂给 vscode-jsonrpc。
  * Rust 端已经做完 Content-Length framing，这里只负责把 payload 解析为 JSON-RPC message。
  */
-class TauriChannelReader extends AbstractMessageReader {
+class TauriChannelReader extends AbstractMessageReader implements MessageReader {
   private disposed = false;
   private cb: DataCallback | null = null;
 
@@ -51,7 +53,7 @@ class TauriChannelReader extends AbstractMessageReader {
       } else if (msg.kind === "exit") {
         this.fireClose();
       }
-      // stderr：走 logger（options.logger）
+      // stderr 走 logger
     };
     return {
       dispose: () => {
@@ -60,19 +62,25 @@ class TauriChannelReader extends AbstractMessageReader {
     };
   }
 
-  override dispose(): void {
+  dispose(): void {
     this.disposed = true;
     super.dispose();
   }
 }
 
-class TauriInvokeWriter extends AbstractMessageWriter {
-  constructor(private readonly write: (message: string) => Promise<void>) {
+class TauriInvokeWriter extends AbstractMessageWriter implements MessageWriter {
+  constructor(
+    private readonly sender: (message: string) => Promise<void>,
+  ) {
     super();
   }
 
-  override writeMessage(message: Message): Promise<void> {
-    return this.write(JSON.stringify(message));
+  write(msg: Message): Promise<void> {
+    return this.sender(JSON.stringify(msg));
+  }
+
+  end(): void {
+    // TauriChannel on close 已经在 Rust 端写入 EOF；本地 writer 不需要做额外动作。
   }
 }
 
@@ -90,7 +98,7 @@ export async function createLspConnection(
   })) as number;
 
   const reader = new TauriChannelReader(channel);
-  const writer = new TauriInvokeWriter((message) =>
+  const writer = new TauriInvokeWriter((message: string) =>
     options.invoke("lsp_write", { id: sessionId, message }) as Promise<void>,
   );
 
