@@ -308,6 +308,8 @@ const enUS = {
     branchAhead: "Ahead {count}",
     branchBehind: "Behind {count}",
     branches: "Branches",
+    openBranches: "Branches",
+    openBranchesAria: "Open branch and stash workflows",
     repositorySelector: "Select repository",
     cleanRemoteState: "Clean remote state",
     commitFailed: "Commit failed",

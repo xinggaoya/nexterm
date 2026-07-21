@@ -81,6 +81,7 @@ const props = defineProps<{
   activeRepoRoot: string | null;
   activeTab: Tab | null;
   layout: WorkbenchLayoutBinding;
+  showBranchesModal: Ref<boolean>;
   tabs: Tab[];
   tabsStore: TabsStoreBinding;
   taskConsole: TaskConsoleBinding;
@@ -88,6 +89,8 @@ const props = defineProps<{
   workspaceRoot: string | null;
   workspaceScope: string;
 }>();
+
+const showBranchesModalBinding = { ref: props.showBranchesModal };
 
 const emit = defineEmits<{
   "open-file": [path: string, pin: boolean];
@@ -198,6 +201,7 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
         :workspace-scope="workspaceScope"
         :active-repo-root="activeRepoRoot"
         :fs-event="workspaceFsEvent"
+        :show-branches-modal="showBranchesModalBinding.ref"
         @decorations-change="setGitDecorations"
         @open-diff="(input) => emit('open-source-diff', input)"
         @open-history="(input) => emit('open-source-history', input)"

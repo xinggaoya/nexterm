@@ -309,6 +309,8 @@ const zhCN = {
     branchAhead: "领先 {count}",
     branchBehind: "落后 {count}",
     branches: "分支",
+    openBranches: "分支",
+    openBranchesAria: "打开分支与暂存工作流",
     repositorySelector: "选择仓库",
     cleanRemoteState: "远程状态干净",
     commitFailed: "提交失败",

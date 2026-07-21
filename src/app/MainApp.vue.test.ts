@@ -206,10 +206,10 @@ vi.mock("@/modules/explorer/FileExplorer.vue", () => ({
 
 vi.mock("@/modules/source-control/SourceControlPanel.vue", () => ({
   default: {
-    props: ["rootPath", "fsEvent"],
+    props: ["rootPath", "fsEvent", "showBranchesModal"],
     emits: ["openDiff", "openHistory", "gitStatusChanged"],
     template:
-      '<aside data-source-control>{{ rootPath ?? "none" }}<span data-source-fs-event>{{ fsEvent?.paths?.join("|") ?? "none" }}</span><button data-open-source-diff @click="$emit(\'openDiff\', { repoRoot: \'/repo\', path: \'src/main.ts\', mode: \'-\', originalPath: null, title: \'main.ts\' })">diff</button><button data-open-source-history @click="$emit(\'openHistory\', { repoRoot: \'/repo\', branch: \'main\' })">history</button></aside>',
+      '<aside data-source-control>{{ rootPath ?? "none" }}<span data-source-fs-event>{{ fsEvent?.paths?.join("|") ?? "none" }}</span><span data-source-branches-modal>{{ String(showBranchesModal?.value ?? false) }}</span><button data-open-source-diff @click="$emit(\'openDiff\', { repoRoot: \'/repo\', path: \'src/main.ts\', mode: \'-\', originalPath: null, title: \'main.ts\' })">diff</button><button data-open-source-history @click="$emit(\'openHistory\', { repoRoot: \'/repo\', branch: \'main\' })">history</button></aside>',
   },
 }));
 
@@ -869,6 +869,7 @@ describe("MainApp.vue", () => {
       workspace: currentWorkspaceEnv(),
     });
   });
+
 
   it("updates terminal tab titles from terminal title events", async () => {
     const pinia = createPinia();
