@@ -1,22 +1,24 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from "vue";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
-import { writeClipboardText } from "@/lib/clipboard";
+import {
+  readClipboardText,
+  writeClipboardText,
+} from "@/lib/clipboard";
 import { createSession, trackSession, getSessionForLeaf } from "./lib/sessions";
 import type { PtySessionHandle, SessionState } from "./lib/sessions";
 import {
   applyTerminalTheme,
-  buildTerminalTheme,
   watchTerminalTheme,
 } from "./lib/theme";
-import {
-  attachClipboardShortcuts,
-  pasteClipboardIntoTerminal,
-} from "./lib/shortcuts";
+import { attachClipboardShortcuts } from "./lib/shortcuts";
 import {
   createTerminalRenderer,
   type TerminalRenderer,
+  type TerminalRendererPreferences,
 } from "./lib/renderer";
+import type { FontPreference } from "./lib/fontStack";
+import type { RendererKind } from "./lib/rendererPipeline";
 import TerminalContextMenu from "./TerminalContextMenu.vue";
 
 const props = defineProps<{
@@ -34,6 +36,7 @@ const emit = defineEmits<{
   focus: [];
   split: ["row" | "col"];
   close: [];
+  renderer: [RendererKind];
 }>();
 
 const container = ref<HTMLElement>();
@@ -49,6 +52,42 @@ let resizeObserver: ResizeObserver | null = null;
 let detachThemeWatch: (() => void) | null = null;
 let detachClipboardShortcuts: (() => void) | null = null;
 let mountRevision = 0;
+
+function buildPreferences(): TerminalRendererPreferences {
+  const fontPref: FontPreference = {
+    presetName: prefs.terminalFontFamily,
+    nerdFontEnabled: prefs.terminalNerdFontEnabled,
+    cjkEnabled: prefs.terminalCjkFontEnabled,
+    emojiEnabled: prefs.terminalEmojiFontEnabled,
+  };
+  return {
+    fontFamily: prefs.terminalFontFamily,
+    fontSize: prefs.terminalFontSize,
+    letterSpacing: prefs.terminalLetterSpacing,
+    fontWeight: prefs.terminalFontWeight,
+    fontWeightBold: prefs.terminalFontWeightBold,
+    scrollback: prefs.terminalScrollback,
+    renderer: prefs.terminalRenderer,
+    rendererAutoFallback: prefs.terminalRendererAutoFallback,
+    watchDpi: true,
+    cursorStyle: prefs.terminalCursorStyle,
+    cursorBlink: prefs.terminalCursorBlink,
+    cursorInactiveStyle: prefs.terminalCursorInactiveStyle,
+    fastScrollSensitivity: prefs.terminalFastScrollSensitivity,
+    fastScrollModifier: prefs.terminalFastScrollModifier,
+    macOptionIsMeta: prefs.terminalMacOptionIsMeta,
+    macOptionClickForcesSelection: prefs.terminalMacOptionClickForcesSelection,
+    minimumContrastRatio: prefs.terminalMinimumContrastRatio,
+    drawBoldTextInBrightColors: prefs.terminalDrawBoldTextInBrightColors,
+    customGlyphs: prefs.terminalCustomGlyphs,
+    rescaleOverlappingGlyphs: prefs.terminalRescaleOverlappingGlyphs,
+    font: fontPref,
+    clipboard: {
+      readText: () => readClipboardText(),
+      writeText: (text) => writeClipboardText(text),
+    },
+  };
+}
 
 async function ensureSession(): Promise<void> {
   const term = renderer?.term;
@@ -85,16 +124,11 @@ onMounted(async () => {
   const host = container.value;
   if (!host) return;
   const revision = ++mountRevision;
+  // await 期间用户可能改了 prefs(例如快速切到 settings 切回渲染器),
+  // 因此在挂上 renderer 后立即用最新 prefs 重应用一次,避免用旧快照创建。
   const nextRenderer = await createTerminalRenderer({
     container: host,
-    preferences: {
-      fontFamily: prefs.terminalFontFamily,
-      fontSize: prefs.terminalFontSize,
-      letterSpacing: prefs.terminalLetterSpacing,
-      scrollback: prefs.terminalScrollback,
-      webglEnabled: prefs.terminalWebglEnabled,
-    },
-    theme: buildTerminalTheme(),
+    preferences: buildPreferences(),
     onResize: (cols, rows) => session?.resize(cols, rows),
   });
   if (revision !== mountRevision || container.value !== host) {
@@ -102,6 +136,12 @@ onMounted(async () => {
     return;
   }
   renderer = nextRenderer;
+  // 用最新的偏好覆盖 renderer 创建时的快照
+  if (prefs.terminalRenderer !== nextRenderer.activeRenderer()) {
+    nextRenderer.setRenderer(prefs.terminalRenderer);
+  }
+  emit("renderer", nextRenderer.activeRenderer());
+
   detachClipboardShortcuts = attachClipboardShortcuts({
     term: nextRenderer.term,
   });
@@ -151,8 +191,11 @@ watch(
   },
 );
 watch(
-  () => prefs.terminalWebglEnabled,
-  (enabled) => renderer?.setWebglEnabled(enabled),
+  () => prefs.terminalRenderer,
+  (kind) => {
+    renderer?.setRenderer(kind);
+    emit("renderer", renderer?.activeRenderer() ?? "dom");
+  },
 );
 
 function handleFocus() {
@@ -182,7 +225,7 @@ function handleMenuCopy() {
 
 function handleMenuPaste() {
   const term = renderer?.term;
-  if (term) void pasteClipboardIntoTerminal(term).catch(() => {});
+  if (term) void readClipboardText().then((text) => text && term.paste(text)).catch(() => {});
   closeContextMenu();
 }
 
@@ -242,7 +285,7 @@ defineExpose({
   position: relative;
   background: var(--term-bg);
   overflow: hidden;
-  padding: 6px 8px 4px;
+  padding: var(--term-padding-y, 4px) var(--term-padding-x, 8px);
 }
 .terminal-pane.focused .terminal-pane-body {
   outline: 0;

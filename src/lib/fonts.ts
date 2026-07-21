@@ -1,83 +1,84 @@
-const NERD_FONT_CANDIDATES = [
-  "JetBrainsMono Nerd Font",
-  "JetBrainsMono Nerd Font Mono",
-  "JetBrainsMonoNL Nerd Font",
-  "FiraCode Nerd Font",
-  "FiraCode Nerd Font Mono",
-  "MesloLGS NF",
-  "MesloLGM Nerd Font",
-  "Hack Nerd Font",
-  "Hack Nerd Font Mono",
-  "CaskaydiaCove Nerd Font",
-  "CaskaydiaMono Nerd Font",
-  "Iosevka Nerd Font",
-  "Iosevka Term Nerd Font",
-  "SauceCodePro Nerd Font",
-  "Hasklug Nerd Font",
-];
+/**
+ * Backward-compatible thin wrapper around the new layered font stack.
+ *
+ * 新实现已搬到 src/modules/terminal/lib/fontStack.ts,这里保留旧导出名
+ * (`DEFAULT_MONO_FONT_FAMILY`、`buildTerminalFontFamily`、`ensureMonoFontsLoaded`、
+ * `detectMonoFontFamily`、`NERD_SYMBOL_FONT_FAMILY`),避免 editorConfig / markdown / 等
+ * 旧调用方破坏。新代码请直接 import 自 fontStack。
+ */
 
-export const NERD_SYMBOL_FONT_FAMILY = "Pure Nerd Font";
+import {
+  buildFontFamilyCss,
+  buildFontStack,
+  detectInstalledMonoFont,
+  ensureFontStackLoaded as _ensureFontStackLoaded,
+  type FontPreference,
+} from "@/modules/terminal/lib/fontStack";
+
+/** @deprecated use fontStack.buildFontFamilyCss */
 export const DEFAULT_MONO_FONT_FAMILY =
   '"JetBrains Mono", "Pure Nerd Font", SFMono-Regular, Menlo, monospace';
 
-const FALLBACK_CHAIN = DEFAULT_MONO_FONT_FAMILY;
+/** @deprecated use fontStack symbol layer */
+export const NERD_SYMBOL_FONT_FAMILY = "Pure Nerd Font";
 
-let detected: string | null = null;
+/**
+ * @deprecated use buildFontFamilyCss({ presetName, ... }) directly.
+ * 历史行为:把 presetName 拼到 fallback chain 头部,空串走默认。
+ */
+export function buildTerminalFontFamily(preferred: string): string {
+  return buildFontFamilyCss({
+    presetName: preferred,
+    nerdFontEnabled: true,
+    cjkEnabled: false,
+    emojiEnabled: false,
+  } satisfies FontPreference);
+}
+
+/** @deprecated use fontStack.detectInstalledMonoFont */
+export function detectMonoFontFamily(): string {
+  const installed = detectInstalledMonoFont();
+  // 历史行为:返回带 fallback chain 的 CSS 串
+  return buildFontFamilyCss({
+    presetName: installed,
+    nerdFontEnabled: true,
+    cjkEnabled: false,
+    emojiEnabled: false,
+  });
+}
+
 let monoReady: Promise<void> | null = null;
 
+/** @deprecated use ensureFontStackLoaded */
 export function ensureMonoFontsLoaded(): Promise<void> {
   if (monoReady) return monoReady;
-  if (typeof document === "undefined" || !document.fonts?.load) {
-    monoReady = Promise.resolve();
-    return monoReady;
-  }
-  monoReady = Promise.allSettled([
-    document.fonts.load('400 14px "JetBrains Mono"'),
-    document.fonts.load('700 14px "JetBrains Mono"'),
-    document.fonts.load('400 14px "Pure Nerd Font"', "\ue0b0\uf120"),
-  ]).then(() => undefined);
+  monoReady = _ensureFontStackLoaded(
+    buildFontStack({
+      presetName: "",
+      nerdFontEnabled: true,
+      cjkEnabled: false,
+      emojiEnabled: false,
+    }),
+    14,
+  ).then(() => undefined);
   return monoReady;
 }
 
+/**
+ * @deprecated use ensureFontStackLoaded
+ * 历史签名:只支持 primary + symbol 加载,新签名支持 cjk + emoji。
+ */
 export async function ensureFontFamilyLoaded(
   fontFamily: string,
   fontSize: number,
 ): Promise<void> {
-  if (typeof document === "undefined" || !document.fonts?.load) return;
-  await Promise.allSettled([
-    document.fonts.load(`400 ${fontSize}px ${fontFamily}`, "MW\u2500\u2502"),
-    document.fonts.load(`700 ${fontSize}px ${fontFamily}`, "MW\u2500\u2502"),
-    document.fonts.load(
-      `400 ${fontSize}px ${fontFamily}`,
-      "\ue0b0\ue0b1\uf120",
-    ),
-  ]);
-}
-
-export function buildTerminalFontFamily(preferred: string): string {
-  const trimmed = preferred.trim();
-  if (!trimmed || trimmed === "JetBrains Mono") return DEFAULT_MONO_FONT_FAMILY;
-  if (trimmed === NERD_SYMBOL_FONT_FAMILY) return FALLBACK_CHAIN;
-  const quoted = `"${trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-  return `${quoted}, ${FALLBACK_CHAIN}`;
-}
-
-export function detectMonoFontFamily(): string {
-  if (detected) return detected;
-  if (typeof document === "undefined" || !document.fonts) {
-    detected = FALLBACK_CHAIN;
-    return detected;
-  }
-  for (const f of NERD_FONT_CANDIDATES) {
-    try {
-      if (document.fonts.check(`12px "${f}"`)) {
-        detected = `"${f}", ${FALLBACK_CHAIN}`;
-        return detected;
-      }
-    } catch {
-      // Some browsers throw on invalid font shorthand; ignore.
-    }
-  }
-  detected = FALLBACK_CHAIN;
-  return detected;
+  await _ensureFontStackLoaded(
+    buildFontStack({
+      presetName: fontFamily,
+      nerdFontEnabled: true,
+      cjkEnabled: false,
+      emojiEnabled: false,
+    }),
+    fontSize,
+  );
 }

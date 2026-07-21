@@ -1,25 +1,80 @@
-import { FitAddon } from "@xterm/addon-fit";
-import { SearchAddon } from "@xterm/addon-search";
-import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { WebLinksAddon } from "@xterm/addon-web-links";
-import { WebglAddon } from "@xterm/addon-webgl";
+/**
+ * xterm Terminal 实例的工厂与生命周期管理。
+ *
+ * 重构后职责拆分为:
+ * - addons.ts   — fit/search/unicode/web-links/serialize/clipboard 装载
+ * - rendererPipeline.ts — WebGL → DOM 回退管线
+ * - terminalOptions.ts — ITerminalOptions 聚合
+ * - fontStack.ts       — 分层字体回退
+ * - dpiWatcher.ts      — DPI 变化监听
+ *
+ * 本文件只负责把上面这些模块粘合起来,提供 createTerminalRenderer 一个入口。
+ */
+
+import { Terminal } from "@xterm/xterm";
 import {
-  Terminal,
-  type IDisposable,
-  type ITerminalOptions,
-  type ITheme,
-} from "@xterm/xterm";
+  applyTerminalTheme,
+  buildTerminalTheme,
+  watchTerminalTheme,
+} from "./theme";
 import {
-  buildTerminalFontFamily,
-  ensureFontFamilyLoaded,
-} from "@/lib/fonts";
+  buildFontStack,
+  buildCssFontFamily,
+  ensureFontStackLoaded,
+  watchFontLoadingDone,
+  type FontPreference,
+} from "./fontStack";
+import { loadStandardAddons, type StandardAddons } from "./addons";
+import {
+  attachRendererPipeline,
+  type RendererKind,
+  type RendererPipeline,
+} from "./rendererPipeline";
+import {
+  buildTerminalOptions,
+  clampFontWeight,
+  deriveLetterSpacingPx,
+  type TerminalOptionsInput,
+} from "./terminalOptions";
 
 export interface TerminalRendererPreferences {
   fontFamily: string;
   fontSize: number;
   letterSpacing: number;
+  fontWeight: number;
+  fontWeightBold: number;
   scrollback: number;
-  webglEnabled: boolean;
+  /** 渲染器类型 webgl / dom */
+  renderer: RendererKind;
+  /** 是否启用 WebGL→DOM 自动降级 */
+  rendererAutoFallback: boolean;
+  /** DPI 监听 */
+  watchDpi: boolean;
+  /** 光标配置 */
+  cursorStyle: "block" | "underline" | "bar";
+  cursorBlink: boolean;
+  cursorInactiveStyle:
+    | "outline"
+    | "block"
+    | "bar"
+    | "underline"
+    | "none";
+  /** xterm 行为配置 */
+  fastScrollSensitivity: number;
+  fastScrollModifier: "alt" | "ctrl" | "shift";
+  macOptionIsMeta: boolean;
+  macOptionClickForcesSelection: boolean;
+  minimumContrastRatio: number;
+  drawBoldTextInBrightColors: boolean;
+  customGlyphs: boolean;
+  rescaleOverlappingGlyphs: boolean;
+  /** 字体偏好扩展(纯前端派生) */
+  font: FontPreference;
+  /** clipboard 桥 */
+  clipboard?: {
+    readText: () => Promise<string>;
+    writeText: (text: string) => Promise<void>;
+  };
 }
 
 export interface TerminalTypography {
@@ -30,75 +85,115 @@ export interface TerminalTypography {
 
 export interface TerminalRenderer {
   term: Terminal;
+  /** 立即 fit,如字号/容器变化后调用 */
   fit: () => void;
+  /** 应用字号/字体/间距变化,内部重新加载字体并重画 */
   applyTypography: (typography: TerminalTypography) => Promise<void>;
+  /** 调整 scrollback */
   setScrollback: (scrollback: number) => void;
-  setWebglEnabled: (enabled: boolean) => void;
+  /** 切换渲染器 */
+  setRenderer: (kind: RendererKind) => void;
+  /** 当前生效的渲染器 */
+  activeRenderer: () => RendererKind;
   dispose: () => void;
 }
 
 interface CreateTerminalRendererOptions {
   container: HTMLElement;
   preferences: TerminalRendererPreferences;
-  theme: ITheme;
   onResize: (cols: number, rows: number) => void;
-}
-
-export function createTerminalOptions(
-  preferences: Omit<TerminalRendererPreferences, "webglEnabled">,
-  theme?: ITheme,
-): ITerminalOptions {
-  return {
-    cursorBlink: true,
-    fontSize: preferences.fontSize,
-    fontFamily: buildTerminalFontFamily(preferences.fontFamily),
-    letterSpacing: preferences.letterSpacing,
-    scrollback: preferences.scrollback,
-    allowProposedApi: true,
-    convertEol: false,
-    customGlyphs: true,
-    rescaleOverlappingGlyphs: true,
-    theme,
-  };
 }
 
 export async function createTerminalRenderer(
   options: CreateTerminalRendererOptions,
 ): Promise<TerminalRenderer> {
-  const initialFontFamily = buildTerminalFontFamily(
-    options.preferences.fontFamily,
-  );
-  await ensureFontFamilyLoaded(
-    initialFontFamily,
-    options.preferences.fontSize,
-  );
+  const prefs = options.preferences;
+  const stack = buildFontStack(prefs.font);
+  const fontFamilyCss = buildCssFontFamily(stack);
+  const theme = buildTerminalTheme();
 
-  const term = new Terminal(
-    createTerminalOptions(options.preferences, options.theme),
-  );
-  const fitAddon = new FitAddon();
-  const unicodeAddon = new Unicode11Addon();
-  term.loadAddon(fitAddon);
-  term.loadAddon(unicodeAddon);
-  term.unicode.activeVersion = "11";
-  term.loadAddon(new WebLinksAddon());
-  term.loadAddon(new SearchAddon());
+  // 1) 预加载字体栈
+  await ensureFontStackLoaded(stack, prefs.fontSize);
+
+  // 2) 构造 ITerminalOptions
+  const optsInput: TerminalOptionsInput = {
+    typography: {
+      fontFamily: fontFamilyCss,
+      fontSize: prefs.fontSize,
+      fontWeight: clampFontWeight(prefs.fontWeight || 400),
+      fontWeightBold: clampFontWeight(prefs.fontWeightBold || 700),
+      letterSpacing: prefs.letterSpacing,
+    },
+    cursor: {
+      style: prefs.cursorStyle,
+      width: 1,
+      blink: prefs.cursorBlink,
+      inactiveStyle: prefs.cursorInactiveStyle,
+    },
+    behavior: {
+      scrollback: prefs.scrollback,
+      fastScrollSensitivity: prefs.fastScrollSensitivity,
+      fastScrollModifier: prefs.fastScrollModifier,
+      scrollOnUserInput: true,
+      macOptionIsMeta: prefs.macOptionIsMeta,
+      macOptionClickForcesSelection: prefs.macOptionClickForcesSelection,
+      minimumContrastRatio: prefs.minimumContrastRatio,
+      drawBoldTextInBrightColors: prefs.drawBoldTextInBrightColors,
+      customGlyphs: prefs.customGlyphs,
+      rescaleOverlappingGlyphs: prefs.rescaleOverlappingGlyphs,
+    },
+    render: {
+      renderer: prefs.renderer,
+      autoFallback: prefs.rendererAutoFallback,
+      watchDpi: prefs.watchDpi,
+    },
+    theme,
+  };
+  const termOptions = buildTerminalOptions(optsInput);
+
+  // 3) 创建 Terminal 实例
+  const term = new Terminal(termOptions);
+
+  // 4) 装载标准 addons(包含 clipboard)
+  let addons: StandardAddons | null = loadStandardAddons(term, prefs.clipboard);
+
+  // 5) 打开 DOM
   term.open(options.container);
 
-  let disposed = false;
-  let typographyRevision = 0;
-  let renderFrame: number | null = null;
-  let webglEnabled = options.preferences.webglEnabled;
-  let webglAddon: WebglAddon | null = null;
-  let contextLossDisposable: IDisposable | null = null;
-  let webglRetryFrame: number | null = null;
+  // 6) 主题响应
+  const detachThemeWatch = watchTerminalTheme(() => {
+    if (!disposed) applyTerminalTheme(term);
+  });
+
+  // 7) 字体异步加载完成后重画
+  const detachFontWatch = watchFontLoadingDone(() => {
+    if (!disposed) {
+      try {
+        term.clearTextureAtlas();
+        if (term.rows > 0) term.refresh(0, term.rows - 1);
+      } catch {
+        // ignore
+      }
+    }
+  });
+
+  // 8) 渲染器管线
+  let pipeline: RendererPipeline | null = attachRendererPipeline({
+    term,
+    preferred: prefs.renderer,
+    autoFallback: prefs.rendererAutoFallback,
+    watchDpi: prefs.watchDpi,
+  });
+
   let lastCols = 0;
   let lastRows = 0;
+  let disposed = false;
+  let typographyRevision = 0;
 
   function fit(): void {
-    if (disposed) return;
+    if (disposed || !addons) return;
     try {
-      fitAddon.fit();
+      addons.fit.fit();
     } catch {
       return;
     }
@@ -108,109 +203,79 @@ export async function createTerminalRenderer(
     options.onResize(term.cols, term.rows);
   }
 
-  function repaint(): void {
-    if (disposed) return;
-    try {
-      webglAddon?.clearTextureAtlas();
-      term.clearTextureAtlas();
-      if (term.rows > 0) term.refresh(0, term.rows - 1);
-    } catch {
-      // A renderer can be between context loss and fallback initialization.
-    }
-  }
-
-  function scheduleRendererRefresh(): void {
-    if (renderFrame !== null) cancelAnimationFrame(renderFrame);
-    renderFrame = requestAnimationFrame(() => {
-      renderFrame = null;
-      repaint();
-      fit();
-    });
-  }
-
-  function disposeWebgl(): void {
-    contextLossDisposable?.dispose();
-    contextLossDisposable = null;
-    const addon = webglAddon;
-    webglAddon = null;
-    if (!addon) return;
-    try {
-      addon.dispose();
-    } catch {
-      // The browser may already have released a lost WebGL context.
-    }
-  }
-
-  function attachWebgl(): void {
-    if (disposed || !webglEnabled || webglAddon) return;
-    try {
-      const addon = new WebglAddon();
-      contextLossDisposable = addon.onContextLoss(() => {
-        if (webglAddon !== addon) return;
-        disposeWebgl();
-        if (!disposed && webglEnabled) {
-          webglRetryFrame = requestAnimationFrame(() => {
-            webglRetryFrame = null;
-            attachWebgl();
-          });
-        }
-      });
-      term.loadAddon(addon);
-      webglAddon = addon;
-      scheduleRendererRefresh();
-    } catch {
-      disposeWebgl();
-      // xterm's canvas renderer remains active when WebGL is unavailable.
-    }
-  }
-
-  function setWebglEnabled(enabled: boolean): void {
-    webglEnabled = enabled;
-    if (webglRetryFrame !== null) {
-      cancelAnimationFrame(webglRetryFrame);
-      webglRetryFrame = null;
-    }
-    if (enabled) attachWebgl();
-    else disposeWebgl();
-    scheduleRendererRefresh();
-  }
-
   async function applyTypography(
     typography: TerminalTypography,
   ): Promise<void> {
+    if (disposed) return;
     const revision = ++typographyRevision;
-    const fontFamily = buildTerminalFontFamily(typography.fontFamily);
-    await ensureFontFamilyLoaded(fontFamily, typography.fontSize);
+    const newStack = buildFontStack({
+      presetName: typography.fontFamily,
+      // 复用用户原来的开关(从 prefs 取)
+      nerdFontEnabled: prefs.font.nerdFontEnabled,
+      cjkEnabled: prefs.font.cjkEnabled,
+      emojiEnabled: prefs.font.emojiEnabled,
+    });
+    await ensureFontStackLoaded(newStack, typography.fontSize);
     if (disposed || revision !== typographyRevision) return;
-    term.options.fontFamily = fontFamily;
+    term.options.fontFamily = buildCssFontFamily(newStack);
     term.options.fontSize = typography.fontSize;
-    term.options.letterSpacing = typography.letterSpacing;
-    scheduleRendererRefresh();
+    term.options.letterSpacing = deriveLetterSpacingPx(
+      typography.fontSize,
+      typography.letterSpacing,
+    );
+    try {
+      term.clearTextureAtlas();
+      if (term.rows > 0) term.refresh(0, term.rows - 1);
+    } catch {
+      // ignore
+    }
+    fit();
   }
 
   function setScrollback(scrollback: number): void {
-    if (!disposed) term.options.scrollback = scrollback;
+    if (disposed) return;
+    term.options.scrollback = scrollback;
+  }
+
+  function setRenderer(kind: RendererKind): void {
+    if (disposed || !pipeline) return;
+    pipeline.setPreferred(kind);
+  }
+
+  function activeRenderer(): RendererKind {
+    return pipeline?.active() ?? "dom";
   }
 
   function dispose(): void {
     if (disposed) return;
     disposed = true;
     typographyRevision += 1;
-    if (renderFrame !== null) cancelAnimationFrame(renderFrame);
-    if (webglRetryFrame !== null) cancelAnimationFrame(webglRetryFrame);
-    disposeWebgl();
-    term.dispose();
+    detachThemeWatch();
+    detachFontWatch();
+    pipeline?.dispose();
+    pipeline = null;
+    try {
+      addons?.dispose();
+    } catch {
+      // ignore
+    }
+    addons = null;
+    try {
+      term.dispose();
+    } catch {
+      // ignore
+    }
   }
 
   fit();
-  attachWebgl();
 
   return {
     term,
     fit,
     applyTypography,
     setScrollback,
-    setWebglEnabled,
+    setRenderer,
+    activeRenderer,
     dispose,
   };
 }
