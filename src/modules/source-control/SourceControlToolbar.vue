@@ -29,6 +29,7 @@ const emit = defineEmits<{
   push: [];
   refresh: [];
   openHistory: [];
+  openBranches: [];
 }>();
 
 const remoteOptions = computed<DropdownOption[]>(() => [
@@ -63,8 +64,19 @@ function handleRemoteSelect(key: string | number) {
   <div>
     <div class="nexterm-card-header flex h-9 shrink-0 items-center gap-1 px-2">
       <div class="flex min-w-0 flex-1 items-center gap-1.5">
-        <NIcon :component="GitBranchOutline" :size="14" class="shrink-0 text-muted-foreground" />
-        <span class="truncate text-[12px] font-semibold">{{ props.branchLabel }}</span>
+        <NButton
+          size="tiny"
+          quaternary
+          data-open-branches
+          class="!min-w-0 !px-1"
+          :aria-label="t('sourceControl.openBranchesAria')"
+          @click="emit('openBranches')"
+        >
+          <span class="flex min-w-0 items-center gap-1.5">
+            <NIcon :component="GitBranchOutline" :size="14" class="shrink-0 text-muted-foreground" />
+            <span class="truncate text-[12px] font-semibold">{{ props.branchLabel }}</span>
+          </span>
+        </NButton>
       </div>
       <NTag v-if="props.changedCount > 0" size="small" round>{{ props.changedCount }}</NTag>
       <NDropdown
@@ -111,9 +123,8 @@ function handleRemoteSelect(key: string | number) {
 
     <div
       v-if="props.repoRoot && props.status"
-      class="flex shrink-0 items-center gap-1.5 border-b border-border/40 px-2 py-2"
+      class="flex h-7 shrink-0 items-center gap-1.5 border-b border-border/40 px-2"
     >
-      <NTag size="small" round type="info">{{ props.branchLabel }}</NTag>
       <NTag v-if="props.status.upstream" size="small" round>{{ props.status.upstream }}</NTag>
       <span class="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
         <template v-if="props.status.ahead > 0 || props.status.behind > 0">

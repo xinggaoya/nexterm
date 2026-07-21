@@ -4,9 +4,16 @@ import { describe, expect, it, vi } from "vitest";
 import type { GitRepoInfo } from "@/lib/native";
 import type { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import { useWorkbenchCommands } from "./useWorkbenchCommands";
+import { notifyInfo } from "@/modules/notifications/notificationCenter";
 
 vi.mock("@/modules/terminal", () => ({
   createTerminalSessionHandle: () => ({ write: vi.fn() }),
+}));
+
+vi.mock("@/modules/notifications/notificationCenter", () => ({
+  notifyError: vi.fn(),
+  notifyInfo: vi.fn(),
+  notifySuccess: vi.fn(),
 }));
 
 function repo(repoRoot: string): GitRepoInfo {
@@ -24,6 +31,8 @@ function createHarness(activeRepoRoot: string | null) {
     openCommitHistoryTab,
   } as unknown as ReturnType<typeof useTabsPiniaStore>;
   const resolveGitRepo = vi.fn<(root: string) => Promise<GitRepoInfo | null>>();
+  const leftPanelOpen = ref(false);
+  const openBranchesModal = ref(false);
   const options = {
     t: (key: string) => key,
     keybindings: computed(() => ({})),
@@ -31,9 +40,10 @@ function createHarness(activeRepoRoot: string | null) {
     workspaceRoot: computed<string | null>(() => "/workspace"),
     activeRepoRoot: ref<string | null>(activeRepoRoot),
     activeTab: computed(() => null),
-    leftPanelOpen: ref(false),
+    leftPanelOpen,
     rightPanelOpen: ref(false),
     workspaceFsEvent: ref(null),
+    openBranchesModal,
     tabs,
     newTerminalTab: vi.fn(),
     splitActivePane: vi.fn(),
@@ -66,6 +76,8 @@ function createHarness(activeRepoRoot: string | null) {
     commands: useWorkbenchCommands(options),
     openCommitHistoryTab,
     resolveGitRepo,
+    leftPanelOpen,
+    openBranchesModal,
   };
 }
 
@@ -132,5 +144,37 @@ describe("useWorkbenchCommands repository resolution", () => {
       ["/workspace/removed"],
       ["/workspace"],
     ]);
+  });
+});
+
+describe("useWorkbenchCommands branch workflow commands", () => {
+  it("opens the branches modal for git.branch.checkout without a sourceControl.branches info notification", async () => {
+    const harness = createHarness("/workspace/apps/web");
+    harness.resolveGitRepo.mockResolvedValue(repo("/workspace/apps/web"));
+
+    await harness.commands.executeCommandFromPalette("git.branch.checkout");
+
+    expect(harness.resolveGitRepo).toHaveBeenCalledWith("/workspace/apps/web");
+    expect(harness.leftPanelOpen.value).toBe(true);
+    expect(harness.openBranchesModal.value).toBe(true);
+    expect(notifyInfo).not.toHaveBeenCalledWith(
+      "sourceControl.branches",
+      expect.anything(),
+    );
+  });
+
+  it("opens the branches modal for git.branch.create without a sourceControl.branches info notification", async () => {
+    const harness = createHarness("/workspace/apps/web");
+    harness.resolveGitRepo.mockResolvedValue(repo("/workspace/apps/web"));
+
+    await harness.commands.executeCommandFromPalette("git.branch.create");
+
+    expect(harness.resolveGitRepo).toHaveBeenCalledWith("/workspace/apps/web");
+    expect(harness.leftPanelOpen.value).toBe(true);
+    expect(harness.openBranchesModal.value).toBe(true);
+    expect(notifyInfo).not.toHaveBeenCalledWith(
+      "sourceControl.branches",
+      expect.anything(),
+    );
   });
 });

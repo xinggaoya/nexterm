@@ -46,6 +46,7 @@ type WorkbenchCommandOptions = {
   leftPanelOpen: Ref<boolean>;
   rightPanelOpen: Ref<boolean>;
   workspaceFsEvent: Ref<WorkspaceFsChangedEvent | null>;
+  openBranchesModal: Ref<boolean>;
   tabs: ReturnType<typeof useTabsPiniaStore>;
   newTerminalTab: () => void;
   splitActivePane: (dir: SplitDir) => void;
@@ -233,10 +234,7 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
     const repo = await resolveCurrentRepo();
     if (!repo) return;
     options.leftPanelOpen.value = true;
-    notifyInfo(
-      options.t("sourceControl.branches"),
-      options.t("sourceControl.branchCommandHint"),
-    );
+    options.openBranchesModal.value = true;
   }
 
   async function stashSaveFromCommand() {

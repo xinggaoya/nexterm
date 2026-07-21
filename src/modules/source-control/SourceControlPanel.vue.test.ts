@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
-import { h, nextTick, type VNodeChild } from "vue";
+import { h, nextTick, ref, type VNodeChild } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SourceControlPanel from "./SourceControlPanel.vue";
 import SourceControlToolbar from "./SourceControlToolbar.vue";
@@ -33,38 +33,8 @@ if (
     "function"
 ) {
   (window as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
-    private callback: ResizeObserverCallback;
-    constructor(callback: ResizeObserverCallback) {
-      this.callback = callback;
-    }
-    observe(target: Element) {
-      const rect =
-        typeof (target as HTMLElement).getBoundingClientRect === "function"
-          ? (target as HTMLElement).getBoundingClientRect()
-          : { width: 320, height: 600, top: 0, left: 0, right: 320, bottom: 600, x: 0, y: 0, toJSON: () => ({}) };
-      this.callback(
-        [
-          {
-            target,
-            contentRect: {
-              width: rect.width,
-              height: rect.height,
-              top: rect.top,
-              left: rect.left,
-              right: rect.right,
-              bottom: rect.bottom,
-              x: 0,
-              y: 0,
-              toJSON: () => ({}),
-            },
-            borderBoxSize: [] as unknown as ReadonlyArray<ResizeObserverSize>,
-            contentBoxSize: [] as unknown as ReadonlyArray<ResizeObserverSize>,
-            devicePixelContentBoxSize: [] as unknown as ReadonlyArray<ResizeObserverSize>,
-          },
-        ],
-        this,
-      );
-    }
+    constructor(_callback: ResizeObserverCallback) {}
+    observe() {}
     unobserve() {}
     disconnect() {}
   };
@@ -291,6 +261,10 @@ function mockSnapshotFiles(changedFiles: GitChangedFile[]) {
       changedFiles,
     },
   });
+}
+
+function panelProps(overrides: Record<string, unknown> = {}) {
+  return { rootPath: "/repo", showBranchesModal: ref(false), ...overrides };
 }
 
 describe("SourceControlPanel.vue", () => {
@@ -645,17 +619,18 @@ describe("SourceControlPanel.vue", () => {
       message: "Dropped stash@{0}",
     });
 
-    const wrapper = mount(SourceControlPanel, {
-      props: { rootPath: "/repo" },
-    });
+    const wrapper = mount(SourceControlPanel, { props: panelProps() });
     await flush();
 
     expect(native.gitBranchList).toHaveBeenCalledWith("/repo");
     expect(native.gitStashList).toHaveBeenCalledWith("/repo");
-    expect(wrapper.text()).toContain("feature/git-ui");
-    expect(wrapper.text()).toContain("WIP on main: source control");
+    expect(document.body.querySelector('[data-git-branch="feature/git-ui"]')).toBeNull();
+    await wrapper.find("[data-open-branches]").trigger("click");
+    await flush();
+    expect(document.body.querySelector('[data-git-branch="feature/git-ui"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("WIP on main: source control");
 
-    await wrapper.find("[data-git-stash-save]").trigger("click");
+    document.body.querySelector<HTMLButtonElement>("[data-git-stash-save]")?.click();
     await flush();
     document.body.querySelector<HTMLButtonElement>("[data-git-stash-submit]")?.click();
     await flush();
@@ -665,7 +640,7 @@ describe("SourceControlPanel.vue", () => {
       keepIndex: false,
     });
 
-    await wrapper.find("[data-git-branch='feature/git-ui']").trigger("click");
+    document.body.querySelector<HTMLButtonElement>("[data-git-branch='feature/git-ui']")?.click();
     await flush();
     expect(native.gitCheckoutBranch).toHaveBeenCalledWith(
       "/repo",
@@ -673,19 +648,26 @@ describe("SourceControlPanel.vue", () => {
       false,
     );
 
-    await wrapper.find("[data-git-create-branch-toggle]").trigger("click");
+    await wrapper.find("[data-open-branches]").trigger("click");
     await flush();
-    const input = wrapper.find("[data-git-create-branch-input]");
-    await input.setValue("feature/new");
-    await wrapper.find("[data-git-create-branch-submit]").trigger("click");
+
+    const input = document.body.querySelector<HTMLInputElement>("[data-git-create-branch-input]");
+    if (!input) throw new Error("create branch input is missing");
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    setter?.call(input, "feature/new");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await nextTick();
+    document.body
+      .querySelector<HTMLButtonElement>("[data-git-create-branch-submit]")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flush();
     expect(native.gitCreateBranch).toHaveBeenCalledWith("/repo", "feature/new");
 
-    await wrapper.find("[data-git-stash-apply='stash@{0}']").trigger("click");
+    document.body.querySelector<HTMLButtonElement>("[data-git-stash-apply='stash@{0}']")?.click();
     await flush();
     expect(native.gitStashApply).toHaveBeenCalledWith("/repo", "stash@{0}", fullSha);
 
-    await wrapper.find("[data-git-stash-pop='stash@{0}']").trigger("click");
+    document.body.querySelector<HTMLButtonElement>("[data-git-stash-pop='stash@{0}']")?.click();
     await flush();
     expect(native.gitStashPop).toHaveBeenCalledWith("/repo", "stash@{0}", fullSha);
 
@@ -693,9 +675,53 @@ describe("SourceControlPanel.vue", () => {
       ({ onPositiveClick }: { onPositiveClick: () => void | Promise<void> }) =>
         onPositiveClick(),
     );
-    await wrapper.find("[data-git-stash-drop='stash@{0}']").trigger("click");
+    document.body.querySelector<HTMLButtonElement>("[data-git-stash-drop='stash@{0}']")?.click();
     await flush();
     expect(native.gitStashDrop).toHaveBeenCalledWith("/repo", "stash@{0}", fullSha);
+  });
+
+  it("keeps the externally controlled modal open when checkout fails", async () => {
+    const showBranchesModal = ref(false);
+    vi.mocked(native.gitCheckoutBranch).mockRejectedValue(new Error("checkout failed"));
+    const wrapper = mount(SourceControlPanel, {
+      props: { rootPath: "/repo", showBranchesModal },
+    });
+    await flush();
+    await wrapper.find("[data-open-branches]").trigger("click");
+    await flush();
+    document.body.querySelector<HTMLButtonElement>("[data-git-branch='feature/git-ui']")?.click();
+    await flush();
+    expect(showBranchesModal.value).toBe(true);
+    expect(document.body.querySelector('[data-git-branch="feature/git-ui"]')).not.toBeNull();
+  });
+
+  it("shows detached in the branch button and still opens branch workflows", async () => {
+    mockSnapshotFiles([]);
+    vi.mocked(native.gitPanelSnapshot).mockResolvedValue({
+      repo: {
+        repoRoot: "/repo",
+        branch: "abcdef1",
+        upstream: null,
+        isDetached: true,
+      },
+      status: {
+        repoRoot: "/repo",
+        branch: "abcdef1",
+        upstream: null,
+        ahead: 0,
+        behind: 0,
+        isDetached: true,
+        truncated: false,
+        changedFiles: [],
+      },
+    });
+    const wrapper = mount(SourceControlPanel, { props: panelProps() });
+    await flush();
+
+    expect(wrapper.find("[data-open-branches]").text()).toContain("detached");
+    await wrapper.find("[data-open-branches]").trigger("click");
+    await flush();
+    expect(document.body.querySelector('[data-git-branch="feature/git-ui"]')).not.toBeNull();
   });
 
   it("refreshes status for workspace file events", async () => {

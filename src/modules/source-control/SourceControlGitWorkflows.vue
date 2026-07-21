@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, type InputHTMLAttributes } from "vue";
-import { AddOutline, GitBranchOutline, LayersOutline, SearchOutline } from "@vicons/ionicons5";
+import { computed, nextTick, ref, watch, type InputHTMLAttributes } from "vue";
+import { GitBranchOutline, LayersOutline, SearchOutline } from "@vicons/ionicons5";
 import {
   NButton,
   NCheckbox,
@@ -10,12 +10,13 @@ import {
   NSpin,
   NTag,
 } from "naive-ui";
-import TooltipTitle from "@/components/TooltipTitle.vue";
+import type { InputInst } from "naive-ui";
 import type { GitBranchInfo, GitStashEntry, GitStashPushOptions } from "@/lib/native";
 import { t } from "@/modules/i18n/translate";
 import type { BusyAction } from "./useSourceControlState";
 
 const props = defineProps<{
+  show: boolean;
   branches: GitBranchInfo[];
   stashes: GitStashEntry[];
   loading: boolean;
@@ -24,6 +25,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  close: [];
   checkoutBranch: [branch: GitBranchInfo];
   createBranch: [branch: string];
   stashSave: [options: GitStashPushOptions];
@@ -32,9 +34,9 @@ const emit = defineEmits<{
   stashDrop: [input: { selector: string; fullSha: string }];
 }>();
 
-const showCreate = ref(false);
 const branchName = ref("");
 const branchSearch = ref("");
+const branchSearchRef = ref<InputInst | null>(null);
 const showStashComposer = ref(false);
 const stashMessage = ref("");
 const stashIncludeUntracked = ref(true);
@@ -84,7 +86,6 @@ function submitBranch() {
   if (!value) return;
   emit("createBranch", value);
   branchName.value = "";
-  showCreate.value = false;
 }
 
 function openStashComposer() {
@@ -106,62 +107,84 @@ function submitStash() {
   });
   closeStashComposer();
 }
+
+function handleUpdateShow(show: boolean) {
+  if (show) return;
+  branchName.value = "";
+  stashMessage.value = "";
+  closeStashComposer();
+  emit("close");
+}
+
+function focusBranchSearch() {
+  void nextTick(() => branchSearchRef.value?.focus());
+}
+
+watch(
+  () => props.show,
+  (show) => {
+    if (show) focusBranchSearch();
+  },
+);
 </script>
 
 <template>
-  <div class="min-w-0 shrink-0 border-b border-border/60 px-2 py-2">
-    <div class="mb-1.5 flex min-w-0 items-center gap-2">
-      <div class="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-        <NIcon :component="GitBranchOutline" :size="13" />
-        <span class="min-w-0 truncate">{{ t("sourceControl.branches") }}</span>
+  <NModal
+    :show="props.show"
+    preset="card"
+    :bordered="false"
+    :mask-closable="true"
+    class="max-w-[520px]"
+    @update:show="handleUpdateShow"
+    @after-enter="focusBranchSearch"
+  >
+    <template #header>
+      <div class="flex min-w-0 flex-1 items-center gap-2">
+        <NIcon :component="GitBranchOutline" :size="16" class="shrink-0 text-muted-foreground" />
+        <span class="truncate text-sm font-medium">{{ t("sourceControl.branches") }}</span>
         <NSpin v-if="props.loading" size="small" />
+        <div class="ml-auto flex min-w-0 gap-2">
+          <NInput
+            v-model:value="branchName"
+            class="min-w-0 w-44"
+            size="small"
+            :input-props="branchInputProps"
+            :placeholder="t('sourceControl.branchName')"
+            @keydown.enter.prevent="submitBranch"
+          />
+          <NButton
+            size="small"
+            type="primary"
+            data-git-create-branch-submit
+            :disabled="!branchName.trim() || busy"
+            @click="submitBranch"
+          >
+            {{ t("common.create") }}
+          </NButton>
+        </div>
       </div>
-      <TooltipTitle :label="t('sourceControl.newBranch')">
-        <NButton
-          size="tiny"
-          quaternary
-          data-git-create-branch-toggle
-          :disabled="busy"
-          @click="showCreate = !showCreate"
+    </template>
+
+    <div class="space-y-4">
+      <section class="space-y-2">
+        <div class="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
+          <NIcon :component="GitBranchOutline" :size="13" />
+          <span>{{ t("sourceControl.branches") }}</span>
+        </div>
+        <NInput
+          ref="branchSearchRef"
+          v-model:value="branchSearch"
+          class="min-w-0"
+          size="small"
+          clearable
+          :input-props="branchSearchInputProps"
+          :placeholder="t('sourceControl.branchSearch')"
         >
-          <template #icon><NIcon :component="AddOutline" /></template>
-        </NButton>
-      </TooltipTitle>
-    </div>
+          <template #prefix><NIcon :component="SearchOutline" /></template>
+        </NInput>
 
-    <div v-if="showCreate" class="mb-2 flex min-w-0 gap-1">
-      <NInput
-        v-model:value="branchName"
-        class="min-w-0 flex-1"
-        size="tiny"
-        :input-props="branchInputProps"
-        :placeholder="t('sourceControl.branchName')"
-        @keydown.enter.prevent="submitBranch"
-      />
-      <NButton
-        size="tiny"
-        type="primary"
-        data-git-create-branch-submit
-        :disabled="!branchName.trim() || busy"
-        @click="submitBranch"
-      >
-        {{ t("common.create") }}
-      </NButton>
-    </div>
-
-    <NInput
-      v-model:value="branchSearch"
-      class="mb-1.5 min-w-0"
-      size="small"
-      clearable
-      :input-props="branchSearchInputProps"
-      :placeholder="t('sourceControl.branchSearch')"
-    >
-      <template #prefix><NIcon :component="SearchOutline" /></template>
-    </NInput>
-
-    <div class="max-h-48 min-w-0 space-y-2 overflow-y-auto overscroll-contain">
-      <section v-if="currentBranch" data-git-branch-group="current" class="min-w-0">
+        <div class="max-h-72 min-w-0 space-y-2 overflow-y-auto overscroll-contain">
+          <section v-if="currentBranch" data-git-branch-group="current" class="min-w-0">
         <div class="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           {{ t("sourceControl.branchCurrent") }}
         </div>
@@ -182,7 +205,7 @@ function submitStash() {
         </div>
       </section>
 
-      <section v-if="localBranches.length" data-git-branch-group="local" class="min-w-0">
+          <section v-if="localBranches.length" data-git-branch-group="local" class="min-w-0">
         <div class="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           {{ t("sourceControl.branchLocal") }}
         </div>
@@ -225,7 +248,7 @@ function submitStash() {
         </div>
       </section>
 
-      <section v-if="remoteBranches.length" data-git-branch-group="remote" class="min-w-0">
+          <section v-if="remoteBranches.length" data-git-branch-group="remote" class="min-w-0">
         <div class="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           {{ t("sourceControl.branchRemote") }}
         </div>
@@ -266,35 +289,37 @@ function submitStash() {
             </NButton>
           </div>
         </div>
-      </section>
+          </section>
 
-      <div
+          <div
         v-if="!localBranches.length && !remoteBranches.length"
         class="px-1 text-[11px] text-muted-foreground"
       >
         {{ t("sourceControl.branchSearchEmpty") }}
-      </div>
-    </div>
+          </div>
+        </div>
+      </section>
 
-    <div class="mt-2 flex min-w-0 items-center gap-2">
-      <div class="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-        <NIcon :component="LayersOutline" :size="13" />
-        <span class="min-w-0 truncate">{{ t("sourceControl.stashes") }}</span>
-        <NTag v-if="props.stashes.length" size="small" round>{{ props.stashes.length }}</NTag>
-      </div>
-      <NButton
-        size="tiny"
-        class="shrink-0"
-        data-git-stash-save
-        :disabled="busy || props.changedCount === 0"
-        @click="openStashComposer"
-      >
-        {{ t("sourceControl.stashSave") }}
-      </NButton>
-    </div>
+      <section class="space-y-2">
+        <div class="flex min-w-0 items-center gap-2">
+          <div class="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+            <NIcon :component="LayersOutline" :size="13" />
+            <span class="min-w-0 truncate">{{ t("sourceControl.stashes") }}</span>
+            <NTag v-if="props.stashes.length" size="small" round>{{ props.stashes.length }}</NTag>
+          </div>
+          <NButton
+            size="tiny"
+            class="shrink-0"
+            data-git-stash-save
+            :disabled="busy || props.changedCount === 0"
+            @click="openStashComposer"
+          >
+            {{ t("sourceControl.stashSave") }}
+          </NButton>
+        </div>
 
-    <div v-if="props.stashes.length" class="mt-1 max-h-40 min-w-0 space-y-1 overflow-y-auto overscroll-contain">
-      <div
+        <div v-if="props.stashes.length" class="min-w-0 space-y-1">
+          <div
         v-for="stash in props.stashes"
         :key="stash.selector"
         class="flex min-w-0 flex-wrap items-center gap-1 rounded-md bg-muted/35 px-1.5 py-1"
@@ -336,7 +361,9 @@ function submitStash() {
         >
           {{ t("sourceControl.stashDrop") }}
         </NButton>
-      </div>
+          </div>
+        </div>
+      </section>
     </div>
 
     <NModal
@@ -375,5 +402,5 @@ function submitStash() {
         </div>
       </div>
     </NModal>
-  </div>
+  </NModal>
 </template>

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { NSelect, NSpin, useDialog, type SelectOption } from "naive-ui";
-import { computed, h, shallowRef, toRef, watch } from "vue";
+import { computed, h, shallowRef, toRef, watch, type Ref } from "vue";
 import {
   native,
+  type GitBranchInfo,
   type GitCommitResult,
   type GitDiscardEntry,
   type GitWorkspaceRepo,
@@ -30,6 +31,7 @@ const props = withDefaults(
     activeRepoRoot?: string | null;
     workspaceScope?: string;
     fsEvent?: WorkspaceFsChangedEvent | null;
+    showBranchesModal?: Ref<boolean>;
   }>(),
   { activeRepoRoot: null, workspaceScope: "local" },
 );
@@ -87,6 +89,18 @@ const actions = useSourceControlActions({
   t,
   emitCommitted: (result) => emit("committed", result),
   refreshGitMetadata: gitMetadata.refreshGitMetadata,
+});
+
+const localShowBranchesModal = ref(false);
+const showBranchesModal = computed({
+  get: () => props.showBranchesModal?.value ?? localShowBranchesModal.value,
+  set: (value: boolean) => {
+    if (props.showBranchesModal) {
+      props.showBranchesModal.value = value;
+    } else {
+      localShowBranchesModal.value = value;
+    }
+  },
 });
 
 const {
@@ -344,6 +358,13 @@ async function unstageEffective() {
 function confirmDiscardEffective() {
   confirmDiscardEntries(effectiveDiscardEntries.value);
 }
+
+async function handleCheckoutBranch(branch: GitBranchInfo) {
+  await checkoutBranch(branch);
+  if (actions.actionError.value === null) {
+    showBranchesModal.value = false;
+  }
+}
 </script>
 
 <template>
@@ -375,6 +396,7 @@ function confirmDiscardEffective() {
       @push="pushRemote"
       @refresh="refresh"
       @open-history="openHistory"
+      @open-branches="showBranchesModal = true"
     />
 
     <div v-if="panelState === 'no-root'" class="grid min-h-0 flex-1 place-items-center p-4 text-center">
@@ -405,19 +427,6 @@ function confirmDiscardEffective() {
       >
         {{ t("sourceControl.truncatedStatusHint") }}
       </div>
-      <SourceControlGitWorkflows
-        :branches="gitMetadata.branches.value"
-        :stashes="gitMetadata.stashes.value"
-        :loading="gitMetadata.loading.value"
-        :busy-action="busyAction"
-        :changed-count="changedCount"
-        @checkout-branch="checkoutBranch"
-        @create-branch="createBranch"
-        @stash-save="stashChanges"
-        @stash-pop="({ selector, fullSha }) => popStash(selector, fullSha)"
-        @stash-drop="({ selector, fullSha }) => dropStash(selector, fullSha)"
-        @stash-apply="({ selector, fullSha }) => applyStash(selector, fullSha)"
-      />
       <SourceControlChangeList
         :entries="entries"
         :selected-keys="Array.from(selectedKeys)"
@@ -444,6 +453,22 @@ function confirmDiscardEffective() {
         :input-props="commitInputProps"
         @commit="commit"
         @commit-keydown="handleCommitKeydown"
+      />
+      <SourceControlGitWorkflows
+        v-if="showBranchesModal"
+        :show="showBranchesModal"
+        :branches="gitMetadata.branches.value"
+        :stashes="gitMetadata.stashes.value"
+        :loading="gitMetadata.loading.value"
+        :busy-action="busyAction"
+        :changed-count="changedCount"
+        @close="showBranchesModal = false"
+        @checkout-branch="handleCheckoutBranch"
+        @create-branch="createBranch"
+        @stash-save="stashChanges"
+        @stash-pop="({ selector, fullSha }) => popStash(selector, fullSha)"
+        @stash-drop="({ selector, fullSha }) => dropStash(selector, fullSha)"
+        @stash-apply="({ selector, fullSha }) => applyStash(selector, fullSha)"
       />
     </template>
   </aside>
