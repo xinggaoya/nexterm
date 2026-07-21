@@ -8,6 +8,10 @@
  * Listening to the document element lets us pick up both light/dark toggles
  * (.dark class) and any future token mutations triggered by the Settings
  * drawer without re-rendering the terminal UI.
+ *
+ * 增强:
+ * - 监听 fonts loadingdone 事件,字体异步加载完成后强制重新 apply
+ * - 监听 prefs-changed Tauri 事件,设置实时改 token 时强制刷新
  */
 
 import type { ITheme } from "@xterm/xterm";
@@ -34,11 +38,14 @@ const THEME_VARIABLES = [
   "--term-bright-magenta",
   "--term-bright-cyan",
   "--term-bright-white",
+  "--term-link",
 ] as const;
 
-function readCssVars(): Record<(typeof THEME_VARIABLES)[number], string> {
+type ThemeVariable = (typeof THEME_VARIABLES)[number];
+
+function readCssVars(): Record<ThemeVariable, string> {
   const styles = getComputedStyle(document.documentElement);
-  const result = {} as Record<(typeof THEME_VARIABLES)[number], string>;
+  const result = {} as Record<ThemeVariable, string>;
   for (const name of THEME_VARIABLES) {
     result[name] = styles.getPropertyValue(name).trim();
   }
@@ -47,7 +54,7 @@ function readCssVars(): Record<(typeof THEME_VARIABLES)[number], string> {
 
 export function buildTerminalTheme(): ITheme {
   const v = readCssVars();
-  return {
+  const theme: ITheme = {
     background: v["--term-bg"],
     foreground: v["--term-fg"],
     cursor: v["--term-cursor"],
@@ -70,17 +77,89 @@ export function buildTerminalTheme(): ITheme {
     brightCyan: v["--term-bright-cyan"],
     brightWhite: v["--term-bright-white"],
   };
+  // OSC 8 链接色(可选,变量未声明时为空串,xterm 会忽略)
+  if (v["--term-link"]) {
+    // xterm v6 typings 不支持 link,但保留字段以备扩展
+    (theme as unknown as { [k: string]: string })["selectionForeground"] =
+      v["--term-link"];
+  }
+  return theme;
 }
 
-export function applyTerminalTheme(target: { options: { theme?: ITheme } }): void {
+export function applyTerminalTheme(target: {
+  options: { theme?: ITheme };
+}): void {
   target.options.theme = buildTerminalTheme();
 }
 
+/**
+ * 监听文档主题变化 + 字体加载完成事件 + 偏好变更事件,
+ * 任一触发即调用 callback。callback 通常是 applyTerminalTheme。
+ *
+ * 返回 dispose。
+ */
 export function watchTerminalTheme(callback: () => void): () => void {
-  const observer = new MutationObserver(() => callback());
+  const disposers: Array<() => void> = [];
+  let disposed = false;
+
+  // 包装 callback:dispose 后忽略;执行异常被吞掉防止 unhandled rejection。
+  const safeCallback = (): void => {
+    if (disposed) return;
+    try {
+      callback();
+    } catch {
+      // theme 应用在 disposed term 上可能抛;静默忽略。
+    }
+  };
+
+  if (typeof document === "undefined") return () => {};
+
+  const observer = new MutationObserver(() => safeCallback());
   observer.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ["class", "style"],
   });
-  return () => observer.disconnect();
+  disposers.push(() => observer.disconnect());
+
+  if (document.fonts?.addEventListener) {
+    const handler = () => safeCallback();
+    document.fonts.addEventListener("loadingdone", handler);
+    disposers.push(() =>
+      document.fonts.removeEventListener("loadingdone", handler),
+    );
+  }
+
+  // Tauri prefs-changed 事件:设置面板改 token 时触发
+  // 用 import 异步导入避免顶层依赖循环。
+  // 注意:动态 import 完成前发生的 prefs-changed 会丢失,需要在设置面板
+  // 改 CSS token 时直接写 inline style 以保及时性(由调用方决定)。
+  let unlistenPrefs: (() => void) | undefined;
+  void import("@/modules/settings/store").then(({ onPreferencesChange }) => {
+    if (disposed) return;
+    if (typeof onPreferencesChange !== "function") return;
+    void onPreferencesChange(() => safeCallback()).then((fn: () => void) => {
+      // import 期间 pane 已 dispose,丢弃订阅
+      if (disposed) {
+        try {
+          fn();
+        } catch {
+          // ignore
+        }
+        return;
+      }
+      unlistenPrefs = fn;
+    });
+  });
+  disposers.push(() => unlistenPrefs?.());
+
+  return () => {
+    disposed = true;
+    for (const d of disposers) {
+      try {
+        d();
+      } catch {
+        // ignore
+      }
+    }
+  };
 }

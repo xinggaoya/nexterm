@@ -19,9 +19,28 @@ import {
   setShowHidden,
   setSourceControlPanelWidth,
   setTerminalContextMenuEnabled,
+  setTerminalCjkFontEnabled,
+  setTerminalCursorBlink,
+  setTerminalCursorInactiveStyle,
+  setTerminalCursorStyle,
+  setTerminalCustomGlyphs,
+  setTerminalDrawBoldTextInBrightColors,
+  setTerminalEmojiFontEnabled,
+  setTerminalFastScrollModifier,
+  setTerminalFastScrollSensitivity,
   setTerminalFontFamily,
   setTerminalFontSize,
+  setTerminalFontWeight,
+  setTerminalFontWeightBold,
   setTerminalLetterSpacing,
+  setTerminalMacOptionIsMeta,
+  setTerminalMacOptionClickForcesSelection,
+  setTerminalMinimumContrastRatio,
+  setTerminalNerdFontEnabled,
+  setTerminalOscHyperlink,
+  setTerminalRenderer,
+  setTerminalRendererAutoFallback,
+  setTerminalRescaleOverlappingGlyphs,
   setTerminalScrollback,
   setTerminalWebglEnabled,
   setTerminalNotificationEnabled,
@@ -29,11 +48,23 @@ import {
   setTheme,
   setTouchOptimizations,
   setVimMode,
+  clampTerminalCursorInactiveStyle,
+  clampTerminalCursorStyle,
+  clampTerminalFastScrollModifier,
+  clampTerminalFastScrollSensitivity,
+  clampTerminalFontWeight,
+  clampTerminalMinimumContrastRatio,
+  clampTerminalRenderer,
   type EditorLspTypescriptMode,
   type EditorThemeId,
   type FileOpenMode,
   type LanguagePref,
   type Preferences,
+  type TerminalCursorInactiveStyle,
+  type TerminalCursorStyle,
+  type TerminalFastScrollModifier,
+  type TerminalFontWeight,
+  type TerminalRenderer,
   type ThemePref,
   type TouchMode,
 } from "./store";
@@ -66,12 +97,69 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const terminalFontFamily = ref<string>(
     DEFAULT_PREFERENCES.terminalFontFamily,
   );
+  const terminalFontWeight = ref<TerminalFontWeight>(
+    DEFAULT_PREFERENCES.terminalFontWeight,
+  );
+  const terminalFontWeightBold = ref<TerminalFontWeight>(
+    DEFAULT_PREFERENCES.terminalFontWeightBold,
+  );
   const terminalLetterSpacing = ref<number>(
     DEFAULT_PREFERENCES.terminalLetterSpacing,
   );
   const terminalFontSize = ref<number>(DEFAULT_PREFERENCES.terminalFontSize);
+  const terminalNerdFontEnabled = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalNerdFontEnabled,
+  );
+  const terminalCjkFontEnabled = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalCjkFontEnabled,
+  );
+  const terminalEmojiFontEnabled = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalEmojiFontEnabled,
+  );
+  const terminalCursorStyle = ref<TerminalCursorStyle>(
+    DEFAULT_PREFERENCES.terminalCursorStyle,
+  );
+  const terminalCursorBlink = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalCursorBlink,
+  );
+  const terminalCursorInactiveStyle = ref<TerminalCursorInactiveStyle>(
+    DEFAULT_PREFERENCES.terminalCursorInactiveStyle,
+  );
+  const terminalRenderer = ref<TerminalRenderer>(
+    DEFAULT_PREFERENCES.terminalRenderer,
+  );
+  const terminalRendererAutoFallback = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalRendererAutoFallback,
+  );
   const terminalScrollback = ref<number>(
     DEFAULT_PREFERENCES.terminalScrollback,
+  );
+  const terminalFastScrollSensitivity = ref<number>(
+    DEFAULT_PREFERENCES.terminalFastScrollSensitivity,
+  );
+  const terminalFastScrollModifier = ref<TerminalFastScrollModifier>(
+    DEFAULT_PREFERENCES.terminalFastScrollModifier,
+  );
+  const terminalMacOptionIsMeta = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalMacOptionIsMeta,
+  );
+  const terminalMacOptionClickForcesSelection = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalMacOptionClickForcesSelection,
+  );
+  const terminalMinimumContrastRatio = ref<number>(
+    DEFAULT_PREFERENCES.terminalMinimumContrastRatio,
+  );
+  const terminalDrawBoldTextInBrightColors = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalDrawBoldTextInBrightColors,
+  );
+  const terminalCustomGlyphs = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalCustomGlyphs,
+  );
+  const terminalRescaleOverlappingGlyphs = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalRescaleOverlappingGlyphs,
+  );
+  const terminalOscHyperlink = ref<boolean>(
+    DEFAULT_PREFERENCES.terminalOscHyperlink,
   );
   const terminalNotificationEnabled = ref<boolean>(
     DEFAULT_PREFERENCES.terminalNotificationEnabled,
@@ -122,9 +210,31 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     terminalWebglEnabled.value = snapshot.terminalWebglEnabled;
     terminalContextMenuEnabled.value = snapshot.terminalContextMenuEnabled;
     terminalFontFamily.value = snapshot.terminalFontFamily;
+    terminalFontWeight.value = snapshot.terminalFontWeight;
+    terminalFontWeightBold.value = snapshot.terminalFontWeightBold;
     terminalLetterSpacing.value = snapshot.terminalLetterSpacing;
     terminalFontSize.value = snapshot.terminalFontSize;
+    terminalNerdFontEnabled.value = snapshot.terminalNerdFontEnabled;
+    terminalCjkFontEnabled.value = snapshot.terminalCjkFontEnabled;
+    terminalEmojiFontEnabled.value = snapshot.terminalEmojiFontEnabled;
+    terminalCursorStyle.value = snapshot.terminalCursorStyle;
+    terminalCursorBlink.value = snapshot.terminalCursorBlink;
+    terminalCursorInactiveStyle.value = snapshot.terminalCursorInactiveStyle;
+    terminalRenderer.value = snapshot.terminalRenderer;
+    terminalRendererAutoFallback.value = snapshot.terminalRendererAutoFallback;
     terminalScrollback.value = snapshot.terminalScrollback;
+    terminalFastScrollSensitivity.value = snapshot.terminalFastScrollSensitivity;
+    terminalFastScrollModifier.value = snapshot.terminalFastScrollModifier;
+    terminalMacOptionIsMeta.value = snapshot.terminalMacOptionIsMeta;
+    terminalMacOptionClickForcesSelection.value =
+      snapshot.terminalMacOptionClickForcesSelection;
+    terminalMinimumContrastRatio.value = snapshot.terminalMinimumContrastRatio;
+    terminalDrawBoldTextInBrightColors.value =
+      snapshot.terminalDrawBoldTextInBrightColors;
+    terminalCustomGlyphs.value = snapshot.terminalCustomGlyphs;
+    terminalRescaleOverlappingGlyphs.value =
+      snapshot.terminalRescaleOverlappingGlyphs;
+    terminalOscHyperlink.value = snapshot.terminalOscHyperlink;
     terminalNotificationEnabled.value = snapshot.terminalNotificationEnabled;
     terminalNotificationSoundEnabled.value = snapshot.terminalNotificationSoundEnabled;
     keybindings.value = snapshot.keybindings;
@@ -230,6 +340,150 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     terminalFontFamily.value = value;
     patchPreferencesSnapshot("terminalFontFamily", value);
     await setTerminalFontFamily(value);
+  }
+
+  async function updateTerminalFontWeight(value: number): Promise<void> {
+    const clamped = clampTerminalFontWeight(value);
+    terminalFontWeight.value = clamped;
+    patchPreferencesSnapshot("terminalFontWeight", clamped);
+    await setTerminalFontWeight(value);
+  }
+
+  async function updateTerminalFontWeightBold(value: number): Promise<void> {
+    const clamped = clampTerminalFontWeight(value);
+    terminalFontWeightBold.value = clamped;
+    patchPreferencesSnapshot("terminalFontWeightBold", clamped);
+    await setTerminalFontWeightBold(value);
+  }
+
+  async function updateTerminalNerdFontEnabled(value: boolean): Promise<void> {
+    terminalNerdFontEnabled.value = value;
+    patchPreferencesSnapshot("terminalNerdFontEnabled", value);
+    await setTerminalNerdFontEnabled(value);
+  }
+
+  async function updateTerminalCjkFontEnabled(value: boolean): Promise<void> {
+    terminalCjkFontEnabled.value = value;
+    patchPreferencesSnapshot("terminalCjkFontEnabled", value);
+    await setTerminalCjkFontEnabled(value);
+  }
+
+  async function updateTerminalEmojiFontEnabled(
+    value: boolean,
+  ): Promise<void> {
+    terminalEmojiFontEnabled.value = value;
+    patchPreferencesSnapshot("terminalEmojiFontEnabled", value);
+    await setTerminalEmojiFontEnabled(value);
+  }
+
+  async function updateTerminalCursorStyle(
+    value: TerminalCursorStyle,
+  ): Promise<void> {
+    const clamped = clampTerminalCursorStyle(value);
+    terminalCursorStyle.value = clamped;
+    patchPreferencesSnapshot("terminalCursorStyle", clamped);
+    await setTerminalCursorStyle(value);
+  }
+
+  async function updateTerminalCursorBlink(value: boolean): Promise<void> {
+    terminalCursorBlink.value = value;
+    patchPreferencesSnapshot("terminalCursorBlink", value);
+    await setTerminalCursorBlink(value);
+  }
+
+  async function updateTerminalCursorInactiveStyle(
+    value: TerminalCursorInactiveStyle,
+  ): Promise<void> {
+    const clamped = clampTerminalCursorInactiveStyle(value);
+    terminalCursorInactiveStyle.value = clamped;
+    patchPreferencesSnapshot("terminalCursorInactiveStyle", clamped);
+    await setTerminalCursorInactiveStyle(value);
+  }
+
+  async function updateTerminalRenderer(
+    value: TerminalRenderer,
+  ): Promise<void> {
+    const clamped = clampTerminalRenderer(value);
+    terminalRenderer.value = clamped;
+    patchPreferencesSnapshot("terminalRenderer", clamped);
+    await setTerminalRenderer(value);
+  }
+
+  async function updateTerminalRendererAutoFallback(
+    value: boolean,
+  ): Promise<void> {
+    terminalRendererAutoFallback.value = value;
+    patchPreferencesSnapshot("terminalRendererAutoFallback", value);
+    await setTerminalRendererAutoFallback(value);
+  }
+
+  async function updateTerminalFastScrollSensitivity(
+    value: number,
+  ): Promise<void> {
+    const clamped = clampTerminalFastScrollSensitivity(value);
+    terminalFastScrollSensitivity.value = clamped;
+    patchPreferencesSnapshot("terminalFastScrollSensitivity", clamped);
+    await setTerminalFastScrollSensitivity(value);
+  }
+
+  async function updateTerminalFastScrollModifier(
+    value: TerminalFastScrollModifier,
+  ): Promise<void> {
+    const clamped = clampTerminalFastScrollModifier(value);
+    terminalFastScrollModifier.value = clamped;
+    patchPreferencesSnapshot("terminalFastScrollModifier", clamped);
+    await setTerminalFastScrollModifier(value);
+  }
+
+  async function updateTerminalMacOptionIsMeta(value: boolean): Promise<void> {
+    terminalMacOptionIsMeta.value = value;
+    patchPreferencesSnapshot("terminalMacOptionIsMeta", value);
+    await setTerminalMacOptionIsMeta(value);
+  }
+
+  async function updateTerminalMacOptionClickForcesSelection(
+    value: boolean,
+  ): Promise<void> {
+    terminalMacOptionClickForcesSelection.value = value;
+    patchPreferencesSnapshot("terminalMacOptionClickForcesSelection", value);
+    await setTerminalMacOptionClickForcesSelection(value);
+  }
+
+  async function updateTerminalMinimumContrastRatio(
+    value: number,
+  ): Promise<void> {
+    const clamped = clampTerminalMinimumContrastRatio(value);
+    terminalMinimumContrastRatio.value = clamped;
+    patchPreferencesSnapshot("terminalMinimumContrastRatio", clamped);
+    await setTerminalMinimumContrastRatio(value);
+  }
+
+  async function updateTerminalDrawBoldTextInBrightColors(
+    value: boolean,
+  ): Promise<void> {
+    terminalDrawBoldTextInBrightColors.value = value;
+    patchPreferencesSnapshot("terminalDrawBoldTextInBrightColors", value);
+    await setTerminalDrawBoldTextInBrightColors(value);
+  }
+
+  async function updateTerminalCustomGlyphs(value: boolean): Promise<void> {
+    terminalCustomGlyphs.value = value;
+    patchPreferencesSnapshot("terminalCustomGlyphs", value);
+    await setTerminalCustomGlyphs(value);
+  }
+
+  async function updateTerminalRescaleOverlappingGlyphs(
+    value: boolean,
+  ): Promise<void> {
+    terminalRescaleOverlappingGlyphs.value = value;
+    patchPreferencesSnapshot("terminalRescaleOverlappingGlyphs", value);
+    await setTerminalRescaleOverlappingGlyphs(value);
+  }
+
+  async function updateTerminalOscHyperlink(value: boolean): Promise<void> {
+    terminalOscHyperlink.value = value;
+    patchPreferencesSnapshot("terminalOscHyperlink", value);
+    await setTerminalOscHyperlink(value);
   }
 
   async function updateTerminalLetterSpacing(value: number): Promise<void> {
@@ -342,16 +596,36 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
       terminalWebglEnabled: terminalWebglEnabled.value,
       terminalContextMenuEnabled: terminalContextMenuEnabled.value,
       terminalFontFamily: terminalFontFamily.value,
+      terminalFontWeight: terminalFontWeight.value,
+      terminalFontWeightBold: terminalFontWeightBold.value,
       terminalLetterSpacing: terminalLetterSpacing.value,
       terminalFontSize: terminalFontSize.value,
+      terminalNerdFontEnabled: terminalNerdFontEnabled.value,
+      terminalCjkFontEnabled: terminalCjkFontEnabled.value,
+      terminalEmojiFontEnabled: terminalEmojiFontEnabled.value,
+      terminalCursorStyle: terminalCursorStyle.value,
+      terminalCursorBlink: terminalCursorBlink.value,
+      terminalCursorInactiveStyle: terminalCursorInactiveStyle.value,
+      terminalRenderer: terminalRenderer.value,
+      terminalRendererAutoFallback: terminalRendererAutoFallback.value,
       terminalScrollback: terminalScrollback.value,
+      terminalFastScrollSensitivity: terminalFastScrollSensitivity.value,
+      terminalFastScrollModifier: terminalFastScrollModifier.value,
+      terminalMacOptionIsMeta: terminalMacOptionIsMeta.value,
+      terminalMacOptionClickForcesSelection:
+        terminalMacOptionClickForcesSelection.value,
+      terminalMinimumContrastRatio: terminalMinimumContrastRatio.value,
+      terminalDrawBoldTextInBrightColors: terminalDrawBoldTextInBrightColors.value,
+      terminalCustomGlyphs: terminalCustomGlyphs.value,
+      terminalRescaleOverlappingGlyphs: terminalRescaleOverlappingGlyphs.value,
+      terminalOscHyperlink: terminalOscHyperlink.value,
       terminalNotificationEnabled: terminalNotificationEnabled.value,
       terminalNotificationSoundEnabled: terminalNotificationSoundEnabled.value,
       keybindings: keybindings.value,
       lastWslDistro: lastWslDistro.value,
       lastWorkspace: lastWorkspace.value,
       recentWorkspaces: recentWorkspaces.value,
-    recentFiles: recentFiles.value,
+      recentFiles: recentFiles.value,
       zoomLevel: zoomLevel.value,
       sourceControlPanelWidth: sourceControlPanelWidth.value,
       explorerPanelWidth: explorerPanelWidth.value,
@@ -375,9 +649,28 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     terminalWebglEnabled,
     terminalContextMenuEnabled,
     terminalFontFamily,
+    terminalFontWeight,
+    terminalFontWeightBold,
     terminalLetterSpacing,
     terminalFontSize,
+    terminalNerdFontEnabled,
+    terminalCjkFontEnabled,
+    terminalEmojiFontEnabled,
+    terminalCursorStyle,
+    terminalCursorBlink,
+    terminalCursorInactiveStyle,
+    terminalRenderer,
+    terminalRendererAutoFallback,
     terminalScrollback,
+    terminalFastScrollSensitivity,
+    terminalFastScrollModifier,
+    terminalMacOptionIsMeta,
+    terminalMacOptionClickForcesSelection,
+    terminalMinimumContrastRatio,
+    terminalDrawBoldTextInBrightColors,
+    terminalCustomGlyphs,
+    terminalRescaleOverlappingGlyphs,
+    terminalOscHyperlink,
     terminalNotificationEnabled,
     terminalNotificationSoundEnabled,
     keybindings,
@@ -407,6 +700,25 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateTerminalWebglEnabled,
     updateTerminalContextMenuEnabled,
     updateTerminalFontFamily,
+    updateTerminalFontWeight,
+    updateTerminalFontWeightBold,
+    updateTerminalNerdFontEnabled,
+    updateTerminalCjkFontEnabled,
+    updateTerminalEmojiFontEnabled,
+    updateTerminalCursorStyle,
+    updateTerminalCursorBlink,
+    updateTerminalCursorInactiveStyle,
+    updateTerminalRenderer,
+    updateTerminalRendererAutoFallback,
+    updateTerminalFastScrollSensitivity,
+    updateTerminalFastScrollModifier,
+    updateTerminalMacOptionIsMeta,
+    updateTerminalMacOptionClickForcesSelection,
+    updateTerminalMinimumContrastRatio,
+    updateTerminalDrawBoldTextInBrightColors,
+    updateTerminalCustomGlyphs,
+    updateTerminalRescaleOverlappingGlyphs,
+    updateTerminalOscHyperlink,
     updateTerminalLetterSpacing,
     updateTerminalFontSize,
     updateTerminalScrollback,

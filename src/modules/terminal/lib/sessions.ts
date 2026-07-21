@@ -118,7 +118,10 @@ export async function createSession(
 
 function emitOsc(event: OscEvent, cb: SessionCallbacks): void {
   if (event.type === "cwd") cb.onCwd(event.value);
-  else cb.onTitle(event.value);
+  else if (event.type === "title") cb.onTitle(event.value);
+  // OSC 8 hyperlink handled separately via xterm.registerLinkProvider;
+  // we keep the parser events here for completeness but don't surface them
+  // to SessionCallbacks (which only knows about cwd/title).
 }
 
 export const SESSION_REGISTRY = new Map<string, PtySessionHandle>();

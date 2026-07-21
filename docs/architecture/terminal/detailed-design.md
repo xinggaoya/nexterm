@@ -2,185 +2,227 @@
 
 ## 架构设计
 
-### 整体架构
+### 整体架构(v3 重构后)
 
 ```mermaid
 graph TB
-    subgraph "Frontend Terminal Module"
-        A[TerminalPane.vue] --> B[TerminalView.vue]
-        B --> C[useTerminal.ts]
-        C --> D[Terminal Instance]
-        D --> E[xterm.js]
-        E --> F[FitAddon]
-        E --> G[SearchAddon]
-        E --> H[WebLinksAddon]
-    end
-    
-    subgraph "Backend PTY Module"
-        I[pty/mod.rs] --> J[PtyState]
-        J --> K[Session Map]
-        I --> L[pty/session.rs]
-        L --> M[MasterPty]
-        L --> N[Child Process]
-        L --> O[Writer]
-        L --> P[Transcript]
-    end
-    
-    subgraph "Tauri IPC"
-        Q[invoke] --> I
-        I -->|events| C
-    end
-    
-    C --> Q
+  subgraph "Frontend Terminal Module"
+    A[TerminalPane.vue] --> B[createTerminalRenderer]
+    B --> C[fontStack.ts]
+    B --> D[terminalOptions.ts]
+    B --> E[addons.ts]
+    B --> F[rendererPipeline.ts]
+    B --> G[theme.ts]
+    B --> H[osc.ts]
+    F --> I[WebglAddon]
+    F --> J[xterm DOM Renderer]
+    E --> K[FitAddon]
+    E --> L[SearchAddon]
+    E --> M[Unicode11Addon]
+    E --> N[WebLinksAddon]
+    E --> O[SerializeAddon]
+    E --> P[ClipboardAddon]
+    P --> Q[Tauri clipboard-manager]
+    H -->|OSC 7/0/2/8| R[sessions.ts]
+  end
+
+  subgraph "Backend PTY Module"
+    X[pty/mod.rs] --> Y[PtyState]
+    Y --> Z[Session Map]
+    X --> AA[pty/session.rs]
+    AA --> AB[MasterPty]
+    AA --> AC[Child Process]
+    AA --> AD[Writer]
+    AA --> AE[Transcript]
+  end
+
+  subgraph "Tauri IPC"
+    AF[invoke] --> X
+    X -->|Channel| R
+  end
+
+  B --> AF
 ```
 
 ### 数据流
 
 1. **用户输入**: 键盘事件 → xterm.js → PTY 写入
-2. **PTY 输出**: PTY 输出 → Transcript → Tauri 事件 → xterm.js 渲染
-3. **终端调整**: 窗口大小变化 → fitAddon → PTY resize
+2. **PTY 输出**: PTY 输出 → osc.ts 解析 → 拆分 (cleaned, events) → term.write + tab/title 更新
+3. **终端调整**: 窗口大小变化 → dpiWatcher / resizeObserver → fitAddon → PTY resize
+4. **WebGL 故障**: WebGL context loss → rendererPipeline 降级 DOM,连续 3 次永久降级
 
 ## 数据结构
 
-### PTY 会话状态
+### 分层字体栈
 
-```rust
-pub struct PtyState {
-    sessions: RwLock<HashMap<u32, Arc<Session>>>,
-    next_id: AtomicU32,
+```ts
+interface FontStack {
+  primary: string;   // 主等宽字体(用户预设或自动检测)
+  symbol: string;    // Nerd Font 符号字体(primary 已是 Nerd variant 时为空)
+  cjk: string;       // CJK 字体
+  emoji: string;     // Emoji 字体
+  fallback: string;  // 平台原生兜底
 }
 
-pub struct Session {
-    #[cfg(windows)] _job: Option<PtyJob>,
-    pub killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
-    pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
-    pub master: Mutex<Box<dyn MasterPty + Send>>,
-    pub(crate) transcript: Arc<Transcript>,
-}
-```
-
-### Transcript 存储
-
-```rust
-pub struct Transcript {
-    file: Mutex<NamedTempFile>,
-    size: AtomicU64,
-}
-
-impl Transcript {
-    pub fn append(&self, data: &[u8]) -> io::Result<()> { ... }
-    pub fn read(&self) -> io::Result<String> { ... }
-    pub fn read_from(&self, offset: u64) -> io::Result<String> { ... }
+// 例:Cascadia Mono 预设 + Win + Nerd/CJK/Emoji 全部启用
+{
+  primary: '"Cascadia Mono"',
+  symbol: '"Pure Nerd Font"',     // jsdom 没有真实系统字体,运行时由 detectInstalledNerdFont 替换
+  cjk: '"Noto Sans Mono CJK SC"',
+  emoji: '"Segoe UI Emoji"',
+  fallback: '"Cascadia Mono", "Consolas", ui-monospace',
 }
 ```
 
-### 前端状态
+### 渲染管线状态机
 
-```typescript
-interface TerminalState {
-  instances: Map<number, TerminalInstance>
-  activeId: number | null
-  config: TerminalConfig
+```ts
+type RendererKind = "webgl" | "dom";
+interface RendererState {
+  preferred: RendererKind;       // 用户设置
+  active: RendererKind;          // 当前实际生效
+  webgl: WebglState | null;      // 当前 WebglAddon + 状态
+  retryTimer: Timer | null;      // context loss 后重试
+}
+```
+
+```
+         preferred=webgl
+[init] ────────────────► [webgl attached]
+   │                       │
+   │ WebGL 初始化失败       │ context loss
+   ▼                       ▼
+[dom fallback] ◄──────── [webgl detached]
+   ▲                       │
+   │                       │ 连续 3 次
+   │ preferred=dom         ▼
+   └──────────────  [permanent dom]
+```
+
+### Terminal Options 聚合
+
+```ts
+interface TerminalOptionsInput {
+  typography: { fontFamily, fontSize, fontWeight, fontWeightBold, letterSpacing };
+  cursor:     { style, width, blink, inactiveStyle };
+  behavior:   { scrollback, fastScrollSensitivity, fastScrollModifier, scrollOnUserInput,
+                macOptionIsMeta, macOptionClickForcesSelection, minimumContrastRatio,
+                drawBoldTextInBrightColors, customGlyphs, rescaleOverlappingGlyphs };
+  render:     { renderer, autoFallback, watchDpi };
+  theme:      ITheme;
 }
 
-interface TerminalInstance {
-  id: number
-  xterm: Terminal
-  element: HTMLElement
-  fitAddon: FitAddon
-  searchAddon: SearchAddon
-  webLinksAddon: WebLinksAddon
+function buildTerminalOptions(input): ITerminalOptions {
+  // letterSpacing: 用户输入 -10..10 → deriveLetterSpacingPx(fontSize, strength)
+  //   = round(fontSize * 0.04 * (strength / 5))
+  // 所有数值做 clamp (fontWeight → 100..900 ladder; minimumContrastRatio → 1..21 等)
 }
 ```
 
 ## 算法逻辑
 
-### PTY 会话管理
+### 字体栈构建
 
-1. **创建会话**:
-   - 分配唯一 ID
-   - 创建 PTY 主从对
-   - 启动子进程
-   - 创建 Transcript 存储
-   - 注册到会话映射
+1. **平台探测**:`navigator.userAgent` 区分 Mac/Windows/Linux/Other
+2. **主字体解析**:
+   - 用户预设名非空 → `quoteFontFamily(presetName)` 包引号
+   - 否则 → `detectInstalledMonoFont()` 走 NERD_FONT_CANDIDATES 探测
+3. **符号字体判定**:
+   - 用户预设已含 "Nerd Font" / "Nerd" / "Symbols Nerd" → 不追加符号层
+   - 否则探测系统 Nerd 字体,无则用打包的 `Pure Nerd Font`
+4. **CJK / Emoji 探测**:按平台候选列表扫描 `document.fonts.check()`
+5. **拼接 CSS**:`primary, symbol, cjk, emoji, fallback` 拼接成 `fontFamily` 串
 
-2. **数据写入**:
-   - 获取会话写入器
-   - 写入数据到 PTY
-   - 处理写入错误
+### WebGL → DOM 降级
 
-3. **数据读取**:
-   - 后台线程读取 PTY 输出
-   - 追加到 Transcript
-   - 通过 Tauri 事件发送到前端
-   - 前端更新 xterm.js 显示
+```ts
+function attachWebgl() {
+  if (preferred !== "webgl" || webglBlocked) return;
+  try {
+    addon = new WebglAddon();
+  } catch {
+    if (autoFallback) activeKind = "dom";
+    return;
+  }
+  addon.onContextLoss(() => {
+    lossCount++;
+    detachWebgl();
+    if (lossCount >= 3) {
+      webglBlocked = true;
+      preferred = "dom";
+      activeKind = "dom";
+      return;
+    }
+    setTimeout(attachWebgl, 250);
+  });
+  term.loadAddon(addon);
+  webgl = { addon, lossCount: 0 };
+  activeKind = "webgl";
+}
+```
 
-4. **会话关闭**:
-   - 终止子进程
-   - 清理资源
-   - 从映射中移除
+### HiDPI 监听
 
-### 终端渲染优化
+```ts
+function watchDevicePixelRatio(cb) {
+  const mql = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+  const handler = () => cb(devicePixelRatio);
+  mql.addEventListener("change", handler);
+  return () => mql.removeEventListener("change", handler);
+}
 
-1. **批量更新**: 使用 requestAnimationFrame 批量处理输出
-2. **虚拟滚动**: xterm.js 内置虚拟滚动
-3. **内存管理**: 限制 scrollback 行数
-4. **主题同步**: 实时同步应用主题到终端
+// rendererPipeline 中:
+// devicePixelRatio 变化 → term.setDevicePixelRatio(dpr) + clearTextureAtlas + refresh
+```
 
-## 错误处理
+### OSC 8 Hyperlink
 
-### PTY 错误
+```ts
+// 输入:\x1b]8;id=link1;https://example.com\x07click me\x1b]8;;\x07
+// 解析后:
+// events = [
+//   { type: "hyperlink", value: { uri: "https://example.com/", params: "id=link1" } },
+//   null, // 关闭序列无 uri
+// ]
+// cleaned = "click me"
 
-1. **创建失败**: 检查 shell 路径、权限、系统资源
-2. **写入错误**: 检查 PTY 状态、进程存活
-3. **读取错误**: 检查文件权限、磁盘空间
-4. **调整大小错误**: 检查 PTY 状态、尺寸有效性
+// sanitizeHyperlinkUri 仅接受 http(s)/file/ssh/vscode scheme
+// 实际打开走 xterm.registerLinkProvider + window.open
+```
 
-### 前端错误
+## 前端状态
 
-1. **连接失败**: 重试机制、错误提示
-2. **渲染错误**: 降级处理、错误边界
-3. **内存不足**: 清理旧会话、限制实例数
+```typescript
+interface TerminalPaneState {
+  renderer: TerminalRenderer | null;   // xterm.Terminal + fit/addons
+  session: PtySessionHandle | null;   // 单 PtySession
+  state: "connecting" | "running" | "exited";
+  prefs: TerminalRendererPreferences; // 由 preferencesPinia 派生
+}
 
-## 性能考虑
+interface TerminalRenderer {
+  term: Terminal;
+  fit: () => void;
+  applyTypography: (t: TerminalTypography) => Promise<void>;
+  setScrollback: (n: number) => void;
+  setRenderer: (kind: RendererKind) => void;
+  activeRenderer: () => RendererKind;
+  dispose: () => void;
+}
+```
 
-### 后端性能
+## 偏好 + 持久化
 
-1. **异步 I/O**: 使用 Tokio 异步运行时
-2. **内存池**: 复用缓冲区减少分配
-3. **批量写入**: 合并小数据包减少系统调用
-4. **Transcript 限制**: 限制文件大小，自动清理
+所有偏好走 `LazyStore` (`@tauri-apps/plugin-store`),路径 `nexterm-settings.json`。
+变更流程:
 
-### 前端性能
+```
+设置面板改 → updateTerminalXxx() →
+  1. patchPreferencesSnapshot (内存)
+  2. setTerminalXxx() → store.set + save + emit("nexterm://prefs-changed")
+  3. theme.ts 监听 prefs-changed → applyTerminalTheme()
+  4. TerminalPane 监听 prefs (watch) → applyTypography/setScrollback/setRenderer
+```
 
-1. **懒加载**: 按需加载 xterm.js 扩展
-2. **虚拟化**: 只渲染可见区域
-3. **节流调整**: 窗口调整大小时节流处理
-4. **内存监控**: 监控终端实例内存使用
-
-## 测试策略
-
-### 单元测试
-
-1. **PTY 会话测试**: 创建、写入、读取、关闭
-2. **Transcript 测试**: 追加、读取、清理
-3. **状态管理测试**: 会话映射、ID 分配
-
-### 集成测试
-
-1. **端到端测试**: 前端到后端完整流程
-2. **性能测试**: 大量输出处理
-3. **压力测试**: 多会话并发
-
-### 组件测试
-
-1. **TerminalView 测试**: 渲染、事件处理
-2. **useTerminal 测试**: 状态管理、生命周期
-3. **配置测试**: 主题、字体、快捷键
-
-## 相关文件
-
-- 前端: `src/modules/terminal/`
-- 后端: `src-tauri/src/modules/pty/`
-- 配置: `src/modules/settings/`
-- 样式: `src/styles/terminalTheme.ts`
+历史字段 `terminalWebglEnabled` 保留,语义对应 "用户是否允许 WebGL",
+与新字段 `terminalRenderer` / `terminalRendererAutoFallback` 共存,设置面板同时暴露。

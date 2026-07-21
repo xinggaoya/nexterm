@@ -1,20 +1,28 @@
 /**
  * OSC sequence parsing for terminal integration.
  *
- * We extract two classes of OS commands from the PTY output stream:
- *   - OSC 7 ("file://host/path"): the shell's current working directory
- *   - OSC 0/2 ("title"): window/icon title
+ * 处理三类序列:
+ * - OSC 7 ("file://host/path"): shell 的当前工作目录
+ * - OSC 0/2 ("title"): window/icon title
+ * - OSC 8 ("params;URI"): hyperlink,iTerm2/VSCode/Tabby 都支持
  *
- * Output is split into a clean string (with OSC bytes removed) and the
- * collected events. State held across chunks is purely the tail of any
- * OSC sequence that wasn't terminated in this buffer; the parser is
- * deliberately simple (no OSC 133, no DA filter) — the v2 frontend trusts
- * xterm's internal handling for everything else.
+ * 输出 split 成 cleaned string (with OSC bytes removed) and events.
+ * State held across chunks is purely the tail of any OSC sequence that wasn't
+ * terminated in this buffer; the parser is deliberately simple.
+ *
+ * OSC 52 clipboard 由 addon-clipboard 直接通过 xterm parser 注册,不走这个文件。
  */
 
 export type OscEvent =
   | { type: "cwd"; value: string }
-  | { type: "title"; value: string };
+  | { type: "title"; value: string }
+  | { type: "hyperlink"; value: OscHyperlink };
+
+export interface OscHyperlink {
+  uri: string;
+  /** OSC 8 params,例如 "id=xyz" — 用于多行同链接去重 */
+  params: string;
+}
 
 export interface OscResult {
   cleaned: string;
@@ -109,5 +117,41 @@ function parseOscPayload(payload: string): OscEvent | null {
     if (!clean) return null;
     return { type: "title", value: clean };
   }
+  if (code === "8") {
+    // 格式:params;URI,params 可空,例如 "id=xyz:1:2" 或 ""
+    const sepIdx = value.indexOf(";");
+    if (sepIdx === -1) return null;
+    const params = value.slice(0, sepIdx);
+    const rawUri = value.slice(sepIdx + 1);
+    // 空 URI 表示"关闭 hyperlink"
+    if (!rawUri) return null;
+    const uri = sanitizeHyperlinkUri(rawUri);
+    if (!uri) return null;
+    return {
+      type: "hyperlink",
+      value: { uri, params },
+    };
+  }
   return null;
+}
+
+/**
+ * 防止任意 OSC 8 URI 被注入到终端渲染;只允许 http(s) / file / ssh 等明确安全
+ * 的 scheme,通过 xterm 的 registerLinkProvider 时也要做同样校验。
+ */
+export function sanitizeHyperlinkUri(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  // 拒绝控制字符
+  if (/[\x00-\x1f\x7f]/.test(trimmed)) return "";
+  try {
+    const parsed = new URL(trimmed);
+    if (!/^https?:$|^file:$|^ssh:$|^vscode:$/.test(parsed.protocol)) {
+      return "";
+    }
+    return parsed.toString();
+  } catch {
+    // 可能是 file:// 相对形式,放宽
+    return /^file:\/\//.test(trimmed) ? trimmed : "";
+  }
 }

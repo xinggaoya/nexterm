@@ -121,6 +121,9 @@
     --term-cursor: oklch(0.20 0.02 260);
     --term-cursor-accent: oklch(0.985 0.002 260);
     --term-selection: oklch(0.55 0.10 250 / 0.32);
+    --term-link: oklch(0.55 0.18 260);
+    --term-padding-x: 8px;
+    --term-padding-y: 4px;
 
     --term-state-running: oklch(0.65 0.18 145);
     --term-state-connecting: oklch(0.78 0.16 75);
@@ -203,6 +206,7 @@
     --term-cursor: oklch(0.92 0.01 260);
     --term-cursor-accent: oklch(0.14 0.005 260);
     --term-selection: oklch(0.50 0.10 250 / 0.40);
+    --term-link: oklch(0.72 0.15 230);
 
     --term-state-running: oklch(0.72 0.18 145);
     --term-state-connecting: oklch(0.78 0.15 75);
