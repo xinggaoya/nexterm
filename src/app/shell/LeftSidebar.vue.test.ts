@@ -25,8 +25,18 @@ const StubSourceControlPanel = defineComponent({
 
 const StubWorkspaceBar = defineComponent({
   name: "WorkspaceBar",
-  setup() {
-    return () => h("div", { "data-stub-workspace-bar": "true" });
+  emits: ["add-workspace"],
+  setup(_, { emit }) {
+    return () =>
+      h(
+        "button",
+        {
+          "data-stub-workspace-bar": "true",
+          onClick: () =>
+            emit("add-workspace", { kind: "wsl", distro: "Ubuntu" }),
+        },
+        "add wsl",
+      );
   },
 });
 
@@ -94,5 +104,24 @@ describe("LeftSidebar", () => {
     });
     await wrapper.find("[data-stub-activity-icons]").trigger("click");
     expect(wrapper.emitted("select-activity")?.[0]).toEqual(["workspace"]);
+  });
+
+  it("forwards the selected WSL environment from WorkspaceBar", async () => {
+    const wrapper = mount(LeftSidebar, {
+      props: { ...baseProps, activity: "workspace" },
+      global: {
+        stubs: {
+          ActivityIcons: StubActivityIcons,
+          SourceControlPanel: StubSourceControlPanel,
+          WorkspaceBar: StubWorkspaceBar,
+        },
+      },
+    });
+
+    await wrapper.find("[data-stub-workspace-bar]").trigger("click");
+
+    expect(wrapper.emitted("add-workspace")).toEqual([
+      [{ kind: "wsl", distro: "Ubuntu" }],
+    ]);
   });
 });

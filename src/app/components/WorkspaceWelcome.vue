@@ -25,7 +25,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  chooseWorkspace: [];
+  chooseWorkspace: [env: WorkspaceEnv];
   openRecent: [workspace: StoredWorkspace];
   workspaceEnvChange: [env: WorkspaceEnv];
 }>();
@@ -45,7 +45,7 @@ function envLabel(env: WorkspaceEnv): string {
 }
 
 function openEnv(env: WorkspaceEnv) {
-  emit("workspaceEnvChange", env);
+  emit("chooseWorkspace", env);
 }
 
 onMounted(() => {
@@ -91,7 +91,7 @@ onMounted(() => {
             size="large"
             data-open-workspace-primary
             :loading="props.loading"
-            @click="emit('chooseWorkspace')"
+            @click="emit('chooseWorkspace', workspaceEnv.pendingEnv)"
           >
             <template #icon><NIcon :component="FolderOpenOutline" /></template>
             {{ t("app.welcome.openFolder") }}

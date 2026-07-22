@@ -131,6 +131,8 @@ const enUS = {
     },
     workspaceBar: {
       add: "Add workspace",
+      addLocal: "Add local workspace",
+      addWsl: "Add WSL workspace",
       close: "Close workspace",
       local: "Local",
     },

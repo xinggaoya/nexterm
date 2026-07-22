@@ -2,6 +2,7 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import ActivityIcons from "./ActivityIcons.vue";
+import { LOCAL_WORKSPACE } from "@/modules/workspace/workspaceEnvSnapshot";
 
 describe("ActivityIcons", () => {
   it("renders add and new-window buttons", () => {
@@ -12,12 +13,12 @@ describe("ActivityIcons", () => {
     expect(wrapper.find("[data-open-in-new-window]").exists()).toBe(true);
   });
 
-  it("emits add-workspace on + click", async () => {
+  it("emits the explicit local environment on + click", async () => {
     const wrapper = mount(ActivityIcons, {
       props: { activity: "sourceControl" },
     });
     await wrapper.find("[data-add-workspace]").trigger("click");
-    expect(wrapper.emitted("add-workspace")).toBeTruthy();
+    expect(wrapper.emitted("add-workspace")).toEqual([[LOCAL_WORKSPACE]]);
   });
 
   it("emits open-in-new-window on ↗ click", async () => {

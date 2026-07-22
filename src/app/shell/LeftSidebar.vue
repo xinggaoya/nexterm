@@ -7,7 +7,7 @@ import type {
   ActivityKey,
   PanelKey,
 } from "@/app/useWorkbenchLayout";
-import type { WorkspaceInstance } from "@/modules/workspace";
+import type { WorkspaceEnv, WorkspaceInstance } from "@/modules/workspace";
 import type { GitDecorationMap } from "@/modules/source-control";
 import type { GitCommitResult } from "@/lib/native";
 import type { WorkspaceFsChangedEvent } from "@/lib/native";
@@ -26,7 +26,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "select-activity": [key: ActivityKey];
-  "add-workspace": [];
+  "add-workspace": [env: WorkspaceEnv];
   "open-in-new-window": [];
   "select-workspace": [id: string];
   "close-workspace": [id: string];
@@ -100,7 +100,7 @@ onBeforeUnmount(() => {
     <ActivityIcons
       :activity="activity"
       @select-activity="(k) => emit('select-activity', k)"
-      @add-workspace="emit('add-workspace')"
+      @add-workspace="(env) => emit('add-workspace', env)"
       @open-in-new-window="emit('open-in-new-window')"
     />
 
@@ -123,7 +123,7 @@ onBeforeUnmount(() => {
         embedded
         @select-workspace="(id) => emit('select-workspace', id)"
         @close-workspace="(id) => emit('close-workspace', id)"
-        @add-workspace="emit('add-workspace')"
+        @add-workspace="(env) => emit('add-workspace', env)"
         @open-in-new-window="emit('open-in-new-window')"
       />
 
