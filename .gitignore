@@ -27,3 +27,4 @@ dist-ssr
 
 # Local agent tooling
 .zcode/
+.worktrees/
