@@ -4,10 +4,7 @@ import { createPinia } from "pinia";
 import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import WorkspaceWelcome from "./WorkspaceWelcome.vue";
-import {
-  LOCAL_WORKSPACE,
-  setCurrentWorkspaceEnv,
-} from "@/modules/workspace/workspaceEnvSnapshot";
+import { LOCAL_WORKSPACE } from "@/modules/workspace/workspaceEnvSnapshot";
 import { useWorkspaceEnvPiniaStore } from "@/modules/workspace/workspaceEnvPinia";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -22,7 +19,6 @@ vi.mock("@tauri-apps/api/core", () => ({
 describe("WorkspaceWelcome.vue", () => {
   beforeEach(() => {
     invokeMock.mockReset();
-    setCurrentWorkspaceEnv(LOCAL_WORKSPACE);
   });
 
   it("renders an Open Folder button and emits chooseWorkspace on click", async () => {

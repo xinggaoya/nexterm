@@ -21,11 +21,11 @@ import {
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import {
-  native,
   type GitBranchInfo,
   type GitCommitFileChange,
   type GitLogEntry,
 } from "@/lib/native";
+import { useWorkspaceContext } from "@/app/workspaceContext";
 import { writeClipboardText } from "@/lib/clipboard";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
 import GraphRail from "./GraphRail.vue";
@@ -90,6 +90,9 @@ const branchesRequestId = ref(0);
 const logRequestId = ref(0);
 const remoteWeb = ref<RemoteWebInfo | null>(null);
 const filesBySha = reactive(new Map<string, FilesEntry>());
+
+// 获取当前 workspace 上下文，所有 git native 调用都走 wsNative。
+const wsCtx = useWorkspaceContext();
 
 const refOptions = computed<SelectOption[]>(() => {
   const opts: SelectOption[] = [];
@@ -243,7 +246,7 @@ async function loadBranches() {
   const myId = ++branchesRequestId.value;
   branchesLoading.value = true;
   try {
-    const list = await native.gitBranchList(root);
+    const list = await wsCtx.wsNative.gitBranchList(root);
     if (myId !== branchesRequestId.value) return;
     branches.value = list;
   } catch {
@@ -263,7 +266,7 @@ async function loadInitial() {
   detailOpen.value = false;
   filesBySha.clear();
   try {
-    const page = await native.gitLog(props.repoRoot, {
+    const page = await wsCtx.wsNative.gitLog(props.repoRoot, {
       limit: PAGE_SIZE,
       offset: 0,
       refName: props.allRefs ? null : props.refName,
@@ -290,7 +293,7 @@ async function loadMore() {
   loadStatus.value = "more";
   const requestedOffset = offset.value;
   try {
-    const page = await native.gitLog(props.repoRoot, {
+    const page = await wsCtx.wsNative.gitLog(props.repoRoot, {
       limit: PAGE_SIZE,
       offset: requestedOffset,
       refName: props.allRefs ? null : props.refName,
@@ -324,7 +327,7 @@ async function loadMore() {
 
 async function loadRemote() {
   try {
-    remoteWeb.value = parseRemoteWebUrl(await native.gitRemoteUrl(props.repoRoot));
+    remoteWeb.value = parseRemoteWebUrl(await wsCtx.wsNative.gitRemoteUrl(props.repoRoot));
   } catch {
     remoteWeb.value = null;
   }
@@ -336,7 +339,7 @@ async function selectCommit(commit: GitLogEntry) {
   if (filesBySha.has(commit.sha)) return;
   filesBySha.set(commit.sha, { state: "loading" });
   try {
-    const files = await native.gitCommitFiles(props.repoRoot, commit.sha);
+    const files = await wsCtx.wsNative.gitCommitFiles(props.repoRoot, commit.sha);
     filesBySha.set(commit.sha, { state: "loaded", files });
   } catch (err) {
     filesBySha.set(commit.sha, {

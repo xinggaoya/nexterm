@@ -1,8 +1,7 @@
 export {
-  currentWorkspaceScopeKey,
-  currentWorkspaceEnv,
   LOCAL_WORKSPACE,
   workspaceScopeKey,
+  sameWorkspaceEnv,
   type WorkspaceEnv,
   type WslDistro,
 } from "./workspaceEnvSnapshot";
@@ -16,4 +15,10 @@ export {
   type WorkspaceSelection,
   useWorkspaceRootPiniaStore,
 } from "./workspaceRootPinia";
+export {
+  useWorkspacesPiniaStore,
+  type WorkspaceInstance,
+  type PersistedWorkspace,
+  type AddWorkspaceResult,
+} from "./workspacesPinia";
 export { openWorkspaceInNewWindow } from "./workspaceWindow";

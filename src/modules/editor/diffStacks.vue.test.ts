@@ -15,6 +15,7 @@ vi.mock("./GitDiffPane.vue", () => ({
 const tabs: Tab[] = [
   {
     id: 1,
+    workspaceId: "test-ws",
     kind: "terminal",
     title: "shell",
     paneTree: { kind: "leaf", id: 2 },
@@ -22,6 +23,7 @@ const tabs: Tab[] = [
   },
   {
     id: 3,
+    workspaceId: "test-ws",
     kind: "git-diff",
     title: "main.ts",
     repoRoot: "/repo",
@@ -31,6 +33,7 @@ const tabs: Tab[] = [
   },
   {
     id: 4,
+    workspaceId: "test-ws",
     kind: "git-commit-file",
     title: "commit main.ts",
     repoRoot: "/repo",

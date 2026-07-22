@@ -28,6 +28,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 const dirtyEditorTabs: Tab[] = [
   {
     id: 1,
+    workspaceId: "test-ws",
     kind: "terminal",
     title: "shell",
     paneTree: { kind: "leaf", id: 2 },
@@ -35,6 +36,7 @@ const dirtyEditorTabs: Tab[] = [
   },
   {
     id: 3,
+    workspaceId: "test-ws",
     kind: "editor",
     title: "main.ts",
     path: "/repo/src/main.ts",

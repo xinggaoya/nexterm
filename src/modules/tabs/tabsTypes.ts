@@ -2,53 +2,53 @@ import type { PaneNode } from "@/modules/terminal/lib/layout";
 
 export const MAX_PANES_PER_TAB = 4;
 
-export type TerminalTab = {
+/**
+ * Fields shared by every tab variant. `workspaceId` binds a tab to the
+ * workspace that owns it — tabs never cross workspace boundaries, which is
+ * what lets each workspace's tab set stay alive independently in the
+ * background.
+ */
+export type TabBase = {
   id: number;
-  kind: "terminal";
   title: string;
+  workspaceId: string;
+};
+
+export type TerminalTab = TabBase & {
+  kind: "terminal";
   terminalTitle?: string;
   cwd?: string;
   paneTree: PaneNode;
   activeLeafId: number;
 };
 
-export type EditorTab = {
-  id: number;
+export type EditorTab = TabBase & {
   kind: "editor";
-  title: string;
   path: string;
   dirty: boolean;
   preview: boolean;
 };
 
-export type PreviewTab = {
-  id: number;
+export type PreviewTab = TabBase & {
   kind: "preview";
-  title: string;
   url: string;
 };
 
-export type MarkdownTab = {
-  id: number;
+export type MarkdownTab = TabBase & {
   kind: "markdown";
-  title: string;
   path: string;
 };
 
-export type GitDiffTab = {
-  id: number;
+export type GitDiffTab = TabBase & {
   kind: "git-diff";
-  title: string;
   path: string;
   repoRoot: string;
   mode: "-" | "+";
   originalPath: string | null;
 };
 
-export type GitHistoryTab = {
-  id: number;
+export type GitHistoryTab = TabBase & {
   kind: "git-history";
-  title: string;
   repoRoot: string;
   /**
    * Git ref name used to scope the log (a branch, tag, or any rev).
@@ -65,10 +65,8 @@ export type GitHistoryTab = {
   allRefs: boolean;
 };
 
-export type GitCommitFileDiffTab = {
-  id: number;
+export type GitCommitFileDiffTab = TabBase & {
   kind: "git-commit-file";
-  title: string;
   repoRoot: string;
   sha: string;
   shortSha: string;

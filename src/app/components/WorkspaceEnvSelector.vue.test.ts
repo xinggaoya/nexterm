@@ -75,7 +75,8 @@ describe("WorkspaceEnvSelector.vue", () => {
     expect(wrapper.emitted("select")).toEqual([
       [{ kind: "wsl", distro: "Debian" }],
     ]);
-    expect(store.env).toEqual({ kind: "local" });
+    // 选择器只通过 emit 上报，不直接改动 store 的 pendingEnv。
+    expect(store.pendingEnv).toEqual({ kind: "local" });
   });
 
   it("shows an inline switching state and blocks repeat selections", async () => {

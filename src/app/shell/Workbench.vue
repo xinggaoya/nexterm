@@ -3,6 +3,7 @@ import { ref, computed, type ComputedRef, type Ref } from "vue";
 import { NSplit } from "naive-ui";
 import { native, type WorkspaceFsChangedEvent } from "@/lib/native";
 import { getPtyIdForLeaf, TerminalWorkspace, disposeSession } from "@/modules/terminal";
+import { tryWorkspaceContext } from "@/app/workspaceContext";
 import EditorPane from "@/modules/editor/EditorPane.vue";
 import GitDiffStack from "@/modules/editor/GitDiffStack.vue";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
@@ -24,9 +25,9 @@ type WorkbenchLayoutBinding = {
   explorerSplitSize: ComputedRef<string>;
   flushExplorerWidthSave: () => void;
   flushSourceControlWidthSave: () => void;
-  leftPanelOpen: Ref<boolean>;
+  leftPanelOpen: ComputedRef<boolean> | Ref<boolean>;
   panelResizeTriggerSize: number;
-  rightPanelOpen: Ref<boolean>;
+  rightPanelOpen: ComputedRef<boolean> | Ref<boolean>;
   rightSplitHost: Ref<HTMLElement | null>;
   sourceControlPaneClass: ComputedRef<string>;
   sourceControlSplitMax: ComputedRef<string>;
@@ -161,9 +162,10 @@ function openFindInFiles() {
 }
 
 async function killTerminal(leafId: number) {
-  const ptyId = getPtyIdForLeaf(leafId);
+  const wsId = tryWorkspaceContext()?.workspace.id ?? "";
+  const ptyId = getPtyIdForLeaf(wsId, leafId);
   if (ptyId === null) {
-    disposeSession(leafId.toString());
+    disposeSession(wsId, leafId.toString());
     return;
   }
   try {

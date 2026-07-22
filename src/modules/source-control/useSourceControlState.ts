@@ -10,10 +10,10 @@ import {
 } from "vue";
 import type {
   GitDiscardEntry,
-  GitPanelSnapshot,
   GitRepoInfo,
   GitStatusSnapshot,
   WorkspaceFsChangedEvent,
+  WorkspaceNative,
 } from "@/lib/native";
 import type { ReadonlyRef } from "@/lib/refs";
 import {
@@ -59,17 +59,12 @@ export type SourceControlRuntimeState = {
   reloadCurrent?: () => Promise<void>;
 };
 
-type SourceControlStateNative = {
-  workspaceAuthorize: (path: string) => Promise<unknown>;
-  gitPanelSnapshot: (cwd: string) => Promise<GitPanelSnapshot>;
-  gitStatus: (repoRoot: string) => Promise<GitStatusSnapshot>;
-};
-
 type SourceControlStateOptions = {
   rootPath: Ref<string | null>;
   repoRoot: ReadonlyRef<string | null>;
   fsEvent: Ref<WorkspaceFsChangedEvent | null | undefined>;
-  native: SourceControlStateNative;
+  /** 绑定到目标 workspace 环境的 native 调用面（git/fs/workspaceAuthorize）。 */
+  wsNative: WorkspaceNative;
   t: SourceControlTranslate;
 };
 
@@ -177,9 +172,9 @@ export function useSourceControlState(options: SourceControlStateOptions) {
     panelState.value = "loading";
     errorMessage.value = null;
     try {
-      await options.native.workspaceAuthorize(rootPath);
+      await options.wsNative.workspaceAuthorize(rootPath);
       if (!requestMatchesRoot(currentId, rootPath)) return;
-      const snapshot = await options.native.gitPanelSnapshot(rootPath);
+      const snapshot = await options.wsNative.gitPanelSnapshot(rootPath);
       if (!requestMatchesRoot(currentId, rootPath)) return;
       repo.value = snapshot.repo;
       status.value = snapshot.status;
@@ -214,7 +209,7 @@ export function useSourceControlState(options: SourceControlStateOptions) {
     const currentId = ++requestId.value;
     const refresh = (async () => {
       try {
-        const next = await options.native.gitStatus(statusRoot);
+        const next = await options.wsNative.gitStatus(statusRoot);
         if (!requestMatchesRoot(currentId, triggerRoot)) return;
 
         // Only rebuild git decorations if changed files actually differ.

@@ -3,15 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   DEEP_LINK_OPEN_EVENT,
+  createNativeForEnv,
   exitApp,
   native,
   onDeepLinkOpen,
   relaunchApp,
 } from "./native";
-import {
-  LOCAL_WORKSPACE,
-  setCurrentWorkspaceEnv,
-} from "@/modules/workspace/workspaceEnvSnapshot";
+import { LOCAL_WORKSPACE } from "@/modules/workspace/workspaceEnvSnapshot";
 
 vi.mock("@tauri-apps/api/core", () => {
   class Channel<T> {
@@ -38,14 +36,15 @@ vi.mock("@tauri-apps/plugin-process", () => ({
 describe("native shell background wrappers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    setCurrentWorkspaceEnv(LOCAL_WORKSPACE);
   });
 
-  it("spawns background shell commands with the current workspace context", async () => {
-    setCurrentWorkspaceEnv({ kind: "wsl", distro: "Ubuntu" });
+  it("spawns background shell commands with the bound workspace context", async () => {
+    // env-scoped 方法在 createNativeForEnv(env) 返回的对象上，workspace 参数
+    // 来自闭包绑定的 env。
+    const wsNative = createNativeForEnv({ kind: "wsl", distro: "Ubuntu" });
     vi.mocked(invoke).mockResolvedValueOnce(42);
 
-    const handle = await native.shellBgSpawn("pnpm run dev", "/repo");
+    const handle = await wsNative.shellBgSpawn("pnpm run dev", "/repo");
 
     expect(handle).toBe(42);
     expect(invoke).toHaveBeenCalledWith("shell_bg_spawn", {
@@ -56,6 +55,7 @@ describe("native shell background wrappers", () => {
   });
 
   it("reads logs, kills, and lists background shell commands", async () => {
+    // shellBgLogs/Kill/List 是 workspace-agnostic 的全局方法，仍在 native 上。
     vi.mocked(invoke)
       .mockResolvedValueOnce({
         bytes: "ready\n",
@@ -159,18 +159,17 @@ describe("relaunchApp / exitApp", () => {
 describe("native filesystem wrappers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    setCurrentWorkspaceEnv(LOCAL_WORKSPACE);
   });
 
-  it("reads files with the current workspace context", async () => {
-    setCurrentWorkspaceEnv({ kind: "wsl", distro: "Ubuntu" });
+  it("reads files with the bound workspace context", async () => {
+    const wsNative = createNativeForEnv({ kind: "wsl", distro: "Ubuntu" });
     vi.mocked(invoke).mockResolvedValueOnce({
       kind: "text",
       content: "hi",
       size: 2,
     });
 
-    const result = await native.fsReadFile("/repo/a.ts");
+    const result = await wsNative.fsReadFile("/repo/a.ts");
 
     expect(result).toEqual({ kind: "text", content: "hi", size: 2 });
     expect(invoke).toHaveBeenCalledWith("fs_read_file", {
@@ -180,7 +179,8 @@ describe("native filesystem wrappers", () => {
   });
 
   it("writes files with the local workspace env by default", async () => {
-    await native.fsWriteFile("/repo/a.ts", "next");
+    const wsNative = createNativeForEnv(LOCAL_WORKSPACE);
+    await wsNative.fsWriteFile("/repo/a.ts", "next");
 
     expect(invoke).toHaveBeenCalledWith("fs_write_file", {
       path: "/repo/a.ts",
@@ -190,11 +190,12 @@ describe("native filesystem wrappers", () => {
   });
 
   it("reads directories and propagates showHidden", async () => {
+    const wsNative = createNativeForEnv(LOCAL_WORKSPACE);
     vi.mocked(invoke).mockResolvedValueOnce([
       { name: "src", kind: "dir", size: 0, mtime: 1 },
     ]);
 
-    const entries = await native.fsReadDir("/repo", true);
+    const entries = await wsNative.fsReadDir("/repo", true);
 
     expect(entries).toEqual([{ name: "src", kind: "dir", size: 0, mtime: 1 }]);
     expect(invoke).toHaveBeenCalledWith("fs_read_dir", {
@@ -205,8 +206,9 @@ describe("native filesystem wrappers", () => {
   });
 
   it("dispatches create dir vs create file to the right backend command", async () => {
-    await native.fsCreateDir("/repo/dir");
-    await native.fsCreateFile("/repo/file.txt");
+    const wsNative = createNativeForEnv(LOCAL_WORKSPACE);
+    await wsNative.fsCreateDir("/repo/dir");
+    await wsNative.fsCreateFile("/repo/file.txt");
 
     expect(invoke).toHaveBeenNthCalledWith(1, "fs_create_dir", {
       path: "/repo/dir",
@@ -219,14 +221,15 @@ describe("native filesystem wrappers", () => {
   });
 
   it("renames, deletes, and searches via the right backend commands", async () => {
+    const wsNative = createNativeForEnv(LOCAL_WORKSPACE);
     vi.mocked(invoke)
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce({ hits: [], truncated: false });
 
-    await native.fsRename("/repo/a.ts", "/repo/b.ts");
-    await native.fsDelete("/repo/a.ts");
-    const result = await native.fsSearch("/repo", "main", false);
+    await wsNative.fsRename("/repo/a.ts", "/repo/b.ts");
+    await wsNative.fsDelete("/repo/a.ts");
+    const result = await wsNative.fsSearch("/repo", "main", false);
 
     expect(invoke).toHaveBeenNthCalledWith(1, "fs_rename", {
       from: "/repo/a.ts",
@@ -248,6 +251,7 @@ describe("native filesystem wrappers", () => {
   });
 
   it("looks up the launch dir and WSL home through native", async () => {
+    // getLaunchDir / getWslHome 是 workspace-agnostic 全局方法，仍在 native 上。
     vi.mocked(invoke)
       .mockResolvedValueOnce("/repo")
       .mockResolvedValueOnce("/home/dev");
@@ -263,16 +267,16 @@ describe("native filesystem wrappers", () => {
 describe("native git discovery wrapper", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    setCurrentWorkspaceEnv(LOCAL_WORKSPACE);
   });
 
   it("passes discovery limits and current workspace to git_discover_repositories (local)", async () => {
+    const wsNative = createNativeForEnv(LOCAL_WORKSPACE);
     vi.mocked(invoke).mockResolvedValueOnce({
       repositories: [],
       truncated: false,
     });
 
-    const result = await native.gitDiscoverRepositories("/workspace", {
+    const result = await wsNative.gitDiscoverRepositories("/workspace", {
       maxDepth: 4,
       maxRepos: 32,
     });
@@ -287,13 +291,13 @@ describe("native git discovery wrapper", () => {
   });
 
   it("passes discovery limits and current workspace to git_discover_repositories (wsl)", async () => {
-    setCurrentWorkspaceEnv({ kind: "wsl", distro: "Ubuntu" });
+    const wsNative = createNativeForEnv({ kind: "wsl", distro: "Ubuntu" });
     vi.mocked(invoke).mockResolvedValueOnce({
       repositories: [],
       truncated: false,
     });
 
-    await native.gitDiscoverRepositories("/workspace", {
+    await wsNative.gitDiscoverRepositories("/workspace", {
       maxDepth: 4,
       maxRepos: 32,
     });
@@ -310,13 +314,13 @@ describe("native git discovery wrapper", () => {
 describe("native git log wrapper", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    setCurrentWorkspaceEnv(LOCAL_WORKSPACE);
   });
 
   it("requests the first page with the default options", async () => {
+    const wsNative = createNativeForEnv(LOCAL_WORKSPACE);
     vi.mocked(invoke).mockResolvedValueOnce({ entries: [], hasMore: false });
 
-    const page = await native.gitLog("/repo");
+    const page = await wsNative.gitLog("/repo");
 
     expect(page).toEqual({ entries: [], hasMore: false });
     expect(invoke).toHaveBeenCalledWith("git_log", {
@@ -332,6 +336,7 @@ describe("native git log wrapper", () => {
   });
 
   it("forwards refName / all / offset options through to git_log", async () => {
+    const wsNative = createNativeForEnv(LOCAL_WORKSPACE);
     vi.mocked(invoke).mockResolvedValueOnce({
       entries: [
         {
@@ -351,7 +356,7 @@ describe("native git log wrapper", () => {
       hasMore: true,
     });
 
-    const page = await native.gitLog("/repo", {
+    const page = await wsNative.gitLog("/repo", {
       limit: 30,
       offset: 30,
       refName: "feature/x",
@@ -377,10 +382,10 @@ describe("native git log wrapper", () => {
   });
 
   it("passes the current workspace context through to git_log (wsl)", async () => {
-    setCurrentWorkspaceEnv({ kind: "wsl", distro: "Ubuntu" });
+    const wsNative = createNativeForEnv({ kind: "wsl", distro: "Ubuntu" });
     vi.mocked(invoke).mockResolvedValueOnce({ entries: [], hasMore: false });
 
-    await native.gitLog("/repo", { limit: 5 });
+    await wsNative.gitLog("/repo", { limit: 5 });
 
     expect(invoke).toHaveBeenCalledWith("git_log", {
       repoRoot: "/repo",
@@ -398,10 +403,11 @@ describe("native git log wrapper", () => {
 describe("native PTY wrappers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    setCurrentWorkspaceEnv(LOCAL_WORKSPACE);
   });
 
   it("opens a PTY session that wires the onData channel to a typed handler", async () => {
+    // ptyOpen 是 env-scoped 方法：workspace 参数来自 createNativeForEnv(env) 闭包。
+    const wsNative = createNativeForEnv(LOCAL_WORKSPACE);
     const captured: Array<{ onData: unknown; onExit: unknown }> = [];
     vi.mocked(invoke).mockImplementationOnce(async (_cmd, args) => {
       captured.push(args as { onData: unknown; onExit: unknown });
@@ -412,7 +418,7 @@ describe("native PTY wrappers", () => {
       onData: vi.fn(),
       onExit: vi.fn(),
     };
-    const session = await native.ptyOpen(80, 24, handlers, "/repo");
+    const session = await wsNative.ptyOpen(80, 24, handlers, "/repo");
 
     expect(session.id).toBe(7);
     expect(captured).toHaveLength(1);
@@ -450,6 +456,7 @@ describe("native PTY wrappers", () => {
   });
 
   it("exposes raw PTY write/resize/close helpers", async () => {
+    // ptyWrite/Resize/Close 是 workspace-agnostic 全局方法，仍在 native 上。
     vi.mocked(invoke).mockResolvedValue(undefined);
 
     await native.ptyWrite(7, "echo");

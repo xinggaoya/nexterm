@@ -1,8 +1,8 @@
+import { type WorkspaceNative, type GitDiffContentResult } from "@/lib/native";
 import {
-  native,
-  type GitDiffContentResult,
-} from "@/lib/native";
-import { currentWorkspaceScopeKey } from "@/modules/workspace/workspaceEnvSnapshot";
+  type WorkspaceEnv,
+  workspaceScopeKey,
+} from "@/modules/workspace/workspaceEnvSnapshot";
 
 const DIFF_CACHE_LIMIT = 6;
 const inflight = new Map<string, Promise<GitDiffContentResult>>();
@@ -31,41 +31,45 @@ export function invalidateDiff(key: string): void {
   cache.delete(key);
 }
 
-export function invalidateRepoDiffs(repoRoot: string): void {
-  const prefix = `${currentWorkspaceScopeKey()}|${repoRoot}|`;
+export function invalidateRepoDiffs(env: WorkspaceEnv, repoRoot: string): void {
+  const prefix = `${workspaceScopeKey(env)}|${repoRoot}|`;
   for (const k of [...cache.keys()]) {
     if (k.startsWith(prefix)) cache.delete(k);
   }
 }
 
 export function workingDiffKey(
+  env: WorkspaceEnv,
   repoRoot: string,
   path: string,
   mode: "-" | "+",
 ): string {
-  return `${currentWorkspaceScopeKey()}|${repoRoot}|w|${mode}|${path}`;
+  return `${workspaceScopeKey(env)}|${repoRoot}|w|${mode}|${path}`;
 }
 
 export function commitDiffKey(
+  env: WorkspaceEnv,
   repoRoot: string,
   sha: string,
   path: string,
 ): string {
-  return `${currentWorkspaceScopeKey()}|${repoRoot}|c|${sha}|${path}`;
+  return `${workspaceScopeKey(env)}|${repoRoot}|c|${sha}|${path}`;
 }
 
 export async function fetchWorkingDiff(
+  wsNative: WorkspaceNative,
+  env: WorkspaceEnv,
   repoRoot: string,
   path: string,
   mode: "-" | "+",
   originalPath: string | null,
 ): Promise<GitDiffContentResult> {
-  const key = workingDiffKey(repoRoot, path, mode);
+  const key = workingDiffKey(env, repoRoot, path, mode);
   const cached = getCachedDiff(key);
   if (cached) return cached;
   const pending = inflight.get(key);
   if (pending) return pending;
-  const p = native
+  const p = wsNative
     .gitDiffContent(repoRoot, path, mode === "+", originalPath)
     .then((res) => {
       touch(key, res);
@@ -79,17 +83,19 @@ export async function fetchWorkingDiff(
 }
 
 export async function fetchCommitDiff(
+  wsNative: WorkspaceNative,
+  env: WorkspaceEnv,
   repoRoot: string,
   sha: string,
   path: string,
   originalPath: string | null,
 ): Promise<GitDiffContentResult> {
-  const key = commitDiffKey(repoRoot, sha, path);
+  const key = commitDiffKey(env, repoRoot, sha, path);
   const cached = getCachedDiff(key);
   if (cached) return cached;
   const pending = inflight.get(key);
   if (pending) return pending;
-  const p = native
+  const p = wsNative
     .gitCommitFileDiff(repoRoot, sha, path, originalPath)
     .then((res) => {
       touch(key, res);

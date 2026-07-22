@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import {
   DEFAULT_PREFERENCES,
   loadPreferences,
@@ -7,22 +7,18 @@ import {
   setRecentWorkspaces,
   type StoredWorkspace,
 } from "@/modules/settings/store";
-import { authorizeWorkspace, getWslHome } from "./workspaceNative";
+import { getWslHome } from "./workspaceNative";
 import { selectWorkspaceDirectory } from "./workspaceDialog";
 import {
   LOCAL_WORKSPACE,
   workspaceScopeKey,
   type WorkspaceEnv,
 } from "./workspaceEnvSnapshot";
-import { useWorkspaceEnvPiniaStore } from "./workspaceEnvPinia";
 import { normalizeWorkspacePath, isSameWorkspaceRoot } from "./workspacePath";
+import { useWorkspacesPiniaStore } from "./workspacesPinia";
 
 export const RECENT_WORKSPACE_LIMIT = 10;
 export { normalizeWorkspacePath, isSameWorkspaceRoot };
-
-type OpenOptions = {
-  persist?: boolean;
-};
 
 export type WorkspaceSelection = {
   path: string;
@@ -93,15 +89,6 @@ function wslHomeToUnc(distro: string, linuxPath: string): string {
   return `\\\\wsl.localhost\\${distro}\\${tail.replace(/\//g, "\\")}`;
 }
 
-function dialogDefaultPath(
-  rootPath: string | null,
-  env: WorkspaceEnv,
-): string | undefined {
-  if (!rootPath) return undefined;
-  if (env.kind === "wsl" && isLinuxAbsolutePath(rootPath)) return undefined;
-  return rootPath;
-}
-
 function envForSelectedDirectory(
   selected: string,
   current: WorkspaceEnv,
@@ -125,115 +112,78 @@ function upsertRecent(
   return [record, ...filtered].slice(0, RECENT_WORKSPACE_LIMIT);
 }
 
+/**
+ * Recent-workspace history + directory picker helpers.
+ *
+ * The active workspace set now lives in `workspacesPinia`. This store keeps
+ * the historical/UX concerns that are still global: the recent list shown on
+ * the welcome screen, and the native folder-picker dialog wiring (which
+ * decides a default path based on env). `rootPath` is retained as a derived
+ * view of the currently active workspace for backward compatibility with
+ * callers that haven't been migrated yet, but it is read-only here — all
+ * mutations go through `workspacesPinia`.
+ */
 export const useWorkspaceRootPiniaStore = defineStore("workspace-root", () => {
   const hydrated = ref(false);
   const loading = ref(false);
-  const rootPath = ref<string | null>(null);
   const lastWorkspace = ref<StoredWorkspace | null>(null);
   const recentWorkspaces = ref<StoredWorkspace[]>([]);
   const error = ref<string | null>(null);
 
-  async function bootstrap(
-    explicitLaunch?: string | LaunchWorkspace | null,
-  ): Promise<void> {
+  // Derived view of the active workspace's root path.
+  const rootPath = computed(() => {
+    return useWorkspacesPiniaStore().activeWorkspace?.rootPath ?? null;
+  });
+
+  async function bootstrap(): Promise<void> {
     if (hydrated.value) return;
     const prefs = await loadPreferences().catch(() => DEFAULT_PREFERENCES);
     recentWorkspaces.value = normalizeRecentWorkspaces(prefs.recentWorkspaces);
     lastWorkspace.value = normalizeStoredWorkspace(prefs.lastWorkspace);
-
-    const explicit =
-      typeof explicitLaunch === "string"
-        ? { path: normalizeWorkspacePath(explicitLaunch), env: LOCAL_WORKSPACE }
-        : explicitLaunch
-          ? {
-              path: normalizeWorkspacePath(explicitLaunch.path),
-              env: explicitLaunch.env,
-            }
-          : null;
-    const candidate = explicit
-      ? { ...explicit, openedAt: Date.now() }
-      : lastWorkspace.value;
-
-    if (candidate) {
-      try {
-        await openWorkspace(candidate.path, candidate.env, { persist: true });
-      } catch (err) {
-        rootPath.value = null;
-        error.value = normalizeError(err);
-      }
-    }
-
     hydrated.value = true;
   }
 
-  async function openWorkspace(
-    path: string,
-    env: WorkspaceEnv = useWorkspaceEnvPiniaStore().env,
-    options: OpenOptions = {},
-  ): Promise<StoredWorkspace> {
-    loading.value = true;
-    error.value = null;
-    try {
-      const requested = normalizeWorkspacePath(path);
-      const authorized = normalizeWorkspacePath(
-        await authorizeWorkspace(requested, env),
-      );
-      const record: StoredWorkspace = {
-        path: authorized,
-        env,
-        openedAt: Date.now(),
-      };
-      const recent = upsertRecent(recentWorkspaces.value, record);
-
-      useWorkspaceEnvPiniaStore().setEnv(env);
-      rootPath.value = record.path;
-      lastWorkspace.value = record;
-      recentWorkspaces.value = recent;
-
-      if (options.persist !== false) {
-        try {
-          await Promise.all([
-            setLastWorkspace(record),
-            setRecentWorkspaces(recent),
-          ]);
-        } catch {
-          // Opening the workspace should not fail just because persistence is unavailable.
-        }
-      }
-
-      return record;
-    } catch (err) {
-      error.value = normalizeError(err);
-      throw err;
-    } finally {
-      loading.value = false;
-    }
+  function dialogDefaultPath(
+    path: string | null,
+    env: WorkspaceEnv,
+  ): string | undefined {
+    if (!path) return undefined;
+    if (env.kind === "wsl" && isLinuxAbsolutePath(path)) return undefined;
+    return path;
   }
 
-  async function pickWorkspaceDirectory(): Promise<WorkspaceSelection | null> {
-    const env = useWorkspaceEnvPiniaStore().env;
-    const selected = await selectWorkspaceDirectory(
-      dialogDefaultPath(rootPath.value, env),
-    );
-    if (!selected) return null;
-    const path = normalizeWorkspacePath(selected);
-    return {
-      path,
-      env: envForSelectedDirectory(path, env),
-    };
-  }
-
-  async function pickWorkspaceDirectoryForEnv(
+  async function pickWorkspaceDirectory(
     env: WorkspaceEnv,
   ): Promise<WorkspaceSelection | null> {
     const defaultPath = await resolveDialogDefaultPath(env);
     const selected = await selectWorkspaceDirectory(defaultPath);
     if (!selected) return null;
     const path = normalizeWorkspacePath(selected);
-    return {
-      path,
-      env: envForSelectedDirectory(path, env),
+    return { path, env: envForSelectedDirectory(path, env) };
+  }
+
+  async function pickWorkspaceDirectoryForEnv(
+    env: WorkspaceEnv,
+  ): Promise<WorkspaceSelection | null> {
+    return pickWorkspaceDirectory(env);
+  }
+
+  /**
+   * Pick a directory then add it as a workspace via the workspaces store.
+   * Returns the created/focused instance (or null if the user cancelled).
+   */
+  async function chooseWorkspace(env: WorkspaceEnv): Promise<StoredWorkspace | null> {
+    const selected = await pickWorkspaceDirectory(env);
+    if (!selected) return null;
+    const workspaces = useWorkspacesPiniaStore();
+    const { instance } = await workspaces.addWorkspace(selected.path, selected.env);
+    const record: StoredWorkspace = {
+      path: instance.rootPath,
+      env: instance.env,
+      openedAt: instance.openedAt,
     };
+    await recordRecent(record);
+    return record;
   }
 
   async function resolveDialogDefaultPath(
@@ -258,15 +208,25 @@ export const useWorkspaceRootPiniaStore = defineStore("workspace-root", () => {
     }
   }
 
-  async function chooseWorkspace(): Promise<StoredWorkspace | null> {
-    const selected = await pickWorkspaceDirectory();
-    if (!selected) return null;
-    return openWorkspace(selected.path, selected.env);
+  /**
+   * Record a freshly opened/added workspace into recent history. Called by
+   * `workspacesPinia.addWorkspace` consumers after the instance is created.
+   */
+  async function recordRecent(record: StoredWorkspace): Promise<void> {
+    const recent = upsertRecent(recentWorkspaces.value, record);
+    recentWorkspaces.value = recent;
+    lastWorkspace.value = record;
+    try {
+      await Promise.all([
+        setLastWorkspace(record),
+        setRecentWorkspaces(recent),
+      ]);
+    } catch {
+      // Persistence is best-effort.
+    }
   }
 
   function clearWorkspace(): void {
-    rootPath.value = null;
-    lastWorkspace.value = null;
     error.value = null;
   }
 
@@ -278,11 +238,15 @@ export const useWorkspaceRootPiniaStore = defineStore("workspace-root", () => {
     recentWorkspaces,
     error,
     bootstrap,
-    openWorkspace,
+    dialogDefaultPath,
     pickWorkspaceDirectory,
     pickWorkspaceDirectoryForEnv,
     resolveDialogDefaultPath,
     chooseWorkspace,
+    recordRecent,
     clearWorkspace,
+    // Re-exported for tests / legacy callers that referenced these off the
+    // root store. They delegate to the equivalent workspaces store methods.
+    normalizeError,
   };
 });

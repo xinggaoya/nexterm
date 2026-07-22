@@ -121,6 +121,11 @@ const zhCN = {
       newWindow: "在新窗口打开",
       title: "选择打开方式",
     },
+    workspaceBar: {
+      add: "添加工作区",
+      close: "关闭工作区",
+      local: "本机",
+    },
     workspaceEnv: {
       switchingTo: "正在切换到 {target}",
       title: "工作区环境",
@@ -182,6 +187,11 @@ const zhCN = {
       scrollback: "回滚行数",
       showHiddenFiles: "显示隐藏文件",
       startupAndWorkspace: "启动与工作区",
+      developer: "开发者",
+      developerDescription: "排查问题的工具。",
+      toggleDevtools: "打开开发者工具",
+      toggleDevtoolsHint: "切换 Webview 检查器（DevTools），用于排查界面问题。",
+      devtoolsUnavailable: "开发者工具不可用（需要 debug 构建或开启 devtools 特性）。",
       terminal: "终端",
       terminalContextMenu: "终端右键菜单",
       terminalDescription: "本地终端渲染、字体与缓冲区默认设置。",

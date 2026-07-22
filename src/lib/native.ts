@@ -2,7 +2,6 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { exit as pluginExit, relaunch as pluginRelaunch } from "@tauri-apps/plugin-process";
 import {
-  currentWorkspaceEnv,
   type WorkspaceEnv,
 } from "@/modules/workspace/workspaceEnvSnapshot";
 import type { WslDistro } from "@/modules/workspace/workspaceEnvSnapshot";
@@ -335,334 +334,273 @@ export function exitApp(code = 0): Promise<void> {
   return pluginExit(code);
 }
 
-export const native = {
-  workspaceAuthorize: (path: string, workspace: WorkspaceEnv = currentWorkspaceEnv()) =>
-    invoke<string>("workspace_authorize", {
-      path,
-      workspace,
-    }),
-  gitResolveRepo: (cwd: string) =>
-    invoke<GitRepoInfo | null>("git_resolve_repo", {
-      cwd,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitPanelSnapshot: (cwd: string) =>
-    invoke<GitPanelSnapshot>("git_panel_snapshot", {
-      cwd,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitStatus: (repoRoot: string) =>
-    invoke<GitStatusSnapshot>("git_status", {
-      repoRoot,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitDiffContent: (
-    repoRoot: string,
-    path: string,
-    staged: boolean,
-    originalPath?: string | null,
-  ) =>
-    invoke<GitDiffContentResult>("git_diff_content", {
-      repoRoot,
-      path,
-      staged,
-      originalPath: originalPath ?? null,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitStage: (repoRoot: string, paths: string[]) =>
-    invoke<void>("git_stage", {
-      repoRoot,
-      paths,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitUnstage: (repoRoot: string, paths: string[]) =>
-    invoke<void>("git_unstage", {
-      repoRoot,
-      paths,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitDiscard: (repoRoot: string, entries: GitDiscardEntry[]) =>
-    invoke<void>("git_discard", {
-      repoRoot,
-      entries,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitCommit: (repoRoot: string, message: string) =>
-    invoke<GitCommitResult>("git_commit", {
-      repoRoot,
-      message,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitFetch: (repoRoot: string) =>
-    invoke<GitFetchResult>("git_fetch", {
-      repoRoot,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitPullFfOnly: (repoRoot: string) =>
-    invoke<GitPullResult>("git_pull_ff_only", {
-      repoRoot,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitPush: (repoRoot: string) =>
-    invoke<GitPushResult>("git_push", {
-      repoRoot,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitBranchList: (repoRoot: string) =>
-    invoke<GitBranchInfo[]>("git_branch_list", {
-      repoRoot,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitCheckoutBranch: (repoRoot: string, branch: string, remote: boolean) =>
-    invoke<GitBranchResult>("git_checkout_branch", {
-      repoRoot,
-      branch,
-      remote,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitCreateBranch: (repoRoot: string, branch: string) =>
-    invoke<GitBranchResult>("git_create_branch", {
-      repoRoot,
-      branch,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitStashList: (repoRoot: string) =>
-    invoke<GitStashEntry[]>("git_stash_list", {
-      repoRoot,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitStashPush: (repoRoot: string, options: GitStashPushOptions) =>
-    invoke<GitStashResult>("git_stash_push", {
-      repoRoot,
-      options,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitStashPop: (
-    repoRoot: string,
-    selector: string,
-    expectedSha?: string | null,
-  ) =>
-    invoke<GitStashResult>("git_stash_pop", {
-      repoRoot,
-      selector,
-      expectedSha: expectedSha ?? null,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitStashDrop: (
-    repoRoot: string,
-    selector: string,
-    expectedSha?: string | null,
-  ) =>
-    invoke<GitStashResult>("git_stash_drop", {
-      repoRoot,
-      selector,
-      expectedSha: expectedSha ?? null,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitStashApply: (
-    repoRoot: string,
-    selector: string,
-    expectedSha?: string | null,
-  ) =>
-    invoke<GitStashResult>("git_stash_apply", {
-      repoRoot,
-      selector,
-      expectedSha: expectedSha ?? null,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitLog: (repoRoot: string, options?: GitLogOptions) =>
-    invoke<GitLogPage>("git_log", {
-      repoRoot,
-      options: {
-        limit: options?.limit ?? null,
-        offset: options?.offset ?? null,
-        refName: options?.refName ?? null,
-        all: options?.all ?? false,
+/**
+ * The workspace-scoped native invoke surface.
+ *
+ * Every method that touches the filesystem, a PTY, git, or shell now takes an
+ * explicit `workspace: WorkspaceEnv` argument — there is no longer a
+ * process-wide "current" env singleton. This makes it impossible for one
+ * workspace's native call to be silently routed to another workspace's
+ * backend, which was the core defect blocking multi-workspace concurrency.
+ *
+ * `createNativeForEnv(env)` returns an object whose methods close over the
+ * given env, so workspace-scoped modules can call e.g. `wsNative.gitStatus(r)`
+ * without threading env through every call site.
+ */
+export function createNativeForEnv(workspace: WorkspaceEnv) {
+  return {
+    workspaceAuthorize: (path: string) =>
+      invoke<string>("workspace_authorize", { path, workspace }),
+    gitResolveRepo: (cwd: string) =>
+      invoke<GitRepoInfo | null>("git_resolve_repo", { cwd, workspace }),
+    gitPanelSnapshot: (cwd: string) =>
+      invoke<GitPanelSnapshot>("git_panel_snapshot", { cwd, workspace }),
+    gitStatus: (repoRoot: string) =>
+      invoke<GitStatusSnapshot>("git_status", { repoRoot, workspace }),
+    gitDiffContent: (
+      repoRoot: string,
+      path: string,
+      staged: boolean,
+      originalPath?: string | null,
+    ) =>
+      invoke<GitDiffContentResult>("git_diff_content", {
+        repoRoot,
+        path,
+        staged,
+        originalPath: originalPath ?? null,
+        workspace,
+      }),
+    gitStage: (repoRoot: string, paths: string[]) =>
+      invoke<void>("git_stage", { repoRoot, paths, workspace }),
+    gitUnstage: (repoRoot: string, paths: string[]) =>
+      invoke<void>("git_unstage", { repoRoot, paths, workspace }),
+    gitDiscard: (repoRoot: string, entries: GitDiscardEntry[]) =>
+      invoke<void>("git_discard", { repoRoot, entries, workspace }),
+    gitCommit: (repoRoot: string, message: string) =>
+      invoke<GitCommitResult>("git_commit", { repoRoot, message, workspace }),
+    gitFetch: (repoRoot: string) =>
+      invoke<GitFetchResult>("git_fetch", { repoRoot, workspace }),
+    gitPullFfOnly: (repoRoot: string) =>
+      invoke<GitPullResult>("git_pull_ff_only", { repoRoot, workspace }),
+    gitPush: (repoRoot: string) =>
+      invoke<GitPushResult>("git_push", { repoRoot, workspace }),
+    gitBranchList: (repoRoot: string) =>
+      invoke<GitBranchInfo[]>("git_branch_list", { repoRoot, workspace }),
+    gitCheckoutBranch: (repoRoot: string, branch: string, remote: boolean) =>
+      invoke<GitBranchResult>("git_checkout_branch", {
+        repoRoot,
+        branch,
+        remote,
+        workspace,
+      }),
+    gitCreateBranch: (repoRoot: string, branch: string) =>
+      invoke<GitBranchResult>("git_create_branch", {
+        repoRoot,
+        branch,
+        workspace,
+      }),
+    gitStashList: (repoRoot: string) =>
+      invoke<GitStashEntry[]>("git_stash_list", { repoRoot, workspace }),
+    gitStashPush: (repoRoot: string, options: GitStashPushOptions) =>
+      invoke<GitStashResult>("git_stash_push", { repoRoot, options, workspace }),
+    gitStashPop: (
+      repoRoot: string,
+      selector: string,
+      expectedSha?: string | null,
+    ) =>
+      invoke<GitStashResult>("git_stash_pop", {
+        repoRoot,
+        selector,
+        expectedSha: expectedSha ?? null,
+        workspace,
+      }),
+    gitStashDrop: (
+      repoRoot: string,
+      selector: string,
+      expectedSha?: string | null,
+    ) =>
+      invoke<GitStashResult>("git_stash_drop", {
+        repoRoot,
+        selector,
+        expectedSha: expectedSha ?? null,
+        workspace,
+      }),
+    gitStashApply: (
+      repoRoot: string,
+      selector: string,
+      expectedSha?: string | null,
+    ) =>
+      invoke<GitStashResult>("git_stash_apply", {
+        repoRoot,
+        selector,
+        expectedSha: expectedSha ?? null,
+        workspace,
+      }),
+    gitLog: (repoRoot: string, options?: GitLogOptions) =>
+      invoke<GitLogPage>("git_log", {
+        repoRoot,
+        options: {
+          limit: options?.limit ?? null,
+          offset: options?.offset ?? null,
+          refName: options?.refName ?? null,
+          all: options?.all ?? false,
+        },
+        workspace,
+      }),
+    gitCommitFiles: (repoRoot: string, sha: string) =>
+      invoke<GitCommitFileChange[]>("git_commit_files", {
+        repoRoot,
+        sha,
+        workspace,
+      }),
+    gitCommitFileDiff: (
+      repoRoot: string,
+      sha: string,
+      path: string,
+      originalPath?: string | null,
+    ) =>
+      invoke<GitDiffContentResult>("git_commit_file_diff", {
+        repoRoot,
+        sha,
+        path,
+        originalPath: originalPath ?? null,
+        workspace,
+      }),
+    gitRemoteUrl: (repoRoot: string, name?: string) =>
+      invoke<string | null>("git_remote_url", {
+        repoRoot,
+        name: name ?? null,
+        workspace,
+      }),
+    gitDiscoverRepositories: (
+      rootPath: string,
+      options?: { maxDepth?: number; maxRepos?: number },
+    ) =>
+      invoke<GitRepositoryDiscovery>("git_discover_repositories", {
+        rootPath,
+        maxDepth: options?.maxDepth ?? 4,
+        maxRepos: options?.maxRepos ?? 32,
+        workspace,
+      }),
+    shellBgSpawn: (command: string, cwd?: string | null) =>
+      invoke<number>("shell_bg_spawn", {
+        command,
+        cwd: cwd ?? null,
+        workspace,
+      }),
+    fsReadFile: (path: string) =>
+      invoke<FsReadResult>("fs_read_file", { path, workspace }),
+    fsWriteFile: (path: string, content: string) =>
+      invoke<void>("fs_write_file", { path, content, workspace }),
+    fsReadDir: (path: string, showHidden: boolean) =>
+      invoke<FsDirEntry[]>("fs_read_dir", { path, showHidden, workspace }),
+    fsCreateDir: (path: string) =>
+      invoke<void>("fs_create_dir", { path, workspace }),
+    fsCreateFile: (path: string) =>
+      invoke<void>("fs_create_file", { path, workspace }),
+    fsRename: (from: string, to: string) =>
+      invoke<void>("fs_rename", { from, to, workspace }),
+    fsDelete: (path: string) =>
+      invoke<void>("fs_delete", { path, workspace }),
+    fsCopy: (from: string, to: string) =>
+      invoke<void>("fs_copy", { from, to, workspace }),
+    fsGrep: (
+      pattern: string,
+      root: string,
+      options?: {
+        glob?: string[];
+        caseInsensitive?: boolean;
+        maxResults?: number;
       },
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitCommitFiles: (repoRoot: string, sha: string) =>
-    invoke<GitCommitFileChange[]>("git_commit_files", {
-      repoRoot,
-      sha,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitCommitFileDiff: (
-    repoRoot: string,
-    sha: string,
-    path: string,
-    originalPath?: string | null,
-  ) =>
-    invoke<GitDiffContentResult>("git_commit_file_diff", {
-      repoRoot,
-      sha,
-      path,
-      originalPath: originalPath ?? null,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitRemoteUrl: (repoRoot: string, name?: string) =>
-    invoke<string | null>("git_remote_url", {
-      repoRoot,
-      name: name ?? null,
-      workspace: currentWorkspaceEnv(),
-    }),
-  gitDiscoverRepositories: (
-    rootPath: string,
-    options?: { maxDepth?: number; maxRepos?: number },
-  ) =>
-    invoke<GitRepositoryDiscovery>("git_discover_repositories", {
-      rootPath,
-      maxDepth: options?.maxDepth ?? 4,
-      maxRepos: options?.maxRepos ?? 32,
-      workspace: currentWorkspaceEnv(),
-    }),
-  shellBgSpawn: (command: string, cwd?: string | null) =>
-    invoke<number>("shell_bg_spawn", {
-      command,
-      cwd: cwd ?? null,
-      workspace: currentWorkspaceEnv(),
-    }),
-  shellBgLogs: (handle: number, sinceOffset: number) =>
-    invoke<ShellBgLogResponse>("shell_bg_logs", {
-      handle,
-      sinceOffset,
-    }),
-  shellBgKill: (handle: number) =>
-    invoke<void>("shell_bg_kill", {
-      handle,
-    }),
-  shellBgList: () => invoke<ShellBgProcInfo[]>("shell_bg_list"),
-  fsReadFile: (path: string) =>
-    invoke<FsReadResult>("fs_read_file", {
-      path,
-      workspace: currentWorkspaceEnv(),
-    }),
-  fsWriteFile: (path: string, content: string) =>
-    invoke<void>("fs_write_file", {
-      path,
-      content,
-      workspace: currentWorkspaceEnv(),
-    }),
-  fsReadDir: (path: string, showHidden: boolean) =>
-    invoke<FsDirEntry[]>("fs_read_dir", {
-      path,
-      showHidden,
-      workspace: currentWorkspaceEnv(),
-    }),
-  fsCreateDir: (path: string) =>
-    invoke<void>("fs_create_dir", {
-      path,
-      workspace: currentWorkspaceEnv(),
-    }),
-  fsCreateFile: (path: string) =>
-    invoke<void>("fs_create_file", {
-      path,
-      workspace: currentWorkspaceEnv(),
-    }),
-  fsRename: (from: string, to: string) =>
-    invoke<void>("fs_rename", {
-      from,
-      to,
-      workspace: currentWorkspaceEnv(),
-    }),
-  fsDelete: (path: string) =>
-    invoke<void>("fs_delete", {
-      path,
-      workspace: currentWorkspaceEnv(),
-    }),
-  fsCopy: (from: string, to: string) =>
-    invoke<void>("fs_copy", {
-      from,
-      to,
-      workspace: currentWorkspaceEnv(),
-    }),
-  fsGrep: (
-    pattern: string,
-    root: string,
-    options?: {
-      glob?: string[];
-      caseInsensitive?: boolean;
-      maxResults?: number;
+    ) =>
+      invoke<FsGrepResult>("fs_grep", {
+        pattern,
+        root,
+        glob: options?.glob ?? null,
+        caseInsensitive: options?.caseInsensitive ?? false,
+        maxResults: options?.maxResults ?? null,
+        workspace,
+      }),
+    fsGlob: (pattern: string, root: string) =>
+      invoke<FsGlobHit[]>("fs_glob", { pattern, root, workspace }),
+    fsSearch: (root: string, query: string, showHidden: boolean) =>
+      invoke<FsSearchResult>("fs_search", {
+        root,
+        query,
+        limit: FS_SEARCH_DEFAULT_LIMIT,
+        showHidden,
+        workspace,
+      }),
+    fsWatchWorkspace: (rootPath: string) =>
+      invoke<void>("fs_watch_workspace", { rootPath, workspace }),
+    fsUnwatchWorkspace: (rootPath: string) =>
+      invoke<void>("fs_unwatch_workspace", { rootPath, workspace }),
+    ptyOpen: async (
+      cols: number,
+      rows: number,
+      handlers: PtyHandlers,
+      cwd?: string,
+    ): Promise<PtySession> => {
+      const onData = new Channel<string>();
+      const onExit = new Channel<number>();
+      let released = false;
+      const noop = () => {};
+      const releaseHandlers = () => {
+        if (released) return;
+        released = true;
+        onData.onmessage = noop;
+        onExit.onmessage = noop;
+      };
+      onData.onmessage = (chunk) => handlers.onData(chunk);
+      onExit.onmessage = (code) => {
+        handlers.onExit?.(code);
+        releaseHandlers();
+      };
+      const id = await invoke<number>("pty_open", {
+        cols,
+        rows,
+        cwd: cwd ?? null,
+        workspace,
+        onData,
+        onExit,
+      });
+      let closed = false;
+      return {
+        id,
+        write: (data: string) => invoke("pty_write", { id, data }),
+        resize: (c: number, r: number) =>
+          invoke("pty_resize", { id, cols: c, rows: r }),
+        close: async () => {
+          if (closed) return;
+          closed = true;
+          try {
+            await invoke("pty_close", { id });
+          } finally {
+            releaseHandlers();
+          }
+        },
+      };
     },
-  ) =>
-    invoke<FsGrepResult>("fs_grep", {
-      pattern,
-      root,
-      glob: options?.glob ?? null,
-      caseInsensitive: options?.caseInsensitive ?? false,
-      maxResults: options?.maxResults ?? null,
-      workspace: currentWorkspaceEnv(),
-    }),
-  fsGlob: (pattern: string, root: string) =>
-    invoke<FsGlobHit[]>("fs_glob", {
-      pattern,
-      root,
-      workspace: currentWorkspaceEnv(),
-    }),
-  fsSearch: (root: string, query: string, showHidden: boolean) =>
-    invoke<FsSearchResult>("fs_search", {
-      root,
-      query,
-      limit: FS_SEARCH_DEFAULT_LIMIT,
-      showHidden,
-      workspace: currentWorkspaceEnv(),
-    }),
+  };
+}
+
+export type WorkspaceNative = ReturnType<typeof createNativeForEnv>;
+
+/**
+ * Workspace-agnostic native methods that don't route by env — OS-level queries
+ * (distros, launch dir), and resource handles that are already identified by
+ * an opaque id (pty write/resize/close, shell bg logs/kill, lsp). These stay
+ * global because their backend counterparts don't take a workspace either.
+ */
+export const native = {
+  shellBgLogs: (handle: number, sinceOffset: number) =>
+    invoke<ShellBgLogResponse>("shell_bg_logs", { handle, sinceOffset }),
+  shellBgKill: (handle: number) =>
+    invoke<void>("shell_bg_kill", { handle }),
+  shellBgList: () => invoke<ShellBgProcInfo[]>("shell_bg_list"),
   getLaunchDir: () => invoke<string | null>("get_launch_dir"),
-  getWslHome: (distro: string) =>
-    invoke<string>("wsl_home", { distro }),
+  getWslHome: (distro: string) => invoke<string>("wsl_home", { distro }),
   wslListDistros: () => invoke<WslDistro[]>("wsl_list_distros"),
-  fsWatchWorkspace: (rootPath: string) =>
-    invoke<void>("fs_watch_workspace", {
-      rootPath,
-      workspace: currentWorkspaceEnv(),
-    }),
-  fsUnwatchWorkspace: () => invoke<void>("fs_unwatch_workspace"),
-  ptyOpen: async (
-    cols: number,
-    rows: number,
-    handlers: PtyHandlers,
-    cwd?: string,
-  ): Promise<PtySession> => {
-    const onData = new Channel<string>();
-    const onExit = new Channel<number>();
-    let released = false;
-    const noop = () => {};
-    const releaseHandlers = () => {
-      if (released) return;
-      released = true;
-      onData.onmessage = noop;
-      onExit.onmessage = noop;
-    };
-    onData.onmessage = (chunk) => handlers.onData(chunk);
-    onExit.onmessage = (code) => {
-      handlers.onExit?.(code);
-      releaseHandlers();
-    };
-    const id = await invoke<number>("pty_open", {
-      cols,
-      rows,
-      cwd: cwd ?? null,
-      workspace: currentWorkspaceEnv(),
-      onData,
-      onExit,
-    });
-    let closed = false;
-    return {
-      id,
-      write: (data: string) => invoke("pty_write", { id, data }),
-      resize: (c: number, r: number) =>
-        invoke("pty_resize", { id, cols: c, rows: r }),
-      close: async () => {
-        if (closed) return;
-        closed = true;
-        try {
-          await invoke("pty_close", { id });
-        } finally {
-          releaseHandlers();
-        }
-      },
-    };
-  },
   ptyWrite: (id: number, data: string) =>
     invoke<void>("pty_write", { id, data }),
   ptyResize: (id: number, cols: number, rows: number) =>
@@ -678,4 +616,9 @@ export const native = {
   lspList: () => invoke<LspSessionInfo[]>("lsp_list"),
   lspResolveCommand: (language: string) =>
     invoke<LspResolvedCommand | null>("lsp_resolve_command", { language }),
+
+  // DevTools — lets the settings page toggle the webview inspector without a
+  // right-click (which the app disables for custom context menus).
+  toggleDevtools: () => invoke<boolean>("toggle_devtools"),
+  isDevtoolsOpen: () => invoke<boolean>("is_devtools_open"),
 };

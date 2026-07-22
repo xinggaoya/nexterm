@@ -310,7 +310,7 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
       case "terminal.clear": {
         const tab = options.activeTab.value;
         if (tab?.kind === "terminal") {
-          const handle = createTerminalSessionHandle(tab.activeLeafId);
+          const handle = createTerminalSessionHandle(tab.workspaceId, tab.activeLeafId);
           handle.write("\x1b[H\x1b[2J\x1b[3J\x1b[H");
         }
         return;
@@ -318,7 +318,7 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
       case "terminal.reset": {
         const tab = options.activeTab.value;
         if (tab?.kind === "terminal") {
-          const handle = createTerminalSessionHandle(tab.activeLeafId);
+          const handle = createTerminalSessionHandle(tab.workspaceId, tab.activeLeafId);
           handle.write("\x1bc");
         }
         return;

@@ -1,24 +1,30 @@
 import type { Terminal } from "@xterm/xterm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PtyHandlers } from "@/lib/native";
+import type { PtyHandlers, WorkspaceNative } from "@/lib/native";
 
-const nativeMocks = vi.hoisted(() => ({
-  ptyOpen: vi.fn(),
-  ptyKill: vi.fn(),
-}));
+import {
+  createSession,
+  disposeAllSessions,
+  disposeSession,
+  disposeWorkspaceSessions,
+  getSessionForLeaf,
+  trackSession,
+} from "./sessions";
 
-vi.mock("@/lib/native", () => ({ native: nativeMocks }));
-
-import { createSession, SESSION_REGISTRY } from "./sessions";
+// 构造一个仅含 ptyOpen 的 mock wsNative。
+// sessions 现在从 opts.wsNative.ptyOpen 创建 PTY（不再依赖全局 native），
+// 因此测试通过 wsNative.ptyOpen 注入伪 PTY，并断言它被以正确参数调用。
+function makeWsNative(ptyOpen: ReturnType<typeof vi.fn>) {
+  return { ptyOpen } as unknown as WorkspaceNative;
+}
 
 describe("terminal sessions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    SESSION_REGISTRY.clear();
-    nativeMocks.ptyKill.mockResolvedValue(undefined);
+    disposeAllSessions();
   });
 
-  it("uses the native PTY adapter and preserves split OSC sequences", async () => {
+  it("uses the wsNative PTY adapter and preserves split OSC sequences", async () => {
     let handlers: PtyHandlers | undefined;
     let terminalInput: ((data: string) => void) | undefined;
     const pty = {
@@ -27,12 +33,18 @@ describe("terminal sessions", () => {
       resize: vi.fn().mockResolvedValue(undefined),
       close: vi.fn().mockResolvedValue(undefined),
     };
-    nativeMocks.ptyOpen.mockImplementation(
-      async (_cols, _rows, nextHandlers: PtyHandlers) => {
+    const ptyOpen = vi.fn().mockImplementation(
+      async (
+        _cols: number,
+        _rows: number,
+        nextHandlers: PtyHandlers,
+        _cwd?: string,
+      ) => {
         handlers = nextHandlers;
         return pty;
       },
     );
+    const wsNative = makeWsNative(ptyOpen);
     const term = {
       cols: 100,
       rows: 30,
@@ -47,8 +59,13 @@ describe("terminal sessions", () => {
       onStateChange: vi.fn(),
     };
 
-    const session = await createSession({ term, cwd: "/workspace", callbacks });
-    expect(nativeMocks.ptyOpen).toHaveBeenCalledWith(
+    const session = await createSession({
+      term,
+      cwd: "/workspace",
+      callbacks,
+      wsNative,
+    });
+    expect(ptyOpen).toHaveBeenCalledWith(
       100,
       30,
       expect.any(Object),
@@ -65,9 +82,82 @@ describe("terminal sessions", () => {
     expect(pty.write).toHaveBeenCalledWith("typed input");
     session.resize(120, 40);
     expect(pty.resize).toHaveBeenCalledWith(120, 40);
+    // restart 现在是 best-effort 的 close（不再通过全局 ptyKill），因此
+    // 断言 PTY 的 close 被触发。
     session.restart();
-    expect(nativeMocks.ptyKill).toHaveBeenCalledWith(17);
-    session.dispose();
     expect(pty.close).toHaveBeenCalled();
+    session.dispose();
+    expect(pty.close).toHaveBeenCalledTimes(2);
+  });
+
+  it("partitions sessions by workspace id", async () => {
+    const pty = {
+      id: 42,
+      write: vi.fn().mockResolvedValue(undefined),
+      resize: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const ptyOpen = vi.fn().mockResolvedValue(pty);
+    const wsNative = makeWsNative(ptyOpen);
+    const term = {
+      cols: 80,
+      rows: 24,
+      write: vi.fn(),
+      onData: vi.fn(),
+    } as unknown as Terminal;
+    const callbacks = {
+      onCwd: vi.fn(),
+      onTitle: vi.fn(),
+      onStateChange: vi.fn(),
+    };
+
+    const session = await createSession({ term, cwd: "/repo", callbacks, wsNative });
+
+    // 按 workspace 分片注册：同一个 leafId 在不同 workspace 互不干扰。
+    trackSession("ws-a", "leaf-1", session);
+    expect(getSessionForLeaf("ws-a", "leaf-1")).toBe(session);
+    expect(getSessionForLeaf("ws-b", "leaf-1")).toBeUndefined();
+
+    // 销毁单个 workspace 内的 session。
+    disposeSession("ws-a", "leaf-1");
+    expect(getSessionForLeaf("ws-a", "leaf-1")).toBeUndefined();
+    expect(pty.close).toHaveBeenCalled();
+  });
+
+  it("disposes all sessions for a workspace without touching others", async () => {
+    const mkPty = () => ({
+      id: Math.floor(Math.random() * 1000),
+      write: vi.fn().mockResolvedValue(undefined),
+      resize: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    });
+    const wsNative = makeWsNative(vi.fn().mockImplementation(mkPty));
+    const term = {
+      cols: 80,
+      rows: 24,
+      write: vi.fn(),
+      onData: vi.fn(),
+    } as unknown as Terminal;
+    const callbacks = {
+      onCwd: vi.fn(),
+      onTitle: vi.fn(),
+      onStateChange: vi.fn(),
+    };
+
+    const a1 = await createSession({ term, cwd: "/a", callbacks, wsNative });
+    const a2 = await createSession({ term, cwd: "/a2", callbacks, wsNative });
+    const b1 = await createSession({ term, cwd: "/b", callbacks, wsNative });
+    trackSession("ws-a", "a1", a1);
+    trackSession("ws-a", "a2", a2);
+    trackSession("ws-b", "b1", b1);
+
+    disposeWorkspaceSessions("ws-a");
+    expect(getSessionForLeaf("ws-a", "a1")).toBeUndefined();
+    expect(getSessionForLeaf("ws-a", "a2")).toBeUndefined();
+    // ws-b 上的 session 不应受影响。
+    expect(getSessionForLeaf("ws-b", "b1")).toBe(b1);
+
+    disposeAllSessions();
+    expect(getSessionForLeaf("ws-b", "b1")).toBeUndefined();
   });
 });

@@ -1,14 +1,11 @@
 import { computed, ref, type TextareaHTMLAttributes } from "vue";
 import type {
   GitBranchInfo,
-  GitBranchResult,
   GitCommitResult,
   GitDiscardEntry,
-  GitFetchResult,
-  GitPullResult,
-  GitPushResult,
   GitStashPushOptions,
   GitStashResult,
+  WorkspaceNative,
 } from "@/lib/native";
 import { notifyError, notifyInfo, notifySuccess } from "@/modules/notifications/notificationCenter";
 import type { SourceControlFileEntry } from "./sourceControlModel";
@@ -18,41 +15,6 @@ import {
   type SourceControlTranslate,
 } from "./sourceControlFormat";
 import type { BusyAction, SourceControlRuntimeState } from "./useSourceControlState";
-
-type SourceControlActionNative = {
-  gitStage: (repoRoot: string, paths: string[]) => Promise<void>;
-  gitUnstage: (repoRoot: string, paths: string[]) => Promise<void>;
-  gitDiscard: (repoRoot: string, entries: GitDiscardEntry[]) => Promise<void>;
-  gitCommit: (repoRoot: string, message: string) => Promise<GitCommitResult>;
-  gitFetch: (repoRoot: string) => Promise<GitFetchResult>;
-  gitPullFfOnly: (repoRoot: string) => Promise<GitPullResult>;
-  gitPush: (repoRoot: string) => Promise<GitPushResult>;
-  gitCheckoutBranch: (
-    repoRoot: string,
-    branch: string,
-    remote: boolean,
-  ) => Promise<GitBranchResult>;
-  gitCreateBranch: (repoRoot: string, branch: string) => Promise<GitBranchResult>;
-  gitStashPush: (
-    repoRoot: string,
-    options: GitStashPushOptions,
-  ) => Promise<GitStashResult>;
-  gitStashPop: (
-    repoRoot: string,
-    selector: string,
-    expectedSha?: string | null,
-  ) => Promise<GitStashResult>;
-  gitStashDrop: (
-    repoRoot: string,
-    selector: string,
-    expectedSha?: string | null,
-  ) => Promise<GitStashResult>;
-  gitStashApply: (
-    repoRoot: string,
-    selector: string,
-    expectedSha?: string | null,
-  ) => Promise<GitStashResult>;
-};
 
 type DialogApi = {
   warning: (options: {
@@ -66,7 +28,8 @@ type DialogApi = {
 
 type SourceControlActionOptions = {
   state: SourceControlRuntimeState;
-  native: SourceControlActionNative;
+  /** 绑定到目标 workspace 环境的 native 调用面（git stage/commit/push/...）。 */
+  wsNative: WorkspaceNative;
   dialog: DialogApi;
   t: SourceControlTranslate;
   emitCommitted: (result: GitCommitResult) => void;
@@ -118,7 +81,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const root = options.state.repoRoot.value;
     if (!root) return;
     await runWithBusy(`stage:${entry.path}`, async () => {
-      await options.native.gitStage(root, [entry.path]);
+      await options.wsNative.gitStage(root, [entry.path]);
       await options.state.refreshStatus();
     });
   }
@@ -127,7 +90,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const root = options.state.repoRoot.value;
     if (!root) return;
     await runWithBusy(`unstage:${entry.path}`, async () => {
-      await options.native.gitUnstage(root, [entry.path]);
+      await options.wsNative.gitUnstage(root, [entry.path]);
       await options.state.refreshStatus();
     });
   }
@@ -137,7 +100,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const paths = options.state.stageAllPaths.value;
     if (!root || paths.length === 0) return;
     await runWithBusy("stage-all", async () => {
-      await options.native.gitStage(root, paths);
+      await options.wsNative.gitStage(root, paths);
       await options.state.refreshStatus();
     });
   }
@@ -147,7 +110,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const unique = Array.from(new Set(paths));
     if (!root || unique.length === 0) return;
     await runWithBusy("stage-selected", async () => {
-      await options.native.gitStage(root, unique);
+      await options.wsNative.gitStage(root, unique);
       await options.state.refreshStatus();
     });
   }
@@ -157,7 +120,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const paths = options.state.unstageAllPaths.value;
     if (!root || paths.length === 0) return;
     await runWithBusy("unstage-all", async () => {
-      await options.native.gitUnstage(root, paths);
+      await options.wsNative.gitUnstage(root, paths);
       await options.state.refreshStatus();
     });
   }
@@ -167,7 +130,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const unique = Array.from(new Set(paths));
     if (!root || unique.length === 0) return;
     await runWithBusy("unstage-selected", async () => {
-      await options.native.gitUnstage(root, unique);
+      await options.wsNative.gitUnstage(root, unique);
       await options.state.refreshStatus();
     });
   }
@@ -176,7 +139,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const root = options.state.repoRoot.value;
     if (!root || entries.length === 0) return;
     await runWithBusy(busy, async () => {
-      await options.native.gitDiscard(root, entries);
+      await options.wsNative.gitDiscard(root, entries);
       await options.state.refreshStatus();
     });
   }
@@ -232,7 +195,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const root = options.state.repoRoot.value;
     if (!root) return;
     await runWithBusy("fetch", async () => {
-      const result = await options.native.gitFetch(root);
+      const result = await options.wsNative.gitFetch(root);
       actionMessage.value = result.summary;
       notifySuccess(options.t("sourceControl.fetchSuccess"), result.summary);
       await options.state.refreshStatus();
@@ -244,7 +207,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const root = options.state.repoRoot.value;
     if (!root) return;
     await runWithBusy("pull", async () => {
-      const result = await options.native.gitPullFfOnly(root);
+      const result = await options.wsNative.gitPullFfOnly(root);
       actionMessage.value = result.summary;
       notifySuccess(options.t("sourceControl.pullSuccess"), result.summary);
       await options.state.refreshStatus();
@@ -256,7 +219,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const root = options.state.repoRoot.value;
     if (!root) return;
     await runWithBusy("push", async () => {
-      const result = await options.native.gitPush(root);
+      const result = await options.wsNative.gitPush(root);
       actionMessage.value = options.t("sourceControl.pushedTo", {
         target: pushedLabel(result.remote, result.branch),
       });
@@ -276,7 +239,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
       // which is what the backend needs to decide between switching to an
       // existing local branch (`main`) and `switch --track origin/main`.
       // `isRemote` is preserved so the backend can apply that logic.
-      const result = await options.native.gitCheckoutBranch(
+      const result = await options.wsNative.gitCheckoutBranch(
         root,
         branch.name,
         branch.isRemote,
@@ -296,7 +259,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const name = branch.trim();
     if (!root || !name) return;
     await runWithBusy("branch-create", async () => {
-      const result = await options.native.gitCreateBranch(root, name);
+      const result = await options.wsNative.gitCreateBranch(root, name);
       const detail = options.t("sourceControl.branchCreateDetail", {
         branch: result.branch,
       });
@@ -362,7 +325,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
           };
     await runWithBusy("stash-save", async () => {
       try {
-        const result = await options.native.gitStashPush(root, stashOptions);
+        const result = await options.wsNative.gitStashPush(root, stashOptions);
         reportStashResult(result, "sourceControl.stashSaveSuccess");
       } finally {
         await refreshStashState();
@@ -380,8 +343,8 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     await runWithBusy(`stash-pop:${selector}`, async () => {
       try {
         const result = sha
-          ? await options.native.gitStashPop(root, selector, sha)
-          : await options.native.gitStashPop(root, selector);
+          ? await options.wsNative.gitStashPop(root, selector, sha)
+          : await options.wsNative.gitStashPop(root, selector);
         reportStashResult(result, "sourceControl.stashPopSuccess");
       } finally {
         await refreshStashState();
@@ -395,8 +358,8 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     await runWithBusy(`stash-drop:${selector}`, async () => {
       try {
         const result = expectedSha
-          ? await options.native.gitStashDrop(root, selector, expectedSha)
-          : await options.native.gitStashDrop(root, selector);
+          ? await options.wsNative.gitStashDrop(root, selector, expectedSha)
+          : await options.wsNative.gitStashDrop(root, selector);
         reportStashResult(result, "sourceControl.stashDropSuccess");
       } finally {
         await refreshStashState();
@@ -429,8 +392,8 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     await runWithBusy(`stash-apply:${selector}`, async () => {
       try {
         const result = sha
-          ? await options.native.gitStashApply(root, selector, sha)
-          : await options.native.gitStashApply(root, selector);
+          ? await options.wsNative.gitStashApply(root, selector, sha)
+          : await options.wsNative.gitStashApply(root, selector);
         reportStashResult(result, "sourceControl.stashApplySuccess");
       } finally {
         await refreshStashState();
@@ -443,7 +406,7 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     const message = commitMessage.value.trim();
     if (!root || !message || options.state.busyAction.value) return;
     await runWithBusy("commit", async () => {
-      const result = await options.native.gitCommit(root, message);
+      const result = await options.wsNative.gitCommit(root, message);
       commitMessage.value = "";
       actionMessage.value = result.summary;
       notifySuccess(options.t("sourceControl.commitSuccess"), result.summary);

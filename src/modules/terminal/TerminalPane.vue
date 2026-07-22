@@ -7,6 +7,7 @@ import {
 } from "@/lib/clipboard";
 import { createSession, trackSession, getSessionForLeaf } from "./lib/sessions";
 import type { PtySessionHandle, SessionState } from "./lib/sessions";
+import { tryWorkspaceContext } from "@/app/workspaceContext";
 import {
   applyTerminalTheme,
   watchTerminalTheme,
@@ -45,6 +46,16 @@ const state = ref<SessionState>("connecting");
 const menu = ref<{ x: number; y: number; selection: string } | null>(null);
 
 const prefs = usePreferencesPiniaStore();
+
+// 终端必须在 WorkspaceHost 内渲染：通过注入的 workspace 上下文拿到
+// workspaceId（用于按工作区分片的 session 注册表）与 wsNative（env 绑定的
+// native 调用面，pty 会在正确的环境里启动）。
+const wsCtx = tryWorkspaceContext();
+if (!wsCtx) {
+  throw new Error(
+    "TerminalPane: no workspace context provided. The terminal must be rendered inside a WorkspaceHost.",
+  );
+}
 
 let renderer: TerminalRenderer | null = null;
 let session: PtySessionHandle | null = null;
@@ -99,7 +110,7 @@ async function ensureSession(): Promise<void> {
       state.value = next;
     },
   };
-  const existing = getSessionForLeaf(props.leafId);
+  const existing = getSessionForLeaf(wsCtx!.workspace.id, props.leafId);
   if (existing) {
     session = existing;
     existing.setCallbacks(sessionCallbacks);
@@ -111,9 +122,10 @@ async function ensureSession(): Promise<void> {
     term,
     cwd: props.cwd,
     callbacks: sessionCallbacks,
+    wsNative: wsCtx!.wsNative,
   });
   session = handle;
-  trackSession(props.leafId, handle);
+  trackSession(wsCtx!.workspace.id, props.leafId, handle);
 }
 
 function refreshLayout(): void {

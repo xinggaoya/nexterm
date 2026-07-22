@@ -5,6 +5,7 @@ import {
   type ComputedRef,
   type Ref,
 } from "vue";
+import type { WorkspaceNative } from "@/lib/native";
 import {
   createTaskRunStore,
   discoverWorkspaceTasks,
@@ -32,6 +33,8 @@ export type TaskConsoleControllerOptions = {
   readTextFile: (path: string) => Promise<string | null>;
   discoverTasks?: typeof discoverWorkspaceTasks;
   taskRuns?: TaskRunStoreLike;
+  /** Env-bound native surface for spawning tasks in this workspace's env. */
+  wsNative: WorkspaceNative;
   openTaskTerminal: (input: { command: string; cwd: string }) => void;
 };
 
@@ -42,7 +45,8 @@ function normalizeError(error: unknown): string {
 
 export function useTaskConsoleController(options: TaskConsoleControllerOptions) {
   const discoverTasks = options.discoverTasks ?? discoverWorkspaceTasks;
-  const taskRuns = options.taskRuns ?? createTaskRunStore();
+  const taskRuns =
+    options.taskRuns ?? createTaskRunStore({ wsNative: options.wsNative });
   const taskConsoleOpen = ref(false);
   const taskConsoleView = ref<TaskConsoleView>("tasks");
   const workspaceTasks = ref<WorkspaceTask[]>([]);

@@ -1,26 +1,33 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { setLastWslDistro } from "@/modules/settings/store";
 import { native } from "@/lib/native";
-import {
-  LOCAL_WORKSPACE,
-  setCurrentWorkspaceEnv,
-  type WorkspaceEnv,
-  type WslDistro,
-} from "./workspaceEnvSnapshot";
+import type { WslDistro } from "./workspaceEnvSnapshot";
 
+/**
+ * WSL distro catalog + selection state for the "add workspace" flow.
+ *
+ * Historically this store also owned a global `env` singleton
+ * (`selectedWorkspaceEnv`) that every native call read implicitly. That has
+ * been removed — workspace envs now live per-`WorkspaceInstance` in
+ * `workspacesPinia`. This store only retains the distro list (which is a
+ * global OS-level concern, not per-workspace) plus a transient selector
+ * state used by the add-workspace dialog.
+ */
 export const useWorkspaceEnvPiniaStore = defineStore("workspace-env", () => {
-  const env = ref<WorkspaceEnv>(LOCAL_WORKSPACE);
   const distros = ref<WslDistro[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
+  // Transient: which env the add-workspace dialog currently shows. Defaults
+  // to local; the dialog may flip it to a wsl distro. Not persisted — purely
+  // UI state for the picker.
+  const pendingEnv = ref<{ kind: "local" } | { kind: "wsl"; distro: string }>({
+    kind: "local",
+  });
 
-  function setEnv(next: WorkspaceEnv): void {
-    env.value = next;
-    setCurrentWorkspaceEnv(next);
-    if (next.kind === "wsl") {
-      void Promise.resolve(setLastWslDistro(next.distro)).catch(() => {});
-    }
+  function setPendingEnv(
+    next: { kind: "local" } | { kind: "wsl"; distro: string },
+  ): void {
+    pendingEnv.value = next;
   }
 
   async function refreshDistros(): Promise<WslDistro[]> {
@@ -40,11 +47,11 @@ export const useWorkspaceEnvPiniaStore = defineStore("workspace-env", () => {
   }
 
   return {
-    env,
     distros,
     loading,
     error,
-    setEnv,
+    pendingEnv,
+    setPendingEnv,
     refreshDistros,
   };
 });

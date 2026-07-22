@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import { NSpin } from "naive-ui";
 import type { FsGrepHit } from "@/lib/native";
 import { t } from "@/modules/i18n/translate";
+import { useWorkspaceContext } from "@/app/workspaceContext";
 import { runFindInFiles } from "./lib/findInFilesService";
 
 const props = defineProps<{
@@ -16,6 +17,7 @@ const emit = defineEmits<{
 const pattern = ref("");
 const include = ref("");
 const caseInsensitive = ref(false);
+const wsCtx = useWorkspaceContext();
 const loading = ref(false);
 const hits = ref<FsGrepHit[]>([]);
 const truncated = ref(false);
@@ -43,7 +45,7 @@ async function run() {
   loading.value = true;
   errorMessage.value = null;
   try {
-    const result = await runFindInFiles({
+    const result = await runFindInFiles(wsCtx.wsNative, {
       root: props.rootPath,
       pattern: pattern.value,
       caseInsensitive: caseInsensitive.value,

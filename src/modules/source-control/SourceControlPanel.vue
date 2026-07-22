@@ -2,13 +2,13 @@
 import { NSelect, NSpin, useDialog, type SelectOption } from "naive-ui";
 import { computed, h, shallowRef, toRef, watch, type Ref } from "vue";
 import {
-  native,
   type GitBranchInfo,
   type GitCommitResult,
   type GitDiscardEntry,
   type GitWorkspaceRepo,
   type WorkspaceFsChangedEvent,
 } from "@/lib/native";
+import { useWorkspaceContext } from "@/app/workspaceContext";
 import { t } from "@/modules/i18n/translate";
 import SourceControlChangeList from "./SourceControlChangeList.vue";
 import SourceControlCommitBox from "./SourceControlCommitBox.vue";
@@ -61,6 +61,8 @@ const emit = defineEmits<{
 }>();
 
 const dialog = useDialog();
+// 获取当前 workspace 上下文，4 个 composable 都改用 wsNative 调用面。
+const wsCtx = useWorkspaceContext();
 const rootPath = toRef(props, "rootPath");
 const workspaceScope = toRef(props, "workspaceScope");
 const fsEvent = toRef(props, "fsEvent");
@@ -69,22 +71,22 @@ const repositoryRegistry = useGitRepositoryRegistry({
   rootPath,
   workspaceScope,
   fsEvent,
-  native,
+  wsNative: wsCtx.wsNative,
 });
 const state = useSourceControlState({
   rootPath,
   repoRoot: selectedRepoRoot,
   fsEvent,
-  native,
+  wsNative: wsCtx.wsNative,
   t,
 });
 const gitMetadata = useSourceControlGitMetadata({
   repoRoot: state.repoRoot,
-  native,
+  wsNative: wsCtx.wsNative,
 });
 const actions = useSourceControlActions({
   state,
-  native,
+  wsNative: wsCtx.wsNative,
   dialog,
   t,
   emitCommitted: (result) => emit("committed", result),

@@ -7,11 +7,13 @@ import {
 import { NIcon, NSpin } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { IS_MAC } from "@/lib/platform";
+import { createNativeForEnv } from "@/lib/native";
 import { fileIconUrl, folderIconUrl } from "@/modules/explorer/lib/iconResolver";
 import {
   searchFileTree,
   type SearchHit,
 } from "@/modules/explorer/lib/fileTreeService";
+import { useWorkspacesPiniaStore } from "@/modules/workspace";
 import { t } from "@/modules/i18n/translate";
 import { formatKeybinding } from "./keybindings";
 import { filterCommands } from "./registry";
@@ -160,7 +162,13 @@ async function runFileSearch(requestId: number, nextQuery: string) {
     return;
   }
   try {
-    const result = await searchFileTree(root, nextQuery, props.showHidden);
+    const activeWs = useWorkspacesPiniaStore().activeWorkspace;
+    if (!activeWs) {
+      searchingFiles.value = false;
+      return;
+    }
+    const wsNative = createNativeForEnv(activeWs.env);
+    const result = await searchFileTree(wsNative, root, nextQuery, props.showHidden);
     if (requestId !== searchRequestId) return;
     fileResults.value = result.hits;
     fileResultsTruncated.value = result.truncated;

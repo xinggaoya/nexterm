@@ -1,5 +1,9 @@
 import { computed, ref, type Ref } from "vue";
-import { native, type ShellBgLogResponse } from "@/lib/native";
+import {
+  native,
+  type ShellBgLogResponse,
+  type WorkspaceNative,
+} from "@/lib/native";
 import type { WorkspaceTask } from "./taskTypes";
 
 export type TaskRunStatus =
@@ -44,7 +48,13 @@ export type TaskRunApi = {
 };
 
 export type TaskRunStoreOptions = {
+  /**
+   * 测试桩可选注入；省略时从 `wsNative` 派生 spawn，并回退到全局
+   * `native` 读取 logs/kill（这两个方法是 handle 索引的，不依赖 env）。
+   */
   api?: TaskRunApi;
+  /** 绑定到目标 workspace 环境的 native 调用面，用于 `shellBgSpawn`。 */
+  wsNative?: WorkspaceNative;
   autoPoll?: boolean;
   pollIntervalMs?: number;
   now?: () => number;
@@ -66,7 +76,18 @@ function trimCommand(command: string): string {
 }
 
 export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
-  const api = options.api ?? native;
+  // 默认 API：spawn 走 env 绑定的 `wsNative`，确保后台任务在正确的
+  // workspace 环境里启动；logs/kill 仍走全局 `native`，因为它们以
+  // handle 作为索引、后端不区分 env。测试可直接通过 `api` 整体注入。
+  const api: TaskRunApi =
+    options.api ??
+    {
+      shellBgSpawn: (command, cwd) =>
+        options.wsNative!.shellBgSpawn(command, cwd),
+      shellBgLogs: (handle, sinceOffset) =>
+        native.shellBgLogs(handle, sinceOffset),
+      shellBgKill: (handle) => native.shellBgKill(handle),
+    };
   const autoPoll = options.autoPoll ?? true;
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const now = options.now ?? Date.now;

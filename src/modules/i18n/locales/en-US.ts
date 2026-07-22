@@ -119,6 +119,11 @@ const enUS = {
       newWindow: "New window",
       title: "Choose how to open",
     },
+    workspaceBar: {
+      add: "Add workspace",
+      close: "Close workspace",
+      local: "Local",
+    },
     workspaceEnv: {
       switchingTo: "Switching to {target}",
       title: "Workspace environment",
@@ -181,6 +186,11 @@ const enUS = {
       scrollback: "Scrollback",
       showHiddenFiles: "Show hidden files",
       startupAndWorkspace: "Startup and workspace",
+      developer: "Developer",
+      developerDescription: "Tools for troubleshooting.",
+      toggleDevtools: "Open DevTools",
+      toggleDevtoolsHint: "Toggle the Webview inspector (DevTools) to debug UI issues.",
+      devtoolsUnavailable: "DevTools unavailable (requires a debug build or the devtools feature).",
       terminal: "Terminal",
       terminalContextMenu: "Terminal context menu",
       terminalDescription: "Local terminal rendering, font, and buffer defaults.",
