@@ -3,6 +3,8 @@ import { defineStore } from "pinia";
 import {
   SIDE_PANEL_WIDTH_MAX,
   SIDE_PANEL_WIDTH_MIN,
+  setLayoutLeftSidebar,
+  setLayoutPanels,
 } from "@/modules/settings/store";
 
 export type WorkbenchLayoutPreferences = {
@@ -12,6 +14,26 @@ export type WorkbenchLayoutPreferences = {
   updateExplorerPanelWidth: (value: number) => Promise<void>;
 };
 
+export type ActivityKey = "workspace" | "sourceControl";
+export type PanelKey =
+  | "workspace"
+  | "sourceControl"
+  | "explorer"
+  | "taskConsole";
+
+export interface LeftSidebarState {
+  activity: ActivityKey;
+  open: boolean;
+  width: number;
+}
+
+export interface PanelVisibilityState {
+  workspace: boolean;
+  sourceControl: boolean;
+  explorer: boolean;
+  taskConsole: boolean;
+}
+
 export type WorkbenchLayoutOptions = {
   prefs: WorkbenchLayoutPreferences;
   panelResizeTriggerSize?: number;
@@ -20,6 +42,19 @@ export type WorkbenchLayoutOptions = {
 
 const DEFAULT_PANEL_RESIZE_TRIGGER_SIZE = 8;
 const DEFAULT_PANEL_WIDTH_SAVE_DELAY_MS = 250;
+
+const DEFAULT_LEFT_SIDEBAR: LeftSidebarState = {
+  activity: "sourceControl",
+  open: true,
+  width: 280,
+};
+
+const DEFAULT_PANELS: PanelVisibilityState = {
+  workspace: true,
+  sourceControl: true,
+  explorer: true,
+  taskConsole: false,
+};
 
 /**
  * Global panel-visibility state shared across all workspace hosts.
@@ -34,7 +69,14 @@ const DEFAULT_PANEL_WIDTH_SAVE_DELAY_MS = 250;
 const usePanelVisibilityStore = defineStore("workbench-panel-visibility", () => {
   const leftPanelOpen = ref(false);
   const rightPanelOpen = ref(true);
-  return { leftPanelOpen, rightPanelOpen };
+  const leftSidebar = ref<LeftSidebarState>({ ...DEFAULT_LEFT_SIDEBAR });
+  const panelVisibility = ref<PanelVisibilityState>({ ...DEFAULT_PANELS });
+  return {
+    leftPanelOpen,
+    rightPanelOpen,
+    leftSidebar,
+    panelVisibility,
+  };
 });
 
 function clampPanelWidth(value: number): number {
@@ -42,6 +84,18 @@ function clampPanelWidth(value: number): number {
   return Math.min(
     SIDE_PANEL_WIDTH_MAX,
     Math.max(SIDE_PANEL_WIDTH_MIN, Math.round(value)),
+  );
+}
+
+const LEFT_SIDEBAR_WIDTH_MIN = 200;
+const LEFT_SIDEBAR_WIDTH_MAX = 480;
+const LEFT_SIDEBAR_WIDTH_DEFAULT = 280;
+
+function clampLeftSidebarWidth(value: number): number {
+  if (!Number.isFinite(value)) return LEFT_SIDEBAR_WIDTH_DEFAULT;
+  return Math.min(
+    LEFT_SIDEBAR_WIDTH_MAX,
+    Math.max(LEFT_SIDEBAR_WIDTH_MIN, Math.round(value)),
   );
 }
 
@@ -64,6 +118,8 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   const visibility = usePanelVisibilityStore();
   const leftPanelOpen = computed(() => visibility.leftPanelOpen);
   const rightPanelOpen = computed(() => visibility.rightPanelOpen);
+  const leftSidebar = computed(() => visibility.leftSidebar);
+  const panelVisibility = computed(() => visibility.panelVisibility);
   function setLeftPanelOpen(v: boolean): void {
     visibility.leftPanelOpen = v;
   }
@@ -75,6 +131,33 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   }
   function toggleRightPanel(): void {
     visibility.rightPanelOpen = !visibility.rightPanelOpen;
+  }
+  function setLeftSidebarActivity(key: ActivityKey): void {
+    visibility.leftSidebar = { ...visibility.leftSidebar, activity: key };
+  }
+  function toggleLeftSidebar(): void {
+    visibility.leftSidebar = {
+      ...visibility.leftSidebar,
+      open: !visibility.leftSidebar.open,
+    };
+  }
+  function setLeftSidebarWidth(width: number): void {
+    visibility.leftSidebar = {
+      ...visibility.leftSidebar,
+      width: clampLeftSidebarWidth(width),
+    };
+  }
+  function togglePanel(key: PanelKey): void {
+    visibility.panelVisibility = {
+      ...visibility.panelVisibility,
+      [key]: !visibility.panelVisibility[key],
+    };
+    if (key === "sourceControl") {
+      visibility.leftPanelOpen = visibility.panelVisibility.sourceControl;
+    }
+    if (key === "explorer") {
+      visibility.rightPanelOpen = visibility.panelVisibility.explorer;
+    }
   }
   const sourceControlPanelWidth = ref(
     clampPanelWidth(prefs.sourceControlPanelWidth),
@@ -205,6 +288,12 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     window.removeEventListener("resize", measureRightSplitWidth);
     flushSourceControlWidthSave();
     flushExplorerWidthSave();
+    void setLayoutLeftSidebar({
+      activity: visibility.leftSidebar.activity,
+      open: visibility.leftSidebar.open,
+      width: visibility.leftSidebar.width,
+    });
+    void setLayoutPanels({ ...visibility.panelVisibility });
   }
 
   watch(
@@ -240,12 +329,16 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     flushExplorerWidthSave,
     flushSourceControlWidthSave,
     leftPanelOpen,
+    leftSidebar,
     measureRightSplitWidth,
     panelResizeTriggerSize,
+    panelVisibility,
     rightPanelOpen,
     rightSplitHost: rightSplitHost as Ref<HTMLElement | null>,
     rightSplitWidth,
     setLeftPanelOpen,
+    setLeftSidebarActivity,
+    setLeftSidebarWidth,
     setRightPanelOpen,
     sourceControlPaneClass,
     sourceControlPanelWidth,
@@ -255,6 +348,8 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     startLayoutObservers,
     stopLayoutObservers,
     toggleLeftPanel,
+    toggleLeftSidebar,
+    togglePanel,
     toggleRightPanel,
     updateExplorerSplitSize,
     updateSourceControlSplitSize,
