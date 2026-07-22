@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import { t } from "@/modules/i18n/translate";
+import { WORKSPACE_CONTEXT_KEY } from "@/app/workspaceContext";
 
 export type TabContextMenuTarget = {
   tab: Tab;
@@ -13,7 +14,6 @@ export type TabContextMenuTarget = {
 
 const props = defineProps<{
   target: TabContextMenuTarget | null;
-  rootPath: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -30,6 +30,11 @@ const emit = defineEmits<{
   moveToNewWindow: [tabId: number];
   requestRename: [tabId: number];
 }>();
+
+const workspaceCtx = inject(WORKSPACE_CONTEXT_KEY, null);
+const rootPath = computed<string | null>(
+  () => workspaceCtx?.workspace.rootPath ?? null,
+);
 
 const menuElement = ref<HTMLElement | null>(null);
 
@@ -107,8 +112,8 @@ function emitCopyPath(relative: boolean) {
   const path = pathFor(props.target.tab);
   if (!path) return;
   if (relative) {
-    if (!props.rootPath) return;
-    emit("copyRelativePath", props.rootPath, path);
+    if (!rootPath.value) return;
+    emit("copyRelativePath", rootPath.value, path);
   } else {
     emit("copyPath", path);
   }
