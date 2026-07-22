@@ -91,6 +91,19 @@ describe("visual system contract", () => {
     }
   });
 
+  it("keeps the tab bar inside the center pane instead of above Explorer", () => {
+    const workspaceHost = readSource("../app/shell/WorkspaceHost.vue");
+    const workbench = readSource("../app/shell/Workbench.vue");
+
+    expect(workspaceHost).toMatch(
+      /<Workbench[\s\S]*?<template #tab-bar>[\s\S]*?<TabBar/,
+    );
+    expect(workbench).toMatch(
+      /<template #1>[\s\S]*?<slot name="tab-bar" \/>[\s\S]*?<div class="relative min-h-0 flex-1">/,
+    );
+    expect(workbench).toMatch(/<template #2>[\s\S]*?<FileExplorer/);
+  });
+
   it("keeps xterm-consumed custom properties concrete", () => {
     for (const name of [
       "term-bg",

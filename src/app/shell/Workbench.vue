@@ -184,6 +184,7 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
     >
       <template #1>
         <section class="nexterm-surface flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+          <slot name="tab-bar" />
           <div class="relative min-h-0 flex-1">
             <div
               :class="[
