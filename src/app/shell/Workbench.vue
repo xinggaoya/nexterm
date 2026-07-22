@@ -10,7 +10,6 @@ import FileExplorer from "@/modules/explorer/FileExplorer.vue";
 import GitHistoryStack from "@/modules/git-history/GitHistoryStack.vue";
 import MarkdownStack from "@/modules/markdown/MarkdownStack.vue";
 import PreviewStack from "@/modules/preview/PreviewStack.vue";
-import SourceControlPanel from "@/modules/source-control/SourceControlPanel.vue";
 import type { GitDecorationMap } from "@/modules/source-control";
 import type { TaskRun, TaskRunGroup } from "@/modules/tasks";
 import TaskConsole from "@/modules/tasks/TaskConsole.vue";
@@ -24,17 +23,10 @@ type WorkbenchLayoutBinding = {
   explorerSplitMin: ComputedRef<string>;
   explorerSplitSize: ComputedRef<string>;
   flushExplorerWidthSave: () => void;
-  flushSourceControlWidthSave: () => void;
-  leftPanelOpen: ComputedRef<boolean> | Ref<boolean>;
   panelResizeTriggerSize: number;
   rightPanelOpen: ComputedRef<boolean> | Ref<boolean>;
   rightSplitHost: Ref<HTMLElement | null>;
-  sourceControlPaneClass: ComputedRef<string>;
-  sourceControlSplitMax: ComputedRef<string>;
-  sourceControlSplitMin: ComputedRef<string>;
-  sourceControlSplitSize: ComputedRef<string>;
   updateExplorerSplitSize: (size: string | number) => void;
-  updateSourceControlSplitSize: (size: string | number) => void;
 };
 
 type TaskConsoleBinding = {
@@ -183,184 +175,148 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
 </script>
 
 <template>
-  <NSplit
-    class="nexterm-canvas h-full min-h-0 min-w-0 p-2"
-    direction="horizontal"
-    :size="layout.sourceControlSplitSize.value"
-    :min="layout.sourceControlSplitMin.value"
-    :max="layout.sourceControlSplitMax.value"
-    :disabled="!layout.leftPanelOpen.value"
-    :resize-trigger-size="layout.panelResizeTriggerSize"
-    :pane1-class="layout.sourceControlPaneClass.value"
-    pane2-class="h-full min-h-0 min-w-0"
-    @update:size="layout.updateSourceControlSplitSize"
-    @drag-end="layout.flushSourceControlWidthSave"
-  >
-    <template #1>
-      <SourceControlPanel
-        v-show="layout.leftPanelOpen.value"
-        :root-path="workspaceRoot"
-        :workspace-scope="workspaceScope"
-        :active-repo-root="activeRepoRoot"
-        :fs-event="workspaceFsEvent"
-        :show-branches-modal="showBranchesModalBinding.ref"
-        @decorations-change="setGitDecorations"
-        @open-diff="(input) => emit('open-source-diff', input)"
-        @open-history="(input) => emit('open-source-history', input)"
-        @repo-selected="(repoRoot) => emit('repo-selected', repoRoot)"
-      />
-    </template>
-    <template #resize-trigger>
-      <div
-        v-if="layout.leftPanelOpen.value"
-        class="h-full w-full bg-transparent transition-colors hover:bg-pane-handle-active"
-      />
-    </template>
-    <template #2>
-      <div class="h-full min-h-0 min-w-0">
-        <NSplit
-          class="nexterm-canvas h-full min-h-0 min-w-0"
-          direction="horizontal"
-          :size="layout.explorerSplitSize.value"
-          :min="layout.explorerSplitMin.value"
-          :max="layout.explorerSplitMax.value"
-          :resize-trigger-size="layout.panelResizeTriggerSize"
-          pane1-class="h-full min-h-0 min-w-0"
-          :pane2-class="layout.explorerPaneClass.value"
-          @update:size="layout.updateExplorerSplitSize"
-          @drag-end="layout.flushExplorerWidthSave"
-        >
-          <template #1>
-            <section class="nexterm-card-elevated flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-              <div class="relative min-h-0 flex-1">
-                <div
-                  :class="[
-                    'absolute inset-0',
-                    isActiveKind('terminal') ? '' : 'pointer-events-none invisible',
-                  ]"
-                  :aria-hidden="!isActiveKind('terminal')"
-                >
-                  <div
-                    v-for="terminalTab in terminalTabs"
-                    v-show="terminalTab.id === activeId"
-                    :key="terminalTab.id"
-                    class="absolute inset-0"
-                  >
-                    <TerminalWorkspace
-                      :tab="terminalTab"
-                      :is-active="isActiveKind('terminal') && terminalTab.id === activeId"
-                    />
-                  </div>
-                </div>
-
-                <div
-                  :class="[
-                    'absolute inset-0',
-                    isActiveKind('preview') ? '' : 'pointer-events-none invisible',
-                  ]"
-                  :aria-hidden="!isActiveKind('preview')"
-                >
-                  <PreviewStack
-                    :tabs="tabs"
-                    :active-id="activeId"
-                    @url-change="(id, url) => tabsStore.updateTab(id, { url })"
-                  />
-                </div>
-
-                <div
-                  :class="[
-                    'absolute inset-0',
-                    isActiveKind('markdown') ? '' : 'pointer-events-none invisible',
-                  ]"
-                  :aria-hidden="!isActiveKind('markdown')"
-                >
-                  <MarkdownStack :tabs="tabs" :active-id="activeId" />
-                </div>
-
-                <div
-                  :class="[
-                    'absolute inset-0',
-                    isActiveGitDiff() ? '' : 'pointer-events-none invisible',
-                  ]"
-                  :aria-hidden="!isActiveGitDiff()"
-                >
-                  <GitDiffStack :tabs="tabs" :active-id="activeId" />
-                </div>
-
-                <div
-                  :class="[
-                    'absolute inset-0',
-                    isActiveKind('git-history') ? '' : 'pointer-events-none invisible',
-                  ]"
-                  :aria-hidden="!isActiveKind('git-history')"
-                >
-                  <GitHistoryStack
-                    :tabs="tabs"
-                    :active-id="activeId"
-                    @open-commit-file="(input) => tabsStore.openCommitFileDiffTab(input)"
-                    @change-ref="handleHistoryRefChange"
-                  />
-                </div>
-
-                <div
-                  v-if="activeTab && activeTab.kind === 'editor'"
-                  class="absolute inset-0 flex min-h-0 flex-col bg-background"
-                  :class="isActiveKind('editor') ? '' : 'pointer-events-none invisible'"
-                  :aria-hidden="!isActiveKind('editor')"
-                >
-                  <EditorPane
-                    ref="activeEditorPane"
-                    :path="activeTab.path"
-                    :fs-event="workspaceFsEvent"
-                    @dirty-change="(dirty) => tabsStore.updateTab(activeTab!.id, { dirty })"
-                  />
-                </div>
-              </div>
-
-              <TaskConsole
-                v-if="taskConsole.taskConsoleOpen.value"
-                class="shrink-0"
-                :style="{ height: `${TASK_CONSOLE_HEIGHT}px` }"
-                :root-path="workspaceRoot"
-                :view="taskConsole.taskConsoleView.value"
-                :tasks="taskConsole.workspaceTasks.value"
-                :runs="taskConsole.taskRunList.value"
-                :active-run="taskConsole.activeTaskRun.value"
-                :loading-tasks="taskConsole.workspaceTasksLoading.value"
-                :task-error="taskConsole.workspaceTasksError.value"
-                @close="taskConsole.closeTaskConsole"
-                @update-view="taskConsole.setTaskConsoleView"
-                @refresh-tasks="taskConsole.refreshWorkspaceTasks"
-                @run-task="taskConsole.runWorkspaceTask"
-                @run-command="taskConsole.runWorkspaceCommand"
-                @select-run="taskConsole.taskRuns.setActiveRun"
-                @stop-run="(id) => void taskConsole.taskRuns.stopRun(id)"
-                @rerun="(id) => void taskConsole.taskRuns.rerun(id)"
-                @run-in-terminal="taskConsole.runTaskInTerminal"
-              />
-            </section>
-          </template>
-          <template #resize-trigger>
+  <div class="nexterm-canvas h-full min-h-0 min-w-0 p-2">
+    <NSplit
+      class="h-full min-h-0 min-w-0"
+      direction="horizontal"
+      :size="layout.explorerSplitSize.value"
+      :min="layout.explorerSplitMin.value"
+      :max="layout.explorerSplitMax.value"
+      :resize-trigger-size="layout.panelResizeTriggerSize"
+      pane1-class="h-full min-h-0 min-w-0"
+      :pane2-class="layout.explorerPaneClass.value"
+      @update:size="layout.updateExplorerSplitSize"
+      @drag-end="layout.flushExplorerWidthSave"
+    >
+      <template #1>
+        <section class="nexterm-card-elevated flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+          <div class="relative min-h-0 flex-1">
             <div
-              v-if="layout.rightPanelOpen.value"
-              class="h-full w-full bg-transparent transition-colors hover:bg-pane-handle-active"
-            />
-          </template>
-          <template #2>
-            <FileExplorer
-              ref="fileExplorerRef"
-              v-show="layout.rightPanelOpen.value"
-              :root-path="workspaceRoot"
-              :fs-event="workspaceFsEvent"
-              :git-decorations="gitDecorations"
-              @open-file="(path, pin) => emit('open-file', path, pin)"
-              @open-markdown-preview="(path) => emit('open-markdown-preview', path)"
-              @open-in-terminal="(path) => emit('open-in-terminal', path)"
-              @open-search-result="(path, line) => emit('open-search-result', path, line)"
-            />
-          </template>
-        </NSplit>
-      </div>
-    </template>
-  </NSplit>
+              :class="[
+                'absolute inset-0',
+                isActiveKind('terminal') ? '' : 'pointer-events-none invisible',
+              ]"
+              :aria-hidden="!isActiveKind('terminal')"
+            >
+              <div
+                v-for="terminalTab in terminalTabs"
+                v-show="terminalTab.id === activeId"
+                :key="terminalTab.id"
+                class="absolute inset-0"
+              >
+                <TerminalWorkspace
+                  :tab="terminalTab"
+                  :is-active="isActiveKind('terminal') && terminalTab.id === activeId"
+                />
+              </div>
+            </div>
+
+            <div
+              :class="[
+                'absolute inset-0',
+                isActiveKind('preview') ? '' : 'pointer-events-none invisible',
+              ]"
+              :aria-hidden="!isActiveKind('preview')"
+            >
+              <PreviewStack
+                :tabs="tabs"
+                :active-id="activeId"
+                @url-change="(id, url) => tabsStore.updateTab(id, { url })"
+              />
+            </div>
+
+            <div
+              :class="[
+                'absolute inset-0',
+                isActiveKind('markdown') ? '' : 'pointer-events-none invisible',
+              ]"
+              :aria-hidden="!isActiveKind('markdown')"
+            >
+              <MarkdownStack :tabs="tabs" :active-id="activeId" />
+            </div>
+
+            <div
+              :class="[
+                'absolute inset-0',
+                isActiveGitDiff() ? '' : 'pointer-events-none invisible',
+              ]"
+              :aria-hidden="!isActiveGitDiff()"
+            >
+              <GitDiffStack :tabs="tabs" :active-id="activeId" />
+            </div>
+
+            <div
+              :class="[
+                'absolute inset-0',
+                isActiveKind('git-history') ? '' : 'pointer-events-none invisible',
+              ]"
+              :aria-hidden="!isActiveKind('git-history')"
+            >
+              <GitHistoryStack
+                :tabs="tabs"
+                :active-id="activeId"
+                @open-commit-file="(input) => tabsStore.openCommitFileDiffTab(input)"
+                @change-ref="handleHistoryRefChange"
+              />
+            </div>
+
+            <div
+              v-if="activeTab && activeTab.kind === 'editor'"
+              class="absolute inset-0 flex min-h-0 flex-col bg-background"
+              :class="isActiveKind('editor') ? '' : 'pointer-events-none invisible'"
+              :aria-hidden="!isActiveKind('editor')"
+            >
+              <EditorPane
+                ref="activeEditorPane"
+                :path="activeTab.path"
+                :fs-event="workspaceFsEvent"
+                @dirty-change="(dirty) => tabsStore.updateTab(activeTab!.id, { dirty })"
+              />
+            </div>
+          </div>
+
+          <TaskConsole
+            v-if="taskConsole.taskConsoleOpen.value"
+            class="shrink-0"
+            :style="{ height: `${TASK_CONSOLE_HEIGHT}px` }"
+            :root-path="workspaceRoot"
+            :view="taskConsole.taskConsoleView.value"
+            :tasks="taskConsole.workspaceTasks.value"
+            :runs="taskConsole.taskRunList.value"
+            :active-run="taskConsole.activeTaskRun.value"
+            :loading-tasks="taskConsole.workspaceTasksLoading.value"
+            :task-error="taskConsole.workspaceTasksError.value"
+            @close="taskConsole.closeTaskConsole"
+            @update-view="taskConsole.setTaskConsoleView"
+            @refresh-tasks="taskConsole.refreshWorkspaceTasks"
+            @run-task="taskConsole.runWorkspaceTask"
+            @run-command="taskConsole.runWorkspaceCommand"
+            @select-run="taskConsole.taskRuns.setActiveRun"
+            @stop-run="(id) => void taskConsole.taskRuns.stopRun(id)"
+            @rerun="(id) => void taskConsole.taskRuns.rerun(id)"
+            @run-in-terminal="taskConsole.runTaskInTerminal"
+          />
+        </section>
+      </template>
+      <template #resize-trigger>
+        <div
+          v-if="layout.rightPanelOpen.value"
+          class="h-full w-full bg-transparent transition-colors hover:bg-pane-handle-active"
+        />
+      </template>
+      <template #2>
+        <FileExplorer
+          ref="fileExplorerRef"
+          v-show="layout.rightPanelOpen.value"
+          :root-path="workspaceRoot"
+          :fs-event="workspaceFsEvent"
+          :git-decorations="gitDecorations"
+          @open-file="(path, pin) => emit('open-file', path, pin)"
+          @open-markdown-preview="(path) => emit('open-markdown-preview', path)"
+          @open-in-terminal="(path) => emit('open-in-terminal', path)"
+          @open-search-result="(path, line) => emit('open-search-result', path, line)"
+        />
+      </template>
+    </NSplit>
+  </div>
 </template>
