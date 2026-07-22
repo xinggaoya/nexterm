@@ -107,7 +107,7 @@ defineExpose({ focus });
 
 <template>
   <div class="shrink-0 border-b border-border/60">
-    <div class="flex h-9 items-center gap-1 bg-card/40 px-1.5">
+    <div class="nexterm-toolbar flex h-8 items-center gap-1 px-1.5">
       <TooltipTitle :label="t('preview.reload')">
         <NButton
           size="tiny"
@@ -167,7 +167,7 @@ defineExpose({ focus });
 
     <div
       v-if="notice"
-      class="flex items-center gap-1.5 bg-amber-500/8 px-3 py-1 text-[11px] text-amber-600 dark:text-amber-400"
+      class="flex items-center gap-1.5 bg-warning/8 px-3 py-1 text-[11px] text-warning"
     >
       <span class="min-w-0 flex-1 truncate">{{ notice }}</span>
       <button

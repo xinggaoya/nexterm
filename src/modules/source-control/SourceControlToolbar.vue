@@ -62,7 +62,7 @@ function handleRemoteSelect(key: string | number) {
 
 <template>
   <div>
-    <div class="nexterm-card-header flex h-9 shrink-0 items-center gap-1 px-2">
+    <div class="nexterm-toolbar flex h-8 shrink-0 items-center gap-1 px-2">
       <div class="flex min-w-0 flex-1 items-center gap-1.5">
         <NButton
           size="tiny"

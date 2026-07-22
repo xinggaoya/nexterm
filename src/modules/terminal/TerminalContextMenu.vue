@@ -19,7 +19,7 @@ const emit = defineEmits<{
     @mousedown.self="emit('close')"
     @contextmenu.prevent.self="emit('close')"
   >
-    <div class="terminal-context-menu" :style="{ top: `${y}px`, left: `${x}px` }">
+    <div class="nexterm-overlay terminal-context-menu" :style="{ top: `${y}px`, left: `${x}px` }">
       <button type="button" :disabled="!selection" @click="emit('copy')">
         Copy
       </button>
@@ -37,20 +37,16 @@ const emit = defineEmits<{
 }
 .terminal-context-menu {
   position: fixed;
-  background: var(--term-pane-header-bg);
-  border: 1px solid var(--term-pane-divider);
-  border-radius: 6px;
   padding: 4px;
   display: flex;
   flex-direction: column;
   min-width: 140px;
-  box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.32);
   font-family: var(--font-sans);
 }
 .terminal-context-menu button {
   background: transparent;
   border: 0;
-  color: var(--term-pane-header-fg);
+  color: var(--foreground);
   padding: 6px 10px;
   text-align: left;
   cursor: pointer;
@@ -58,7 +54,7 @@ const emit = defineEmits<{
   font-size: 12px;
 }
 .terminal-context-menu button:hover:not(:disabled) {
-  background: var(--term-pane-hover-bg);
+  background: var(--surface-hover);
 }
 .terminal-context-menu button:disabled {
   opacity: 0.4;

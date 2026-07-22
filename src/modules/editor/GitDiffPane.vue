@@ -148,8 +148,8 @@ watch(
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col rounded-md border border-border/60 bg-background">
-    <div class="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-3">
+  <div class="nexterm-surface flex h-full min-h-0 flex-col">
+    <div class="nexterm-toolbar flex h-8 shrink-0 items-center justify-between gap-3 px-3">
       <div class="flex min-w-0 items-center gap-2">
         <NTag size="small" :bordered="false">
           {{ props.chipLabel ?? mode }}
@@ -170,8 +170,8 @@ watch(
       <div class="flex shrink-0 items-center gap-3 text-[10.5px] tabular-nums text-muted-foreground">
         <span class="max-w-80 truncate font-mono">{{ props.source.repoRoot }}</span>
         <template v-if="useFallback">
-          <span class="text-emerald-600 dark:text-emerald-400">+{{ stats.added }}</span>
-          <span class="text-rose-600 dark:text-rose-400">-{{ stats.removed }}</span>
+          <span class="text-success">+{{ stats.added }}</span>
+          <span class="text-destructive">-{{ stats.removed }}</span>
         </template>
       </div>
     </div>

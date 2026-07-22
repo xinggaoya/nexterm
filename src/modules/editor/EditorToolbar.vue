@@ -21,7 +21,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-border/30 bg-panel-bg px-3">
+  <div class="nexterm-toolbar flex h-8 shrink-0 items-center justify-between gap-3 px-3">
     <div class="flex min-w-0 items-center gap-2">
       <div class="min-w-0">
         <div class="truncate text-[12px] font-medium leading-4">{{ props.fileName }}</div>
@@ -34,7 +34,7 @@ const emit = defineEmits<{
     <div class="flex shrink-0 items-center gap-2">
       <div
         v-if="props.externalChangePending"
-        class="flex max-w-64 items-center gap-1 rounded border border-amber-500/35 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-200"
+        class="flex max-w-64 items-center gap-1 rounded-sm border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning"
         data-editor-external-change
       >
         <span class="truncate">{{ t("editor.externalChangePending") }}</span>

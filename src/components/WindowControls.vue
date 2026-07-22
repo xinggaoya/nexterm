@@ -44,7 +44,7 @@ onUnmounted(() => {
         <button
           type="button"
           :aria-label="t('app.windowControls.minimize')"
-          class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          class="nexterm-icon-button"
           @click="windowRef.minimize()"
         >
           <NIcon :component="RemoveOutline" :size="13" />
@@ -54,7 +54,7 @@ onUnmounted(() => {
         <button
           type="button"
           :aria-label="maximized ? t('app.windowControls.restore') : t('app.windowControls.maximize')"
-          class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          class="nexterm-icon-button"
           @click="windowRef.toggleMaximize()"
         >
           <NIcon :component="maximized ? CopyOutline : SquareOutline" :size="13" />
@@ -65,7 +65,7 @@ onUnmounted(() => {
       <button
         type="button"
         :aria-label="t('app.windowControls.close')"
-        class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
+        class="nexterm-icon-button hover:bg-destructive/15 hover:text-destructive"
         @click="windowRef.close()"
       >
         <NIcon :component="CloseOutline" :size="15" />

@@ -169,7 +169,7 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
 </script>
 
 <template>
-  <div class="nexterm-canvas h-full min-h-0 min-w-0 p-2">
+  <div class="nexterm-surface h-full min-h-0 min-w-0">
     <NSplit
       class="h-full min-h-0 min-w-0"
       direction="horizontal"
@@ -183,7 +183,7 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
       @drag-end="layout.flushExplorerWidthSave"
     >
       <template #1>
-        <section class="nexterm-card-elevated flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+        <section class="nexterm-surface flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
           <div class="relative min-h-0 flex-1">
             <div
               :class="[
@@ -295,7 +295,7 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
       <template #resize-trigger>
         <div
           v-if="layout.rightPanelOpen.value"
-          class="h-full w-full bg-transparent transition-colors hover:bg-pane-handle-active"
+          class="h-full w-full bg-pane-handle transition-colors hover:bg-pane-handle-active"
         />
       </template>
       <template #2>

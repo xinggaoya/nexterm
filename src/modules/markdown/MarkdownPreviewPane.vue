@@ -43,10 +43,10 @@ watch(() => props.path, () => void load(), { immediate: true });
 
 <template>
   <div
-    class="flex h-full w-full flex-col overflow-hidden rounded-md border border-border/60 bg-background"
+    class="nexterm-surface flex h-full w-full flex-col overflow-hidden"
     :style="{ pointerEvents: props.visible ? 'auto' : 'none' }"
   >
-    <div class="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 px-3">
+    <div class="nexterm-toolbar flex h-8 shrink-0 items-center gap-2 px-3">
       <NIcon :component="DocumentTextOutline" :size="15" class="shrink-0 text-muted-foreground" />
       <div class="min-w-0 flex-1 truncate text-[12px] font-medium">{{ fileName }}</div>
     </div>

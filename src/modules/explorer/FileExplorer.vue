@@ -658,7 +658,7 @@ defineExpose({ setMode });
     @keydown="handleKeydown"
   >
     <div
-      class="nexterm-card-header flex h-8 shrink-0 items-center gap-1 px-2"
+      class="nexterm-toolbar flex h-8 shrink-0 items-center gap-1 px-2"
       data-explorer-header
     >
       <div class="flex min-w-0 flex-1 items-center gap-1.5" :title="rootPath || undefined">

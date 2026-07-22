@@ -281,9 +281,43 @@ Error: Port 3180 is already in use
 ### Metadata
 - Reproducible: yes
 - Related Files: vite.config.ts
+- Recurrence-Count: 2
+- Last-Seen: 2026-07-22
 
 ### Resolution
 - **Resolved**: 2026-07-16T14:53:26+08:00
 - **Notes**: 复用现有服务收集证据，后续独立验证使用其他端口。
+
+---
+
+## [ERR-20260722-001] ripgrep_dash_prefixed_pattern
+
+**Logged**: 2026-07-22T18:17:33+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: config
+
+### Summary
+以 `--` 开头的正则未使用参数终止符，导致 ripgrep 将搜索模式解析为命令选项。
+
+### Error
+```text
+rg: unrecognized flag --(background|foreground|primary|...)
+```
+
+### Context
+- 最终检查 CSS token 是否间接引用其他变量时，搜索模式以自定义属性前缀 `--` 开头。
+- 失败仅发生在只读检查命令中，没有修改产品代码。
+
+### Suggested Fix
+搜索以连字符开头的模式时，在模式前加入 `--` 参数终止符，例如 `rg -n -- '<pattern>' <path>`。
+
+### Metadata
+- Reproducible: yes
+- Related Files: src/styles/globals.css
+
+### Resolution
+- **Resolved**: 2026-07-22T18:17:33+08:00
+- **Notes**: 使用 `rg -n -- '<pattern>'` 重新执行检查。
 
 ---

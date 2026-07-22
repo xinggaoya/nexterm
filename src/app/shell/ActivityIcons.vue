@@ -36,14 +36,14 @@ const activities = computed(() => [
 
 <template>
   <nav
-    class="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-border/30 bg-activity-bar py-2"
+    class="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-border bg-activity-bar py-1.5"
     aria-label="Activity icons"
   >
     <button
       type="button"
       data-add-workspace
       :title="t('app.leftSidebar.addWorkspace')"
-      class="grid size-8 place-items-center rounded text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
+      class="nexterm-icon-button"
       @click="emit('add-workspace')"
     >
       <NIcon :component="AddOutline" :size="16" />
@@ -53,7 +53,7 @@ const activities = computed(() => [
       type="button"
       data-open-in-new-window
       :title="t('app.leftSidebar.openInNewWindow')"
-      class="grid size-8 place-items-center rounded text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
+      class="nexterm-icon-button"
       @click="emit('open-in-new-window')"
     >
       <NIcon :component="OpenOutline" :size="15" />
@@ -68,11 +68,11 @@ const activities = computed(() => [
       :data-activity="item.key"
       :aria-pressed="activity === item.key"
       :title="item.label"
-      class="grid size-8 place-items-center rounded transition-colors"
+      class="relative grid size-8 place-items-center rounded-md transition-colors before:absolute before:inset-y-1.5 before:left-[-6px] before:w-0.5 before:rounded-full"
       :class="
         activity === item.key
-          ? 'bg-accent text-foreground'
-          : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground'
+          ? 'bg-accent text-primary before:bg-primary'
+          : 'text-muted-foreground before:bg-transparent hover:bg-surface-hover hover:text-foreground'
       "
       @click="emit('select-activity', item.key)"
     >

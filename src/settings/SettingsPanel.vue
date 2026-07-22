@@ -88,9 +88,9 @@ function selectTab(tab: SettingsTab) {
 <template>
   <section
     data-settings-panel
-    class="flex h-full min-h-0 flex-col bg-background text-foreground select-none"
+    class="flex h-full min-h-0 flex-col bg-card text-foreground select-none"
   >
-    <header class="flex h-13 shrink-0 items-center gap-3 border-b border-border/60 px-4">
+    <header class="nexterm-toolbar flex h-12 shrink-0 items-center gap-3 px-4">
       <div class="min-w-0 flex-1">
         <h2 class="truncate text-sm font-semibold tracking-normal">
           {{ t("settings.panel.title") }}
@@ -111,7 +111,7 @@ function selectTab(tab: SettingsTab) {
 
     <div class="min-h-0 flex-1 sm:flex">
       <aside
-        class="no-scrollbar shrink-0 overflow-x-auto border-b border-border/60 px-3 py-2 sm:w-46 sm:overflow-y-auto sm:border-r sm:border-b-0 sm:py-3"
+        class="no-scrollbar shrink-0 overflow-x-auto border-b border-border bg-sidebar px-2 py-2 sm:w-44 sm:overflow-y-auto sm:border-r sm:border-b-0 sm:py-3"
       >
         <nav class="flex gap-1 sm:flex-col" aria-label="Settings sections">
           <button
@@ -121,10 +121,10 @@ function selectTab(tab: SettingsTab) {
             :data-settings-tab="tab.id"
             :aria-pressed="selectedTab === tab.id"
             :class="[
-              'inline-flex h-8 shrink-0 items-center gap-2 rounded-md px-2.5 text-xs font-medium transition-colors sm:w-full',
+              'nexterm-row inline-flex h-7 shrink-0 items-center gap-2 px-2.5 text-xs font-medium sm:w-full',
               selectedTab === tab.id
-                ? 'bg-muted text-foreground'
-                : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+                ? 'bg-accent text-primary'
+                : 'text-muted-foreground hover:text-foreground',
             ]"
             @click="selectTab(tab.id)"
           >

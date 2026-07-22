@@ -61,7 +61,7 @@ defineOptions({
 <template>
   <div
     :data-source-row-key="entry.key"
-    class="group flex h-8 min-w-0 items-center gap-1 rounded-md px-1 transition-colors hover:bg-muted/80"
+    class="nexterm-row group flex h-7 min-w-0 items-center gap-1 px-1"
   >
     <NCheckbox
       size="small"

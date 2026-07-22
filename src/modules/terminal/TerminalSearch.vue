@@ -40,7 +40,7 @@ function handleKey(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div v-if="visible" class="terminal-search">
+  <div v-if="visible" class="nexterm-overlay terminal-search">
     <input
       ref="inputRef"
       v-model="query"
@@ -62,9 +62,6 @@ function handleKey(event: KeyboardEvent) {
   right: 16px;
   display: flex;
   align-items: center;
-  background: var(--term-pane-header-bg);
-  border: 1px solid var(--term-pane-divider-active);
-  border-radius: 6px;
   padding: 4px 8px;
   gap: 4px;
   z-index: 30;

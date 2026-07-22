@@ -90,7 +90,7 @@ defineExpose<PreviewPaneHandle>({
 
 <template>
   <div
-    class="flex h-full w-full flex-col overflow-hidden rounded-md border border-border/60 bg-background"
+    class="nexterm-surface flex h-full w-full flex-col overflow-hidden"
     :style="{
       visibility: props.visible ? 'visible' : 'hidden',
       pointerEvents: props.visible ? 'auto' : 'none',
@@ -105,7 +105,7 @@ defineExpose<PreviewPaneHandle>({
 
     <div
       v-if="showXfoHint"
-      class="flex h-7 shrink-0 items-center gap-1.5 border-b border-border/60 bg-amber-500/8 px-3 text-[11px] text-amber-600 dark:text-amber-400"
+      class="flex h-7 shrink-0 items-center gap-1.5 border-b border-warning/25 bg-warning/8 px-3 text-[11px] text-warning"
     >
       <NIcon :component="AlertCircleOutline" :size="13" class="shrink-0" />
       <span class="truncate">
@@ -134,7 +134,7 @@ defineExpose<PreviewPaneHandle>({
         v-else-if="props.url"
         class="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center"
       >
-        <div class="grid size-10 place-items-center rounded-md border border-border/60 bg-card text-muted-foreground">
+        <div class="grid size-10 place-items-center text-primary/70">
           <NIcon :component="GlobeOutline" :size="18" />
         </div>
         <div class="space-y-1">
@@ -154,7 +154,7 @@ defineExpose<PreviewPaneHandle>({
         v-else
         class="flex h-full w-full flex-col items-center justify-center gap-4 px-6 text-center"
       >
-        <div class="grid size-12 place-items-center rounded-md border border-border/60 bg-card text-muted-foreground">
+        <div class="grid size-12 place-items-center text-primary/70">
           <NIcon :component="GlobeOutline" :size="20" />
         </div>
         <div class="space-y-1.5">

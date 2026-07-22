@@ -43,7 +43,7 @@ const editorThemeOptions = EDITOR_THEMES.map((value) => ({
       </p>
     </div>
 
-    <NCard size="small" :title="t('settings.general.appearance')" embedded>
+    <NCard class="nexterm-settings-group" size="small" :title="t('settings.general.appearance')" embedded>
       <NForm label-placement="left" label-width="150" size="small">
         <NFormItem :label="t('settings.general.theme')">
           <NSelect

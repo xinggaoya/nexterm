@@ -21,8 +21,15 @@ type TokenName =
   | "accent-foreground"
   | "border"
   | "primary"
+  | "primary-foreground"
   | "destructive"
+  | "success"
+  | "warning"
+  | "info"
   | "ring"
+  | "shell-bg"
+  | "surface-subtle"
+  | "surface-hover"
   | "activity-bar"
   | "title-bar"
   | "terminal-focus"
@@ -42,8 +49,15 @@ const TOKENS: TokenName[] = [
   "accent-foreground",
   "border",
   "primary",
+  "primary-foreground",
   "destructive",
+  "success",
+  "warning",
+  "info",
   "ring",
+  "shell-bg",
+  "surface-subtle",
+  "surface-hover",
   "activity-bar",
   "title-bar",
   "terminal-focus",
@@ -52,24 +66,31 @@ const TOKENS: TokenName[] = [
   "panel-bg",
 ];
 
-const FALLBACK_TOKENS: AppTokens = {
-  background: "rgb(255, 255, 255)",
-  foreground: "rgb(24, 24, 27)",
+export const FALLBACK_APP_TOKENS: AppTokens = {
+  background: "rgb(241, 245, 246)",
+  foreground: "rgb(23, 32, 39)",
   card: "rgb(255, 255, 255)",
-  muted: "rgb(244, 244, 245)",
-  "muted-foreground": "rgb(113, 113, 122)",
-  accent: "rgb(244, 244, 245)",
-  "accent-foreground": "rgb(24, 24, 27)",
-  border: "rgb(228, 228, 231)",
-  primary: "rgb(24, 24, 27)",
-  destructive: "rgb(239, 68, 68)",
-  ring: "rgb(161, 161, 170)",
-  "activity-bar": "rgb(248, 248, 250)",
-  "title-bar": "rgb(250, 250, 252)",
-  "terminal-focus": "rgb(59, 130, 246)",
-  "pane-handle": "rgb(220, 220, 224)",
-  "pane-handle-active": "rgb(100, 140, 230)",
-  "panel-bg": "rgb(249, 249, 251)",
+  muted: "rgb(237, 242, 244)",
+  "muted-foreground": "rgb(101, 114, 125)",
+  accent: "rgb(226, 237, 240)",
+  "accent-foreground": "rgb(23, 32, 39)",
+  border: "rgb(207, 218, 222)",
+  primary: "rgb(0, 127, 149)",
+  "primary-foreground": "rgb(248, 253, 254)",
+  destructive: "rgb(200, 59, 82)",
+  success: "rgb(49, 131, 72)",
+  warning: "rgb(156, 101, 0)",
+  info: "rgb(118, 85, 200)",
+  ring: "rgb(0, 127, 149)",
+  "shell-bg": "rgb(241, 245, 246)",
+  "surface-subtle": "rgb(247, 249, 250)",
+  "surface-hover": "rgb(226, 237, 240)",
+  "activity-bar": "rgb(233, 239, 241)",
+  "title-bar": "rgb(241, 245, 246)",
+  "terminal-focus": "rgb(0, 127, 149)",
+  "pane-handle": "rgb(207, 218, 222)",
+  "pane-handle-active": "rgb(0, 127, 149)",
+  "panel-bg": "rgb(255, 255, 255)",
 };
 
 let probe: HTMLDivElement | null = null;
@@ -97,7 +118,7 @@ export function readAppTokens(): AppTokens {
 export function normalizeAppTokens(tokens: AppTokens): AppTokens {
   const out = {} as AppTokens;
   for (const name of TOKENS) {
-    out[name] = normalizeCssColor(tokens[name], FALLBACK_TOKENS[name]);
+    out[name] = normalizeCssColor(tokens[name], FALLBACK_APP_TOKENS[name]);
   }
   return out;
 }

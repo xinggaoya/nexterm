@@ -33,13 +33,19 @@ describe("app token colors", () => {
   it("keeps existing rgb and rgba values consumable", () => {
     mockComputedTokenColors({
       primary: "rgb(12, 34, 56)",
+      "primary-foreground": "rgb(4, 12, 16)",
       destructive: "rgba(239, 68, 68, 0.8)",
+      success: "rgb(139, 212, 80)",
+      warning: "rgb(242, 184, 75)",
     });
 
     const tokens = readAppTokens();
 
     expect(tokens.primary).toBe("rgb(12, 34, 56)");
+    expect(tokens["primary-foreground"]).toBe("rgb(4, 12, 16)");
     expect(tokens.destructive).toBe("rgba(239, 68, 68, 0.8)");
+    expect(tokens.success).toBe("rgb(139, 212, 80)");
+    expect(tokens.warning).toBe("rgb(242, 184, 75)");
   });
 
   it("falls back when a runtime color cannot be normalized", () => {
@@ -49,6 +55,6 @@ describe("app token colors", () => {
 
     const tokens = readAppTokens();
 
-    expect(tokens.primary).toBe("rgb(24, 24, 27)");
+    expect(tokens.primary).toBe("rgb(0, 127, 149)");
   });
 });

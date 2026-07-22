@@ -34,7 +34,7 @@ const fastScrollModifierOptions = computed(() =>
 </script>
 
 <template>
-  <NCard size="small" :title="t('settings.general.terminal')" embedded>
+  <NCard class="nexterm-settings-group" size="small" :title="t('settings.general.terminal')" embedded>
     <NForm label-placement="left" label-width="180" size="small">
       <NFormItem :label="t('settings.general.scrollback')">
         <NSelect

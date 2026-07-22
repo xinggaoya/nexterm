@@ -2,6 +2,7 @@
 import {
   AddOutline,
   CloseOutline,
+  FolderOutline,
   LogoApple,
   OpenOutline,
 } from "@vicons/ionicons5";
@@ -54,8 +55,8 @@ function close(event: MouseEvent, id: string): void {
   <div
     :class="
       embedded
-        ? 'flex h-full min-h-0 flex-col gap-0.5 bg-title-bar p-1'
-        : 'flex items-center gap-1 border-b border-border/60 bg-title-bar px-2 py-1'
+        ? 'flex h-full min-h-0 flex-col gap-0.5 bg-sidebar p-1.5'
+        : 'no-scrollbar flex h-full max-w-full items-center gap-0.5 overflow-x-auto px-1'
     "
     data-workspace-bar
     :data-embedded="embedded ? 'true' : 'false'"
@@ -65,11 +66,11 @@ function close(event: MouseEvent, id: string): void {
         v-for="ws in list"
         :key="ws.id"
         type="button"
-        class="group flex max-w-[220px] min-w-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-colors"
+        class="group relative flex h-7 max-w-[220px] min-w-20 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors"
         :class="
           ws.id === activeId
-            ? 'bg-accent text-foreground'
-            : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+            ? 'bg-accent/70 text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
+            : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground'
         "
         :data-workspace-id="ws.id"
         :data-active="ws.id === activeId"
@@ -83,16 +84,12 @@ function close(event: MouseEvent, id: string): void {
             :size="13"
             class="text-primary"
           />
-          <span
-            v-else
-            class="text-[11px]"
-            :aria-hidden="true"
-          >📁</span>
+          <NIcon v-else :component="FolderOutline" :size="13" />
         </span>
         <span class="truncate font-medium">{{ ws.name }}</span>
         <span
           v-if="envBadge(ws)"
-          class="shrink-0 rounded bg-primary/15 px-1 py-px text-[10px] leading-none text-primary"
+          class="shrink-0 rounded-sm bg-primary/12 px-1 py-px text-[10px] leading-none text-primary"
         >
           {{ envBadge(ws) }}
         </span>
@@ -107,7 +104,7 @@ function close(event: MouseEvent, id: string): void {
 
       <button
         type="button"
-        class="flex shrink-0 items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+        class="nexterm-icon-button size-7"
         :title="t('app.workspaceBar.add')"
         data-add-workspace
         @click="emit('addWorkspace')"
@@ -117,7 +114,7 @@ function close(event: MouseEvent, id: string): void {
 
       <button
         type="button"
-        class="flex shrink-0 items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+        class="nexterm-icon-button size-7"
         :title="t('app.leftSidebar.openInNewWindow')"
         data-open-in-new-window
         @click="emit('openInNewWindow')"
@@ -131,11 +128,11 @@ function close(event: MouseEvent, id: string): void {
         v-for="ws in list"
         :key="ws.id"
         type="button"
-        class="group flex w-full min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] transition-colors"
+        class="nexterm-row group flex h-7 w-full min-w-0 items-center gap-2 px-2 text-left text-[12px]"
         :class="
           ws.id === activeId
             ? 'bg-accent text-foreground'
-            : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+            : 'text-muted-foreground hover:text-foreground'
         "
         :data-workspace-id="ws.id"
         :data-active="ws.id === activeId"
@@ -148,11 +145,11 @@ function close(event: MouseEvent, id: string): void {
           :size="13"
           class="shrink-0 text-primary"
         />
-        <span v-else class="shrink-0 text-[11px]" :aria-hidden="true">📁</span>
+        <NIcon v-else :component="FolderOutline" :size="13" class="shrink-0" />
         <span class="min-w-0 flex-1 truncate">{{ ws.name }}</span>
         <span
           v-if="envBadge(ws)"
-          class="shrink-0 rounded bg-primary/15 px-1 py-px text-[10px] leading-none text-primary"
+          class="shrink-0 rounded-sm bg-primary/12 px-1 py-px text-[10px] leading-none text-primary"
         >
           {{ envBadge(ws) }}
         </span>
@@ -168,7 +165,7 @@ function close(event: MouseEvent, id: string): void {
       <div class="mt-1 flex flex-col gap-0.5 border-t border-border/40 pt-1">
         <button
           type="button"
-          class="flex items-center gap-2 rounded px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          class="nexterm-row flex h-7 items-center gap-2 px-2 text-[12px] text-muted-foreground hover:text-foreground"
           :title="t('app.workspaceBar.add')"
           data-add-workspace
           @click="emit('addWorkspace')"
@@ -178,7 +175,7 @@ function close(event: MouseEvent, id: string): void {
         </button>
         <button
           type="button"
-          class="flex items-center gap-2 rounded px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          class="nexterm-row flex h-7 items-center gap-2 px-2 text-[12px] text-muted-foreground hover:text-foreground"
           :title="t('app.leftSidebar.openInNewWindow')"
           data-open-in-new-window
           @click="emit('openInNewWindow')"

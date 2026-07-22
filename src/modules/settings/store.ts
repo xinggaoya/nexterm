@@ -273,14 +273,14 @@ function normalizePanelVisibilityPref(value: unknown): PanelVisibilityPref {
   };
 }
 
-export const SIDE_PANEL_WIDTH_DEFAULT = 256;
+export const SIDE_PANEL_WIDTH_DEFAULT = 288;
 
 export const EDITOR_FONT_SIZE_DEFAULT = 13;
 export const EDITOR_FONT_SIZE_MIN = 10;
 export const EDITOR_FONT_SIZE_MAX = 24;
 export const EDITOR_TAB_SIZE_DEFAULT = 2;
-export const SIDE_PANEL_WIDTH_MIN = 180;
-export const SIDE_PANEL_WIDTH_MAX = 520;
+export const SIDE_PANEL_WIDTH_MIN = 220;
+export const SIDE_PANEL_WIDTH_MAX = 440;
 
 export const TERMINAL_FONT_SIZE_DEFAULT = 14;
 export const TERMINAL_FONT_SIZE_MIN = 8;

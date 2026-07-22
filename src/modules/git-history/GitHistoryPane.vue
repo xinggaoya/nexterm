@@ -217,14 +217,14 @@ function absoluteTime(secs: number): string {
 function statusClass(status: string): string {
   switch (status.toUpperCase()) {
     case "A":
-      return "text-emerald-600 dark:text-emerald-400";
+      return "text-success";
     case "M":
-      return "text-amber-600 dark:text-amber-300";
+      return "text-warning";
     case "D":
-      return "text-rose-600 dark:text-rose-400";
+      return "text-destructive";
     case "R":
     case "C":
-      return "text-sky-600 dark:text-sky-300";
+      return "text-info";
     default:
       return "text-muted-foreground";
   }
@@ -233,11 +233,11 @@ function statusClass(status: string): string {
 function refKindClass(kind: string): string {
   switch (kind.toLowerCase()) {
     case "tag":
-      return "border-amber-300/60 bg-amber-100/60 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200";
+      return "border-warning/40 bg-warning/10 text-warning";
     case "remote":
-      return "border-sky-300/60 bg-sky-100/60 text-sky-900 dark:border-sky-500/40 dark:bg-sky-500/15 dark:text-sky-200";
+      return "border-info/40 bg-info/10 text-info";
     default:
-      return "border-emerald-300/60 bg-emerald-100/60 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200";
+      return "border-success/40 bg-success/10 text-success";
   }
 }
 
@@ -422,8 +422,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div data-git-history class="flex h-full min-h-0 flex-col bg-background">
-    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-card/50 px-3">
+  <div data-git-history class="nexterm-surface flex h-full min-h-0 flex-col">
+    <div class="nexterm-toolbar flex h-8 shrink-0 items-center gap-2 px-3">
       <div class="min-w-0 flex-1">
         <div class="truncate text-[12px] font-medium">
           {{ t("gitHistory.commitHistory") }}
@@ -504,7 +504,7 @@ onMounted(() => {
 
     <div v-else class="flex min-h-0 min-w-0 flex-1">
       <div class="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div class="grid h-6 shrink-0 items-center gap-3 border-b border-border/40 bg-card/55 px-3 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70 [grid-template-columns:68px_72px_minmax(0,1fr)_160px_96px_116px]">
+        <div class="grid h-6 shrink-0 items-center gap-3 border-b border-border bg-surface-subtle px-3 text-[9.5px] font-semibold uppercase text-muted-foreground/70 [grid-template-columns:68px_72px_minmax(0,1fr)_160px_96px_116px]">
           <div />
           <div>{{ t("gitHistory.sha") }}</div>
           <div>{{ t("gitHistory.subject") }}</div>
@@ -572,10 +572,10 @@ onMounted(() => {
                 <NIcon :component="DocumentOutline" :size="11" />
                 {{ commit.filesChanged }}
               </span>
-              <span v-if="commit.insertions > 0" class="font-semibold text-emerald-600 dark:text-emerald-400">
+              <span v-if="commit.insertions > 0" class="font-semibold text-success">
                 +{{ commit.insertions }}
               </span>
-              <span v-if="commit.deletions > 0" class="font-semibold text-rose-600 dark:text-rose-400">
+              <span v-if="commit.deletions > 0" class="font-semibold text-destructive">
                 -{{ commit.deletions }}
               </span>
             </span>
@@ -584,7 +584,7 @@ onMounted(() => {
 
         <div
           v-if="hasMore"
-          class="shrink-0 border-t border-border/40 bg-card/35 p-2"
+          class="shrink-0 border-t border-border bg-surface-subtle p-2"
         >
           <NButton
             size="small"
@@ -709,8 +709,8 @@ onMounted(() => {
                   {{ t("gitHistory.binary") }}
                 </span>
                 <template v-else>
-                  <span v-if="file.added > 0" class="font-mono text-[10px] text-emerald-600 dark:text-emerald-400">+{{ file.added }}</span>
-                  <span v-if="file.removed > 0" class="font-mono text-[10px] text-rose-600 dark:text-rose-400">-{{ file.removed }}</span>
+                  <span v-if="file.added > 0" class="font-mono text-[10px] text-success">+{{ file.added }}</span>
+                  <span v-if="file.removed > 0" class="font-mono text-[10px] text-destructive">-{{ file.removed }}</span>
                 </template>
                 <span :class="['w-4 text-center text-[9.5px] font-bold', statusClass(file.status)]">
                   {{ file.status.toUpperCase() }}

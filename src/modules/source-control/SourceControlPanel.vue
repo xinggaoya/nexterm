@@ -425,7 +425,7 @@ async function handleCheckoutBranch(branch: GitBranchInfo) {
     <template v-else>
       <div
         v-if="status?.truncated"
-        class="border-b border-border/60 px-2 py-1.5 text-[11px] text-amber-600 dark:text-amber-300"
+        class="border-b border-warning/25 bg-warning/8 px-2 py-1.5 text-[11px] text-warning"
       >
         {{ t("sourceControl.truncatedStatusHint") }}
       </div>

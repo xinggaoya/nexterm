@@ -2,7 +2,7 @@
 
 ## 1. 概述
 
-主题模块从 `AppTokens`（`src/styles/tokens.ts`）派生 Naive UI 的 `themeOverrides`。它是**唯一**改 Naive UI 主题的地方；其他模块禁止写"颜色硬编码 + 主题覆盖"双轨。
+主题模块从 `AppTokens`（`src/styles/tokens.ts`）派生 Naive UI 的 `themeOverrides`。它是**唯一**改 Naive UI 主题的地方；其他模块禁止写"颜色硬编码 + 主题覆盖"双轨。全局 CSS 同时提供 `nexterm-surface`、`nexterm-toolbar`、`nexterm-row`、`nexterm-icon-button` 与 `nexterm-overlay`，业务组件只表达表面角色。
 
 ## 2. 目录与文件
 
@@ -51,10 +51,12 @@ function buildNaiveThemeOverrides(tokens: AppTokens): GlobalThemeOverrides;
 
 ## 7. 配置项
 
-- 圆角：6 / 8 px
+- 配色：深色优先的石墨外壳 + 电光青主色；浅色使用冷白外壳与深青主色
+- 状态：`success` / `warning` / `info` / `destructive` 统一由语义 token 提供
+- 圆角：3 / 4 / 6 / 8 px，常驻面板不使用阴影
 - 字体：Inter Variable（UI）/ JetBrains Mono（代码）
 - 通知宽度：300 px
-- 标签页高度：36 px
+- 标签页高度：34 px
 - 主题切换平滑过渡：120 ms
 
 ## 8. 测试

@@ -52,7 +52,7 @@ async function toggleDevtools() {
       </p>
     </div>
 
-    <NCard size="small" :title="t('settings.general.startupAndWorkspace')" embedded>
+    <NCard class="nexterm-settings-group" size="small" :title="t('settings.general.startupAndWorkspace')" embedded>
       <NForm label-placement="left" label-width="150" size="small">
         <NFormItem :label="t('settings.general.autostart')">
           <NSwitch
@@ -75,7 +75,7 @@ async function toggleDevtools() {
       </NForm>
     </NCard>
 
-    <NCard size="small" :title="t('settings.general.developer')" embedded>
+    <NCard class="nexterm-settings-group" size="small" :title="t('settings.general.developer')" embedded>
       <NForm label-placement="left" label-width="150" size="small">
         <NFormItem :label="t('settings.general.toggleDevtools')">
           <div class="flex flex-col gap-1">

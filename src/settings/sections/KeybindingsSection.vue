@@ -80,7 +80,7 @@ async function restoreDefault(commandId: CommandId) {
 </script>
 
 <template>
-  <NCard size="small" :title="t('settings.general.keyboardShortcuts')" embedded>
+  <NCard class="nexterm-settings-group" size="small" :title="t('settings.general.keyboardShortcuts')" embedded>
     <div class="space-y-2">
       <p class="text-[11px] leading-4 text-muted-foreground">
         {{ t("settings.general.keyboardShortcutsHint") }}

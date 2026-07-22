@@ -126,7 +126,7 @@ function openResult(hit: FsGrepHit) {
         />
       </div>
     </div>
-    <div class="nexterm-card-header px-3 py-1.5 text-[11px] text-muted-foreground">
+    <div class="nexterm-toolbar px-3 py-1.5 text-[11px] text-muted-foreground">
       <div class="flex items-center gap-2">
         <NSpin v-if="loading" size="small" />
         <span v-if="!loading && hits.length > 0">
@@ -139,7 +139,7 @@ function openResult(hit: FsGrepHit) {
           {{ t("findInFiles.prompt") }}
         </span>
       </div>
-      <div v-if="truncated" class="mt-1 text-[10px] text-amber-600">
+      <div v-if="truncated" class="mt-1 text-[10px] text-warning">
         {{ t("findInFiles.truncated") }}
       </div>
       <div v-if="errorMessage" class="mt-1 text-[10px] text-destructive">
