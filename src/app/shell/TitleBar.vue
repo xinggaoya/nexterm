@@ -35,6 +35,11 @@ onMounted(() => {
 
 async function startWindowDrag(event: PointerEvent) {
   if (event.button !== 0) return;
+  // Only start window drag when the user grabs the drag region itself.
+  // The center container wraps WorkspaceBar — clicks on workspace tabs
+  // would otherwise be swallowed by stopPropagation/preventDefault here,
+  // so we let those events fall through to the underlying buttons.
+  if (event.target !== event.currentTarget) return;
   event.preventDefault();
   event.stopPropagation();
   try {
