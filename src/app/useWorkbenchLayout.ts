@@ -1,5 +1,5 @@
 import { computed, nextTick, ref, watch, type Ref } from "vue";
-import { defineStore } from "pinia";
+import { defineStore, storeToRefs } from "pinia";
 import {
   SIDE_PANEL_WIDTH_MAX,
   SIDE_PANEL_WIDTH_MIN,
@@ -331,11 +331,15 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     flushExplorerWidthSave,
     flushSourceControlWidthSave,
     leftPanelOpen,
+    // Raw writable refs from the shared panel-visibility store, for callers
+    // (e.g. useWorkbenchCommands) that need to assign `.value` directly.
+    leftPanelOpenRef: storeToRefs(visibility).leftPanelOpen,
     leftSidebar,
     measureRightSplitWidth,
     panelResizeTriggerSize,
     panelVisibility,
     rightPanelOpen,
+    rightPanelOpenRef: storeToRefs(visibility).rightPanelOpen,
     rightSplitHost: rightSplitHost as Ref<HTMLElement | null>,
     rightSplitWidth,
     setLeftPanelOpen,

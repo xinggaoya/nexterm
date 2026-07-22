@@ -2,6 +2,7 @@
 import {
   SearchOutline,
   SettingsOutline,
+  SparklesOutline,
 } from "@vicons/ionicons5";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { NIcon } from "naive-ui";
@@ -21,6 +22,7 @@ defineProps<{
 const emit = defineEmits<{
   openCommandPalette: [];
   openSettings: [];
+  openAiAssistant: [];
   selectWorkspace: [id: string];
   closeWorkspace: [id: string];
   addWorkspace: [];
@@ -52,16 +54,16 @@ async function startWindowDrag(event: PointerEvent) {
 
 <template>
   <header
-    class="flex h-10 shrink-0 items-center border-b border-border bg-title-bar"
+    class="v2-titlebar flex h-10 shrink-0 items-center border-b border-border bg-title-bar"
     :class="IS_MAC ? 'pl-[70px]' : ''"
   >
-    <!-- Left: Logo -->
+    <!-- Left: Logo with breathing glow dot -->
     <div
-      class="flex w-28 shrink-0 items-center gap-2 pl-3 text-[12px] font-semibold text-foreground"
+      class="flex w-28 shrink-0 items-center gap-2 pl-3 text-[12px] font-semibold tracking-tight text-foreground"
       data-window-drag-region
       @pointerdown="startWindowDrag"
     >
-      <span class="size-2 rounded-sm bg-primary shadow-[0_0_12px_color-mix(in_oklch,var(--primary)_55%,transparent)]" />
+      <span class="v2-dot-glow v2-anim-breathe size-2 rounded-full bg-primary" />
       <span>Nexterm</span>
     </div>
 
@@ -79,7 +81,7 @@ async function startWindowDrag(event: PointerEvent) {
       />
     </div>
 
-    <!-- Right: command center + settings + window controls -->
+    <!-- Right: command center + AI + settings + window controls -->
     <div class="flex w-28 shrink-0 items-center justify-end gap-0.5 pr-1">
       <TooltipTitle :label="t('app.header.openCommandCenter')">
         <button
@@ -90,6 +92,21 @@ async function startWindowDrag(event: PointerEvent) {
           @click="emit('openCommandPalette')"
         >
           <NIcon :component="SearchOutline" :size="14" />
+        </button>
+      </TooltipTitle>
+      <TooltipTitle :label="t('app.header.openAiAssistant')">
+        <button
+          type="button"
+          data-open-ai-assistant
+          :aria-label="t('app.header.openAiAssistant')"
+          class="nexterm-icon-button group"
+          @click="emit('openAiAssistant')"
+        >
+          <NIcon
+            :component="SparklesOutline"
+            :size="14"
+            class="transition-colors group-hover:text-primary"
+          />
         </button>
       </TooltipTitle>
       <TooltipTitle :label="t('common.settings')">

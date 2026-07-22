@@ -66,7 +66,7 @@ function close(event: MouseEvent, id: string): void {
         v-for="ws in list"
         :key="ws.id"
         type="button"
-        class="group relative flex h-7 max-w-[220px] min-w-20 items-center gap-1.5 rounded-md px-2.5 text-[12px] transition-colors"
+        class="group relative flex h-7 max-w-[220px] min-w-20 items-center gap-1.5 rounded-[6px] px-2.5 text-[12px] transition-colors duration-[var(--dur-fast)]"
         :class="
           ws.id === activeId
             ? 'bg-accent/70 text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'

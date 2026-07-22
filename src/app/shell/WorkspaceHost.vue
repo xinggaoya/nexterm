@@ -25,6 +25,7 @@ import { workspaceScopeKey } from "@/modules/workspace";
 import type { WorkspaceInstance } from "@/modules/workspace/workspacesPinia";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { Tab } from "@/modules/tabs/tabsTypes";
+import { isDirtyEditorTab } from "@/modules/tabs/closeGuards";
 import { leafIds, type SplitDir } from "@/modules/terminal/lib/layout";
 import { MAX_PANES_PER_TAB } from "@/modules/tabs/tabsTypes";
 import {
@@ -32,7 +33,10 @@ import {
 } from "@/app/workspaceContext";
 import { useWorkspaceLifecycle } from "@/app/useWorkspaceLifecycle";
 import { useTaskConsoleController } from "@/app/useTaskConsoleController";
+import { useWorkbenchCommands } from "@/app/useWorkbenchCommands";
+import { useDialog } from "naive-ui";
 import { readEditorDocument } from "@/modules/editor/lib/documentService";
+import { t } from "@/modules/i18n/translate";
 import LeftSidebar from "./LeftSidebar.vue";
 import TabBar from "./TabBar.vue";
 import Workbench from "./Workbench.vue";
@@ -47,6 +51,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   "add-workspace": [];
   "open-in-new-window": [];
+  "request-settings": [];
+  "request-command-palette": [mode?: "commands" | "files"];
+  "request-rename": [payload: { leafId: number; currentTitle: string }];
 }>();
 
 const prefs = usePreferencesPiniaStore();
@@ -223,6 +230,83 @@ onBeforeUnmount(() => {
   workbenchLayout.stopLayoutObservers();
 });
 
+// ── Command system ──────────────────────────────────────────────────────
+// The workbench command registry (⌘K palette + global keybindings) is wired
+// here because every option it needs (git ops via wsNative, editor actions,
+// tab state) is workspace-scoped. MainApp renders the palette overlay and
+// binds the global keydown listener, delegating execution to the *active*
+// host via the exposed `commandApi`.
+const dialog = useDialog();
+
+function requestCloseTab(id: number): void {
+  const tab = tabs.workspaceTabs(props.workspace.id).find((tk) => tk.id === id);
+  if (!tab) return;
+  if (!isDirtyEditorTab(tab)) {
+    tabs.closeTab(id, props.workspace.id);
+    return;
+  }
+  const warning = dialog.warning({
+    title: t("app.unsaved.closeFileTitle"),
+    content: t("app.unsaved.closeFileContent", {
+      files: tab.path.split(/[\\/]/).pop() ?? tab.path,
+    }),
+    positiveText: t("app.unsaved.closeWithoutSaving"),
+    negativeText: t("common.cancel"),
+    onPositiveClick: () => {
+      tabs.closeTab(id, props.workspace.id);
+      warning.destroy();
+    },
+  });
+}
+
+const commandApi = useWorkbenchCommands({
+  t: (key: string, vars?: Record<string, unknown>) => t(key, vars),
+  keybindings: computed(() => prefs.keybindings ?? {}),
+  hasWorkspace: computed(() => true),
+  workspaceRoot,
+  activeRepoRoot,
+  activeTab,
+  // Panel open/closed state lives in the shared panel-visibility store so
+  // title-bar toggles reach this host. We pass the store's writable refs
+  // (not the workbench layout's readonly computed wrappers).
+  leftPanelOpen: workbenchLayout.leftPanelOpenRef,
+  rightPanelOpen: workbenchLayout.rightPanelOpenRef,
+  workspaceFsEvent,
+  openBranchesModal: showBranchesModal,
+  tabs,
+  newTerminalTab,
+  splitActivePane,
+  openFileTab,
+  openSettings: () => emit("request-settings"),
+  openTaskConsole: () => {
+    workbenchLayout.panelVisibility.value.taskConsole = true;
+  },
+  requestCloseTab,
+  saveActiveEditor,
+  openGotoLine,
+  openFindInFiles,
+  openCommandPalette: (mode) => emit("request-command-palette", mode),
+  openRenameDialog: (leafId, currentTitle) =>
+    emit("request-rename", { leafId, currentTitle }),
+  killActiveTerminal,
+  resolveGitRepo: (root: string) => wsNative.gitResolveRepo(root),
+  gitStatus: (repoRoot: string) => wsNative.gitStatus(repoRoot),
+  gitStage: (repoRoot: string, paths: string[]) => wsNative.gitStage(repoRoot, paths),
+  gitUnstage: (repoRoot: string, paths: string[]) => wsNative.gitUnstage(repoRoot, paths),
+  gitFetch: (repoRoot: string) => wsNative.gitFetch(repoRoot),
+  gitPullFfOnly: (repoRoot: string) => wsNative.gitPullFfOnly(repoRoot),
+  gitPush: (repoRoot: string) => wsNative.gitPush(repoRoot),
+  gitBranchList: (repoRoot: string) => wsNative.gitBranchList(repoRoot),
+  gitCheckoutBranch: (repoRoot: string, branch: string, remote: boolean) =>
+    wsNative.gitCheckoutBranch(repoRoot, branch, remote),
+  gitCreateBranch: (repoRoot: string, branch: string) =>
+    wsNative.gitCreateBranch(repoRoot, branch),
+  gitStashList: (repoRoot: string) => wsNative.gitStashList(repoRoot),
+  gitStashPush: (repoRoot: string, options) => wsNative.gitStashPush(repoRoot, options),
+  gitStashPop: (repoRoot: string, selector: string) =>
+    wsNative.gitStashPop(repoRoot, selector),
+});
+
 // Re-expose the workbench-bound actions so MainApp's command system can reach
 // them for the *active* workspace. MainApp finds the active WorkspaceHost via
 // the workspaces store + a ref map; for now these are internal.
@@ -232,6 +316,7 @@ defineExpose({
   openFindInFiles,
   killActiveTerminal,
   workspaceId,
+  commandApi,
 });
 </script>
 

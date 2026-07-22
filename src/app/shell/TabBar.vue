@@ -231,9 +231,9 @@ function handleSplitSelect(key: string | number) {
 </script>
 
 <template>
-  <div class="flex h-[34px] shrink-0 items-center border-b border-border bg-surface-subtle">
+  <div class="flex h-[34px] shrink-0 items-center border-b border-border bg-surface-subtle/60">
     <div class="no-scrollbar min-w-0 flex-1 overflow-x-auto">
-      <div class="flex min-w-full items-end gap-px px-1 pt-1">
+      <div class="flex min-w-full items-end gap-0.5 px-1.5 pt-1">
         <button
           v-for="tab in tabs"
           :key="tab.id"
@@ -242,17 +242,17 @@ function handleSplitSelect(key: string | number) {
           :aria-grabbed="draggingTabId === tab.id"
           :title="`${tabKindLabel(tab)}: ${tabLabel(tab)}`"
           :class="[
-            'group relative flex h-[29px] min-w-[5rem] max-w-48 flex-[1_1_8rem] items-center justify-between gap-1.5 rounded-t-md px-2 text-left text-[12px] transition-[background-color,color,opacity]',
+            'group relative flex h-[29px] min-w-[5rem] max-w-48 flex-[1_1_8rem] items-center justify-between gap-1.5 rounded-t-[6px] px-2.5 text-left text-[12px] transition-[background-color,color,opacity] duration-[var(--dur-fast)]',
             draggingTabId === tab.id ? 'opacity-60' : '',
             dropTarget?.id === tab.id && dropTarget.placement === 'before'
-              ? 'before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary'
+              ? 'before:absolute before:inset-y-1.5 before:left-[-2px] before:w-0.5 before:rounded-full before:bg-primary'
               : '',
             dropTarget?.id === tab.id && dropTarget.placement === 'after'
-              ? 'after:absolute after:inset-y-1 after:right-0 after:w-0.5 after:rounded-full after:bg-primary'
+              ? 'after:absolute after:inset-y-1.5 after:right-[-2px] after:w-0.5 after:rounded-full after:bg-primary'
               : '',
             tab.id === activeId
-              ? 'bg-card text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
-              : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
+              ? 'bg-card text-foreground after:absolute after:inset-x-2.5 after:bottom-0 after:h-[2px] after:rounded-t-full after:bg-primary'
+              : 'text-muted-foreground hover:bg-surface-hover/60 hover:text-foreground',
           ]"
           @click="handleTabClick(tab)"
           @dblclick="pinPreviewTab(tab)"
@@ -268,20 +268,20 @@ function handleSplitSelect(key: string | number) {
             />
             <span
               class="min-w-0 truncate"
-              :class="tab.kind === 'editor' && tab.preview ? 'italic' : ''"
+              :class="tab.kind === 'editor' && tab.preview ? 'italic text-muted-foreground' : ''"
             >
               {{ tabLabel(tab) }}
             </span>
             <span
               v-if="tab.kind === 'editor' && tab.dirty"
-              class="size-1.5 shrink-0 rounded-full bg-foreground/70"
+              class="size-1.5 shrink-0 rounded-full bg-primary"
             />
           </span>
           <TooltipTitle v-if="tabs.length > 1" :label="t('app.header.closeTab')">
             <span
               role="button"
               tabindex="-1"
-              class="grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground opacity-0 transition hover:bg-surface-hover hover:text-foreground group-hover:opacity-70 group-hover:hover:opacity-100"
+              class="grid size-4 shrink-0 place-items-center rounded-[3px] text-muted-foreground opacity-0 transition-all duration-[var(--dur-fast)] hover:bg-destructive/15 hover:text-destructive group-hover:opacity-60 group-hover:hover:opacity-100"
               @click.stop="emit('closeTab', tab.id)"
               @pointerdown.stop
             >
@@ -331,7 +331,7 @@ function handleSplitSelect(key: string | number) {
     <!-- Drag ghost -->
     <div
       v-if="dragGhost"
-      class="nexterm-overlay pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 px-2 text-[12px] opacity-95"
+      class="v2-glass-float pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-[12px] opacity-95"
       :style="{
         width: `${dragGhost.width}px`,
         transform: `translate3d(${dragGhost.x}px, ${dragGhost.y}px, 0) translate(-50%, -50%)`,

@@ -296,7 +296,7 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
       <template #resize-trigger>
         <div
           v-if="layout.rightPanelOpen.value"
-          class="h-full w-full bg-pane-handle transition-colors hover:bg-pane-handle-active"
+          class="h-full w-full bg-pane-handle transition-colors duration-[var(--dur-fast)] hover:bg-pane-handle-active"
         />
       </template>
       <template #2>

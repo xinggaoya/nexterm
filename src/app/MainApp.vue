@@ -11,6 +11,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import TitleBar from "./shell/TitleBar.vue";
 import StatusBar from "./shell/StatusBar.vue";
 import WorkspaceHost from "./shell/WorkspaceHost.vue";
+import CommandPalette from "@/modules/commands/CommandPalette.vue";
+import AIPanel from "@/app/components/AIPanel.vue";
 import { applyLanguagePreference } from "@/modules/i18n";
 import { getNaiveLocaleConfig } from "@/modules/i18n/naive";
 import { resolveAppLocale } from "@/modules/i18n/types";
@@ -54,6 +56,11 @@ const workspaceEnv = useWorkspaceEnvPiniaStore();
 const settingsOpen = ref(false);
 const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
 const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
+
+// v2 — AI assistant panel placeholder toggle. The panel itself lands in
+// phase 5; for now this only opens/closes a reserved surface so the
+// title-bar affordance is wired end-to-end.
+const aiPanelOpen = ref(false);
 // closeGuard is wired via template ref on UnsavedCloseGuard; the guard emits
 // close-tab events handled directly in the template.
 
@@ -199,9 +206,69 @@ function cancelRename() {
 // ── Command palette (global; operates on active workspace) ──────────────
 const commandPaletteOpen = ref(false);
 
+// WorkspaceHost instance refs, keyed by workspace id. The *active* host's
+// `commandApi` drives the global command palette + keybindings.
+const workspaceHostRefs = ref<Record<string, InstanceType<typeof WorkspaceHost> | null>>({});
+function setWorkspaceHostRef(id: string, el: InstanceType<typeof WorkspaceHost> | null) {
+  workspaceHostRefs.value[id] = el;
+}
+const activeHost = computed(
+  () =>
+    (workspaces.activeWorkspaceId
+      ? workspaceHostRefs.value[workspaces.activeWorkspaceId]
+      : null) ?? null,
+);
+const activeCommandApi = computed(() => activeHost.value?.commandApi ?? null);
+
+// Derive the palette's reactive inputs from the active host's command api.
+// When no workspace is open these resolve to safe empties.
+const paletteCommands = computed(() => activeCommandApi.value?.commandDefinitions.value ?? []);
+const paletteKeybindings = computed(
+  () => activeCommandApi.value?.resolvedCommandKeybindings.value ?? {},
+);
+const paletteContext = computed(() =>
+  activeCommandApi.value
+    ? activeCommandApi.value.commandContext.value
+    : { workspaceReady: false },
+);
+const commandPaletteMode = computed({
+  get: () => activeCommandApi.value?.commandPaletteMode.value ?? "commands",
+  set: (v) => {
+    if (activeCommandApi.value) activeCommandApi.value.commandPaletteMode.value = v;
+  },
+});
+// The palette overlay reads/writes its own open state but delegates the
+// actual open/close actions to the active host so keybindings stay in sync.
+watch(commandPaletteOpen, (open) => {
+  if (activeCommandApi.value) activeCommandApi.value.commandPaletteOpen.value = open;
+});
+watch(
+  () => activeCommandApi.value?.commandPaletteOpen.value,
+  (open) => {
+    if (open !== undefined) commandPaletteOpen.value = open;
+  },
+);
+
+function openCommandPalette(mode?: "commands" | "files") {
+  if (activeCommandApi.value) activeCommandApi.value.openCommandPalette(mode);
+  else commandPaletteOpen.value = true;
+}
+
+function executeCommandFromPalette(id: Parameters<NonNullable<InstanceType<typeof WorkspaceHost>["commandApi"]>["executeCommandFromPalette"]>[0]) {
+  void activeCommandApi.value?.executeCommandFromPalette(id);
+}
+function openFileFromCommandPalette(path: string) {
+  activeCommandApi.value?.openFileFromCommandPalette(path);
+}
+
+function handleGlobalCommandKeydown(event: KeyboardEvent) {
+  activeCommandApi.value?.handleGlobalCommandKeydown(event);
+}
+
 onMounted(() => {
   if (hasTauriInternals()) void prefs.hydrate();
   startLayoutObservers();
+  window.addEventListener("keydown", handleGlobalCommandKeydown, true);
 });
 
 if (colorSchemeQuery) {
@@ -212,6 +279,7 @@ useEventListener(window, "contextmenu", preventNativeContextMenu);
 
 onUnmounted(() => {
   stopLayoutObservers();
+  window.removeEventListener("keydown", handleGlobalCommandKeydown, true);
 });
 
 watch(
@@ -250,8 +318,9 @@ watch(
             />
             <TitleBar
               :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
-              @open-command-palette="commandPaletteOpen = true"
+              @open-command-palette="openCommandPalette('commands')"
               @open-settings="openSettings"
+              @open-ai-assistant="aiPanelOpen = !aiPanelOpen"
               @select-workspace="(id) => workspaces.setActive(id)"
               @close-workspace="(id) => workspaces.removeWorkspace(id)"
               @add-workspace="() => startAddWorkspace()"
@@ -267,10 +336,14 @@ watch(
               <WorkspaceHost
                 v-for="ws in workspaces.workspaces"
                 :key="ws.id"
+                :ref="(el) => setWorkspaceHostRef(ws.id, el as InstanceType<typeof WorkspaceHost> | null)"
                 v-show="ws.id === workspaces.activeWorkspaceId"
                 :workspace="ws"
                 @add-workspace="() => startAddWorkspace()"
                 @open-in-new-window="() => openWorkspaceInNewWindow()"
+                @request-settings="openSettings()"
+                @request-command-palette="(mode) => openCommandPalette(mode)"
+                @request-rename="(payload) => (renameDialogState = payload)"
               />
               <WorkspaceWelcome
                 v-if="!hasWorkspace"
@@ -317,6 +390,34 @@ watch(
               :current-title="renameDialogState?.currentTitle ?? ''"
               @submit="commitRename"
               @cancel="cancelRename"
+            />
+
+            <!-- AI assistant drawer (v2 placeholder; see modules/ai/types.ts). -->
+            <NDrawer
+              v-model:show="aiPanelOpen"
+              placement="right"
+              :width="380"
+              :auto-focus="false"
+            >
+              <NDrawerContent body-content-style="height: 100%; padding: 0;">
+                <AIPanel @close="aiPanelOpen = false" />
+              </NDrawerContent>
+            </NDrawer>
+
+            <!-- Command palette overlay — driven by the active workspace's
+                 command api. Rendered globally so it floats above everything. -->
+            <CommandPalette
+              v-if="activeCommandApi"
+              :show="commandPaletteOpen"
+              :mode="commandPaletteMode"
+              :commands="paletteCommands"
+              :keybindings="paletteKeybindings"
+              :context="paletteContext"
+              :workspace-root="workspaceRoot"
+              :show-hidden="prefs.showHidden"
+              @close="activeCommandApi?.closeCommandPalette()"
+              @execute-command="executeCommandFromPalette"
+              @open-file="openFileFromCommandPalette"
             />
           </div>
         </NNotificationProvider>

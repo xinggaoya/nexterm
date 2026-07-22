@@ -93,7 +93,7 @@ onBeforeUnmount(() => {
 <template>
   <aside
     v-if="open"
-    class="flex shrink-0 border-r border-border bg-sidebar"
+    class="v2-anim-slide-left flex shrink-0 border-r border-border bg-sidebar"
     :style="{ width: `${width}px` }"
     :data-activity="activity"
   >
@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
 
       <div
         data-left-sidebar-resizer
-        class="absolute inset-y-0 right-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-primary/40"
+        class="absolute inset-y-0 right-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors duration-[var(--dur-fast)] hover:bg-primary/40"
         @pointerdown="onResizeStart"
       />
     </div>
