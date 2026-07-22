@@ -83,8 +83,6 @@ const props = defineProps<{
   workspaceScope: string;
 }>();
 
-const showBranchesModalBinding = { ref: props.showBranchesModal };
-
 const emit = defineEmits<{
   "open-file": [path: string, pin: boolean];
   "open-markdown-preview": [path: string];
@@ -116,7 +114,7 @@ const emit = defineEmits<{
 
 const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
 const fileExplorerRef = ref<InstanceType<typeof import("@/modules/explorer/FileExplorer.vue").default> | null>(null);
-const gitDecorations = ref<GitDecorationMap>(new Map());
+const emptyGitDecorations: GitDecorationMap = new Map();
 
 function isActiveKind(kind: Tab["kind"]): boolean {
   return props.activeTab?.kind === kind;
@@ -127,10 +125,6 @@ function isActiveGitDiff(): boolean {
     props.activeTab?.kind === "git-diff" ||
     props.activeTab?.kind === "git-commit-file"
   );
-}
-
-function setGitDecorations(decorations: GitDecorationMap) {
-  gitDecorations.value = decorations;
 }
 
 function handleHistoryRefChange(input: {
@@ -310,7 +304,7 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
           v-show="layout.rightPanelOpen.value"
           :root-path="workspaceRoot"
           :fs-event="workspaceFsEvent"
-          :git-decorations="gitDecorations"
+          :git-decorations="emptyGitDecorations"
           @open-file="(path, pin) => emit('open-file', path, pin)"
           @open-markdown-preview="(path) => emit('open-markdown-preview', path)"
           @open-in-terminal="(path) => emit('open-in-terminal', path)"

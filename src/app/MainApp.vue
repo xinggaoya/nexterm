@@ -22,7 +22,6 @@ import {
   type SettingsTab,
 } from "@/modules/settings/tabs";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
-import type { Tab } from "@/modules/tabs/tabsTypes";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import NotificationBridge from "@/modules/notifications/NotificationBridge.vue";
 import {
@@ -122,13 +121,6 @@ const workspaceScope = computed(() =>
     ? workspaceScopeKey(activeWorkspace.value.env)
     : workspaceScopeKey(LOCAL_WORKSPACE),
 );
-const activeTab = computed<Tab | null>(() => {
-  const ws = activeWorkspace.value;
-  if (!ws) return null;
-  const list = tabs.workspaceTabs(ws.id);
-  const activeId = tabs.activeIdByWorkspace[ws.id] ?? 0;
-  return list.find((tab) => tab.id === activeId) ?? null;
-});
 const gitBranch = ref<string | null>(null);
 
 const workbenchLayout = useWorkbenchLayout({ prefs });

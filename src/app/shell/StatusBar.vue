@@ -5,8 +5,8 @@ import {
   ServerOutline,
   TerminalOutline,
 } from "@vicons/ionicons5";
-import { NIcon, type Component } from "naive-ui";
-import { computed } from "vue";
+import { NIcon } from "naive-ui";
+import { computed, type Component } from "vue";
 import { t } from "@/modules/i18n/translate";
 import type { PanelKey } from "@/app/useWorkbenchLayout";
 
