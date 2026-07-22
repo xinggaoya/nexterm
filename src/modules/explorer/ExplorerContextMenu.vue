@@ -152,7 +152,7 @@ onBeforeUnmount(() => {
   <div
     v-if="target"
     ref="menuElement"
-    class="fixed z-50 min-w-44 rounded-lg border border-border bg-popover p-1 text-[12px] text-popover-foreground shadow-lg"
+    class="nexterm-overlay fixed z-50 min-w-44 p-1 text-[12px]"
     :style="{ left: `${target.x}px`, top: `${target.y}px` }"
     @click.stop
     @contextmenu.prevent

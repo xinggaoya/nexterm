@@ -39,16 +39,19 @@ interface AppTokens {
   background: string
   foreground: string
   primary: string
+  primary-foreground: string
+  success: string
+  warning: string
+  info: string
+  destructive: string
+  shell-bg: string
+  surface-subtle: string
+  surface-hover: string
   secondary: string
   accent: string
   muted: string
   border: string
   ring: string
-  radius: {
-    sm: string
-    md: string
-    lg: string
-  }
 }
 ```
 
@@ -75,8 +78,8 @@ interface GlobalThemeOverrides {
 
 ### 覆盖生成
 
-1. **通用样式**: 生成通用样式覆盖
-2. **组件样式**: 生成组件样式覆盖
+1. **通用样式**: 生成文本、表面、边框、焦点和状态色覆盖
+2. **组件样式**: 生成 3 / 4 / 6 / 8 px 圆角与紧凑尺寸覆盖
 3. **字体设置**: 设置字体系列
 4. **圆角设置**: 设置圆角大小
 

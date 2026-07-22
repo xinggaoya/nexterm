@@ -15,7 +15,7 @@ import { t } from "@/modules/i18n/translate";
       </p>
     </div>
 
-    <NCard size="small" embedded>
+    <NCard class="nexterm-settings-group" size="small" embedded>
       <NDescriptions label-placement="left" :column="1" size="small">
         <NDescriptionsItem :label="t('settings.about.product')">
           Nexterm

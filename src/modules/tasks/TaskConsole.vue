@@ -69,22 +69,22 @@ function runInTerminal(run: TaskRun) {
 
 <template>
   <section
-    class="flex h-full min-h-0 flex-col border-t border-border/60 bg-card text-foreground"
+    class="nexterm-surface flex h-full min-h-0 flex-col border-t border-border text-foreground"
     data-task-console
   >
-    <header class="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 px-3">
+    <header class="nexterm-toolbar flex h-8 shrink-0 items-center gap-2 px-3">
       <div class="min-w-0 flex-1">
         <div class="text-xs font-medium text-foreground">
           {{ t("tasks.consoleTitle") }}
         </div>
       </div>
-      <div class="flex items-center rounded-md bg-muted p-0.5">
+      <div class="flex items-center rounded-md bg-surface-subtle p-0.5">
         <button
           type="button"
           :class="[
             'h-6 rounded px-2 text-[11px] transition-colors',
             view === 'tasks'
-              ? 'bg-background text-foreground shadow-sm'
+              ? 'bg-accent text-primary'
               : 'text-muted-foreground hover:text-foreground',
           ]"
           data-task-console-view-tasks
@@ -233,7 +233,7 @@ function runInTerminal(run: TaskRun) {
 
         <section class="flex min-h-0 min-w-0 flex-col">
           <header
-            class="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 px-3"
+            class="nexterm-toolbar flex h-8 shrink-0 items-center gap-2 px-3"
           >
             <div class="min-w-0 flex-1">
               <div class="truncate text-xs font-medium">

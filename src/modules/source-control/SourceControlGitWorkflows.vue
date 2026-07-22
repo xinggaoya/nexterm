@@ -322,7 +322,7 @@ watch(
           <div
         v-for="stash in props.stashes"
         :key="stash.selector"
-        class="flex min-w-0 flex-wrap items-center gap-1 rounded-md bg-muted/35 px-1.5 py-1"
+        class="flex min-w-0 flex-wrap items-center gap-1 rounded-md bg-surface-subtle px-1.5 py-1"
       >
         <div class="min-w-0 flex-1 basis-32">
           <div class="truncate text-[11px]" :title="stash.message">{{ stash.message }}</div>

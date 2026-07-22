@@ -79,14 +79,14 @@ function statusTextClass(statusKind: SourceControlStatusKind): string {
   switch (statusKind) {
     case "added":
     case "untracked":
-      return "text-emerald-600 dark:text-emerald-300";
+      return "text-success";
     case "deleted":
     case "conflict":
-      return "text-red-600 dark:text-red-300";
+      return "text-destructive";
     case "renamed":
-      return "text-sky-600 dark:text-sky-300";
+      return "text-info";
     default:
-      return "text-amber-600 dark:text-amber-300";
+      return "text-warning";
   }
 }
 
@@ -94,14 +94,14 @@ function statusDotClass(statusKind: SourceControlStatusKind): string {
   switch (statusKind) {
     case "added":
     case "untracked":
-      return "bg-emerald-500";
+      return "bg-success";
     case "deleted":
     case "conflict":
-      return "bg-red-500";
+      return "bg-destructive";
     case "renamed":
-      return "bg-sky-500";
+      return "bg-info";
     default:
-      return "bg-amber-500";
+      return "bg-warning";
   }
 }
 </script>

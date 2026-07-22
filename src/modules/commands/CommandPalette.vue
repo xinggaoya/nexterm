@@ -245,11 +245,11 @@ onBeforeUnmount(clearSearchTimer);
     @mousedown.self="close"
   >
     <section
-      class="flex max-h-[70vh] w-full max-w-170 flex-col overflow-hidden rounded-lg border border-border/70 bg-card text-foreground shadow-2xl ring-1 ring-black/10"
+      class="nexterm-overlay flex max-h-[70vh] w-full max-w-170 flex-col overflow-hidden"
       role="dialog"
       :aria-label="title"
     >
-      <header class="flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3">
+      <header class="nexterm-toolbar flex h-11 shrink-0 items-center gap-2 px-3">
         <NIcon
           :component="mode === 'files' ? DocumentOutline : FlashOutline"
           :size="16"

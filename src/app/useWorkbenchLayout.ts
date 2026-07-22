@@ -41,13 +41,13 @@ export type WorkbenchLayoutOptions = {
   saveDelayMs?: number;
 };
 
-const DEFAULT_PANEL_RESIZE_TRIGGER_SIZE = 8;
+const DEFAULT_PANEL_RESIZE_TRIGGER_SIZE = 6;
 const DEFAULT_PANEL_WIDTH_SAVE_DELAY_MS = 250;
 
 const DEFAULT_LEFT_SIDEBAR: LeftSidebarState = {
   activity: "sourceControl",
   open: true,
-  width: 280,
+  width: 272,
 };
 
 const DEFAULT_PANELS: PanelVisibilityState = {
@@ -88,9 +88,9 @@ function clampPanelWidth(value: number): number {
   );
 }
 
-const LEFT_SIDEBAR_WIDTH_MIN = 200;
-const LEFT_SIDEBAR_WIDTH_MAX = 480;
-const LEFT_SIDEBAR_WIDTH_DEFAULT = 280;
+const LEFT_SIDEBAR_WIDTH_MIN = 216;
+const LEFT_SIDEBAR_WIDTH_MAX = 420;
+const LEFT_SIDEBAR_WIDTH_DEFAULT = 272;
 
 function clampLeftSidebarWidth(value: number): number {
   if (!Number.isFinite(value)) return LEFT_SIDEBAR_WIDTH_DEFAULT;
@@ -181,9 +181,9 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   );
   const sourceControlPaneClass = computed(() =>
     [
-      "h-full overflow-hidden rounded-xl",
+      "h-full overflow-hidden",
       leftPanelOpen.value
-        ? "nexterm-card-elevated"
+        ? "nexterm-surface"
         : "bg-transparent",
     ].join(" "),
   );
@@ -207,9 +207,9 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   });
   const explorerPaneClass = computed(() =>
     [
-      "h-full overflow-hidden rounded-xl",
+      "h-full overflow-hidden border-l border-border",
       rightPanelOpen.value
-        ? "nexterm-card-elevated"
+        ? "nexterm-surface"
         : "bg-transparent",
     ].join(" "),
   );

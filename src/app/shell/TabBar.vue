@@ -231,9 +231,9 @@ function handleSplitSelect(key: string | number) {
 </script>
 
 <template>
-  <div class="flex h-9 shrink-0 items-center border-b border-border/30 bg-title-bar">
+  <div class="flex h-[34px] shrink-0 items-center border-b border-border bg-surface-subtle">
     <div class="no-scrollbar min-w-0 flex-1 overflow-x-auto">
-      <div class="flex min-w-full items-center gap-0.5 px-1">
+      <div class="flex min-w-full items-end gap-px px-1 pt-1">
         <button
           v-for="tab in tabs"
           :key="tab.id"
@@ -242,7 +242,7 @@ function handleSplitSelect(key: string | number) {
           :aria-grabbed="draggingTabId === tab.id"
           :title="`${tabKindLabel(tab)}: ${tabLabel(tab)}`"
           :class="[
-            'group relative flex min-w-[5rem] max-w-48 flex-[1_1_8rem] items-center justify-between gap-1.5 rounded-md px-2 py-1 text-left text-[12px] transition-[background-color,color,opacity]',
+            'group relative flex h-[29px] min-w-[5rem] max-w-48 flex-[1_1_8rem] items-center justify-between gap-1.5 rounded-t-md px-2 text-left text-[12px] transition-[background-color,color,opacity]',
             draggingTabId === tab.id ? 'opacity-60' : '',
             dropTarget?.id === tab.id && dropTarget.placement === 'before'
               ? 'before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary'
@@ -251,8 +251,8 @@ function handleSplitSelect(key: string | number) {
               ? 'after:absolute after:inset-y-1 after:right-0 after:w-0.5 after:rounded-full after:bg-primary'
               : '',
             tab.id === activeId
-              ? 'bg-accent text-foreground'
-              : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground',
+              ? 'bg-card text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
+              : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
           ]"
           @click="handleTabClick(tab)"
           @dblclick="pinPreviewTab(tab)"
@@ -281,7 +281,7 @@ function handleSplitSelect(key: string | number) {
             <span
               role="button"
               tabindex="-1"
-              class="grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-70 group-hover:hover:opacity-100"
+              class="grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground opacity-0 transition hover:bg-surface-hover hover:text-foreground group-hover:opacity-70 group-hover:hover:opacity-100"
               @click.stop="emit('closeTab', tab.id)"
               @pointerdown.stop
             >
@@ -302,7 +302,7 @@ function handleSplitSelect(key: string | number) {
         <button
           type="button"
           data-new-tab
-          class="grid h-6 w-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
+          class="nexterm-icon-button size-7"
           @click="emit('newTab')"
         >
           <NIcon :component="AddOutline" :size="14" />
@@ -319,7 +319,7 @@ function handleSplitSelect(key: string | number) {
         >
           <button
             type="button"
-            class="grid h-6 w-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            class="nexterm-icon-button size-7"
             :disabled="!canSplit"
           >
             <NIcon :component="DuplicateOutline" :size="14" />
@@ -331,7 +331,7 @@ function handleSplitSelect(key: string | number) {
     <!-- Drag ghost -->
     <div
       v-if="dragGhost"
-      class="pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-md border border-border/70 bg-card px-2 text-[12px] text-foreground opacity-95 shadow-lg"
+      class="nexterm-overlay pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 px-2 text-[12px] opacity-95"
       :style="{
         width: `${dragGhost.width}px`,
         transform: `translate3d(${dragGhost.x}px, ${dragGhost.y}px, 0) translate(-50%, -50%)`,

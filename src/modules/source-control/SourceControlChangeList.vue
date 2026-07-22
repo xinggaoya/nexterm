@@ -115,7 +115,7 @@ const sectionTitle = (statusKind: SourceControlStatusKind): string => {
   <div class="flex min-h-0 flex-1 flex-col py-1">
     <div v-if="props.entries.length === 0" class="grid h-full place-items-center p-4 text-center">
       <div class="space-y-1">
-        <NIcon :component="CheckmarkCircleOutline" :size="22" class="text-emerald-500" />
+        <NIcon :component="CheckmarkCircleOutline" :size="22" class="text-success" />
         <div class="text-[12px] text-muted-foreground">
           {{ t("sourceControl.noChanges") }}
         </div>

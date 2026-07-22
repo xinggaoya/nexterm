@@ -24,7 +24,7 @@ const fileOpenModeOptions = computed<{ label: string; value: FileOpenMode }[]>((
       </p>
     </div>
 
-    <NCard size="small" :title="t('settings.general.editor')" embedded>
+    <NCard class="nexterm-settings-group" size="small" :title="t('settings.general.editor')" embedded>
       <NForm label-placement="left" label-width="150" size="small">
         <NFormItem :label="t('settings.general.fileClickBehavior')">
           <NSelect

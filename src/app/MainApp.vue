@@ -39,7 +39,7 @@ import { applyTerminalSessionTheme } from "@/modules/terminal";
 import { configureTerminalSessionDisposer } from "@/modules/tabs/terminalDisposal";
 import { disposeSession } from "@/modules/terminal/lib/sessions";
 import { buildNaiveThemeOverrides, getNaiveTheme } from "@/modules/theme/naiveTheme";
-import { readAppTokens, type AppTokens } from "@/styles/tokens";
+import { FALLBACK_APP_TOKENS, readAppTokens } from "@/styles/tokens";
 import SettingsPanel from "@/settings/SettingsPanel.vue";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
 import { useWindowChromeState } from "./useWindowChromeState";
@@ -83,27 +83,7 @@ const systemDark = ref(colorSchemeQuery?.matches ?? true);
 const colorSchemeListener = (event: MediaQueryListEvent) => {
   systemDark.value = event.matches;
 };
-const fallbackTokens: AppTokens = {
-  background: "rgb(255, 255, 255)",
-  foreground: "rgb(24, 24, 27)",
-  card: "rgb(255, 255, 255)",
-  muted: "rgb(244, 244, 245)",
-  "muted-foreground": "rgb(113, 113, 122)",
-  accent: "rgb(244, 244, 245)",
-  "accent-foreground": "rgb(24, 24, 27)",
-  border: "rgb(228, 228, 231)",
-  primary: "rgb(24, 24, 27)",
-  destructive: "rgb(239, 68, 68)",
-  ring: "rgb(161, 161, 170)",
-  "activity-bar": "rgb(248, 248, 250)",
-  "title-bar": "rgb(250, 250, 252)",
-  "terminal-focus": "rgb(59, 130, 246)",
-  "pane-handle": "rgb(220, 220, 224)",
-  "pane-handle-active": "rgb(100, 140, 230)",
-  "panel-bg": "rgb(249, 249, 251)",
-};
-
-const themeOverrides = ref(buildNaiveThemeOverrides(fallbackTokens));
+const themeOverrides = ref(buildNaiveThemeOverrides(FALLBACK_APP_TOKENS));
 const resolvedLocale = ref(resolveAppLocale(prefs.language));
 const resolvedTheme = computed(() => {
   if (prefs.theme === "system") return systemDark.value ? "dark" : "light";

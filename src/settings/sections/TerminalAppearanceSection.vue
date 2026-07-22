@@ -45,7 +45,7 @@ const fontWeightOptions = computed(() =>
 </script>
 
 <template>
-  <NCard size="small" :title="t('settings.general.terminal')" embedded>
+  <NCard class="nexterm-settings-group" size="small" :title="t('settings.general.terminal')" embedded>
     <NForm label-placement="left" label-width="160" size="small">
       <NFormItem :label="t('settings.general.fontFamily')">
         <NSelect

@@ -66,7 +66,7 @@ function toggle(key: PanelKey): void {
 
 <template>
   <footer
-    class="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-border/40 bg-title-bar px-3 text-[11px] text-muted-foreground"
+    class="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-border bg-shell-bg px-3 text-[11px] text-muted-foreground"
   >
     <div class="flex min-w-0 items-center gap-2">
       <span v-if="crumb" class="truncate" :title="crumb">{{ crumb }}</span>
@@ -80,8 +80,8 @@ function toggle(key: PanelKey): void {
         :data-toggle-panel="key"
         :aria-pressed="isOn(key)"
         :title="t(`app.status.toggle.${key}`)"
-        class="grid size-5 place-items-center rounded transition-colors hover:bg-accent/70"
-        :class="isOn(key) ? 'text-foreground' : 'text-muted-foreground/60'"
+        class="grid size-5 place-items-center rounded-sm transition-colors hover:bg-surface-hover"
+        :class="isOn(key) ? 'text-primary' : 'text-muted-foreground/60'"
         @click="toggle(key)"
       >
         <NIcon :component="iconFor(key)" :size="13" />

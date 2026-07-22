@@ -52,15 +52,16 @@ async function startWindowDrag(event: PointerEvent) {
 
 <template>
   <header
-    class="flex h-9 shrink-0 items-center border-b border-border/40 bg-title-bar"
+    class="flex h-10 shrink-0 items-center border-b border-border bg-title-bar"
     :class="IS_MAC ? 'pl-[70px]' : ''"
   >
     <!-- Left: Logo -->
     <div
-      class="flex shrink-0 items-center pl-3 text-[12px] font-semibold text-foreground"
+      class="flex w-28 shrink-0 items-center gap-2 pl-3 text-[12px] font-semibold text-foreground"
       data-window-drag-region
       @pointerdown="startWindowDrag"
     >
+      <span class="size-2 rounded-sm bg-primary shadow-[0_0_12px_color-mix(in_oklch,var(--primary)_55%,transparent)]" />
       <span>Nexterm</span>
     </div>
 
@@ -79,12 +80,13 @@ async function startWindowDrag(event: PointerEvent) {
     </div>
 
     <!-- Right: command center + settings + window controls -->
-    <div class="flex shrink-0 items-center gap-0.5 pr-2">
+    <div class="flex w-28 shrink-0 items-center justify-end gap-0.5 pr-1">
       <TooltipTitle :label="t('app.header.openCommandCenter')">
         <button
           type="button"
           data-open-command-palette
-          class="grid h-6 w-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          :aria-label="t('app.header.openCommandCenter')"
+          class="nexterm-icon-button"
           @click="emit('openCommandPalette')"
         >
           <NIcon :component="SearchOutline" :size="14" />
@@ -94,7 +96,8 @@ async function startWindowDrag(event: PointerEvent) {
         <button
           type="button"
           data-open-settings
-          class="grid h-6 w-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          :aria-label="t('common.settings')"
+          class="nexterm-icon-button"
           @click="emit('openSettings')"
         >
           <NIcon :component="SettingsOutline" :size="14" />
