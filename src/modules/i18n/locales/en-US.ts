@@ -98,10 +98,6 @@ const enUS = {
       newTerminal: "New terminal",
       openCommandCenter: "Open command center",
       openFolder: "Open Folder",
-      openFolderMenu: {
-        openInLocal: "Open in Local…",
-        openInWsl: "Open in WSL: {distro}…",
-      },
       preview: "Preview",
       sourceControl: "Source Control",
       splitActions: "Split pane",
@@ -112,12 +108,25 @@ const enUS = {
       toggleSourceControl: "Toggle source control panel",
     },
     status: {
-      noWorkspace: "No workspace",
+      crumb: "{workspace} · {branch}",
+      toggle: {
+        sourceControl: "Source Control",
+        explorer: "Explorer",
+        workspace: "Workspaces",
+        taskConsole: "Task Console",
+      },
     },
-    workspaceOpen: {
-      currentWindow: "Current window",
-      newWindow: "New window",
-      title: "Choose how to open",
+    leftSidebar: {
+      addWorkspace: "Add Workspace",
+      openInNewWindow: "Open in New Window",
+      toggle: "Toggle Sidebar",
+      activity: {
+        workspace: "Workspaces",
+        sourceControl: "Source Control",
+      },
+    },
+    titleBar: {
+      workspaces: "Workspaces",
     },
     workspaceBar: {
       add: "Add workspace",

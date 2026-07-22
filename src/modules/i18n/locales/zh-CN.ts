@@ -100,10 +100,6 @@ const zhCN = {
       newTerminal: "新建终端",
       openCommandCenter: "打开命令中心",
       openFolder: "打开文件夹",
-      openFolderMenu: {
-        openInLocal: "在本机打开…",
-        openInWsl: "在 WSL：{distro} 中打开…",
-      },
       preview: "预览",
       sourceControl: "源代码管理",
       splitActions: "拆分布局",
@@ -114,12 +110,25 @@ const zhCN = {
       toggleSourceControl: "切换源代码管理面板",
     },
     status: {
-      noWorkspace: "未打开工作区",
+      crumb: "{workspace} · {branch}",
+      toggle: {
+        sourceControl: "源代码管理",
+        explorer: "资源管理器",
+        workspace: "工作区列表",
+        taskConsole: "任务控制台",
+      },
     },
-    workspaceOpen: {
-      currentWindow: "在当前窗口打开",
-      newWindow: "在新窗口打开",
-      title: "选择打开方式",
+    leftSidebar: {
+      addWorkspace: "添加工作区",
+      openInNewWindow: "在新窗口中打开",
+      toggle: "折叠/展开侧栏",
+      activity: {
+        workspace: "工作区",
+        sourceControl: "源代码管理",
+      },
+    },
+    titleBar: {
+      workspaces: "工作区",
     },
     workspaceBar: {
       add: "添加工作区",
