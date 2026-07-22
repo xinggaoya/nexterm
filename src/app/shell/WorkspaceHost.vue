@@ -33,17 +33,25 @@ import {
 import { useWorkspaceLifecycle } from "@/app/useWorkspaceLifecycle";
 import { useTaskConsoleController } from "@/app/useTaskConsoleController";
 import { readEditorDocument } from "@/modules/editor/lib/documentService";
+import LeftSidebar from "./LeftSidebar.vue";
 import TabBar from "./TabBar.vue";
 import Workbench from "./Workbench.vue";
 import { useWorkbenchLayout } from "@/app/useWorkbenchLayout";
+import { useWorkspacesPiniaStore } from "@/modules/workspace/workspacesPinia";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 
 const props = defineProps<{
   workspace: WorkspaceInstance;
 }>();
 
+const emit = defineEmits<{
+  "add-workspace": [];
+  "open-in-new-window": [];
+}>();
+
 const prefs = usePreferencesPiniaStore();
 const tabs = useTabsPiniaStore();
+const workspaces = useWorkspacesPiniaStore();
 
 // Env-bound native surface — created once; env is immutable per workspace.
 const wsNative = createNativeForEnv(props.workspace.env);
@@ -228,58 +236,71 @@ defineExpose({
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col" :data-workspace-id="workspace.id">
-    <TabBar
-      :tabs="tabs.workspaceTabs(workspace.id)"
-      :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
-      :can-split="canSplitActiveTab"
-      :show-actions="true"
-      :workspace-root="workspaceRoot"
-      @select-tab="(id) => tabs.setActiveId(id, workspace.id)"
-      @close-tab="(id) => tabs.closeTab(id, workspace.id)"
-      @close-others="(id) => tabs.closeOthers(id, workspace.id)"
-      @close-to-right="(id) => tabs.closeToRight(id, workspace.id)"
-      @close-all="tabs.closeAll(workspace.id)"
-      @duplicate-terminal="duplicateTerminalTab"
-      @rename-tab="renameTabTitle"
-      @request-rename="() => {}"
-      @pin-tab="(id) => tabs.pinTab(id, workspace.id)"
-      @copy-path="() => {}"
-      @copy-relative-path="() => {}"
-      @move-to-new-window="() => {}"
-      @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement, workspace.id)"
-      @new-tab="newTerminalTab"
-      @split-pane="splitActivePane"
+  <div class="flex min-h-0 flex-1" :data-workspace-id="workspace.id">
+    <LeftSidebar
+      :activity="workbenchLayout.leftSidebar.value.activity"
+      :open="workbenchLayout.leftSidebar.value.open"
+      :width="workbenchLayout.leftSidebar.value.width"
+      :min-width="200"
+      :max-width="480"
+      :workspace="workspace"
+      @select-activity="(k) => workbenchLayout.setLeftSidebarActivity(k)"
+      @add-workspace="emit('add-workspace')"
+      @open-in-new-window="emit('open-in-new-window')"
+      @select-workspace="(id) => workspaces.setActive(id)"
+      @close-workspace="(id) => workspaces.removeWorkspace(id)"
+      @resize-width="(w) => workbenchLayout.setLeftSidebarWidth(w)"
     />
-    <main class="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <Workbench
-        ref="workbench"
-        :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
-        :active-repo-root="activeRepoRoot"
-        :active-tab="activeTab"
-        :layout="workbenchLayout"
-        :show-branches-modal="showBranchesModalProp"
+
+    <div class="flex min-w-0 flex-1 flex-col">
+      <TabBar
         :tabs="tabs.workspaceTabs(workspace.id)"
-        :tabs-store="{
-          focusPane: (tabId, leafId) => tabs.focusPane(tabId, leafId, workspace.id),
-          openCommitFileDiffTab: (input) => tabs.openCommitFileDiffTab(input, workspace.id),
-          setLeafCwd: (leafId, cwd) => tabs.setLeafCwd(leafId, cwd, workspace.id),
-          setLeafTitle: (leafId, titleVal) => tabs.setLeafTitle(leafId, titleVal, workspace.id),
-          updateTab: (id, patch) => tabs.updateTab(id, patch, workspace.id),
-        }"
-        :task-console="taskConsole"
-        :workspace-fs-event="workspaceFsEvent as unknown as WorkspaceFsChangedEvent | null"
-        :workspace-root="workspaceRoot"
-        :workspace-scope="workspaceScope"
-        @open-file="openFileTab"
-        @open-markdown-preview="openMarkdownPreview"
-        @open-in-terminal="openTerminalInDir"
-        @open-search-result="openSearchResult"
-        @open-source-diff="openSourceDiff"
-        @open-source-history="openSourceHistory"
-        @history-ref-change="onHistoryRefChange"
-        @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
+        :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
+        :can-split="canSplitActiveTab"
+        :show-actions="true"
+        @select-tab="(id) => tabs.setActiveId(id, workspace.id)"
+        @close-tab="(id) => tabs.closeTab(id, workspace.id)"
+        @close-others="(id) => tabs.closeOthers(id, workspace.id)"
+        @close-to-right="(id) => tabs.closeToRight(id, workspace.id)"
+        @close-all="tabs.closeAll(workspace.id)"
+        @duplicate-terminal="duplicateTerminalTab"
+        @rename-tab="renameTabTitle"
+        @request-rename="() => {}"
+        @pin-tab="(id) => tabs.pinTab(id, workspace.id)"
+        @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement, workspace.id)"
+        @new-tab="newTerminalTab"
+        @split-pane="splitActivePane"
       />
-    </main>
+      <main class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <Workbench
+          ref="workbench"
+          :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
+          :active-repo-root="activeRepoRoot"
+          :active-tab="activeTab"
+          :layout="workbenchLayout"
+          :show-branches-modal="showBranchesModalProp"
+          :tabs="tabs.workspaceTabs(workspace.id)"
+          :tabs-store="{
+            focusPane: (tabId, leafId) => tabs.focusPane(tabId, leafId, workspace.id),
+            openCommitFileDiffTab: (input) => tabs.openCommitFileDiffTab(input, workspace.id),
+            setLeafCwd: (leafId, cwd) => tabs.setLeafCwd(leafId, cwd, workspace.id),
+            setLeafTitle: (leafId, titleVal) => tabs.setLeafTitle(leafId, titleVal, workspace.id),
+            updateTab: (id, patch) => tabs.updateTab(id, patch, workspace.id),
+          }"
+          :task-console="taskConsole"
+          :workspace-fs-event="workspaceFsEvent as unknown as WorkspaceFsChangedEvent | null"
+          :workspace-root="workspaceRoot"
+          :workspace-scope="workspaceScope"
+          @open-file="openFileTab"
+          @open-markdown-preview="openMarkdownPreview"
+          @open-in-terminal="openTerminalInDir"
+          @open-search-result="openSearchResult"
+          @open-source-diff="openSourceDiff"
+          @open-source-history="openSourceHistory"
+          @history-ref-change="onHistoryRefChange"
+          @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
+        />
+      </main>
+    </div>
   </div>
 </template>
