@@ -5,6 +5,7 @@ import type {
   GitRepositoryDiscovery,
   GitWorkspaceRepo,
   WorkspaceFsChangedEvent,
+  WorkspaceNative,
 } from "@/lib/native";
 import { useGitRepositoryRegistry } from "./useGitRepositoryRegistry";
 
@@ -38,7 +39,7 @@ describe("useGitRepositoryRegistry", () => {
     const rootPath = ref<string | null>("/workspace");
     const workspaceScope = ref("local");
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
-    const native = {
+    const wsNative = {
       gitDiscoverRepositories: vi
         .fn<(root: string, options?: { maxDepth?: number; maxRepos?: number }) => Promise<GitRepositoryDiscovery>>()
         .mockResolvedValue({
@@ -50,7 +51,7 @@ describe("useGitRepositoryRegistry", () => {
         }),
     };
 
-    const registry = useGitRepositoryRegistry({ rootPath, workspaceScope, fsEvent, native });
+    const registry = useGitRepositoryRegistry({ rootPath, workspaceScope, fsEvent, wsNative: wsNative as unknown as WorkspaceNative });
     await flush();
 
     let activeRepoRoot: string | null = null;
@@ -58,7 +59,7 @@ describe("useGitRepositoryRegistry", () => {
       activeRepoRoot = registry.repositories.value[0]?.repoRoot ?? null;
     }
 
-    expect(native.gitDiscoverRepositories).toHaveBeenCalledWith("/workspace", {
+    expect(wsNative.gitDiscoverRepositories).toHaveBeenCalledWith("/workspace", {
       maxDepth: 4,
       maxRepos: 32,
     });
@@ -74,7 +75,7 @@ describe("useGitRepositoryRegistry", () => {
     const workspaceScope = ref("local");
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
     const resolvers: Array<(result: GitRepositoryDiscovery) => void> = [];
-    const native = {
+    const wsNative = {
       gitDiscoverRepositories: vi.fn(
         () =>
           new Promise<GitRepositoryDiscovery>((resolve) => {
@@ -83,7 +84,7 @@ describe("useGitRepositoryRegistry", () => {
       ),
     };
 
-    const registry = useGitRepositoryRegistry({ rootPath, workspaceScope, fsEvent, native });
+    const registry = useGitRepositoryRegistry({ rootPath, workspaceScope, fsEvent, wsNative: wsNative as unknown as WorkspaceNative });
     await nextTick();
     const newerRefresh = registry.refresh();
     expect(resolvers).toHaveLength(2);
@@ -112,7 +113,7 @@ describe("useGitRepositoryRegistry", () => {
     const rootPath = ref<string | null>("/workspace");
     const workspaceScope = ref("local");
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
-    const native = {
+    const wsNative = {
       gitDiscoverRepositories: vi
         .fn<(root: string, options?: { maxDepth?: number; maxRepos?: number }) => Promise<GitRepositoryDiscovery>>()
         .mockResolvedValue({
@@ -121,9 +122,9 @@ describe("useGitRepositoryRegistry", () => {
         }),
     };
 
-    const registry = useGitRepositoryRegistry({ rootPath, workspaceScope, fsEvent, native });
+    const registry = useGitRepositoryRegistry({ rootPath, workspaceScope, fsEvent, wsNative: wsNative as unknown as WorkspaceNative });
     await flush();
-    expect(native.gitDiscoverRepositories).toHaveBeenCalledTimes(1);
+    expect(wsNative.gitDiscoverRepositories).toHaveBeenCalledTimes(1);
 
     fsEvent.value = {
       rootPath: "/workspace",
@@ -132,11 +133,11 @@ describe("useGitRepositoryRegistry", () => {
     };
     await nextTick();
     await vi.advanceTimersByTimeAsync(249);
-    expect(native.gitDiscoverRepositories).toHaveBeenCalledTimes(1);
+    expect(wsNative.gitDiscoverRepositories).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(1);
     await flush();
-    expect(native.gitDiscoverRepositories).toHaveBeenCalledTimes(2);
+    expect(wsNative.gitDiscoverRepositories).toHaveBeenCalledTimes(2);
     registry.dispose();
   });
 
@@ -144,7 +145,7 @@ describe("useGitRepositoryRegistry", () => {
     const rootPath = ref<string | null>("/workspace");
     const workspaceScope = ref("local");
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
-    const native = {
+    const wsNative = {
       gitDiscoverRepositories: vi
         .fn<(root: string, options?: { maxDepth?: number; maxRepos?: number }) => Promise<GitRepositoryDiscovery>>()
         .mockResolvedValueOnce({
@@ -160,7 +161,7 @@ describe("useGitRepositoryRegistry", () => {
         }),
     };
 
-    const registry = useGitRepositoryRegistry({ rootPath, workspaceScope, fsEvent, native });
+    const registry = useGitRepositoryRegistry({ rootPath, workspaceScope, fsEvent, wsNative: wsNative as unknown as WorkspaceNative });
     await flush();
     let activeRepoRoot: string | null = "/workspace/repo-b";
     expect(registry.isValidRepoRoot(activeRepoRoot)).toBe(true);
@@ -179,7 +180,7 @@ describe("useGitRepositoryRegistry", () => {
     const rootPath = ref<string | null>("/workspace-a");
     const workspaceScope = ref("local");
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
-    const native = {
+    const wsNative = {
       gitDiscoverRepositories: vi
         .fn<(root: string, options?: { maxDepth?: number; maxRepos?: number }) => Promise<GitRepositoryDiscovery>>()
         .mockResolvedValueOnce({
@@ -189,7 +190,7 @@ describe("useGitRepositoryRegistry", () => {
         .mockRejectedValueOnce(new Error("workspace B discovery failed")),
     };
 
-    const registry = useGitRepositoryRegistry({ rootPath, workspaceScope, fsEvent, native });
+    const registry = useGitRepositoryRegistry({ rootPath, workspaceScope, fsEvent, wsNative: wsNative as unknown as WorkspaceNative });
     await flush();
     expect(registry.isValidRepoRoot("/workspace-a/repo")).toBe(true);
     expect(registry.truncated.value).toBe(true);
@@ -203,7 +204,7 @@ describe("useGitRepositoryRegistry", () => {
 
     await flush();
 
-    expect(native.gitDiscoverRepositories).toHaveBeenLastCalledWith(
+    expect(wsNative.gitDiscoverRepositories).toHaveBeenLastCalledWith(
       "/workspace-b",
       { maxDepth: 4, maxRepos: 32 },
     );
@@ -217,7 +218,7 @@ describe("useGitRepositoryRegistry", () => {
     const rootPath = ref<string | null>("/workspace");
     const workspaceScope = ref("local");
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
-    const native = {
+    const wsNative = {
       gitDiscoverRepositories: vi
         .fn<(root: string, options?: { maxDepth?: number; maxRepos?: number }) => Promise<GitRepositoryDiscovery>>()
         .mockResolvedValueOnce({
@@ -231,7 +232,7 @@ describe("useGitRepositoryRegistry", () => {
       rootPath,
       workspaceScope,
       fsEvent,
-      native,
+      wsNative: wsNative as unknown as WorkspaceNative,
     });
     await flush();
     expect(registry.isValidRepoRoot("/workspace/repo")).toBe(true);
@@ -245,7 +246,7 @@ describe("useGitRepositoryRegistry", () => {
 
     await flush();
 
-    expect(native.gitDiscoverRepositories).toHaveBeenCalledTimes(2);
+    expect(wsNative.gitDiscoverRepositories).toHaveBeenCalledTimes(2);
     expect(registry.repositories.value).toEqual([]);
     expect(registry.error.value).toBe("WSL discovery failed");
     expect(registry.isValidRepoRoot("/workspace/repo")).toBe(false);

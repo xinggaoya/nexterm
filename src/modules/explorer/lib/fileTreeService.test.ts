@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
 import {
   createFileTreeEntry,
   deleteFileTreePath,
@@ -9,19 +8,28 @@ import {
   renameFileTreePath,
   searchFileTree,
 } from "./fileTreeService";
-import {
-  LOCAL_WORKSPACE,
-  setCurrentWorkspaceEnv,
-} from "@/modules/workspace/workspaceEnvSnapshot";
+import type { WorkspaceNative } from "@/lib/native";
 
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
-}));
+// 构造一个仅含本测试所需方法的 mock wsNative。
+// env 路由已下沉到 createNativeForEnv 内部，fileTreeService 只转发方法调用，
+// 因此测试断言 wsNative 上的方法被以正确参数调用。
+function makeWsNative() {
+  return {
+    fsReadDir: vi.fn(),
+    fsCreateFile: vi.fn(),
+    fsCreateDir: vi.fn(),
+    fsRename: vi.fn(),
+    fsDelete: vi.fn(),
+    fsSearch: vi.fn(),
+  } as unknown as WorkspaceNative;
+}
 
 describe("file tree service", () => {
+  let wsNative: WorkspaceNative;
+
   beforeEach(() => {
     vi.clearAllMocks();
-    setCurrentWorkspaceEnv(LOCAL_WORKSPACE);
+    wsNative = makeWsNative();
   });
 
   it("joins and derives POSIX-style paths", () => {
@@ -31,50 +39,31 @@ describe("file tree service", () => {
     expect(dirname("/main.ts")).toBe("/");
   });
 
-  it("reads directory entries with current workspace context", async () => {
-    setCurrentWorkspaceEnv({ kind: "wsl", distro: "Ubuntu" });
-    vi.mocked(invoke).mockResolvedValueOnce([
+  it("reads directory entries via wsNative.fsReadDir", async () => {
+    vi.mocked(wsNative.fsReadDir).mockResolvedValueOnce([
       { name: "src", kind: "dir", size: 0, mtime: 1 },
     ]);
 
-    const entries = await readFileTreeDir("/repo", true);
+    const entries = await readFileTreeDir(wsNative, "/repo", true);
 
     expect(entries).toEqual([{ name: "src", kind: "dir", size: 0, mtime: 1 }]);
-    expect(invoke).toHaveBeenCalledWith("fs_read_dir", {
-      path: "/repo",
-      showHidden: true,
-      workspace: { kind: "wsl", distro: "Ubuntu" },
-    });
+    expect(wsNative.fsReadDir).toHaveBeenCalledWith("/repo", true);
   });
 
-  it("creates, renames, and deletes paths through filesystem IPC", async () => {
-    await createFileTreeEntry("/repo/new.ts", "file");
-    await createFileTreeEntry("/repo/new-dir", "dir");
-    await renameFileTreePath("/repo/a.ts", "/repo/b.ts");
-    await deleteFileTreePath("/repo/b.ts");
+  it("creates, renames, and deletes paths through wsNative fs methods", async () => {
+    await createFileTreeEntry(wsNative, "/repo/new.ts", "file");
+    await createFileTreeEntry(wsNative, "/repo/new-dir", "dir");
+    await renameFileTreePath(wsNative, "/repo/a.ts", "/repo/b.ts");
+    await deleteFileTreePath(wsNative, "/repo/b.ts");
 
-    expect(invoke).toHaveBeenNthCalledWith(1, "fs_create_file", {
-      path: "/repo/new.ts",
-      workspace: LOCAL_WORKSPACE,
-    });
-    expect(invoke).toHaveBeenNthCalledWith(2, "fs_create_dir", {
-      path: "/repo/new-dir",
-      workspace: LOCAL_WORKSPACE,
-    });
-    expect(invoke).toHaveBeenNthCalledWith(3, "fs_rename", {
-      from: "/repo/a.ts",
-      to: "/repo/b.ts",
-      workspace: LOCAL_WORKSPACE,
-    });
-    expect(invoke).toHaveBeenNthCalledWith(4, "fs_delete", {
-      path: "/repo/b.ts",
-      workspace: LOCAL_WORKSPACE,
-    });
+    expect(wsNative.fsCreateFile).toHaveBeenCalledWith("/repo/new.ts");
+    expect(wsNative.fsCreateDir).toHaveBeenCalledWith("/repo/new-dir");
+    expect(wsNative.fsRename).toHaveBeenCalledWith("/repo/a.ts", "/repo/b.ts");
+    expect(wsNative.fsDelete).toHaveBeenCalledWith("/repo/b.ts");
   });
 
-  it("searches file tree with the current workspace context", async () => {
-    setCurrentWorkspaceEnv({ kind: "wsl", distro: "Ubuntu" });
-    vi.mocked(invoke).mockResolvedValueOnce({
+  it("searches file tree via wsNative.fsSearch", async () => {
+    vi.mocked(wsNative.fsSearch).mockResolvedValueOnce({
       hits: [
         {
           path: "/repo/src/main.ts",
@@ -86,15 +75,9 @@ describe("file tree service", () => {
       truncated: false,
     });
 
-    const result = await searchFileTree("/repo", "main", true);
+    const result = await searchFileTree(wsNative, "/repo", "main", true);
 
     expect(result.hits).toHaveLength(1);
-    expect(invoke).toHaveBeenCalledWith("fs_search", {
-      root: "/repo",
-      query: "main",
-      limit: 200,
-      showHidden: true,
-      workspace: { kind: "wsl", distro: "Ubuntu" },
-    });
+    expect(wsNative.fsSearch).toHaveBeenCalledWith("/repo", "main", true);
   });
 });

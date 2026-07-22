@@ -1,9 +1,14 @@
 /**
- * Single-session management. Each leaf owns one xterm instance and one
- * PtySession; both are torn down when the leaf disposes. The previous
- * architecture used a renderer pool with offscreen canvas reuse, but
- * keeping an instance per pane is simpler, easier to reason about, and
- * let us drop ~700 lines of recycling/scrollbar-refund code.
+ * Workspace-partitioned session management.
+ *
+ * Each leaf owns one xterm instance and one PtySession; both are torn down
+ * when the leaf disposes. Sessions are partitioned by `workspaceId` so that
+ * multiple workspaces can hold terminals concurrently without their leaf ids
+ * or PTY handles colliding.
+ *
+ * `createSession` takes a `wsNative` (env-bound native surface) so the PTY is
+ * spawned in the correct workspace's environment — there is no global
+ * "current" env.
  *
  * `pendingBuffer` (held outside of the channel's reach) accumulates OSC
  * sequences that span a chunk boundary — the only piece of stateful
@@ -11,7 +16,7 @@
  */
 
 import type { Terminal } from "@xterm/xterm";
-import { native } from "@/lib/native";
+import type { WorkspaceNative } from "@/lib/native";
 import { handleOscData } from "./osc";
 import type { OscEvent } from "./osc";
 
@@ -25,6 +30,7 @@ export interface SessionCallbacks {
 
 export interface PtySessionHandle {
   leafId: string;
+  ptyId: number;
   dispose: () => void;
   write: (data: string) => void;
   resize: (cols: number, rows: number) => void;
@@ -36,18 +42,12 @@ export interface PtySessionHandle {
   setCallbacks: (callbacks: SessionCallbacks) => void;
 }
 
-export interface ActiveSession {
-  ptyId: number;
-  pendingOsc: string;
-  write: (data: string) => Promise<void>;
-  resize: (cols: number, rows: number) => Promise<void>;
-  close: () => Promise<void>;
-}
-
 interface CreateSessionOptions {
   term: Terminal;
   cwd?: string;
   callbacks: SessionCallbacks;
+  /** Env-bound native surface for the workspace owning this session. */
+  wsNative: WorkspaceNative;
 }
 
 export async function createSession(
@@ -60,7 +60,7 @@ export async function createSession(
   let exitCode: number | undefined;
   let pendingOsc = "";
 
-  const pty = await native.ptyOpen(
+  const pty = await opts.wsNative.ptyOpen(
     opts.term.cols,
     opts.term.rows,
     {
@@ -92,6 +92,7 @@ export async function createSession(
 
   const handle: PtySessionHandle = {
     leafId: id.toString(),
+    ptyId: id,
     dispose: () => {
       void pty.close().catch(() => {});
     },
@@ -102,7 +103,11 @@ export async function createSession(
       void pty.resize(cols, rows).catch(() => {});
     },
     restart: () => {
-      void native.ptyKill(id).catch(() => {});
+      // ptyKill lives on the global native surface (id-keyed, not env-scoped)
+      // but we intentionally avoid importing the singleton here; the pane owns
+      // restart via its own channel if needed. Kept as best-effort no-op
+      // fallback for legacy callers.
+      void pty.close().catch(() => {});
     },
     getState: () => state,
     getExitCode: () => exitCode,
@@ -124,30 +129,69 @@ function emitOsc(event: OscEvent, cb: SessionCallbacks): void {
   // to SessionCallbacks (which only knows about cwd/title).
 }
 
-export const SESSION_REGISTRY = new Map<string, PtySessionHandle>();
+/**
+ * Workspace-partitioned session registry.
+ *
+ * Outer map: `workspaceId` → inner map. Inner map: `leafId` → handle. A
+ * workspace's leaf ids are namespaced (e.g. `${workspaceId}:${n}`) so they
+ * never collide across workspaces.
+ */
+const SESSION_REGISTRY = new Map<string, Map<string, PtySessionHandle>>();
 
-export function trackSession(leafId: string, handle: PtySessionHandle): void {
-  const prev = SESSION_REGISTRY.get(leafId);
-  if (prev && prev !== handle) prev.dispose();
-  SESSION_REGISTRY.set(leafId, handle);
+function workspaceBucket(workspaceId: string): Map<string, PtySessionHandle> {
+  let bucket = SESSION_REGISTRY.get(workspaceId);
+  if (!bucket) {
+    bucket = new Map();
+    SESSION_REGISTRY.set(workspaceId, bucket);
+  }
+  return bucket;
 }
 
-export function disposeSession(leafId: string): void {
-  const handle = SESSION_REGISTRY.get(leafId);
+export function trackSession(
+  workspaceId: string,
+  leafId: string,
+  handle: PtySessionHandle,
+): void {
+  const bucket = workspaceBucket(workspaceId);
+  const prev = bucket.get(leafId);
+  if (prev && prev !== handle) prev.dispose();
+  bucket.set(leafId, handle);
+}
+
+export function disposeSession(
+  workspaceId: string,
+  leafId: string,
+): void {
+  const bucket = SESSION_REGISTRY.get(workspaceId);
+  if (!bucket) return;
+  const handle = bucket.get(leafId);
   if (!handle) return;
-  SESSION_REGISTRY.delete(leafId);
+  bucket.delete(leafId);
   handle.dispose();
+  if (bucket.size === 0) SESSION_REGISTRY.delete(workspaceId);
 }
 
 export function getSessionForLeaf(
+  workspaceId: string,
   leafId: string,
 ): PtySessionHandle | undefined {
-  return SESSION_REGISTRY.get(leafId);
+  return SESSION_REGISTRY.get(workspaceId)?.get(leafId);
 }
 
+/** Dispose every session owned by a workspace (used when closing a workspace). */
+export function disposeWorkspaceSessions(workspaceId: string): void {
+  const bucket = SESSION_REGISTRY.get(workspaceId);
+  if (!bucket) return;
+  for (const handle of bucket.values()) handle.dispose();
+  bucket.clear();
+  SESSION_REGISTRY.delete(workspaceId);
+}
+
+/** Dispose all sessions across all workspaces (app shutdown). */
 export function disposeAllSessions(): void {
-  for (const [leafId, handle] of SESSION_REGISTRY.entries()) {
-    handle.dispose();
-    SESSION_REGISTRY.delete(leafId);
+  for (const bucket of SESSION_REGISTRY.values()) {
+    for (const handle of bucket.values()) handle.dispose();
+    bucket.clear();
   }
+  SESSION_REGISTRY.clear();
 }

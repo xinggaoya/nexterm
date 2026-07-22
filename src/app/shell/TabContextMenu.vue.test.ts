@@ -13,6 +13,7 @@ const baseTarget = {
 
 const terminalTab: Tab = {
   id: 1,
+  workspaceId: "test-ws",
   kind: "terminal",
   title: "shell",
   paneTree: { kind: "leaf", id: 2 },
@@ -21,6 +22,7 @@ const terminalTab: Tab = {
 
 const editorTab: Tab = {
   id: 2,
+  workspaceId: "test-ws",
   kind: "editor",
   title: "README.md",
   path: "/repo/README.md",

@@ -23,6 +23,7 @@ describe("basename", () => {
 describe("tabLabel", () => {
   const terminalWithTitle: Tab = {
     id: 1,
+    workspaceId: "test-ws",
     kind: "terminal",
     title: "shell",
     terminalTitle: "MyAgent",
@@ -33,6 +34,7 @@ describe("tabLabel", () => {
 
   const terminalWithCwd: Tab = {
     id: 2,
+    workspaceId: "test-ws",
     kind: "terminal",
     title: "shell",
     cwd: "/tmp",
@@ -42,6 +44,7 @@ describe("tabLabel", () => {
 
   const terminalBare: Tab = {
     id: 3,
+    workspaceId: "test-ws",
     kind: "terminal",
     title: "shell",
     paneTree: { kind: "leaf", id: 4 },
@@ -50,6 +53,7 @@ describe("tabLabel", () => {
 
   const editorTab: Tab = {
     id: 5,
+    workspaceId: "test-ws",
     kind: "editor",
     title: "foo.ts",
     path: "/repo/foo.ts",
@@ -59,6 +63,7 @@ describe("tabLabel", () => {
 
   const gitHistoryTab: Tab = {
     id: 6,
+    workspaceId: "test-ws",
     kind: "git-history",
     title: "feat: add foo",
     repoRoot: "/repo",

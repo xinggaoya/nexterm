@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useSourceControlActions } from "./useSourceControlActions";
 import type { SourceControlRuntimeState } from "./useSourceControlState";
 import type { SourceControlFileEntry } from "./sourceControlModel";
+import type { WorkspaceNative } from "@/lib/native";
 import { notifyError, notifyInfo, notifySuccess } from "@/modules/notifications/notificationCenter";
 
 vi.mock("@/modules/notifications/notificationCenter", () => ({
@@ -64,7 +65,7 @@ describe("useSourceControlActions", () => {
 
   it("runs staged actions through shared busy and refresh handling", async () => {
     const state = createState();
-    const native = {
+    const wsNative = {
       gitStage: vi.fn().mockResolvedValue(undefined),
       gitUnstage: vi.fn().mockResolvedValue(undefined),
       gitDiscard: vi.fn().mockResolvedValue(undefined),
@@ -89,7 +90,7 @@ describe("useSourceControlActions", () => {
     const refreshGitMetadata = vi.fn().mockResolvedValue(undefined);
     const actions = useSourceControlActions({
       state,
-      native,
+      wsNative: wsNative as unknown as WorkspaceNative,
       dialog: { warning: vi.fn() },
       t: (key, params) => (params?.target ? `${key}:${params.target}` : key),
       emitCommitted: committed,
@@ -98,14 +99,14 @@ describe("useSourceControlActions", () => {
 
     await actions.stageAll();
 
-    expect(native.gitStage).toHaveBeenCalledWith("/repo", ["src/unstaged.ts"]);
+    expect(wsNative.gitStage).toHaveBeenCalledWith("/repo", ["src/unstaged.ts"]);
     expect(state.refreshStatus).toHaveBeenCalledTimes(1);
     expect(state.busyAction.value).toBe(null);
 
     actions.commitMessage.value = "fix: test";
     await actions.commit();
 
-    expect(native.gitCommit).toHaveBeenCalledWith("/repo", "fix: test");
+    expect(wsNative.gitCommit).toHaveBeenCalledWith("/repo", "fix: test");
     expect(committed).toHaveBeenCalledWith({ commitSha: "abc", summary: "fix: test" });
     expect(actions.commitMessage.value).toBe("");
     expect(notifySuccess).toHaveBeenCalledWith("sourceControl.commitSuccess", "fix: test");
@@ -114,7 +115,7 @@ describe("useSourceControlActions", () => {
   it("guards concurrent actions and reports errors", async () => {
     const state = createState();
     state.busyAction.value = "pull";
-    const native = {
+    const wsNative = {
       gitStage: vi.fn().mockResolvedValue(undefined),
       gitUnstage: vi.fn().mockResolvedValue(undefined),
       gitDiscard: vi.fn().mockResolvedValue(undefined),
@@ -137,14 +138,14 @@ describe("useSourceControlActions", () => {
     };
     const actions = useSourceControlActions({
       state,
-      native,
+      wsNative: wsNative as unknown as WorkspaceNative,
       dialog: { warning: vi.fn() },
       t: (key) => key,
       emitCommitted: vi.fn(),
     });
 
     await actions.stageAll();
-    expect(native.gitStage).not.toHaveBeenCalled();
+    expect(wsNative.gitStage).not.toHaveBeenCalled();
 
     state.busyAction.value = null;
     await actions.fetchRemote();
@@ -156,7 +157,7 @@ describe("useSourceControlActions", () => {
 
   it("notifies remote sync results with detailed pull statistics", async () => {
     const state = createState();
-    const native = {
+    const wsNative = {
       gitStage: vi.fn().mockResolvedValue(undefined),
       gitUnstage: vi.fn().mockResolvedValue(undefined),
       gitDiscard: vi.fn().mockResolvedValue(undefined),
@@ -179,7 +180,7 @@ describe("useSourceControlActions", () => {
     };
     const actions = useSourceControlActions({
       state,
-      native,
+      wsNative: wsNative as unknown as WorkspaceNative,
       dialog: { warning: vi.fn() },
       t: (key, params) => (params?.target ? `${key}:${params.target}` : key),
       emitCommitted: vi.fn(),
@@ -207,7 +208,7 @@ describe("useSourceControlActions", () => {
   it("runs branch and stash workflows with refresh and notifications", async () => {
     const state = createState();
     const refreshGitMetadata = vi.fn().mockResolvedValue(undefined);
-    const native = {
+    const wsNative = {
       gitStage: vi.fn().mockResolvedValue(undefined),
       gitUnstage: vi.fn().mockResolvedValue(undefined),
       gitDiscard: vi.fn().mockResolvedValue(undefined),
@@ -234,7 +235,7 @@ describe("useSourceControlActions", () => {
     );
     const actions = useSourceControlActions({
       state,
-      native,
+      wsNative: wsNative as unknown as WorkspaceNative,
       dialog: { warning: confirmDrop },
       t: (key, params) => (params?.branch ? `${key}:${params.branch}` : key),
       emitCommitted: vi.fn(),
@@ -247,14 +248,14 @@ describe("useSourceControlActions", () => {
     await actions.popStash("stash@{0}");
     await actions.dropStash("stash@{0}");
 
-    expect(native.gitCheckoutBranch).toHaveBeenCalledWith("/repo", "feature", false);
-    expect(native.gitCreateBranch).toHaveBeenCalledWith("/repo", "feature/new");
-    expect(native.gitStashPush).toHaveBeenCalledWith("/repo", {
+    expect(wsNative.gitCheckoutBranch).toHaveBeenCalledWith("/repo", "feature", false);
+    expect(wsNative.gitCreateBranch).toHaveBeenCalledWith("/repo", "feature/new");
+    expect(wsNative.gitStashPush).toHaveBeenCalledWith("/repo", {
       message: "workspace checkpoint",
       includeUntracked: true,
     });
-    expect(native.gitStashPop).toHaveBeenCalledWith("/repo", "stash@{0}");
-    expect(native.gitStashDrop).toHaveBeenCalledWith("/repo", "stash@{0}");
+    expect(wsNative.gitStashPop).toHaveBeenCalledWith("/repo", "stash@{0}");
+    expect(wsNative.gitStashDrop).toHaveBeenCalledWith("/repo", "stash@{0}");
     expect(refreshGitMetadata).toHaveBeenCalled();
     expect(notifySuccess).toHaveBeenCalledWith(
       "sourceControl.branchCheckoutSuccess",
@@ -265,7 +266,7 @@ describe("useSourceControlActions", () => {
   it("omits optional fields and forwards stable selectors for stash workflows", async () => {
     const state = createState();
     const refreshGitMetadata = vi.fn().mockResolvedValue(undefined);
-    const native = {
+    const wsNative = {
       gitStage: vi.fn().mockResolvedValue(undefined),
       gitUnstage: vi.fn().mockResolvedValue(undefined),
       gitDiscard: vi.fn().mockResolvedValue(undefined),
@@ -292,7 +293,7 @@ describe("useSourceControlActions", () => {
     );
     const actions = useSourceControlActions({
       state,
-      native,
+      wsNative: wsNative as unknown as WorkspaceNative,
       dialog: { warning: confirmDrop },
       t: (key) => key,
       emitCommitted: vi.fn(),
@@ -301,14 +302,14 @@ describe("useSourceControlActions", () => {
 
     // Default push keeps the prior payload: only `message` + `includeUntracked`.
     await actions.stashChanges();
-    expect(native.gitStashPush).toHaveBeenLastCalledWith("/repo", {
+    expect(wsNative.gitStashPush).toHaveBeenLastCalledWith("/repo", {
       message: null,
       includeUntracked: true,
     });
 
     // keepIndex flips on `keepIndex: true` and stays otherwise absent.
     await actions.stashChanges("keep staged", true);
-    expect(native.gitStashPush).toHaveBeenLastCalledWith("/repo", {
+    expect(wsNative.gitStashPush).toHaveBeenLastCalledWith("/repo", {
       message: "keep staged",
       includeUntracked: true,
       keepIndex: true,
@@ -317,7 +318,7 @@ describe("useSourceControlActions", () => {
     // Remote checkout propagates the upstream ref name so the backend can
     // decide between local switch and `switch --track`.
     await actions.checkoutBranch({ name: "origin/feature", isRemote: true });
-    expect(native.gitCheckoutBranch).toHaveBeenLastCalledWith(
+    expect(wsNative.gitCheckoutBranch).toHaveBeenLastCalledWith(
       "/repo",
       "origin/feature",
       true,
@@ -325,26 +326,26 @@ describe("useSourceControlActions", () => {
 
     // Apply / drop / pop forward the selector alone when no sha guard is set.
     await actions.applyStash("stash@{0}");
-    expect(native.gitStashApply).toHaveBeenLastCalledWith("/repo", "stash@{0}");
+    expect(wsNative.gitStashApply).toHaveBeenLastCalledWith("/repo", "stash@{0}");
 
     // When an expected SHA is supplied, it travels to the backend so the
     // selector stability check can reject a moved stash.
     await actions.popStash("stash@{0}", "0123456789abcdef0123456789abcdef01234567");
-    expect(native.gitStashPop).toHaveBeenLastCalledWith(
+    expect(wsNative.gitStashPop).toHaveBeenLastCalledWith(
       "/repo",
       "stash@{0}",
       "0123456789abcdef0123456789abcdef01234567",
     );
 
     await actions.dropStash("stash@{1}", "ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00");
-    expect(native.gitStashDrop).toHaveBeenLastCalledWith(
+    expect(wsNative.gitStashDrop).toHaveBeenLastCalledWith(
       "/repo",
       "stash@{1}",
       "ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00",
     );
 
     await actions.applyStash("stash@{2}", "abcdef");
-    expect(native.gitStashApply).toHaveBeenLastCalledWith(
+    expect(wsNative.gitStashApply).toHaveBeenLastCalledWith(
       "/repo",
       "stash@{2}",
       "abcdef",
@@ -354,7 +355,7 @@ describe("useSourceControlActions", () => {
 
   it("surfaces a stash selector-mismatch error and reports the stash apply failure title", async () => {
     const state = createState();
-    const native = {
+    const wsNative = {
       gitStage: vi.fn().mockResolvedValue(undefined),
       gitUnstage: vi.fn().mockResolvedValue(undefined),
       gitDiscard: vi.fn().mockResolvedValue(undefined),
@@ -379,7 +380,7 @@ describe("useSourceControlActions", () => {
     };
     const actions = useSourceControlActions({
       state,
-      native,
+      wsNative: wsNative as unknown as WorkspaceNative,
       dialog: { warning: vi.fn() },
       t: (key) => key,
       emitCommitted: vi.fn(),
@@ -400,7 +401,7 @@ describe("useSourceControlActions", () => {
 
   it("forwards all stash save options and does not report stashed=false as success", async () => {
     const state = createState();
-    const native = {
+    const wsNative = {
       gitStage: vi.fn(),
       gitUnstage: vi.fn(),
       gitDiscard: vi.fn(),
@@ -420,7 +421,7 @@ describe("useSourceControlActions", () => {
     };
     const actions = useSourceControlActions({
       state,
-      native,
+      wsNative: wsNative as unknown as WorkspaceNative,
       dialog: { warning: vi.fn() },
       t: (key) => key,
       emitCommitted: vi.fn(),
@@ -432,7 +433,7 @@ describe("useSourceControlActions", () => {
       keepIndex: false,
     });
 
-    expect(native.gitStashPush).toHaveBeenCalledWith("/repo", {
+    expect(wsNative.gitStashPush).toHaveBeenCalledWith("/repo", {
       message: "checkpoint",
       includeUntracked: false,
       keepIndex: false,
@@ -449,7 +450,7 @@ describe("useSourceControlActions", () => {
 
   it("passes expected SHA to apply and refreshes status after an apply failure", async () => {
     const state = createState();
-    const native = {
+    const wsNative = {
       gitStage: vi.fn(),
       gitUnstage: vi.fn(),
       gitDiscard: vi.fn(),
@@ -466,7 +467,7 @@ describe("useSourceControlActions", () => {
     };
     const actions = useSourceControlActions({
       state,
-      native,
+      wsNative: wsNative as unknown as WorkspaceNative,
       dialog: { warning: vi.fn() },
       t: (key) => key,
       emitCommitted: vi.fn(),
@@ -474,13 +475,13 @@ describe("useSourceControlActions", () => {
 
     await actions.applyStash("stash@{0}", "deadbeef");
 
-    expect(native.gitStashApply).toHaveBeenCalledWith("/repo", "stash@{0}", "deadbeef");
+    expect(wsNative.gitStashApply).toHaveBeenCalledWith("/repo", "stash@{0}", "deadbeef");
     expect(state.refreshStatus).toHaveBeenCalled();
   });
 
   it("does not report stashed=false as a successful apply", async () => {
     const state = createState();
-    const native = {
+    const wsNative = {
       gitStage: vi.fn(),
       gitUnstage: vi.fn(),
       gitDiscard: vi.fn(),
@@ -500,7 +501,7 @@ describe("useSourceControlActions", () => {
     };
     const actions = useSourceControlActions({
       state,
-      native,
+      wsNative: wsNative as unknown as WorkspaceNative,
       dialog: { warning: vi.fn() },
       t: (key) => key,
       emitCommitted: vi.fn(),

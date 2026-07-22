@@ -36,9 +36,9 @@ export {
   createSession,
   disposeAllSessions,
   disposeSession,
+  disposeWorkspaceSessions,
   getSessionForLeaf,
   trackSession,
-  type ActiveSession,
   type PtySessionHandle,
   type SessionCallbacks,
   type SessionState,
@@ -76,31 +76,39 @@ export function applyTerminalSessionTheme(): void {
   void buildTerminalTheme();
 }
 
-/** @deprecated Use `getSessionForLeaf(leafId)?.write(...)`. */
-export const createTerminalSessionHandle = (leafId: string | number) => {
+/** @deprecated Use `getSessionForLeaf(workspaceId, leafId)?.write(...)`. */
+export const createTerminalSessionHandle = (
+  workspaceId: string,
+  leafId: string | number,
+) => {
   const id = String(leafId);
-  const existing = getSessionForLeaf(id);
+  const existing = getSessionForLeaf(workspaceId, id);
   if (existing) return existing;
   return {
     leafId: id,
-    dispose: () => disposeSession(id),
+    dispose: () => disposeSession(workspaceId, id),
     write: () => {},
     resize: () => {},
     restart: () => {},
   } as const;
 };
 
-/** @deprecated Use `getSessionForLeaf(leafId)?.ptyId` if you need the id. */
-export const getPtyIdForLeaf = (leafId: string | number): number | null => {
-  const handle = getSessionForLeaf(String(leafId));
+/** @deprecated Use `getSessionForLeaf(workspaceId, leafId)?.ptyId` if you need the id. */
+export const getPtyIdForLeaf = (
+  workspaceId: string,
+  leafId: string | number,
+): number | null => {
+  const handle = getSessionForLeaf(workspaceId, String(leafId));
   if (!handle) return null;
-  const parsed = Number.parseInt(handle.leafId, 10);
-  return Number.isFinite(parsed) ? parsed : null;
+  return handle.ptyId;
 };
 
 /** @deprecated v1's `respawnSession` mapped to `trackSession` + dispose. */
-export const respawnSession = async (leafId: string | number) => {
+export const respawnSession = async (
+  workspaceId: string,
+  leafId: string | number,
+) => {
   const id = String(leafId);
-  disposeSession(id);
+  disposeSession(workspaceId, id);
   return null as never;
 };

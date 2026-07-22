@@ -6,24 +6,18 @@ import {
   type Ref,
 } from "vue";
 import type {
-  GitRepositoryDiscovery,
   GitWorkspaceRepo,
   WorkspaceFsChangedEvent,
+  WorkspaceNative,
 } from "@/lib/native";
 import { isSameRoot, normalizePath } from "./sourceControlFormat";
-
-type GitRepositoryRegistryNative = {
-  gitDiscoverRepositories: (
-    rootPath: string,
-    options?: { maxDepth?: number; maxRepos?: number },
-  ) => Promise<GitRepositoryDiscovery>;
-};
 
 type GitRepositoryRegistryOptions = {
   rootPath: Ref<string | null>;
   workspaceScope: Ref<string>;
   fsEvent: Ref<WorkspaceFsChangedEvent | null | undefined>;
-  native: GitRepositoryRegistryNative;
+  /** 绑定到目标 workspace 环境的 native 调用面（git 仓库发现）。 */
+  wsNative: WorkspaceNative;
 };
 
 const DISCOVERY_OPTIONS = { maxDepth: 4, maxRepos: 32 } as const;
@@ -92,7 +86,7 @@ export function useGitRepositoryRegistry(
     loading.value = true;
     error.value = null;
     try {
-      const discovery = await options.native.gitDiscoverRepositories(
+      const discovery = await options.wsNative.gitDiscoverRepositories(
         root,
         DISCOVERY_OPTIONS,
       );

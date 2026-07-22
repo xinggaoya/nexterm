@@ -4,15 +4,27 @@ import { nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import GitHistoryPane from "./GitHistoryPane.vue";
 import { writeClipboardText } from "@/lib/clipboard";
-import { native } from "@/lib/native";
 
-vi.mock("@/lib/native", () => ({
-  native: {
-    gitLog: vi.fn(),
-    gitCommitFiles: vi.fn(),
-    gitRemoteUrl: vi.fn(),
-    gitBranchList: vi.fn(),
-  },
+// 多工作区重构后，GitHistoryPane 通过 useWorkspaceContext() 获取 wsNative，
+// 所有 git native 调用都走 wsNative（不再是全局 native 对象）。
+// 测试不挂载 WorkspaceHost，因此 mock 该 composable 返回固定值。
+const mockWsNative = {
+  gitLog: vi.fn(),
+  gitCommitFiles: vi.fn(),
+  gitRemoteUrl: vi.fn(),
+  gitBranchList: vi.fn(),
+};
+vi.mock("@/app/workspaceContext", () => ({
+  useWorkspaceContext: () => ({
+    workspace: {
+      id: "local:/repo",
+      rootPath: "/repo",
+      env: { kind: "local" },
+      name: "repo",
+      openedAt: 0,
+    },
+    wsNative: mockWsNative,
+  }),
 }));
 
 vi.mock("@/lib/clipboard", () => ({
@@ -45,11 +57,11 @@ function makeCommit(sha: string, refs: { name: string; kind: string; isHead: boo
 describe("GitHistoryPane.vue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(native.gitLog).mockResolvedValue({
+    vi.mocked(mockWsNative.gitLog).mockResolvedValue({
       entries: [makeCommit("abcdef123456")],
       hasMore: false,
     });
-    vi.mocked(native.gitCommitFiles).mockResolvedValue([
+    vi.mocked(mockWsNative.gitCommitFiles).mockResolvedValue([
       {
         path: "src/main.ts",
         originalPath: null,
@@ -60,8 +72,8 @@ describe("GitHistoryPane.vue", () => {
         isBinary: false,
       },
     ]);
-    vi.mocked(native.gitRemoteUrl).mockResolvedValue(null);
-    vi.mocked(native.gitBranchList).mockResolvedValue([
+    vi.mocked(mockWsNative.gitRemoteUrl).mockResolvedValue(null);
+    vi.mocked(mockWsNative.gitBranchList).mockResolvedValue([
       { name: "main", isCurrent: true, isRemote: false, upstream: null },
       { name: "feature/x", isCurrent: false, isRemote: false, upstream: null },
     ]);
@@ -79,7 +91,7 @@ describe("GitHistoryPane.vue", () => {
     });
     await flush();
 
-    expect(native.gitLog).toHaveBeenLastCalledWith("/repo", {
+    expect(mockWsNative.gitLog).toHaveBeenLastCalledWith("/repo", {
       limit: 30,
       offset: 0,
       refName: null,
@@ -104,7 +116,7 @@ describe("GitHistoryPane.vue", () => {
     await wrapper.find("[data-commit-row='abcdef123456']").trigger("click");
     await flush();
 
-    expect(native.gitCommitFiles).toHaveBeenCalledWith("/repo", "abcdef123456");
+    expect(mockWsNative.gitCommitFiles).toHaveBeenCalledWith("/repo", "abcdef123456");
     expect(wrapper.find("[data-commit-file='src/main.ts']").exists()).toBe(false);
 
     const drawer = document.body.querySelector("[data-commit-detail-drawer]");
@@ -159,7 +171,7 @@ describe("GitHistoryPane.vue", () => {
     });
     await flush();
 
-    expect(native.gitLog).toHaveBeenLastCalledWith("/repo", {
+    expect(mockWsNative.gitLog).toHaveBeenLastCalledWith("/repo", {
       limit: 30,
       offset: 0,
       refName: "main",
@@ -169,7 +181,7 @@ describe("GitHistoryPane.vue", () => {
     await wrapper.setProps({ refName: "feature/x" });
     await flush();
 
-    expect(native.gitLog).toHaveBeenLastCalledWith("/repo", {
+    expect(mockWsNative.gitLog).toHaveBeenLastCalledWith("/repo", {
       limit: 30,
       offset: 0,
       refName: "feature/x",
@@ -178,7 +190,7 @@ describe("GitHistoryPane.vue", () => {
   });
 
   it("loads the next page when Load more is clicked and stops on hasMore=false", async () => {
-    vi.mocked(native.gitLog)
+    vi.mocked(mockWsNative.gitLog)
       .mockReset()
       .mockResolvedValueOnce({
         entries: [makeCommit("aaaaaaa1")],
@@ -192,7 +204,7 @@ describe("GitHistoryPane.vue", () => {
     const wrapper = mount(GitHistoryPane, { props: { repoRoot: "/repo" } });
     await flush();
 
-    expect(native.gitLog).toHaveBeenLastCalledWith("/repo", {
+    expect(mockWsNative.gitLog).toHaveBeenLastCalledWith("/repo", {
       limit: 30,
       offset: 0,
       refName: null,
@@ -204,7 +216,7 @@ describe("GitHistoryPane.vue", () => {
     await wrapper.find("[data-load-more]").trigger("click");
     await flush();
 
-    expect(native.gitLog).toHaveBeenLastCalledWith("/repo", {
+    expect(mockWsNative.gitLog).toHaveBeenLastCalledWith("/repo", {
       limit: 30,
       offset: 30,
       refName: null,
@@ -216,7 +228,7 @@ describe("GitHistoryPane.vue", () => {
   });
 
   it("deduplicates appended commits by sha", async () => {
-    vi.mocked(native.gitLog)
+    vi.mocked(mockWsNative.gitLog)
       .mockReset()
       .mockResolvedValueOnce({
         entries: [makeCommit("aaaaaaa1"), makeCommit("aaaaaaa2")],
@@ -245,7 +257,7 @@ describe("GitHistoryPane.vue", () => {
         hasMore: boolean;
       }) => void;
     } = {};
-    vi.mocked(native.gitLog)
+    vi.mocked(mockWsNative.gitLog)
       .mockReset()
       .mockImplementationOnce(
         () =>
@@ -276,7 +288,7 @@ describe("GitHistoryPane.vue", () => {
   });
 
   it("renders refs badges with NTag beside the subject", async () => {
-    vi.mocked(native.gitLog).mockReset().mockResolvedValueOnce({
+    vi.mocked(mockWsNative.gitLog).mockReset().mockResolvedValueOnce({
       entries: [
         makeCommit("aaaaaaa1", [
           { name: "main", kind: "branch", isHead: true },

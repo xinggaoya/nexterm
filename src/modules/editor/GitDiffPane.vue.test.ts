@@ -6,6 +6,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import GitDiffPane from "./GitDiffPane.vue";
 import { fetchWorkingDiff } from "./lib/diffCache";
 
+// 多工作区重构后，GitDiffPane 通过 useWorkspaceContext() 获取 wsNative 和 workspace.env。
+// 测试不挂载 WorkspaceHost，因此直接 mock 该 composable 返回固定值。
+const mockWsNative = {};
+const mockEnv = { kind: "local" as const };
+vi.mock("@/app/workspaceContext", () => ({
+  useWorkspaceContext: () => ({
+    workspace: {
+      id: "local:/repo",
+      rootPath: "/repo",
+      env: mockEnv,
+      name: "repo",
+      openedAt: 0,
+    },
+    wsNative: mockWsNative,
+  }),
+}));
+
 vi.mock("./lib/diffCache", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./lib/diffCache")>();
   return {
@@ -13,6 +30,10 @@ vi.mock("./lib/diffCache", async (importOriginal) => {
     fetchWorkingDiff: vi.fn(),
   };
 });
+
+// diffCache 函数现在以 wsNative + env 为前两个参数；断言时用匹配器忽略它们。
+const WS_NATIVE_MATCHER = expect.anything();
+const ENV_MATCHER = expect.anything();
 
 vi.mock("monaco-editor", () => ({
   editor: {
@@ -81,6 +102,8 @@ describe("GitDiffPane.vue", () => {
     await flush();
 
     expect(fetchWorkingDiff).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
+      ENV_MATCHER,
       "/repo",
       "src/main.ts",
       "+",

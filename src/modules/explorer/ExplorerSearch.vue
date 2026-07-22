@@ -3,6 +3,7 @@ import { CloseOutline, SearchOutline } from "@vicons/ionicons5";
 import { NIcon, NSpin } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
+import { useWorkspaceContext } from "@/app/workspaceContext";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
 import { searchFileTree, type SearchHit } from "./lib/fileTreeService";
@@ -22,6 +23,7 @@ const emit = defineEmits<{
 }>();
 
 const prefs = usePreferencesPiniaStore();
+const wsCtx = useWorkspaceContext();
 const inputRef = ref<HTMLInputElement | null>(null);
 const query = ref("");
 const results = ref<SearchHit[]>([]);
@@ -107,6 +109,7 @@ watch(
     timer = window.setTimeout(async () => {
       try {
         const result = await searchFileTree(
+          wsCtx.wsNative,
           props.rootPath,
           trimmed,
           prefs.showHidden,

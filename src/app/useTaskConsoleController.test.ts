@@ -1,9 +1,14 @@
 import { computed, nextTick, ref } from "vue";
 import { describe, expect, it, vi } from "vitest";
+import type { WorkspaceNative } from "@/lib/native";
 import type { WorkspaceTask } from "@/modules/tasks";
 import { useTaskConsoleController } from "./useTaskConsoleController";
 
 describe("useTaskConsoleController", () => {
+  // Minimal wsNative — task console only uses shellBgSpawn (via the default
+  // taskRunStore factory), but tests always pass an explicit taskRuns mock so
+  // wsNative is never actually invoked.
+  const wsNative = { shellBgSpawn: vi.fn() } as unknown as WorkspaceNative;
   const task: WorkspaceTask = {
     id: "package:dev",
     title: "pnpm run dev",
@@ -34,6 +39,7 @@ describe("useTaskConsoleController", () => {
       workspaceRoot: computed(() => root.value),
       readTextFile: vi.fn(),
       discoverTasks,
+      wsNative,
       taskRuns: createTaskRuns(),
       openTaskTerminal: vi.fn(),
     });
@@ -54,6 +60,7 @@ describe("useTaskConsoleController", () => {
       workspaceRoot: computed(() => root.value),
       readTextFile: vi.fn(),
       discoverTasks: vi.fn(async () => []),
+      wsNative,
       taskRuns,
       openTaskTerminal: vi.fn(),
     });
@@ -73,6 +80,7 @@ describe("useTaskConsoleController", () => {
       workspaceRoot: computed(() => root.value),
       readTextFile: vi.fn(),
       discoverTasks,
+      wsNative,
       taskRuns: createTaskRuns(),
       openTaskTerminal: vi.fn(),
     });
@@ -93,6 +101,7 @@ describe("useTaskConsoleController", () => {
     const controller = useTaskConsoleController({
       workspaceRoot: computed(() => "/repo"),
       readTextFile: vi.fn(),
+      wsNative,
       taskRuns,
       openTaskTerminal,
     });

@@ -9,6 +9,7 @@ import {
 const tabs: Tab[] = [
   {
     id: 1,
+    workspaceId: "test-ws",
     kind: "terminal",
     title: "shell",
     paneTree: { kind: "leaf", id: 2 },
@@ -16,6 +17,7 @@ const tabs: Tab[] = [
   },
   {
     id: 3,
+    workspaceId: "test-ws",
     kind: "editor",
     title: "clean.ts",
     path: "/repo/src/clean.ts",
@@ -24,6 +26,7 @@ const tabs: Tab[] = [
   },
   {
     id: 4,
+    workspaceId: "test-ws",
     kind: "editor",
     title: "dirty.ts",
     path: "/repo/src/dirty.ts",
@@ -32,12 +35,14 @@ const tabs: Tab[] = [
   },
   {
     id: 5,
+    workspaceId: "test-ws",
     kind: "markdown",
     title: "README.md",
     path: "/repo/README.md",
   },
   {
     id: 6,
+    workspaceId: "test-ws",
     kind: "editor",
     title: "preview.ts",
     path: "/repo/src/preview.ts",

@@ -48,7 +48,7 @@ const label = computed(() => {
       target: envLabel(props.switchingEnv),
     });
   }
-  return envLabel(workspace.env);
+  return envLabel(workspace.pendingEnv);
 });
 
 function handleSelect(key: string | number) {

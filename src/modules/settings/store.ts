@@ -72,6 +72,15 @@ export type TerminalFontWeight =
   | 800
   | 900;
 
+/** Persisted open-workspace entry (multi-workspace session restore). */
+export type PersistedWorkspace = {
+  id: string;
+  rootPath: string;
+  env: WorkspaceEnv;
+  name: string;
+  openedAt: number;
+};
+
 export type Preferences = {
   theme: ThemePref;
   language: LanguagePref;
@@ -118,6 +127,10 @@ export type Preferences = {
   lastWslDistro: string | null;
   lastWorkspace: StoredWorkspace | null;
   recentWorkspaces: StoredWorkspace[];
+  /** Multi-workspace: workspaces left open at end of last session. */
+  openWorkspaces: PersistedWorkspace[];
+  /** Multi-workspace: which workspace id was active last session. */
+  activeWorkspaceId: string | null;
   recentFiles: string[];
   zoomLevel: number;
   sourceControlPanelWidth: number;
@@ -173,6 +186,8 @@ const KEY_KEYBINDINGS = "keybindings";
 const KEY_LAST_WSL_DISTRO = "lastWslDistro";
 const KEY_LAST_WORKSPACE = "lastWorkspace";
 const KEY_RECENT_WORKSPACES = "recentWorkspaces";
+const KEY_OPEN_WORKSPACES = "openWorkspaces";
+const KEY_ACTIVE_WORKSPACE_ID = "activeWorkspaceId";
 const KEY_RECENT_FILES = "recentFiles";
 const KEY_ZOOM_LEVEL = "zoomLevel";
 const KEY_EDITOR_FONT_SIZE = "editorFontSize";
@@ -325,6 +340,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   lastWslDistro: null,
   lastWorkspace: null,
   recentWorkspaces: [],
+  openWorkspaces: [],
+  activeWorkspaceId: null,
   recentFiles: [],
   zoomLevel: 1.0,
   sourceControlPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
@@ -473,6 +490,12 @@ export async function loadPreferences(): Promise<Preferences> {
     recentWorkspaces:
       get<StoredWorkspace[]>(KEY_RECENT_WORKSPACES) ??
       DEFAULT_PREFERENCES.recentWorkspaces,
+    openWorkspaces:
+      get<PersistedWorkspace[]>(KEY_OPEN_WORKSPACES) ??
+      DEFAULT_PREFERENCES.openWorkspaces,
+    activeWorkspaceId:
+      get<string | null>(KEY_ACTIVE_WORKSPACE_ID) ??
+      DEFAULT_PREFERENCES.activeWorkspaceId,
     recentFiles:
       get<string[]>(KEY_RECENT_FILES) ?? DEFAULT_PREFERENCES.recentFiles,
     zoomLevel: get<number>(KEY_ZOOM_LEVEL) ?? DEFAULT_PREFERENCES.zoomLevel,
@@ -808,6 +831,18 @@ export async function setRecentWorkspaces(
   await writePref(KEY_RECENT_WORKSPACES, value);
 }
 
+export async function setOpenWorkspaces(
+  value: PersistedWorkspace[],
+): Promise<void> {
+  await writePref(KEY_OPEN_WORKSPACES, value);
+}
+
+export async function setActiveWorkspaceId(
+  value: string | null,
+): Promise<void> {
+  await writePref(KEY_ACTIVE_WORKSPACE_ID, value);
+}
+
 export async function setRecentFiles(value: string[]): Promise<void> {
   await writePref(KEY_RECENT_FILES, value);
 }
@@ -903,6 +938,8 @@ export async function onPreferencesChange(
     [KEY_LAST_WSL_DISTRO]: "lastWslDistro",
     [KEY_LAST_WORKSPACE]: "lastWorkspace",
     [KEY_RECENT_WORKSPACES]: "recentWorkspaces",
+    [KEY_OPEN_WORKSPACES]: "openWorkspaces",
+    [KEY_ACTIVE_WORKSPACE_ID]: "activeWorkspaceId",
     [KEY_RECENT_FILES]: "recentFiles",
     [KEY_ZOOM_LEVEL]: "zoomLevel",
     [KEY_SOURCE_CONTROL_PANEL_WIDTH]: "sourceControlPanelWidth",

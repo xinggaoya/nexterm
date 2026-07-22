@@ -8,6 +8,23 @@ import { readEditorDocument, writeEditorDocument } from "./lib/documentService";
 
 const dialogWarningMock = vi.hoisted(() => vi.fn());
 
+// 多工作区重构后，EditorPane 通过 useWorkspaceContext() 获取 wsNative。
+// 测试不挂载 WorkspaceHost，因此直接 mock 该 composable 返回固定值。
+// documentService 函数本身已被单独 mock，不会真正调用 wsNative 的方法。
+const mockWsNative = {};
+vi.mock("@/app/workspaceContext", () => ({
+  useWorkspaceContext: () => ({
+    workspace: {
+      id: "local:/repo",
+      rootPath: "/repo",
+      env: { kind: "local" },
+      name: "repo",
+      openedAt: 0,
+    },
+    wsNative: mockWsNative,
+  }),
+}));
+
 vi.mock("naive-ui", async () => {
   const actual = await vi.importActual<typeof import("naive-ui")>("naive-ui");
   return {
@@ -20,6 +37,9 @@ vi.mock("./lib/documentService", () => ({
   readEditorDocument: vi.fn(),
   writeEditorDocument: vi.fn(),
 }));
+
+// documentService 函数现在以 wsNative 为首参；断言时忽略该参数。
+const WS_NATIVE_MATCHER = expect.anything();
 
 const noopDisposable = { dispose: () => undefined };
 const fakeEditor: any = {
@@ -110,7 +130,10 @@ describe("EditorPane.vue", () => {
       props: { path: "/repo/src/main.ts" },
     });
     await flush();
-    expect(readEditorDocument).toHaveBeenCalledWith("/repo/src/main.ts");
+    expect(readEditorDocument).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
+      "/repo/src/main.ts",
+    );
     expect(wrapper.find("[data-editor-host]").exists()).toBe(true);
     expect(wrapper.text()).toContain("main.ts");
     expect(wrapper.find("[data-editor-mode-source]").exists()).toBe(false);
@@ -127,6 +150,7 @@ describe("EditorPane.vue", () => {
     await wrapper.vm.save();
     expect(wrapper.emitted("dirtyChange")).toEqual([[false], [true], [false]]);
     expect(writeEditorDocument).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
       "/repo/src/main.ts",
       "const value = 2;",
     );
@@ -208,6 +232,7 @@ describe("EditorPane.vue", () => {
       }),
     );
     expect(writeEditorDocument).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
       "/repo/src/main.ts",
       "const local = true;",
     );

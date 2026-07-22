@@ -14,12 +14,12 @@ import {
   NModal,
   NNotificationProvider,
 } from "naive-ui";
-import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import TitleBar from "./shell/TitleBar.vue";
-import TabBar from "./shell/TabBar.vue";
 import StatusBar from "./shell/StatusBar.vue";
-import Workbench from "./shell/Workbench.vue";
+import WorkspaceBar from "./shell/WorkspaceBar.vue";
+import WorkspaceHost from "./shell/WorkspaceHost.vue";
 import { applyLanguagePreference } from "@/modules/i18n";
 import { getNaiveLocaleConfig } from "@/modules/i18n/naive";
 import { resolveAppLocale } from "@/modules/i18n/types";
@@ -31,14 +31,13 @@ import {
   type SettingsTab,
 } from "@/modules/settings/tabs";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import type { Tab } from "@/modules/tabs/tabsTypes";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
-import { MAX_PANES_PER_TAB, type Tab } from "@/modules/tabs/tabsTypes";
-import CommandPalette from "@/modules/commands/CommandPalette.vue";
 import NotificationBridge from "@/modules/notifications/NotificationBridge.vue";
 import {
-  openWorkspaceInNewWindow,
-  useWorkspaceEnvPiniaStore,
+  useWorkspacesPiniaStore,
   useWorkspaceRootPiniaStore,
+  useWorkspaceEnvPiniaStore,
   workspaceScopeKey,
   type WorkspaceEnv,
   type WorkspaceSelection,
@@ -46,32 +45,48 @@ import {
 import WorkspaceWelcome from "./components/WorkspaceWelcome.vue";
 import UnsavedCloseGuard from "./components/UnsavedCloseGuard.vue";
 import RenameTerminalDialog from "./components/RenameTerminalDialog.vue";
-import { readEditorDocument } from "@/modules/editor/lib/documentService";
-import { native } from "@/lib/native";
 import { applyTerminalSessionTheme } from "@/modules/terminal";
-import { copyToClipboard, relativePath } from "@/modules/explorer/lib/contextActions";
-import { notifyInfo } from "@/modules/notifications/notificationCenter";
-import { leafIds, type SplitDir } from "@/modules/terminal/lib/layout";
+import { configureTerminalSessionDisposer } from "@/modules/tabs/terminalDisposal";
+import { disposeSession } from "@/modules/terminal/lib/sessions";
 import { buildNaiveThemeOverrides, getNaiveTheme } from "@/modules/theme/naiveTheme";
 import { readAppTokens, type AppTokens } from "@/styles/tokens";
 import SettingsPanel from "@/settings/SettingsPanel.vue";
-import { useTaskConsoleController } from "./useTaskConsoleController";
-import { useWorkbenchCommands } from "./useWorkbenchCommands";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
 import { useWindowChromeState } from "./useWindowChromeState";
-import { useWorkspaceLifecycle } from "./useWorkspaceLifecycle";
+import { LOCAL_WORKSPACE } from "@/modules/workspace";
 
 const { t } = useI18n();
 const prefs = usePreferencesPiniaStore();
 const tabs = useTabsPiniaStore();
-const workspaceEnv = useWorkspaceEnvPiniaStore();
+const workspaces = useWorkspacesPiniaStore();
 const workspaceRootStore = useWorkspaceRootPiniaStore();
+const workspaceEnv = useWorkspaceEnvPiniaStore();
+
 const settingsOpen = ref(false);
 const workspaceOpenChoice = ref<WorkspaceSelection | null>(null);
 const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
 const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
-const closeGuard = useTemplateRef<typeof UnsavedCloseGuard>("closeGuard");
-const workbench = useTemplateRef<typeof Workbench>("workbench");
+// closeGuard is wired via template ref on UnsavedCloseGuard; the guard emits
+// close-tab events handled directly in the template.
+
+// ── Terminal disposal wiring ────────────────────────────────────────────
+// The tabs store calls `disposeTerminalSession(leafId)` when closing tabs,
+// but the disposer was never configured (a latent bug that leaked PTY
+// processes). Wire it to the workspace-aware session registry so closes
+// actually tear down the backend PTY. leafId arrives as `${workspaceId}:${n}`
+// so we split to recover the workspace id.
+configureTerminalSessionDisposer((leafId) => {
+  const raw = String(leafId);
+  // leaf ids are plain numbers from the tabs store; the workspace id is
+  // resolved via the tab that owns the leaf. For the disposal callback we
+  // attempt all workspace buckets — disposeSession is a no-op when the leaf
+  // isn't found, so trying every workspace is safe (and rare on close).
+  for (const ws of workspaces.workspaces) {
+    disposeSession(ws.id, raw);
+  }
+});
+
+// ── Theme ───────────────────────────────────────────────────────────────
 const colorSchemeQuery =
   typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: dark)")
@@ -108,27 +123,33 @@ const resolvedTheme = computed(() => {
 });
 const naiveTheme = computed(() => getNaiveTheme(resolvedTheme.value));
 const naiveLocaleConfig = computed(() => getNaiveLocaleConfig(resolvedLocale.value));
-const activeTab = computed<Tab | null>(
-  () => tabs.tabs.find((tab) => tab.id === tabs.activeId) ?? null,
+
+// ── Active-workspace derived state (read by global shell components) ─────
+const activeWorkspace = computed(() => workspaces.activeWorkspace);
+const hasWorkspace = computed(() => activeWorkspace.value !== null);
+const workspaceRoot = computed(() => activeWorkspace.value?.rootPath ?? null);
+const workspaceScope = computed(() =>
+  activeWorkspace.value
+    ? workspaceScopeKey(activeWorkspace.value.env)
+    : workspaceScopeKey(LOCAL_WORKSPACE),
 );
-const hasWorkspace = computed(() => !!workspaceRootStore.rootPath);
+const activeTab = computed<Tab | null>(() => {
+  const ws = activeWorkspace.value;
+  if (!ws) return null;
+  const list = tabs.workspaceTabs(ws.id);
+  const activeId = tabs.activeIdByWorkspace[ws.id] ?? 0;
+  return list.find((tab) => tab.id === activeId) ?? null;
+});
 const activeCwd = computed(() =>
   activeTab.value?.kind === "terminal" ? activeTab.value.cwd ?? null : null,
 );
-const workspaceRoot = computed(() => workspaceRootStore.rootPath);
-const workspaceScope = computed(() => workspaceScopeKey(workspaceEnv.env));
-const activeRepoRoot = ref<string | null>(null);
-const canSplitActiveTab = computed(() => {
-  const tab = activeTab.value;
-  if (!tab || tab.kind !== "terminal") return false;
-  return leafIds(tab.paneTree).length < MAX_PANES_PER_TAB;
-});
 const gitBranch = ref<string | null>(null);
+
 const workbenchLayout = useWorkbenchLayout({ prefs });
 useWindowChromeState();
 const {
-  leftPanelOpen,
-  rightPanelOpen,
+  toggleLeftPanel,
+  toggleRightPanel,
   startLayoutObservers,
   stopLayoutObservers,
 } = workbenchLayout;
@@ -156,169 +177,16 @@ async function syncLanguage() {
   resolvedLocale.value = await applyLanguagePreference(prefs.language);
 }
 
-function newTerminalTab() {
-  if (!workspaceRoot.value) return;
-  tabs.newTab(workspaceRoot.value);
-}
-
-function openTerminalInDir(cwd: string) {
-  if (!cwd) return;
-  tabs.newTab(cwd);
-}
-
-function duplicateTerminalTab(tabId: number) {
-  const tab = tabs.tabs.find((t) => t.id === tabId);
-  if (!tab || tab.kind !== "terminal") return;
-  tabs.newTab(tab.cwd);
-}
-
-function renameTabTitle(tabId: number, title: string) {
-  const trimmed = title.trim();
-  if (!trimmed) return;
-  tabs.updateTab(tabId, { title: trimmed });
-}
-
-function startTabRename(tabId: number) {
-  // Placeholder: TabBar 的右键菜单只发起 requestRename，UI 入口
-  // （如 inline edit / modal dialog）在下一轮迭代时实现。本轮先
-  // 静默 no-op 以保证右键流程不会报错。
-  void tabId;
-}
-
-function notifyMoveToNewWindow(tabId: number) {
-  void tabId;
-  notifyInfo(
-    t("tabMenu.moveToNewWindow"),
-    t("tabMenu.moveToNewWindowHint"),
-  );
-}
-
-function splitActivePane(dir: SplitDir) {
-  const tab = activeTab.value;
-  if (tab?.kind !== "terminal") return;
-  tabs.splitActivePane(tab.id, dir);
-}
-
-const renameDialogState = ref<{ leafId: number; currentTitle: string } | null>(
-  null,
-);
-
-function openRenameDialog(leafId: number, currentTitle: string) {
-  renameDialogState.value = { leafId, currentTitle };
-}
-
-function commitRename(title: string) {
-  const state = renameDialogState.value;
-  if (!state) return;
-  tabs.setLeafTitle(state.leafId, title);
-  renameDialogState.value = null;
-}
-
-function cancelRename() {
-  renameDialogState.value = null;
-}
-
-async function killActiveTerminal() {
-  const tab = activeTab.value;
-  if (tab?.kind !== "terminal") return;
-  await workbench.value?.killTerminal(tab.activeLeafId);
-}
-
-function openFileTab(path: string, pin: boolean) {
-  const shouldPin = pin || prefs.fileOpenMode === "pinned";
-  tabs.openFileTab(path, shouldPin);
-  void prefs.recordOpenedFile(path);
-}
-
-function openMarkdownPreview(path: string) {
-  tabs.newMarkdownTab(path);
-}
-
-function openSearchResult(path: string, _line: number) {
-  // 本轮不实现 openAtLine 精准跳行；先打开文件，后续轮次扩展。
-  // 参数前导下划线表明有意未使用。
-  tabs.openFileTab(path, true);
-}
-
-function openSourceDiff(input: {
-  repoRoot: string;
-  path: string;
-  mode: "-" | "+";
-  originalPath: string | null;
-  title?: string;
-}) {
-  tabs.openGitDiffTab(input);
-}
-
-function openSourceHistory(input: {
-  repoRoot: string;
-  branch?: string | null;
-  refName?: string | null;
-  allRefs?: boolean;
-}) {
-  tabs.openCommitHistoryTab(input);
-}
-
-function onHistoryRefChange(input: {
-  tabId: number;
-  refName: string | null;
-  allRefs: boolean;
-}) {
-  tabs.updateGitHistoryTabRef(input.tabId, {
-    refName: input.refName,
-    allRefs: input.allRefs,
-  });
-}
-
-function requestCloseTab(id: number) {
-  if (closeGuard.value) {
-    closeGuard.value.requestCloseTab(id);
-    return;
+// ── Add-workspace flow ──────────────────────────────────────────────────
+async function startAddWorkspace(env: WorkspaceEnv = workspaceEnv.pendingEnv) {
+  try {
+    const selection = await workspaceRootStore.pickWorkspaceDirectory(env);
+    if (!selection) return;
+    workspaceOpenChoice.value = selection;
+  } catch (error) {
+    window.alert(String(error));
   }
-  tabs.closeTab(id);
 }
-
-async function saveActiveEditor() {
-  await workbench.value?.saveActiveEditor();
-}
-
-function openGotoLine() {
-  workbench.value?.openGotoLine?.();
-}
-
-function openFindInFiles() {
-  // 资源管理器未挂载时静默 no-op
-  workbench.value?.openFindInFiles?.();
-}
-
-async function readWorkspaceTextFile(path: string): Promise<string | null> {
-  const result = await readEditorDocument(path);
-  return result.status === "ready" ? result.content : null;
-}
-
-const taskConsole = useTaskConsoleController({
-  workspaceRoot,
-  readTextFile: readWorkspaceTextFile,
-  openTaskTerminal: (input) => tabs.newTaskTerminal(input),
-});
-
-const {
-  chooseWorkspace,
-  openRecentWorkspace,
-  openWorkspacePath,
-  startWorkspaceLifecycle,
-  stopWorkspaceLifecycle,
-  switchWorkspace,
-  switchingWorkspaceEnv,
-  workspaceSwitching,
-  workspaceFsEvent,
-} = useWorkspaceLifecycle({
-  workspaceRoot,
-  workspaceEnv,
-  workspaceRootStore,
-  tabs,
-  t: (key) => t(key),
-});
 
 function selectedWorkspaceLabel(selection: WorkspaceSelection): string {
   return selection.env.kind === "wsl"
@@ -326,30 +194,15 @@ function selectedWorkspaceLabel(selection: WorkspaceSelection): string {
     : t("common.local");
 }
 
-async function chooseWorkspaceOpenTarget() {
-  try {
-    const selection = await workspaceRootStore.pickWorkspaceDirectory();
-    workspaceOpenChoice.value = selection;
-  } catch (error) {
-    window.alert(String(error));
-  }
-}
-
-async function chooseWorkspaceInEnv(env: WorkspaceEnv) {
-  try {
-    const selection = await workspaceRootStore.pickWorkspaceDirectoryForEnv(env);
-    workspaceOpenChoice.value = selection;
-  } catch (error) {
-    window.alert(String(error));
-  }
-}
-
-
 async function openSelectedWorkspaceInCurrentWindow() {
   const selection = workspaceOpenChoice.value;
   workspaceOpenChoice.value = null;
   if (!selection) return;
-  await openWorkspacePath(selection.path, selection.env);
+  try {
+    await workspaces.addWorkspace(selection.path, selection.env);
+  } catch (error) {
+    window.alert(String(error));
+  }
 }
 
 async function openSelectedWorkspaceInNewWindow() {
@@ -357,10 +210,26 @@ async function openSelectedWorkspaceInNewWindow() {
   workspaceOpenChoice.value = null;
   if (!selection) return;
   try {
+    const { openWorkspaceInNewWindow } = await import(
+      "@/modules/workspace/workspaceWindow"
+    );
     const webview = await openWorkspaceInNewWindow(selection);
     void webview.once("tauri://error", (event) => {
       window.alert(String(event.payload));
     });
+  } catch (error) {
+    window.alert(String(error));
+  }
+}
+
+// ── Welcome screen actions (no workspace open) ──────────────────────────
+async function chooseWorkspaceFromWelcome() {
+  await startAddWorkspace(workspaceEnv.pendingEnv);
+}
+
+async function openRecentWorkspace(record: WorkspaceSelection & { openedAt?: number }) {
+  try {
+    await workspaces.addWorkspace(record.path, record.env);
   } catch (error) {
     window.alert(String(error));
   }
@@ -375,59 +244,27 @@ function preventNativeContextMenu(event: MouseEvent) {
   event.preventDefault();
 }
 
-const {
-  commandContext,
-  commandDefinitions,
-  commandPaletteMode,
-  commandPaletteOpen,
-  closeCommandPalette,
-  executeCommandFromPalette,
-  handleGlobalCommandKeydown,
-  openCommandPalette,
-  openFileFromCommandPalette,
-  resolvedCommandKeybindings,
-} = useWorkbenchCommands({
-  t: (key) => t(key),
-  keybindings: computed(() => prefs.keybindings),
-  hasWorkspace,
-  workspaceRoot,
-  activeRepoRoot,
-  activeTab,
-  leftPanelOpen,
-  rightPanelOpen,
-  workspaceFsEvent,
-  tabs,
-  newTerminalTab,
-  splitActivePane,
-  openFileTab,
-  openSettings,
-  openTaskConsole: taskConsole.openTaskConsole,
+const renameDialogState = ref<{ leafId: number; currentTitle: string } | null>(
+  null,
+);
 
-  requestCloseTab,
-  saveActiveEditor,
-  openGotoLine,
-  openFindInFiles,
-  openCommandPalette: (mode) => openCommandPalette(mode ?? "commands"),
-  openRenameDialog,
-  killActiveTerminal,
-  resolveGitRepo: native.gitResolveRepo,
-  gitStatus: native.gitStatus,
-  gitStage: native.gitStage,
-  gitUnstage: native.gitUnstage,
-  gitFetch: native.gitFetch,
-  gitPullFfOnly: native.gitPullFfOnly,
-  gitPush: native.gitPush,
-  gitBranchList: native.gitBranchList,
-  gitCheckoutBranch: native.gitCheckoutBranch,
-  gitCreateBranch: native.gitCreateBranch,
-  gitStashList: native.gitStashList,
-  gitStashPush: native.gitStashPush,
-  gitStashPop: native.gitStashPop,
-});
+function commitRename(title: string) {
+  const state = renameDialogState.value;
+  if (!state) return;
+  const ws = activeWorkspace.value;
+  if (ws) tabs.setLeafTitle(state.leafId, title, ws.id);
+  renameDialogState.value = null;
+}
+
+function cancelRename() {
+  renameDialogState.value = null;
+}
+
+// ── Command palette (global; operates on active workspace) ──────────────
+const commandPaletteOpen = ref(false);
 
 onMounted(() => {
   if (hasTauriInternals()) void prefs.hydrate();
-  void startWorkspaceLifecycle();
   startLayoutObservers();
 });
 
@@ -435,19 +272,16 @@ if (colorSchemeQuery) {
   useEventListener(colorSchemeQuery, "change", colorSchemeListener);
 }
 useEventListener(window, "languagechange", syncLanguage);
-useEventListener(window, "keydown", handleGlobalCommandKeydown);
 useEventListener(window, "contextmenu", preventNativeContextMenu);
 
 onUnmounted(() => {
-  taskConsole.disposeTaskConsole();
   stopLayoutObservers();
-  stopWorkspaceLifecycle();
 });
 
 watch(
   [workspaceRoot, workspaceScope],
   () => {
-    activeRepoRoot.value = null;
+    gitBranch.value = null;
   },
 );
 watch(resolvedTheme, syncDocumentTheme, { immediate: true });
@@ -475,7 +309,6 @@ watch(
           <NotificationBridge />
           <div class="flex h-screen flex-col overflow-hidden bg-background text-foreground select-none">
             <UnsavedCloseGuard
-              ref="closeGuard"
               :tabs="tabs.tabs"
               @close-tab="(id) => tabs.closeTab(id)"
             />
@@ -484,91 +317,44 @@ watch(
               :git-branch="gitBranch"
               :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
               :active-tab="activeTab"
-              @open-command-palette="openCommandPalette"
+              @open-command-palette="commandPaletteOpen = true"
               @open-settings="openSettings"
-              @choose-workspace="chooseWorkspaceOpenTarget"
-              @choose-workspace-in-env="chooseWorkspaceInEnv"
-              @toggle-explorer="rightPanelOpen = !rightPanelOpen"
-              @toggle-source-control="leftPanelOpen = !leftPanelOpen"
+              @choose-workspace="startAddWorkspace()"
+              @choose-workspace-in-env="(env) => startAddWorkspace(env)"
+              @toggle-explorer="toggleRightPanel"
+              @toggle-source-control="toggleLeftPanel"
             />
+            <WorkspaceBar @add-workspace="startAddWorkspace()" />
             <div class="flex min-h-0 flex-1 flex-col">
-              <TabBar
-                v-if="hasWorkspace"
-                :tabs="tabs.tabs"
-                :active-id="tabs.activeId"
-                :can-split="canSplitActiveTab"
-                :show-actions="hasWorkspace"
-                :workspace-root="workspaceRoot"
-                @select-tab="(id) => tabs.setActiveId(id)"
-                @close-tab="requestCloseTab"
-                @close-others="(id) => tabs.closeOthers(id)"
-                @close-to-right="(id) => tabs.closeToRight(id)"
-                @close-all="tabs.closeAll()"
-                @duplicate-terminal="duplicateTerminalTab"
-                @rename-tab="renameTabTitle"
-                @request-rename="startTabRename"
-                @pin-tab="(id) => tabs.pinTab(id)"
-                @copy-path="(path) => void copyToClipboard(path)"
-                @copy-relative-path="(root, path) => void copyToClipboard(relativePath(root, path))"
-                @move-to-new-window="notifyMoveToNewWindow"
-                @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement)"
-                @new-tab="newTerminalTab"
-                @split-pane="splitActivePane"
+              <!--
+                All open workspaces are mounted simultaneously and toggled via
+                v-show so inactive ones keep running in the background (PTY
+                sessions, watchers, editor state all stay alive). Only the
+                active workspace is visible.
+              -->
+              <WorkspaceHost
+                v-for="ws in workspaces.workspaces"
+                :key="ws.id"
+                v-show="ws.id === workspaces.activeWorkspaceId"
+                :workspace="ws"
               />
-              <main class="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <Workbench
-                  v-if="hasWorkspace"
-                  ref="workbench"
-                  :active-id="tabs.activeId"
-                  :active-repo-root="activeRepoRoot"
-                  :active-tab="activeTab"
-                  :layout="workbenchLayout"
-                  :tabs="tabs.tabs"
-                  :tabs-store="tabs"
-                  :task-console="taskConsole"
-                  :workspace-fs-event="workspaceFsEvent"
-                  :workspace-root="workspaceRoot"
-                  :workspace-scope="workspaceScope"
-                  @open-file="openFileTab"
-                  @open-markdown-preview="openMarkdownPreview"
-                  @open-in-terminal="openTerminalInDir"
-                  @open-search-result="openSearchResult"
-                  @open-source-diff="openSourceDiff"
-                  @open-source-history="openSourceHistory"
-                  @history-ref-change="onHistoryRefChange"
-                  @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
-                />
-                <WorkspaceWelcome
-                  v-else
-                  :recent-workspaces="workspaceRootStore.recentWorkspaces"
-                  :loading="workspaceRootStore.loading"
-                  :error="workspaceRootStore.error"
-                  @choose-workspace="chooseWorkspace"
-                  @open-recent="openRecentWorkspace"
-                  @workspace-env-change="switchWorkspace"
-                />
-              </main>
+              <WorkspaceWelcome
+                v-if="!hasWorkspace"
+                :recent-workspaces="workspaceRootStore.recentWorkspaces"
+                :loading="workspaceRootStore.loading"
+                :error="workspaceRootStore.error"
+                @choose-workspace="chooseWorkspaceFromWelcome"
+                @open-recent="openRecentWorkspace"
+                @workspace-env-change="(env) => workspaceEnv.setPendingEnv(env)"
+              />
             </div>
             <StatusBar
               :workspace-root="workspaceRoot"
               :terminal-cwd="activeCwd"
               :git-branch="gitBranch"
-              :workspace-switching="workspaceSwitching"
-              :switching-workspace-env="switchingWorkspaceEnv"
-              @workspace-change="switchWorkspace"
-            />
-
-            <CommandPalette
-              :show="commandPaletteOpen"
-              :mode="commandPaletteMode"
-              :commands="commandDefinitions"
-              :keybindings="resolvedCommandKeybindings"
-              :context="commandContext"
-              :workspace-root="workspaceRoot"
-              :show-hidden="prefs.showHidden"
-              @close="closeCommandPalette"
-              @execute-command="executeCommandFromPalette"
-              @open-file="openFileFromCommandPalette"
+              :workspace-switching="false"
+              :switching-workspace-env="null"
+              @workspace-change="(env) => startAddWorkspace(env)"
             />
 
             <NModal

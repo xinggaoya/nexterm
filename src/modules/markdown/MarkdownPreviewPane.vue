@@ -3,6 +3,7 @@ import { DocumentTextOutline } from "@vicons/ionicons5";
 import { NIcon, NSpin } from "naive-ui";
 import { computed, ref, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
+import { useWorkspaceContext } from "@/app/workspaceContext";
 import {
   readMarkdownDocument,
   type MarkdownDocumentState,
@@ -14,6 +15,7 @@ const props = defineProps<{
   visible: boolean;
 }>();
 
+const wsCtx = useWorkspaceContext();
 const doc = ref<MarkdownDocumentState>({ status: "loading" });
 
 const fileName = computed(() => {
@@ -33,7 +35,7 @@ function formatBytes(n: number): string {
 
 async function load() {
   doc.value = { status: "loading" };
-  doc.value = await readMarkdownDocument(props.path);
+  doc.value = await readMarkdownDocument(wsCtx.wsNative, props.path);
 }
 
 watch(() => props.path, () => void load(), { immediate: true });

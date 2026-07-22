@@ -15,13 +15,14 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import MainApp from "./app/MainApp.vue";
 import { applyLanguagePreference, i18n } from "./modules/i18n";
-import { initLaunchDir, getLaunchWorkspace } from "./lib/launchDir";
-import { onDeepLinkOpen, type DeepLinkOpenRequest } from "./lib/native";
-import { USE_CUSTOM_WINDOW_CONTROLS } from "./lib/platform";
-import { hasTauriInternals } from "./lib/tauriRuntime";
-import { usePreferencesPiniaStore } from "./modules/settings/preferencesPinia";
+import { initLaunchDir } from "./lib/launchDir";
+import { onDeepLinkOpen, type DeepLinkOpenRequest } from "@/lib/native";
+import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
+import { hasTauriInternals } from "@/lib/tauriRuntime";
+import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import {
   useWorkspaceRootPiniaStore,
+  useWorkspacesPiniaStore,
   type WorkspaceEnv,
 } from "@/modules/workspace";
 
@@ -39,7 +40,13 @@ app.use(i18n);
 const prefs = usePreferencesPiniaStore(pinia);
 if (hasTauriInternals()) await prefs.hydrate();
 await applyLanguagePreference(prefs.language);
-await useWorkspaceRootPiniaStore(pinia).bootstrap(getLaunchWorkspace());
+// Bootstrap both stores: workspaces (restores the open-workspace set) and
+// the root store (recent history). The launch-dir/deep-link path now adds a
+// workspace rather than replacing the single active one.
+await Promise.all([
+  useWorkspacesPiniaStore(pinia).bootstrap(),
+  useWorkspaceRootPiniaStore(pinia).bootstrap(),
+]);
 
 app.mount("#root");
 
@@ -53,16 +60,16 @@ setTimeout(showWindow, 500);
 
 // Cold-start and runtime deep-link delivery (`nexterm://open?...`) flows
 // through the Rust plugin's setup hook into this `nexterm://deep-link-open`
-// event. The workspace is opened AFTER bootstrap so the pinia store is ready
-// to consume the path/env without re-entering hydration.
+// event. A deep link adds the workspace to the multi-workspace set (or
+// focuses it if already open) rather than replacing the current workspace.
 if (hasTauriInternals()) {
-  const workspaceRootStore = useWorkspaceRootPiniaStore(pinia);
+  const workspacesStore = useWorkspacesPiniaStore(pinia);
   void onDeepLinkOpen((request: DeepLinkOpenRequest) => {
     const env: WorkspaceEnv =
       request.env === "wsl" && request.wslDistro
         ? { kind: "wsl", distro: request.wslDistro }
         : { kind: "local" };
-    void workspaceRootStore.openWorkspace(request.path, env).catch((error) => {
+    void workspacesStore.addWorkspace(request.path, env).catch((error: unknown) => {
       console.warn("Failed to open workspace from deep link", error);
     });
   });

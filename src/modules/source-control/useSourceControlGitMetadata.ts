@@ -1,14 +1,15 @@
 import { getCurrentInstance, onBeforeUnmount, ref, watch } from "vue";
 import type { ReadonlyRef } from "@/lib/refs";
-import type { GitBranchInfo, GitStashEntry } from "@/lib/native";
-type SourceControlGitMetadataNative = {
-  gitBranchList: (repoRoot: string) => Promise<GitBranchInfo[]>;
-  gitStashList: (repoRoot: string) => Promise<GitStashEntry[]>;
-};
+import type {
+  GitBranchInfo,
+  GitStashEntry,
+  WorkspaceNative,
+} from "@/lib/native";
 
 type SourceControlGitMetadataOptions = {
   repoRoot: ReadonlyRef<string | null>;
-  native: SourceControlGitMetadataNative;
+  /** 绑定到目标 workspace 环境的 native 调用面（git 分支/stash 列表）。 */
+  wsNative: WorkspaceNative;
 };
 
 export function useSourceControlGitMetadata(options: SourceControlGitMetadataOptions) {
@@ -31,8 +32,8 @@ export function useSourceControlGitMetadata(options: SourceControlGitMetadataOpt
     error.value = null;
     try {
       const [nextBranches, nextStashes] = await Promise.all([
-        options.native.gitBranchList(root),
-        options.native.gitStashList(root),
+        options.wsNative.gitBranchList(root),
+        options.wsNative.gitStashList(root),
       ]);
       if (currentId !== requestId.value) return;
       branches.value = nextBranches;

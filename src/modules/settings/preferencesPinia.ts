@@ -177,6 +177,12 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const recentWorkspaces = ref<Preferences["recentWorkspaces"]>(
     DEFAULT_PREFERENCES.recentWorkspaces,
   );
+  const openWorkspaces = ref<Preferences["openWorkspaces"]>(
+    DEFAULT_PREFERENCES.openWorkspaces,
+  );
+  const activeWorkspaceId = ref<Preferences["activeWorkspaceId"]>(
+    DEFAULT_PREFERENCES.activeWorkspaceId,
+  );
   const recentFiles = ref<Preferences["recentFiles"]>(
     DEFAULT_PREFERENCES.recentFiles,
   );
@@ -241,6 +247,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     lastWslDistro.value = snapshot.lastWslDistro;
     lastWorkspace.value = snapshot.lastWorkspace;
     recentWorkspaces.value = snapshot.recentWorkspaces;
+    openWorkspaces.value = snapshot.openWorkspaces;
+    activeWorkspaceId.value = snapshot.activeWorkspaceId;
     recentFiles.value = snapshot.recentFiles;
     zoomLevel.value = snapshot.zoomLevel;
     sourceControlPanelWidth.value = snapshot.sourceControlPanelWidth;
@@ -625,6 +633,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
       lastWslDistro: lastWslDistro.value,
       lastWorkspace: lastWorkspace.value,
       recentWorkspaces: recentWorkspaces.value,
+      openWorkspaces: openWorkspaces.value,
+      activeWorkspaceId: activeWorkspaceId.value,
       recentFiles: recentFiles.value,
       zoomLevel: zoomLevel.value,
       sourceControlPanelWidth: sourceControlPanelWidth.value,
@@ -677,6 +687,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     lastWslDistro,
     lastWorkspace,
     recentWorkspaces,
+    openWorkspaces,
+    activeWorkspaceId,
     recentFiles,
     zoomLevel,
     sourceControlPanelWidth,

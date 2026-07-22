@@ -1,8 +1,13 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const SCAN_ROOTS = ["src/modules/editor", "src/modules/lsp"];
+
+// 将平台相关分隔符统一为 POSIX 正斜杠，保证 ALLOWED_FILES 比对在 Windows 上也成立。
+function toPosix(p: string): string {
+  return sep === "/" ? p : p.split(sep).join("/");
+}
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -12,7 +17,7 @@ function walk(dir: string): string[] {
     if (st.isDirectory()) {
       out.push(...walk(p));
     } else if (st.isFile() && /\.(ts|vue)$/.test(p)) {
-      out.push(p);
+      out.push(toPosix(p));
     }
   }
   return out;

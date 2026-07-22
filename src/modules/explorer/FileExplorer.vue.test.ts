@@ -14,6 +14,23 @@ import {
   type DirEntry,
 } from "./lib/fileTreeService";
 
+// 多工作区重构后，FileExplorer 通过 useWorkspaceContext() 获取 wsNative。
+// 测试不挂载 WorkspaceHost，因此直接 mock 该 composable 返回固定值，
+// 让组件拿到一个占位的 wsNative（文件树服务函数本身已被单独 mock，不会真正调用 wsNative 的方法）。
+const mockWsNative = {};
+vi.mock("@/app/workspaceContext", () => ({
+  useWorkspaceContext: () => ({
+    workspace: {
+      id: "local:/repo",
+      rootPath: "/repo",
+      env: { kind: "local" },
+      name: "repo",
+      openedAt: 0,
+    },
+    wsNative: mockWsNative,
+  }),
+}));
+
 vi.mock("./lib/fileTreeService", async () => {
   const actual =
     await vi.importActual<typeof import("./lib/fileTreeService")>(
@@ -43,15 +60,20 @@ vi.mock("./lib/contextActions", () => ({
   revealInFinder: vi.fn(),
 }));
 
+import { buildGitDecorationMap } from "@/modules/source-control/gitDecorations";
+
 async function flush() {
   await Promise.resolve();
   await nextTick();
 }
 
+// 服务函数现在以 wsNative 为首参；断言时忽略该参数，只校验 path/showHidden。
+const WS_NATIVE_MATCHER = expect.anything();
+
 describe("FileExplorer.vue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(readFileTreeDir).mockImplementation(async (path) => {
+    vi.mocked(readFileTreeDir).mockImplementation(async (_ws, path) => {
       if (path === "/repo") {
         return [
           { name: "src", kind: "dir", size: 0, mtime: 1 },
@@ -92,7 +114,7 @@ describe("FileExplorer.vue", () => {
     });
     await flush();
 
-    expect(readFileTreeDir).toHaveBeenCalledWith("/repo", false);
+    expect(readFileTreeDir).toHaveBeenCalledWith(WS_NATIVE_MATCHER, "/repo", false);
     expect(wrapper.text()).toContain("repo");
     expect(wrapper.text()).toContain("src");
     expect(wrapper.text()).toContain("README.md");
@@ -118,31 +140,35 @@ describe("FileExplorer.vue", () => {
   });
 
   it("renders git tones for changed files and parent folders", async () => {
+    // 多工作区重构后，FileExplorer 不再接收 gitChangedFiles 数组，
+    // 而是接收预先构建好的 gitDecorations Map（由父级用 buildGitDecorationMap 生成）。
+    const gitDecorations = buildGitDecorationMap("/repo", [
+      {
+        path: "src/main.ts",
+        originalPath: null,
+        indexStatus: " ",
+        worktreeStatus: "M",
+        staged: false,
+        unstaged: true,
+        untracked: false,
+        statusLabel: "Modified",
+      },
+    ]);
     const wrapper = mount(FileExplorer, {
       global: { plugins: [createPinia()] },
       props: {
         rootPath: "/repo",
-        gitChangedFiles: [
-          {
-            path: "src/main.ts",
-            originalPath: null,
-            indexStatus: " ",
-            worktreeStatus: "M",
-            staged: false,
-            unstaged: true,
-            untracked: false,
-            statusLabel: "Modified",
-          },
-        ],
+        gitDecorations,
       },
     });
     await flush();
 
+    // 父目录 src 也会有后代变更标记（hasDescendantChanges）。
     expect(
       wrapper
-        .find("[data-explorer-row-path='/repo/src'] [data-explorer-git-tone]")
-        .attributes("data-explorer-git-tone"),
-    ).toBe("modified");
+        .find("[data-explorer-row-path='/repo/src'] [data-explorer-git-decoration]")
+        .exists(),
+    ).toBe(true);
 
     await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
     await flush();
@@ -150,10 +176,10 @@ describe("FileExplorer.vue", () => {
     expect(
       wrapper
         .find(
-          "[data-explorer-row-path='/repo/src/main.ts'] [data-explorer-git-tone]",
+          "[data-explorer-row-path='/repo/src/main.ts'] [data-explorer-git-decoration]",
         )
-        .attributes("data-explorer-git-tone"),
-    ).toBe("modified");
+        .exists(),
+    ).toBe(true);
   });
 
   it("expands folders and renders loaded children", async () => {
@@ -166,7 +192,11 @@ describe("FileExplorer.vue", () => {
     await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
     await flush();
 
-    expect(readFileTreeDir).toHaveBeenCalledWith("/repo/src", false);
+    expect(readFileTreeDir).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
+      "/repo/src",
+      false,
+    );
     expect(wrapper.text()).toContain("main.ts");
     expect(
       wrapper
@@ -197,8 +227,16 @@ describe("FileExplorer.vue", () => {
     await wrapper.find("[data-inline-tree-input]").trigger("keydown", { key: "Enter" });
     await flush();
 
-    expect(createFileTreeEntry).toHaveBeenCalledWith("/repo/notes.md", "file");
-    expect(readFileTreeDir).toHaveBeenLastCalledWith("/repo", false);
+    expect(createFileTreeEntry).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
+      "/repo/notes.md",
+      "file",
+    );
+    expect(readFileTreeDir).toHaveBeenLastCalledWith(
+      WS_NATIVE_MATCHER,
+      "/repo",
+      false,
+    );
   });
 
   it("renames files inline from a row double click", async () => {
@@ -217,6 +255,7 @@ describe("FileExplorer.vue", () => {
     await flush();
 
     expect(renameFileTreePath).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
       "/repo/README.md",
       "/repo/README.old.md",
     );
@@ -245,7 +284,10 @@ describe("FileExplorer.vue", () => {
     await wrapper.find("[data-menu-action='delete']").trigger("click");
     await flush();
 
-    expect(deleteFileTreePath).toHaveBeenCalledWith("/repo/README.md");
+    expect(deleteFileTreePath).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
+      "/repo/README.md",
+    );
     expect(wrapper.emitted("pathDeleted")).toEqual([["/repo/README.md"]]);
   });
 
@@ -272,6 +314,7 @@ describe("FileExplorer.vue", () => {
     await flush();
 
     expect(renameFileTreePath).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
       "/repo/README.md",
       "/repo/README.old.md",
     );
@@ -426,7 +469,12 @@ describe("FileExplorer.vue", () => {
     await vi.advanceTimersByTimeAsync(300);
     await flush();
 
-    expect(searchFileTree).toHaveBeenCalledWith("/repo", "main", false);
+    expect(searchFileTree).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
+      "/repo",
+      "main",
+      false,
+    );
     await wrapper.find("[data-search-result='/repo/src/main.ts']").trigger("click");
 
     const openFileEvents = wrapper.emitted("openFile") ?? [];
@@ -452,7 +500,11 @@ describe("FileExplorer.vue", () => {
     await explorer.trigger("keydown", { key: "ArrowDown" });
     await explorer.trigger("keydown", { key: "Enter" });
 
-    expect(readFileTreeDir).toHaveBeenCalledWith("/repo/src", false);
+    expect(readFileTreeDir).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
+      "/repo/src",
+      false,
+    );
     const openFileEvents = wrapper.emitted("openFile") ?? [];
     expect(openFileEvents[openFileEvents.length - 1]).toEqual([
       "/repo/src/main.ts",
@@ -463,7 +515,7 @@ describe("FileExplorer.vue", () => {
 
   it("refreshes only the affected loaded directory for batched fs events", async () => {
     vi.useFakeTimers();
-    vi.mocked(readFileTreeDir).mockImplementation(async (path) => {
+    vi.mocked(readFileTreeDir).mockImplementation(async (_ws, path) => {
       if (path === "/repo") {
         return [
           { name: "docs", kind: "dir", size: 0, mtime: 1 },
@@ -502,7 +554,11 @@ describe("FileExplorer.vue", () => {
     await flush();
 
     expect(readFileTreeDir).toHaveBeenCalledTimes(1);
-    expect(readFileTreeDir).toHaveBeenCalledWith("/repo/src", false);
+    expect(readFileTreeDir).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
+      "/repo/src",
+      false,
+    );
     vi.useRealTimers();
   });
 
@@ -510,7 +566,7 @@ describe("FileExplorer.vue", () => {
     vi.useFakeTimers();
     let srcReads = 0;
     const deferredRefresh: { resolve?: (entries: DirEntry[]) => void } = {};
-    vi.mocked(readFileTreeDir).mockImplementation((path) => {
+    vi.mocked(readFileTreeDir).mockImplementation((_ws, path) => {
       if (path === "/repo") {
         return Promise.resolve([
           { name: "src", kind: "dir", size: 0, mtime: 1 },
@@ -570,7 +626,7 @@ describe("FileExplorer.vue", () => {
     // the silent refresh's target *is* the workspace root.
     vi.useFakeTimers();
     let rootReads = 0;
-    vi.mocked(readFileTreeDir).mockImplementation(async (path) => {
+    vi.mocked(readFileTreeDir).mockImplementation(async (_ws, path) => {
       if (path === "/repo") {
         rootReads += 1;
         // First read happens at mount; subsequent reads happen when the
@@ -618,7 +674,7 @@ describe("FileExplorer.vue", () => {
   it("surfaces a newly created directory in an expanded subtree via fsEvent", async () => {
     vi.useFakeTimers();
     let srcReads = 0;
-    vi.mocked(readFileTreeDir).mockImplementation(async (path) => {
+    vi.mocked(readFileTreeDir).mockImplementation(async (_ws, path) => {
       if (path === "/repo") {
         return [{ name: "src", kind: "dir", size: 0, mtime: 1 }];
       }
@@ -668,7 +724,7 @@ describe("FileExplorer.vue", () => {
     // re-expanded it.
     vi.useFakeTimers();
     let srcReads = 0;
-    vi.mocked(readFileTreeDir).mockImplementation(async (path) => {
+    vi.mocked(readFileTreeDir).mockImplementation(async (_ws, path) => {
       if (path === "/repo") {
         return [{ name: "src", kind: "dir", size: 0, mtime: 1 }];
       }
@@ -712,8 +768,12 @@ describe("FileExplorer.vue", () => {
     await flush();
 
     // Both root and the expanded subtree must be re-read.
-    expect(readFileTreeDir).toHaveBeenCalledWith("/repo", false);
-    expect(readFileTreeDir).toHaveBeenCalledWith("/repo/src", false);
+    expect(readFileTreeDir).toHaveBeenCalledWith(WS_NATIVE_MATCHER, "/repo", false);
+    expect(readFileTreeDir).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
+      "/repo/src",
+      false,
+    );
     expect(wrapper.text()).toContain("new-at-subtree.ts");
     vi.useRealTimers();
   });
@@ -722,7 +782,7 @@ describe("FileExplorer.vue", () => {
     vi.useFakeTimers();
     let srcReads = 0;
     const pendingRefreshes: Array<(entries: DirEntry[]) => void> = [];
-    vi.mocked(readFileTreeDir).mockImplementation((path) => {
+    vi.mocked(readFileTreeDir).mockImplementation((_ws, path) => {
       if (path === "/repo") {
         return Promise.resolve([
           { name: "src", kind: "dir", size: 0, mtime: 1 },
@@ -802,6 +862,7 @@ describe("FileExplorer.vue", () => {
     await flush();
 
     expect(copyFileTreePath).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
       "/repo/README.md",
       "/repo/README copy.md",
     );

@@ -1,4 +1,4 @@
-import { native } from "@/lib/native";
+import type { WorkspaceNative } from "@/lib/native";
 
 export type EditorDocumentState =
   | { status: "loading" }
@@ -8,10 +8,11 @@ export type EditorDocumentState =
   | { status: "error"; message: string };
 
 export async function readEditorDocument(
+  wsNative: WorkspaceNative,
   path: string,
 ): Promise<EditorDocumentState> {
   try {
-    const result = await native.fsReadFile(path);
+    const result = await wsNative.fsReadFile(path);
     if (result.kind === "text") {
       return {
         status: "ready",
@@ -33,8 +34,9 @@ export async function readEditorDocument(
 }
 
 export async function writeEditorDocument(
+  wsNative: WorkspaceNative,
   path: string,
   content: string,
 ): Promise<void> {
-  await native.fsWriteFile(path, content);
+  await wsNative.fsWriteFile(path, content);
 }

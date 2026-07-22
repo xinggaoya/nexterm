@@ -4,6 +4,7 @@ import { NSpin, useDialog } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import { useWorkspaceContext } from "@/app/workspaceContext";
 import type { WorkspaceFsChangedEvent } from "@/lib/native";
 import type { EditorViewMode } from "./editorTypes";
 import EditorStatusBar from "./EditorStatusBar.vue";
@@ -40,6 +41,8 @@ const emit = defineEmits<{
 
 const dialog = useDialog();
 const prefs = usePreferencesPiniaStore();
+// 获取当前 workspace 上下文（wsNative + workspace），所有 native 调用都走它。
+const wsCtx = useWorkspaceContext();
 const host = ref<HTMLDivElement | null>(null);
 const mount = shallowRef<EditorMount | null>(null);
 const vimAttachment = shallowRef<VimAttachment | null>(null);
@@ -134,7 +137,7 @@ async function load() {
   selectionLength.value = 0;
   setDirty(false);
   emit("dirtyChange", false);
-  const result = await readEditorDocument(props.path);
+  const result = await readEditorDocument(wsCtx.wsNative, props.path);
   doc.value = result;
   if (result.status === "ready") {
     savedContent.value = result.content;
@@ -162,7 +165,7 @@ async function reloadExternalChange(force = false) {
     return;
   }
   const currentPath = props.path;
-  const result = await readEditorDocument(currentPath);
+  const result = await readEditorDocument(wsCtx.wsNative, currentPath);
   if (props.path !== currentPath || (dirty.value && !force)) return;
   doc.value = result;
   externalChangePending.value = false;
@@ -182,7 +185,7 @@ async function reloadExternalChange(force = false) {
 
 async function saveConfirmed() {
   if (!dirty.value) return;
-  await writeEditorDocument(props.path, buffer.value);
+  await writeEditorDocument(wsCtx.wsNative, props.path, buffer.value);
   savedContent.value = buffer.value;
   externalChangePending.value = false;
   setDirty(false);

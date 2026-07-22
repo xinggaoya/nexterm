@@ -6,6 +6,7 @@ import type {
   GitPanelSnapshot,
   GitStatusSnapshot,
   WorkspaceFsChangedEvent,
+  WorkspaceNative,
 } from "@/lib/native";
 
 const readyStatus: GitStatusSnapshot = {
@@ -29,12 +30,20 @@ const readySnapshot: GitPanelSnapshot = {
   status: readyStatus,
 };
 
-function createNative() {
+// 构造仅含测试所需方法的 mock。保留 vi.fn 的 mock 属性类型，以便测试能调用
+// .mockClear()/.mockImplementation() 等。其余 WorkspaceNative 方法在测试中不会
+// 被调用，故省略。
+type SourceControlTestNative = WorkspaceNative & {
+  workspaceAuthorize: import("vitest").Mock<(path: string) => Promise<string>>;
+  gitPanelSnapshot: import("vitest").Mock<(cwd: string) => Promise<GitPanelSnapshot>>;
+  gitStatus: import("vitest").Mock<(repoRoot: string) => Promise<GitStatusSnapshot>>;
+};
+function createWsNative(): SourceControlTestNative {
   return {
-    workspaceAuthorize: vi.fn<(path: string) => Promise<string>>().mockResolvedValue("/repo"),
-    gitPanelSnapshot: vi.fn<(cwd: string) => Promise<GitPanelSnapshot>>().mockResolvedValue(readySnapshot),
-    gitStatus: vi.fn<(repoRoot: string) => Promise<GitStatusSnapshot>>().mockResolvedValue(readyStatus),
-  };
+    workspaceAuthorize: vi.fn(async () => "/repo"),
+    gitPanelSnapshot: vi.fn(async () => readySnapshot),
+    gitStatus: vi.fn(async () => readyStatus),
+  } as unknown as SourceControlTestNative;
 }
 
 async function flush() {
@@ -50,19 +59,19 @@ describe("useSourceControlState", () => {
   it("loads snapshots and derives source control state", async () => {
     const rootPath = ref<string | null>("/repo");
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
-    const native = createNative();
+    const wsNative = createWsNative();
 
     const state = useSourceControlState({
       rootPath,
       repoRoot: ref<string | null>(null),
       fsEvent,
-      native,
+      wsNative,
       t: (key) => key,
     });
     await flush();
 
-    expect(native.workspaceAuthorize).toHaveBeenCalledWith("/repo");
-    expect(native.gitPanelSnapshot).toHaveBeenCalledWith("/repo");
+    expect(wsNative.workspaceAuthorize).toHaveBeenCalledWith("/repo");
+    expect(wsNative.gitPanelSnapshot).toHaveBeenCalledWith("/repo");
     expect(state.panelState.value).toBe("ready");
     expect(state.repoRoot.value).toBe("/repo");
     expect(state.branchLabel.value).toBe("main");
@@ -72,16 +81,16 @@ describe("useSourceControlState", () => {
     vi.useFakeTimers();
     const rootPath = ref<string | null>("/repo");
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
-    const native = createNative();
+    const wsNative = createWsNative();
     const state = useSourceControlState({
       rootPath,
       repoRoot: ref<string | null>(null),
       fsEvent,
-      native,
+      wsNative,
       t: (key) => key,
     });
     await flush();
-    native.gitStatus.mockClear();
+    wsNative.gitStatus.mockClear();
 
     state.busyAction.value = "stage-all";
     fsEvent.value = {
@@ -93,22 +102,22 @@ describe("useSourceControlState", () => {
     await vi.advanceTimersByTimeAsync(2000);
     await flush();
 
-    expect(native.gitStatus).not.toHaveBeenCalled();
+    expect(wsNative.gitStatus).not.toHaveBeenCalled();
 
     state.busyAction.value = null;
     await nextTick();
     await vi.advanceTimersByTimeAsync(80);
     await flush();
 
-    expect(native.gitStatus).toHaveBeenCalledWith("/repo");
+    expect(wsNative.gitStatus).toHaveBeenCalledWith("/repo");
   });
 
   it("coalesces overlapping status refreshes and keeps the latest result", async () => {
     const rootPath = ref<string | null>("/repo");
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
-    const native = createNative();
+    const wsNative = createWsNative();
     const deferred: Array<(status: GitStatusSnapshot) => void> = [];
-    native.gitStatus.mockImplementation(
+    wsNative.gitStatus.mockImplementation(
       () =>
         new Promise<GitStatusSnapshot>((resolve) => {
           deferred.push(resolve);
@@ -119,16 +128,16 @@ describe("useSourceControlState", () => {
       rootPath,
       repoRoot: ref<string | null>(null),
       fsEvent,
-      native,
+      wsNative,
       t: (key) => key,
     });
     await flush();
-    native.gitStatus.mockClear();
+    wsNative.gitStatus.mockClear();
 
     const first = state.refreshStatus();
     const second = state.refreshStatus();
 
-    expect(native.gitStatus).toHaveBeenCalledTimes(1);
+    expect(wsNative.gitStatus).toHaveBeenCalledTimes(1);
 
     deferred[0]({
       ...readyStatus,
@@ -138,7 +147,7 @@ describe("useSourceControlState", () => {
     await second;
 
     await vi.waitFor(() => {
-      expect(native.gitStatus).toHaveBeenCalledTimes(2);
+      expect(wsNative.gitStatus).toHaveBeenCalledTimes(2);
     });
     deferred[1]({
       ...readyStatus,
@@ -155,10 +164,10 @@ describe("useSourceControlState", () => {
     const rootPath = ref<string | null>("/workspace");
     const repoRoot = ref<string | null>(null);
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
-    const native = createNative();
+    const wsNative = createWsNative();
     const resolvers = new Map<string, (snapshot: GitPanelSnapshot) => void>();
-    native.gitPanelSnapshot.mockImplementation(
-      (root) =>
+    wsNative.gitPanelSnapshot.mockImplementation(
+      (root: string) =>
         new Promise<GitPanelSnapshot>((resolve) => {
           resolvers.set(root, resolve);
         }),
@@ -168,15 +177,15 @@ describe("useSourceControlState", () => {
       rootPath,
       repoRoot,
       fsEvent,
-      native,
+      wsNative,
       t: (key) => key,
     });
     await flush();
-    expect(native.gitPanelSnapshot).toHaveBeenCalledWith("/workspace");
+    expect(wsNative.gitPanelSnapshot).toHaveBeenCalledWith("/workspace");
 
     repoRoot.value = "/workspace/apps/web";
     await flush();
-    expect(native.gitPanelSnapshot).toHaveBeenCalledWith("/workspace/apps/web");
+    expect(wsNative.gitPanelSnapshot).toHaveBeenCalledWith("/workspace/apps/web");
 
     const selectedStatus = {
       ...readyStatus,
@@ -206,7 +215,7 @@ describe("useSourceControlState", () => {
     const rootPath = ref<string | null>("/workspace");
     const selectedRepoRoot = ref<string | null>("/repo-a");
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
-    const native = createNative();
+    const wsNative = createWsNative();
     const statusA: GitStatusSnapshot = {
       ...readyStatus,
       repoRoot: "/repo-a",
@@ -248,7 +257,7 @@ describe("useSourceControlState", () => {
       status: statusB,
     };
     let resolveSnapshotB!: (snapshot: GitPanelSnapshot) => void;
-    native.gitPanelSnapshot.mockImplementation((root) => {
+    wsNative.gitPanelSnapshot.mockImplementation((root: string) => {
       if (root === "/repo-a") return Promise.resolve(snapshotA);
       return new Promise<GitPanelSnapshot>((resolve) => {
         resolveSnapshotB = resolve;
@@ -256,7 +265,7 @@ describe("useSourceControlState", () => {
     });
     let resolveStatusA!: (status: GitStatusSnapshot) => void;
     let statusACallCount = 0;
-    native.gitStatus.mockImplementation((root) => {
+    wsNative.gitStatus.mockImplementation((root: string) => {
       if (root === "/repo-a") {
         statusACallCount += 1;
         if (statusACallCount === 1) {
@@ -273,7 +282,7 @@ describe("useSourceControlState", () => {
       rootPath,
       repoRoot: selectedRepoRoot,
       fsEvent,
-      native,
+      wsNative,
       t: (key) => key,
     });
     await flush();
@@ -282,7 +291,7 @@ describe("useSourceControlState", () => {
 
     state.scheduleAutoRefresh(20);
     const refreshA = state.refreshStatus();
-    expect(native.gitStatus).toHaveBeenCalledWith("/repo-a");
+    expect(wsNative.gitStatus).toHaveBeenCalledWith("/repo-a");
 
     selectedRepoRoot.value = "/repo-b";
 
@@ -298,7 +307,7 @@ describe("useSourceControlState", () => {
     await flush();
 
     expect(
-      native.gitStatus.mock.calls.filter(([root]) => root === "/repo-a"),
+      wsNative.gitStatus.mock.calls.filter(([root]) => root === "/repo-a"),
     ).toHaveLength(1);
     expect(state.status.value).toBeNull();
     expect(state.panelState.value).toBe("loading");
@@ -315,9 +324,9 @@ describe("useSourceControlState", () => {
     vi.useFakeTimers();
     const rootPath = ref<string | null>("/repo");
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
-    const native = createNative();
+    const wsNative = createWsNative();
     let resolveSnapshot!: (snapshot: GitPanelSnapshot) => void;
-    native.gitPanelSnapshot.mockImplementation(
+    wsNative.gitPanelSnapshot.mockImplementation(
       () =>
         new Promise<GitPanelSnapshot>((resolve) => {
           resolveSnapshot = resolve;
@@ -328,7 +337,7 @@ describe("useSourceControlState", () => {
       rootPath,
       repoRoot: ref<string | null>(null),
       fsEvent,
-      native,
+      wsNative,
       t: (key) => key,
     });
     await flush();
@@ -343,26 +352,26 @@ describe("useSourceControlState", () => {
 
     expect(state.status.value).toBeNull();
     expect(state.panelState.value).toBe("loading");
-    expect(native.gitPanelSnapshot).toHaveBeenCalledTimes(1);
-    expect(native.gitStatus).not.toHaveBeenCalled();
+    expect(wsNative.gitPanelSnapshot).toHaveBeenCalledTimes(1);
+    expect(wsNative.gitStatus).not.toHaveBeenCalled();
   });
 
   it("dispose invalidates delayed status and cancels its pending refresh", async () => {
     const rootPath = ref<string | null>("/repo");
     const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
-    const native = createNative();
+    const wsNative = createWsNative();
     let resolveStatus!: (status: GitStatusSnapshot) => void;
 
     const state = useSourceControlState({
       rootPath,
       repoRoot: ref<string | null>(null),
       fsEvent,
-      native,
+      wsNative,
       t: (key) => key,
     });
     await flush();
-    native.gitStatus.mockClear();
-    native.gitStatus
+    wsNative.gitStatus.mockClear();
+    wsNative.gitStatus
       .mockImplementationOnce(
         () =>
           new Promise<GitStatusSnapshot>((resolve) => {
@@ -373,14 +382,14 @@ describe("useSourceControlState", () => {
 
     const firstRefresh = state.refreshStatus();
     const pendingRefresh = state.refreshStatus();
-    expect(native.gitStatus).toHaveBeenCalledTimes(1);
+    expect(wsNative.gitStatus).toHaveBeenCalledTimes(1);
 
     state.dispose();
     resolveStatus({ ...readyStatus, branch: "late-status" });
     await Promise.all([firstRefresh, pendingRefresh]);
     await flush();
 
-    expect(native.gitStatus).toHaveBeenCalledTimes(1);
+    expect(wsNative.gitStatus).toHaveBeenCalledTimes(1);
     expect(state.branchLabel.value).toBe("main");
     expect(state.panelState.value).toBe("ready");
   });

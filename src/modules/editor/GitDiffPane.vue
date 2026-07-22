@@ -2,6 +2,7 @@
 import { NSpin, NTag } from "naive-ui";
 import { computed, ref, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
+import { useWorkspaceContext } from "@/app/workspaceContext";
 import DiffEditor from "./DiffEditor.vue";
 import {
   commitDiffKey,
@@ -49,10 +50,13 @@ const props = defineProps<{
 const LARGE_FILE_THRESHOLD = 256 * 1024;
 const state = ref<LoadState>({ kind: "idle" });
 
+// 获取当前 workspace 上下文，用于 diff 缓存的 env 作用域键与 native 调用。
+const wsCtx = useWorkspaceContext();
+
 const sourceKey = computed(() =>
   props.source.kind === "working"
-    ? workingDiffKey(props.source.repoRoot, props.source.path, props.source.mode)
-    : commitDiffKey(props.source.repoRoot, props.source.sha, props.source.path),
+    ? workingDiffKey(wsCtx.workspace.env, props.source.repoRoot, props.source.path, props.source.mode)
+    : commitDiffKey(wsCtx.workspace.env, props.source.repoRoot, props.source.sha, props.source.path),
 );
 
 const loaded = computed(() => (state.value.kind === "loaded" ? state.value : null));
@@ -102,12 +106,16 @@ async function loadDiff() {
     const result =
       props.source.kind === "working"
         ? await fetchWorkingDiff(
+            wsCtx.wsNative,
+            wsCtx.workspace.env,
             props.source.repoRoot,
             props.source.path,
             props.source.mode,
             props.source.originalPath,
           )
         : await fetchCommitDiff(
+            wsCtx.wsNative,
+            wsCtx.workspace.env,
             props.source.repoRoot,
             props.source.sha,
             props.source.path,

@@ -3,6 +3,7 @@ mod local;
 mod polling;
 mod wsl;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{mpsc, Mutex};
 
@@ -23,13 +24,20 @@ use self::events::{
 #[cfg(test)]
 use self::wsl::{workspace_fs_event_from_wsl_json_line, HelperFailureTracker};
 
+/// Multi-workspace FS watcher state.
+///
+/// Each open workspace registers its own `ActiveWatcher` keyed by
+/// `workspace_watch_key` (scope+root), so multiple workspaces — including
+/// mixed local + WSL — can be watched concurrently. This replaced the old
+/// single-slot `Option<ActiveWatcher>` that could only track one workspace at
+/// a time.
 #[derive(Default)]
 pub struct FsWatcherState {
-    active: Mutex<Option<ActiveWatcher>>,
+    watchers: Mutex<HashMap<String, ActiveWatcher>>,
 }
 
 struct ActiveWatcher {
-    key: String,
+    root_path: String,
     source: Option<ActiveRefreshSource>,
     event_tx: Option<mpsc::Sender<WorkspaceFsChangedEvent>>,
     batch_thread: Option<std::thread::JoinHandle<()>>,
@@ -73,11 +81,8 @@ pub fn fs_watch_workspace(
     let context = build_refresh_context(&root_path, workspace, &registry)?;
 
     {
-        let active = mutex_lock(&state.active, "fs watcher state")?;
-        if active
-            .as_ref()
-            .is_some_and(|watcher| watcher.key == context.key)
-        {
+        let watchers = mutex_lock(&state.watchers, "fs watcher state")?;
+        if watchers.contains_key(&context.key) {
             return Ok(());
         }
     }
@@ -90,21 +95,33 @@ pub fn fs_watch_workspace(
         .map_err(|e| format!("spawn workspace event batcher: {e}"))?;
     let source = start_refresh_source(&app, &context, event_tx.clone());
 
-    let mut active = mutex_lock(&state.active, "fs watcher state")?;
-    *active = Some(ActiveWatcher {
-        key: context.key,
-        source: Some(source),
-        event_tx: Some(event_tx),
-        batch_thread: Some(batch_thread),
-    });
+    let mut watchers = mutex_lock(&state.watchers, "fs watcher state")?;
+    watchers.insert(
+        context.key.clone(),
+        ActiveWatcher {
+            root_path: context.root_path.clone(),
+            source: Some(source),
+            event_tx: Some(event_tx),
+            batch_thread: Some(batch_thread),
+        },
+    );
     log::info!("watching workspace refresh source: {}", context.root_path);
     Ok(())
 }
 
+/// Stop watching a specific workspace (identified by root_path + workspace
+/// env). Only the matching watcher is dropped; other workspaces keep running.
 #[tauri::command]
-pub fn fs_unwatch_workspace(state: State<'_, FsWatcherState>) -> Result<(), String> {
-    let mut active = mutex_lock(&state.active, "fs watcher state")?;
-    *active = None;
+pub fn fs_unwatch_workspace(
+    root_path: String,
+    workspace: Option<WorkspaceEnv>,
+    state: State<'_, FsWatcherState>,
+) -> Result<(), String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    let root_path = normalize_frontend_path(&root_path);
+    let key = workspace_watch_key(&root_path, &workspace);
+    let mut watchers = mutex_lock(&state.watchers, "fs watcher state")?;
+    watchers.remove(&key);
     Ok(())
 }
 
@@ -137,19 +154,14 @@ pub fn emit_workspace_fs_changed_with_kinds(
     git_related: bool,
     kinds: Option<Vec<FsChangeKind>>,
 ) {
-    let active = match mutex_lock(&state.active, "fs watcher state") {
-        Ok(active) => active,
+    let watchers = match mutex_lock(&state.watchers, "fs watcher state") {
+        Ok(watchers) => watchers,
         Err(error) => {
             log::warn!("{error}");
             return;
         }
     };
-    let Some(active) = active.as_ref() else {
-        return;
-    };
-    let Some(event_tx) = active.event_tx.as_ref() else {
-        return;
-    };
+    let normalized = normalize_frontend_path(root_path);
     let mut sorted_paths = paths;
     sorted_paths.sort();
     sorted_paths.dedup();
@@ -158,14 +170,29 @@ pub fn emit_workspace_fs_changed_with_kinds(
         None => vec![FsChangeKind::Modify; sorted_paths.len()],
     };
     let event = WorkspaceFsChangedEvent {
-        root_path: normalize_frontend_path(root_path),
+        root_path: normalized.clone(),
         paths: sorted_paths,
         git_related,
         kinds,
     };
-    if event_tx.send(event).is_err() {
-        log::debug!("workspace refresh batch receiver closed during proactive emit");
+    // Forward to every watcher whose root matches. In the multi-workspace
+    // model a single fs mutate (e.g. `fs_write_file`) may need to notify
+    // multiple watchers if the same root is open under different envs.
+    let mut delivered = false;
+    for watcher in watchers.values() {
+        if normalize_frontend_path(&watcher.root_path) != normalized {
+            continue;
+        }
+        if let Some(event_tx) = watcher.event_tx.as_ref() {
+            if event_tx.send(event.clone()).is_err() {
+                log::debug!(
+                    "workspace refresh batch receiver closed during proactive emit"
+                );
+            }
+            delivered = true;
+        }
     }
+    let _ = delivered;
 }
 
 fn build_refresh_context(

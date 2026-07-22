@@ -1,4 +1,5 @@
 import { computed, nextTick, ref, watch, type Ref } from "vue";
+import { defineStore } from "pinia";
 import {
   SIDE_PANEL_WIDTH_MAX,
   SIDE_PANEL_WIDTH_MIN,
@@ -20,6 +21,22 @@ export type WorkbenchLayoutOptions = {
 const DEFAULT_PANEL_RESIZE_TRIGGER_SIZE = 8;
 const DEFAULT_PANEL_WIDTH_SAVE_DELAY_MS = 250;
 
+/**
+ * Global panel-visibility state shared across all workspace hosts.
+ *
+ * In the multi-workspace architecture, MainApp owns the TitleBar whose
+ * buttons toggle the source-control / explorer panels. Each WorkspaceHost
+ * creates its own `useWorkbenchLayout` for split-sizing, but the open/closed
+ * state must be shared — otherwise toggling a panel in the title bar has no
+ * effect on the active workspace's workbench. This Pinia store is the single
+ * source of truth for that shared visibility.
+ */
+const usePanelVisibilityStore = defineStore("workbench-panel-visibility", () => {
+  const leftPanelOpen = ref(false);
+  const rightPanelOpen = ref(true);
+  return { leftPanelOpen, rightPanelOpen };
+});
+
 function clampPanelWidth(value: number): number {
   if (!Number.isFinite(value)) return SIDE_PANEL_WIDTH_MIN;
   return Math.min(
@@ -40,8 +57,25 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     options.panelResizeTriggerSize ?? DEFAULT_PANEL_RESIZE_TRIGGER_SIZE;
   const saveDelayMs = options.saveDelayMs ?? DEFAULT_PANEL_WIDTH_SAVE_DELAY_MS;
 
-  const leftPanelOpen = ref(false);
-  const rightPanelOpen = ref(true);
+  // Shared panel visibility — same refs across MainApp and every WorkspaceHost
+  // so title-bar toggles reach the active workbench. Pinia store refs are
+  // writable and shared, so `leftPanelOpen.value = true` in MainApp is visible
+  // to every WorkspaceHost's workbench.
+  const visibility = usePanelVisibilityStore();
+  const leftPanelOpen = computed(() => visibility.leftPanelOpen);
+  const rightPanelOpen = computed(() => visibility.rightPanelOpen);
+  function setLeftPanelOpen(v: boolean): void {
+    visibility.leftPanelOpen = v;
+  }
+  function setRightPanelOpen(v: boolean): void {
+    visibility.rightPanelOpen = v;
+  }
+  function toggleLeftPanel(): void {
+    visibility.leftPanelOpen = !visibility.leftPanelOpen;
+  }
+  function toggleRightPanel(): void {
+    visibility.rightPanelOpen = !visibility.rightPanelOpen;
+  }
   const sourceControlPanelWidth = ref(
     clampPanelWidth(prefs.sourceControlPanelWidth),
   );
@@ -211,6 +245,8 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     rightPanelOpen,
     rightSplitHost: rightSplitHost as Ref<HTMLElement | null>,
     rightSplitWidth,
+    setLeftPanelOpen,
+    setRightPanelOpen,
     sourceControlPaneClass,
     sourceControlPanelWidth,
     sourceControlSplitMax,
@@ -218,6 +254,8 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     sourceControlSplitSize,
     startLayoutObservers,
     stopLayoutObservers,
+    toggleLeftPanel,
+    toggleRightPanel,
     updateExplorerSplitSize,
     updateSourceControlSplitSize,
   };

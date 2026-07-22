@@ -1,4 +1,4 @@
-import { native } from "@/lib/native";
+import type { WorkspaceNative } from "@/lib/native";
 
 export type MarkdownDocumentState =
   | { status: "loading" }
@@ -8,10 +8,11 @@ export type MarkdownDocumentState =
   | { status: "error"; message: string };
 
 export async function readMarkdownDocument(
+  wsNative: WorkspaceNative,
   path: string,
 ): Promise<MarkdownDocumentState> {
   try {
-    const result = await native.fsReadFile(path);
+    const result = await wsNative.fsReadFile(path);
     if (result.kind === "text") {
       return {
         status: "ready",

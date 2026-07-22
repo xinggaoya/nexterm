@@ -9,6 +9,7 @@ import { NButton, NIcon, NSpin } from "naive-ui";
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t } from "@/modules/i18n/translate";
+import { useWorkspaceContext } from "@/app/workspaceContext";
 import type { WorkspaceFsChangedEvent } from "@/lib/native";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { isSameWorkspaceRoot, normalizeWorkspacePath } from "@/modules/workspace";
@@ -67,6 +68,7 @@ const emit = defineEmits<{
 }>();
 
 const prefs = usePreferencesPiniaStore();
+const wsCtx = useWorkspaceContext();
 const nodes = reactive<FileTreeState>({});
 const expanded = reactive(new Set<string>());
 const pendingCreate = ref<PendingCreate | null>(null);
@@ -192,7 +194,7 @@ async function loadChildren(path: string, options: LoadChildrenOptions = {}) {
     rebuildTreeSnapshot();
   }
   try {
-    const entries = await readFileTreeDir(path, prefs.showHidden);
+    const entries = await readFileTreeDir(wsCtx.wsNative, path, prefs.showHidden);
     nodes[path] = { status: "loaded", entries };
     if (silent) {
       // Pick patch vs rebuild based on whether the membership of this
@@ -404,7 +406,7 @@ async function commitCreate(name: string) {
   }
   const path = joinPath(pending.parentPath, trimmed);
   try {
-    await createFileTreeEntry(path, pending.kind);
+    await createFileTreeEntry(wsCtx.wsNative, path, pending.kind);
     await loadChildren(pending.parentPath);
   } finally {
     pendingCreate.value = null;
@@ -437,7 +439,7 @@ async function commitRename(newName: string) {
   }
   const to = joinPath(parent, trimmed);
   try {
-    await renameFileTreePath(from, to);
+    await renameFileTreePath(wsCtx.wsNative, from, to);
     emit("pathRenamed", from, to);
     selectedPath.value = to;
     await loadChildren(parent);
@@ -448,7 +450,7 @@ async function commitRename(newName: string) {
 }
 
 async function deletePath(path: string) {
-  await deleteFileTreePath(path);
+  await deleteFileTreePath(wsCtx.wsNative, path);
   emit("pathDeleted", path);
   if (selectedPath.value === path || selectedPath.value?.startsWith(`${path}/`)) {
     selectedPath.value = null;
@@ -463,7 +465,7 @@ async function duplicatePath(path: string) {
   // ("give me a copy with a unique name") even when several copies exist.
   for (let attempt = 0; attempt < 100; attempt++) {
     try {
-      await copyFileTreePath(path, target);
+      await copyFileTreePath(wsCtx.wsNative, path, target);
       emit("pathDuplicated", path, target);
       await loadChildren(dirname(path));
       return;

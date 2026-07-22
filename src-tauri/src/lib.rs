@@ -3,7 +3,7 @@ mod panic_report;
 
 use modules::{fs, git, lsp, pty, shell, workspace};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_window_state::StateFlags;
 
@@ -90,6 +90,45 @@ fn emit_deep_link_open<R: Runtime>(app: &AppHandle<R>, request: DeepLinkOpenRequ
     if let Err(error) = app.emit(DEEP_LINK_OPEN_EVENT, request) {
         log::warn!("failed to emit deep-link open event: {error}");
     }
+}
+
+/// Toggle the webview DevTools for the main window. Lets users inspect the
+/// frontend without right-click (which the app disables for its custom
+/// context menus). Works in debug builds by default; in release builds the
+/// `devtools` Cargo feature must be enabled on the `tauri` dependency.
+#[tauri::command]
+fn toggle_devtools(app: tauri::AppHandle) -> bool {
+    // The main window's label is the app identifier in Tauri 2.
+    let label = app.config().identifier.clone();
+    let Some(window) = app.get_webview_window(&label) else {
+        // Fall back to the first available webview window (covers multi-window
+        // scenarios where the main label differs).
+        let windows = app.webview_windows();
+        if let Some(window) = windows.values().next() {
+            if window.is_devtools_open() {
+                window.close_devtools();
+            } else {
+                window.open_devtools();
+            }
+            return window.is_devtools_open();
+        }
+        return false;
+    };
+    if window.is_devtools_open() {
+        window.close_devtools();
+    } else {
+        window.open_devtools();
+    }
+    window.is_devtools_open()
+}
+
+/// Whether DevTools is currently open for the main window.
+#[tauri::command]
+fn is_devtools_open(app: tauri::AppHandle) -> bool {
+    let label = app.config().identifier.clone();
+    app.get_webview_window(&label)
+        .map(|w| w.is_devtools_open())
+        .unwrap_or(false)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -181,6 +220,8 @@ pub fn run() {
             fs::grep::fs_glob,
             fs::watcher::fs_watch_workspace,
             fs::watcher::fs_unwatch_workspace,
+            toggle_devtools,
+            is_devtools_open,
             git::commands::git_resolve_repo,
             git::commands::git_panel_snapshot,
             git::commands::git_status,

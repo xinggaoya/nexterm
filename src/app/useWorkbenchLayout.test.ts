@@ -1,10 +1,14 @@
 import { nextTick, reactive } from "vue";
+import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
 
 describe("useWorkbenchLayout", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    // useWorkbenchLayout now reads panel visibility from a shared Pinia store,
+    // so an active Pinia instance is required.
+    setActivePinia(createPinia());
   });
 
   afterEach(() => {
@@ -75,6 +79,8 @@ describe("useWorkbenchLayout", () => {
     layout.flushExplorerWidthSave();
 
     expect(prefs.updateSourceControlPanelWidth).toHaveBeenCalledWith(320);
-    expect(prefs.updateExplorerPanelWidth).toHaveBeenCalledWith(274);
+    // usableWidth = rightSplitWidth(900) - panelResizeTriggerSize(8) = 892；
+    // explorer 宽度 = 892 - centerWidth(620) = 272。
+    expect(prefs.updateExplorerPanelWidth).toHaveBeenCalledWith(272);
   });
 });

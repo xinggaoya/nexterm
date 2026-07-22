@@ -1,4 +1,4 @@
-import { native } from "@/lib/native";
+import type { WorkspaceNative } from "@/lib/native";
 
 export type DirEntry = {
   name: string;
@@ -31,33 +31,46 @@ export function dirname(path: string): string {
 }
 
 export function readFileTreeDir(
+  wsNative: WorkspaceNative,
   path: string,
   showHidden: boolean,
 ): Promise<DirEntry[]> {
-  return native.fsReadDir(path, showHidden);
+  return wsNative.fsReadDir(path, showHidden);
 }
 
 export async function createFileTreeEntry(
+  wsNative: WorkspaceNative,
   path: string,
   kind: "file" | "dir",
 ): Promise<void> {
   if (kind === "dir") {
-    await native.fsCreateDir(path);
+    await wsNative.fsCreateDir(path);
   } else {
-    await native.fsCreateFile(path);
+    await wsNative.fsCreateFile(path);
   }
 }
 
-export function renameFileTreePath(from: string, to: string): Promise<void> {
-  return native.fsRename(from, to);
+export function renameFileTreePath(
+  wsNative: WorkspaceNative,
+  from: string,
+  to: string,
+): Promise<void> {
+  return wsNative.fsRename(from, to);
 }
 
-export function deleteFileTreePath(path: string): Promise<void> {
-  return native.fsDelete(path);
+export function deleteFileTreePath(
+  wsNative: WorkspaceNative,
+  path: string,
+): Promise<void> {
+  return wsNative.fsDelete(path);
 }
 
-export function copyFileTreePath(from: string, to: string): Promise<void> {
-  return native.fsCopy(from, to);
+export function copyFileTreePath(
+  wsNative: WorkspaceNative,
+  from: string,
+  to: string,
+): Promise<void> {
+  return wsNative.fsCopy(from, to);
 }
 
 /**
@@ -90,9 +103,10 @@ function basename(path: string): string {
 }
 
 export function searchFileTree(
+  wsNative: WorkspaceNative,
   root: string,
   query: string,
   showHidden: boolean,
 ): Promise<SearchResult> {
-  return native.fsSearch(root, query, showHidden);
+  return wsNative.fsSearch(root, query, showHidden);
 }
