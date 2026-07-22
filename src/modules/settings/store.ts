@@ -140,6 +140,8 @@ export type Preferences = {
   editorTabSize: number;
   editorLspTypescriptMode: EditorLspTypescriptMode;
   editorWordWrap: boolean;
+  leftSidebar: LeftSidebarPref;
+  panelVisibility: PanelVisibilityPref;
 };
 
 const STORE_PATH = "nexterm-settings.json";
@@ -196,6 +198,80 @@ const KEY_EDITOR_WORD_WRAP = "editorWordWrap";
 const KEY_SOURCE_CONTROL_PANEL_WIDTH = "sourceControlPanelWidth";
 const KEY_EXPLORER_PANEL_WIDTH = "explorerPanelWidth";
 const KEY_TOUCH_OPTIMIZATIONS = "touchOptimizations";
+const KEY_EDITOR_LSP_TYPESCRIPT_MODE = "editorLspTypescriptMode";
+const KEY_LAYOUT_LEFT_SIDEBAR = "layout.leftSidebar";
+const KEY_LAYOUT_PANELS = "layout.panels";
+
+export type LeftSidebarPref = {
+  activity: "workspace" | "sourceControl";
+  open: boolean;
+  width: number;
+};
+
+export type PanelVisibilityPref = {
+  workspace: boolean;
+  sourceControl: boolean;
+  explorer: boolean;
+  taskConsole: boolean;
+};
+
+export const LEFT_SIDEBAR_WIDTH_DEFAULT = 280;
+export const LEFT_SIDEBAR_WIDTH_MIN = 200;
+export const LEFT_SIDEBAR_WIDTH_MAX = 480;
+
+const ACTIVITY_VALUES: readonly LeftSidebarPref["activity"][] = [
+  "workspace",
+  "sourceControl",
+];
+
+function clampLeftSidebarWidth(value: number): number {
+  if (!Number.isFinite(value)) return LEFT_SIDEBAR_WIDTH_DEFAULT;
+  return Math.min(
+    LEFT_SIDEBAR_WIDTH_MAX,
+    Math.max(LEFT_SIDEBAR_WIDTH_MIN, Math.round(value)),
+  );
+}
+
+function normalizeLeftSidebarPref(value: unknown): LeftSidebarPref {
+  if (!value || typeof value !== "object") {
+    return {
+      activity: "sourceControl",
+      open: true,
+      width: LEFT_SIDEBAR_WIDTH_DEFAULT,
+    };
+  }
+  const record = value as Record<string, unknown>;
+  const activity = ACTIVITY_VALUES.includes(
+    record.activity as LeftSidebarPref["activity"],
+  )
+    ? (record.activity as LeftSidebarPref["activity"])
+    : "sourceControl";
+  return {
+    activity,
+    open: typeof record.open === "boolean" ? record.open : true,
+    width: clampLeftSidebarWidth(Number(record.width)),
+  };
+}
+
+function normalizePanelVisibilityPref(value: unknown): PanelVisibilityPref {
+  if (!value || typeof value !== "object") {
+    return {
+      workspace: true,
+      sourceControl: true,
+      explorer: true,
+      taskConsole: false,
+    };
+  }
+  const record = value as Record<string, unknown>;
+  const bool = (key: string, fallback: boolean): boolean =>
+    typeof record[key] === "boolean" ? (record[key] as boolean) : fallback;
+  return {
+    workspace: bool("workspace", true),
+    sourceControl: bool("sourceControl", true),
+    explorer: bool("explorer", true),
+    taskConsole: bool("taskConsole", false),
+  };
+}
 
 export const SIDE_PANEL_WIDTH_DEFAULT = 256;
 
@@ -351,6 +427,17 @@ export const DEFAULT_PREFERENCES: Preferences = {
   editorTabSize: EDITOR_TAB_SIZE_DEFAULT,
   editorLspTypescriptMode: "builtin",
   editorWordWrap: false,
+  leftSidebar: {
+    activity: "sourceControl",
+    open: true,
+    width: LEFT_SIDEBAR_WIDTH_DEFAULT,
+  },
+  panelVisibility: {
+    workspace: true,
+    sourceControl: true,
+    explorer: true,
+    taskConsole: false,
+  },
 };
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
@@ -515,6 +602,8 @@ export async function loadPreferences(): Promise<Preferences> {
       get<number>(KEY_EDITOR_TAB_SIZE) ?? DEFAULT_PREFERENCES.editorTabSize,
     editorWordWrap:
       get<boolean>(KEY_EDITOR_WORD_WRAP) ?? DEFAULT_PREFERENCES.editorWordWrap,
+    leftSidebar: normalizeLeftSidebarPref(get(KEY_LAYOUT_LEFT_SIDEBAR)),
+    panelVisibility: normalizePanelVisibilityPref(get(KEY_LAYOUT_PANELS)),
   };
 }
 
@@ -541,8 +630,6 @@ export async function setRestoreWindowState(value: boolean): Promise<void> {
 export async function setVimMode(value: boolean): Promise<void> {
   await writePref(KEY_VIM_MODE, value);
 }
-
-const KEY_EDITOR_LSP_TYPESCRIPT_MODE = "editorLspTypescriptMode";
 
 export async function setEditorLspTypescriptMode(
   value: EditorLspTypescriptMode,
@@ -889,6 +976,18 @@ export async function setEditorWordWrap(value: boolean): Promise<void> {
   await writePref(KEY_EDITOR_WORD_WRAP, value);
 }
 
+export async function setLayoutLeftSidebar(
+  value: LeftSidebarPref,
+): Promise<void> {
+  await writePref(KEY_LAYOUT_LEFT_SIDEBAR, normalizeLeftSidebarPref(value));
+}
+
+export async function setLayoutPanels(
+  value: PanelVisibilityPref,
+): Promise<void> {
+  await writePref(KEY_LAYOUT_PANELS, normalizePanelVisibilityPref(value));
+}
+
 export type PrefKey = keyof Preferences;
 
 export async function onPreferencesChange(
@@ -945,6 +1044,8 @@ export async function onPreferencesChange(
     [KEY_SOURCE_CONTROL_PANEL_WIDTH]: "sourceControlPanelWidth",
     [KEY_EXPLORER_PANEL_WIDTH]: "explorerPanelWidth",
     [KEY_TOUCH_OPTIMIZATIONS]: "touchOptimizations",
+    [KEY_LAYOUT_LEFT_SIDEBAR]: "leftSidebar",
+    [KEY_LAYOUT_PANELS]: "panelVisibility",
   };
   const unsubLocal = await store.onChange<unknown>((key, value) => {
     const mapped = map[key];
