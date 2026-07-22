@@ -259,24 +259,6 @@ defineExpose({
     />
 
     <div class="flex min-w-0 flex-1 flex-col">
-      <TabBar
-        :tabs="tabs.workspaceTabs(workspace.id)"
-        :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
-        :can-split="canSplitActiveTab"
-        :show-actions="true"
-        @select-tab="(id) => tabs.setActiveId(id, workspace.id)"
-        @close-tab="(id) => tabs.closeTab(id, workspace.id)"
-        @close-others="(id) => tabs.closeOthers(id, workspace.id)"
-        @close-to-right="(id) => tabs.closeToRight(id, workspace.id)"
-        @close-all="tabs.closeAll(workspace.id)"
-        @duplicate-terminal="duplicateTerminalTab"
-        @rename-tab="renameTabTitle"
-        @request-rename="() => {}"
-        @pin-tab="(id) => tabs.pinTab(id, workspace.id)"
-        @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement, workspace.id)"
-        @new-tab="newTerminalTab"
-        @split-pane="splitActivePane"
-      />
       <main class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Workbench
           ref="workbench"
@@ -305,7 +287,28 @@ defineExpose({
           @open-source-history="openSourceHistory"
           @history-ref-change="onHistoryRefChange"
           @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
-        />
+        >
+          <template #tab-bar>
+            <TabBar
+              :tabs="tabs.workspaceTabs(workspace.id)"
+              :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
+              :can-split="canSplitActiveTab"
+              :show-actions="true"
+              @select-tab="(id) => tabs.setActiveId(id, workspace.id)"
+              @close-tab="(id) => tabs.closeTab(id, workspace.id)"
+              @close-others="(id) => tabs.closeOthers(id, workspace.id)"
+              @close-to-right="(id) => tabs.closeToRight(id, workspace.id)"
+              @close-all="tabs.closeAll(workspace.id)"
+              @duplicate-terminal="duplicateTerminalTab"
+              @rename-tab="renameTabTitle"
+              @request-rename="() => {}"
+              @pin-tab="(id) => tabs.pinTab(id, workspace.id)"
+              @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement, workspace.id)"
+              @new-tab="newTerminalTab"
+              @split-pane="splitActivePane"
+            />
+          </template>
+        </Workbench>
       </main>
     </div>
   </div>
