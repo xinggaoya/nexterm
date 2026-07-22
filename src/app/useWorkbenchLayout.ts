@@ -6,6 +6,7 @@ import {
   setLayoutLeftSidebar,
   setLayoutPanels,
 } from "@/modules/settings/store";
+import { hasTauriInternals } from "@/lib/tauriRuntime";
 
 export type WorkbenchLayoutPreferences = {
   sourceControlPanelWidth: number;
@@ -288,6 +289,7 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     window.removeEventListener("resize", measureRightSplitWidth);
     flushSourceControlWidthSave();
     flushExplorerWidthSave();
+    if (!hasTauriInternals()) return;
     void setLayoutLeftSidebar({
       activity: visibility.leftSidebar.activity,
       open: visibility.leftSidebar.open,
