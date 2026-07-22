@@ -103,50 +103,41 @@ vi.mock("@/settings/SettingsPanel.vue", () => ({
 
 vi.mock("./shell/TitleBar.vue", () => ({
   default: {
-    props: [
-      "workspaceRoot",
-      "gitBranch",
-      "showWindowControls",
-      "activeTab",
-    ],
+    props: ["showWindowControls"],
     emits: [
       "openCommandPalette",
       "openSettings",
-      "chooseWorkspace",
-      "chooseWorkspaceInEnv",
-      "toggleExplorer",
-      "toggleSourceControl",
+      "selectWorkspace",
+      "closeWorkspace",
+      "addWorkspace",
+      "openInNewWindow",
     ],
     template:
-      '<header data-title-bar><button data-open-workspace @click="$emit(\'chooseWorkspace\')" /><button data-open-settings @click="$emit(\'openSettings\')" /><button data-open-command-palette @click="$emit(\'openCommandPalette\')" /></header>',
+      '<header data-title-bar><button data-add-workspace @click="$emit(\'addWorkspace\')" /><button data-open-settings @click="$emit(\'openSettings\')" /><button data-open-command-palette @click="$emit(\'openCommandPalette\')" /></header>',
   },
 }));
 
 vi.mock("./shell/StatusBar.vue", () => ({
   default: {
-    props: [
-      "workspaceRoot",
-      "terminalCwd",
-      "gitBranch",
-      "workspaceSwitching",
-      "switchingWorkspaceEnv",
-    ],
-    emits: ["workspaceChange"],
-    template: '<footer data-status-bar />',
+    props: ["workspaceName", "gitBranch", "panelStates"],
+    emits: ["togglePanel"],
+    template:
+      '<footer data-status-bar><button data-toggle-panel="sourceControl" @click="$emit(\'togglePanel\', \'sourceControl\')" /><button data-toggle-panel="explorer" @click="$emit(\'togglePanel\', \'explorer\')" /><button data-toggle-panel="workspace" @click="$emit(\'togglePanel\', \'workspace\')" /><button data-toggle-panel="taskConsole" @click="$emit(\'togglePanel\', \'taskConsole\')" /></footer>',
   },
 }));
 
 vi.mock("./shell/WorkspaceBar.vue", () => ({
   default: {
-    emits: ["addWorkspace"],
+    emits: ["selectWorkspace", "closeWorkspace", "addWorkspace", "openInNewWindow"],
     template:
-      '<nav data-workspace-bar><button data-add-workspace @click="$emit(\'addWorkspace\')" /></nav>',
+      '<nav data-workspace-bar><button data-add-workspace @click="$emit(\'addWorkspace\')" /><button data-open-in-new-window @click="$emit(\'openInNewWindow\')" /></nav>',
   },
 }));
 
 vi.mock("./shell/WorkspaceHost.vue", () => ({
   default: {
     props: ["workspace"],
+    emits: ["add-workspace", "open-in-new-window"],
     template: '<section data-workspace-host>{{ workspace.rootPath }}</section>',
   },
 }));
@@ -309,14 +300,11 @@ describe("MainApp.vue", () => {
       global: { plugins: [pinia, i18n] },
     });
 
-    await wrapper.find("[data-open-workspace]").trigger("click");
+    await wrapper.find("[data-add-workspace]").trigger("click");
     await flushPromises();
     await nextTick();
 
     expect(workspaceRoot.pickWorkspaceDirectory).toHaveBeenCalledTimes(1);
-    expect(
-      document.body.querySelector("[data-workspace-open-choice-path]")?.textContent,
-    ).toContain("/repo");
   });
 
   it("opens a picked workspace in the current window after target selection", async () => {
@@ -331,18 +319,7 @@ describe("MainApp.vue", () => {
       global: { plugins: [pinia, i18n] },
     });
 
-    await wrapper.find("[data-open-workspace]").trigger("click");
-    await flushPromises();
-    await nextTick();
-
-    expect(
-      document.body.querySelector("[data-workspace-open-choice-path]")?.textContent,
-    ).toContain("/repo");
-
-    document
-      .body
-      .querySelector<HTMLElement>("[data-open-workspace-current]")
-      ?.click();
+    await wrapper.find("[data-add-workspace]").trigger("click");
     await flushPromises();
     for (let i = 0; i < 10; i++) {
       await flushPromises();
