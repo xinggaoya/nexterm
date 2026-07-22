@@ -199,6 +199,12 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const touchOptimizations = ref<TouchMode>(
     DEFAULT_PREFERENCES.touchOptimizations,
   );
+  const leftSidebar = ref<Preferences["leftSidebar"]>(
+    DEFAULT_PREFERENCES.leftSidebar,
+  );
+  const panelVisibility = ref<Preferences["panelVisibility"]>(
+    DEFAULT_PREFERENCES.panelVisibility,
+  );
 
   const hydrated = ref(false);
   const listening = ref(false);
@@ -257,6 +263,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     editorFontSize.value = snapshot.editorFontSize;
     editorTabSize.value = snapshot.editorTabSize;
     editorWordWrap.value = snapshot.editorWordWrap;
+    leftSidebar.value = snapshot.leftSidebar;
+    panelVisibility.value = snapshot.panelVisibility;
   }
 
   async function hydrate(): Promise<void> {
@@ -643,6 +651,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
       editorFontSize: editorFontSize.value,
       editorTabSize: editorTabSize.value,
       editorWordWrap: editorWordWrap.value,
+      leftSidebar: leftSidebar.value,
+      panelVisibility: panelVisibility.value,
     };
   }
 
@@ -697,6 +707,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     editorFontSize,
     editorTabSize,
     editorWordWrap,
+    leftSidebar,
+    panelVisibility,
     updateEditorLspTypescriptMode,
     hydrated,
     listening,
