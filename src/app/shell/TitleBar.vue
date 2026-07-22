@@ -13,6 +13,7 @@ import { IS_MAC, IS_WINDOWS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { t } from "@/modules/i18n/translate";
 import { useWorkspaceEnvPiniaStore } from "@/modules/workspace/workspaceEnvPinia";
+import type { WorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
 import WorkspaceBar from "./WorkspaceBar.vue";
 
 defineProps<{
@@ -25,7 +26,7 @@ const emit = defineEmits<{
   openAiAssistant: [];
   selectWorkspace: [id: string];
   closeWorkspace: [id: string];
-  addWorkspace: [];
+  addWorkspace: [env: WorkspaceEnv];
   openInNewWindow: [];
 }>();
 
@@ -76,7 +77,7 @@ async function startWindowDrag(event: PointerEvent) {
       <WorkspaceBar
         @select-workspace="(id) => emit('selectWorkspace', id)"
         @close-workspace="(id) => emit('closeWorkspace', id)"
-        @add-workspace="emit('addWorkspace')"
+        @add-workspace="(env) => emit('addWorkspace', env)"
         @open-in-new-window="emit('openInNewWindow')"
       />
     </div>

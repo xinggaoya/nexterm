@@ -133,6 +133,8 @@ const zhCN = {
     },
     workspaceBar: {
       add: "添加工作区",
+      addLocal: "添加本机工作区",
+      addWsl: "添加 WSL 工作区",
       close: "关闭工作区",
       local: "本机",
     },

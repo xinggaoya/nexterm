@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  AddOutline,
   CloseOutline,
   FolderOutline,
   LogoApple,
@@ -10,7 +9,9 @@ import { NIcon } from "naive-ui";
 import { computed } from "vue";
 import { useWorkspacesPiniaStore } from "@/modules/workspace/workspacesPinia";
 import type { WorkspaceInstance } from "@/modules/workspace/workspacesPinia";
+import type { WorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
 import { t } from "@/modules/i18n/translate";
+import WorkspaceAddControl from "@/app/components/WorkspaceAddControl.vue";
 
 withDefaults(
   defineProps<{
@@ -24,7 +25,7 @@ withDefaults(
 const emit = defineEmits<{
   selectWorkspace: [id: string];
   closeWorkspace: [id: string];
-  addWorkspace: [];
+  addWorkspace: [env: WorkspaceEnv];
   openInNewWindow: [];
 }>();
 
@@ -102,15 +103,9 @@ function close(event: MouseEvent, id: string): void {
         </span>
       </button>
 
-      <button
-        type="button"
-        class="nexterm-icon-button size-7"
-        :title="t('app.workspaceBar.add')"
-        data-add-workspace
-        @click="emit('addWorkspace')"
-      >
-        <NIcon :component="AddOutline" :size="15" />
-      </button>
+      <WorkspaceAddControl
+        @add-workspace="(env) => emit('addWorkspace', env)"
+      />
 
       <button
         type="button"
@@ -163,16 +158,10 @@ function close(event: MouseEvent, id: string): void {
       </button>
 
       <div class="mt-1 flex flex-col gap-0.5 border-t border-border/40 pt-1">
-        <button
-          type="button"
-          class="nexterm-row flex h-7 items-center gap-2 px-2 text-[12px] text-muted-foreground hover:text-foreground"
-          :title="t('app.workspaceBar.add')"
-          data-add-workspace
-          @click="emit('addWorkspace')"
-        >
-          <NIcon :component="AddOutline" :size="13" />
-          <span class="truncate">{{ t("app.workspaceBar.add") }}</span>
-        </button>
+        <WorkspaceAddControl
+          embedded
+          @add-workspace="(env) => emit('addWorkspace', env)"
+        />
         <button
           type="button"
           class="nexterm-row flex h-7 items-center gap-2 px-2 text-[12px] text-muted-foreground hover:text-foreground"

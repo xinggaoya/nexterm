@@ -21,18 +21,23 @@ describe("WorkspaceWelcome.vue", () => {
     invokeMock.mockReset();
   });
 
-  it("renders an Open Folder button and emits chooseWorkspace on click", async () => {
+  it("opens the environment selected for the primary action", async () => {
+    const pinia = createPinia();
+    const envStore = useWorkspaceEnvPiniaStore(pinia);
+    envStore.setPendingEnv({ kind: "wsl", distro: "Ubuntu" });
     const wrapper = mount(WorkspaceWelcome, {
-      global: { plugins: [createPinia()] },
+      global: { plugins: [pinia] },
       props: { recentWorkspaces: [], loading: false, error: null },
     });
 
     await wrapper.find("[data-open-workspace-primary]").trigger("click");
 
-    expect(wrapper.emitted("chooseWorkspace")).toHaveLength(1);
+    expect(wrapper.emitted("chooseWorkspace")).toEqual([
+      [{ kind: "wsl", distro: "Ubuntu" }],
+    ]);
   });
 
-  it("emits workspaceEnvChange for the local env when its quick action is clicked", async () => {
+  it("opens the explicit local environment from its quick action", async () => {
     const wrapper = mount(WorkspaceWelcome, {
       global: { plugins: [createPinia()] },
       props: { recentWorkspaces: [], loading: false, error: null },
@@ -40,10 +45,10 @@ describe("WorkspaceWelcome.vue", () => {
 
     await wrapper.find("[data-open-workspace-local]").trigger("click");
 
-    expect(wrapper.emitted("workspaceEnvChange")).toEqual([[LOCAL_WORKSPACE]]);
+    expect(wrapper.emitted("chooseWorkspace")).toEqual([[LOCAL_WORKSPACE]]);
   });
 
-  it("renders a quick action button for each WSL distro and emits the env on click", async () => {
+  it("opens the selected WSL environment from its quick action", async () => {
     const pinia = createPinia();
     const envStore = useWorkspaceEnvPiniaStore(pinia);
     envStore.distros = [
@@ -63,12 +68,12 @@ describe("WorkspaceWelcome.vue", () => {
     expect(ubuntuButton.text()).toContain("Ubuntu-22.04");
 
     await ubuntuButton.trigger("click");
-    expect(wrapper.emitted("workspaceEnvChange")).toEqual([
+    expect(wrapper.emitted("chooseWorkspace")).toEqual([
       [{ kind: "wsl", distro: "Ubuntu-22.04" }],
     ]);
 
     await debianButton.trigger("click");
-    expect(wrapper.emitted("workspaceEnvChange")).toEqual([
+    expect(wrapper.emitted("chooseWorkspace")).toEqual([
       [{ kind: "wsl", distro: "Ubuntu-22.04" }],
       [{ kind: "wsl", distro: "Debian" }],
     ]);

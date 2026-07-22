@@ -139,7 +139,7 @@ async function syncLanguage() {
 }
 
 // ── Add-workspace flow ──────────────────────────────────────────────────
-async function startAddWorkspace(env: WorkspaceEnv = workspaceEnv.pendingEnv) {
+async function startAddWorkspace(env: WorkspaceEnv) {
   try {
     const selection = await workspaceRootStore.pickWorkspaceDirectory(env);
     if (!selection) return;
@@ -166,8 +166,8 @@ async function openWorkspaceInNewWindow(env: WorkspaceEnv = workspaceEnv.pending
 }
 
 // ── Welcome screen actions (no workspace open) ──────────────────────────
-async function chooseWorkspaceFromWelcome() {
-  await startAddWorkspace(workspaceEnv.pendingEnv);
+async function chooseWorkspaceFromWelcome(env: WorkspaceEnv) {
+  await startAddWorkspace(env);
 }
 
 async function openRecentWorkspace(record: WorkspaceSelection & { openedAt?: number }) {
@@ -323,7 +323,7 @@ watch(
               @open-ai-assistant="aiPanelOpen = !aiPanelOpen"
               @select-workspace="(id) => workspaces.setActive(id)"
               @close-workspace="(id) => workspaces.removeWorkspace(id)"
-              @add-workspace="() => startAddWorkspace()"
+              @add-workspace="(env) => startAddWorkspace(env)"
               @open-in-new-window="() => openWorkspaceInNewWindow()"
             />
             <div class="flex min-h-0 flex-1 flex-col">
@@ -339,7 +339,7 @@ watch(
                 :ref="(el) => setWorkspaceHostRef(ws.id, el as InstanceType<typeof WorkspaceHost> | null)"
                 v-show="ws.id === workspaces.activeWorkspaceId"
                 :workspace="ws"
-                @add-workspace="() => startAddWorkspace()"
+                @add-workspace="(env) => startAddWorkspace(env)"
                 @open-in-new-window="() => openWorkspaceInNewWindow()"
                 @request-settings="openSettings()"
                 @request-command-palette="(mode) => openCommandPalette(mode)"

@@ -22,7 +22,10 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 import { createNativeForEnv, type WorkspaceFsChangedEvent } from "@/lib/native";
 import { workspaceScopeKey } from "@/modules/workspace";
-import type { WorkspaceInstance } from "@/modules/workspace/workspacesPinia";
+import type {
+  WorkspaceEnv,
+  WorkspaceInstance,
+} from "@/modules/workspace";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import { isDirtyEditorTab } from "@/modules/tabs/closeGuards";
@@ -49,7 +52,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "add-workspace": [];
+  "add-workspace": [env: WorkspaceEnv];
   "open-in-new-window": [];
   "request-settings": [];
   "request-command-palette": [mode?: "commands" | "files"];
@@ -333,7 +336,7 @@ defineExpose({
       :fs-event="workspaceFsEvent"
       :show-branches-modal="showBranchesModalProp"
       @select-activity="(k) => workbenchLayout.setLeftSidebarActivity(k)"
-      @add-workspace="emit('add-workspace')"
+      @add-workspace="(env) => emit('add-workspace', env)"
       @open-in-new-window="emit('open-in-new-window')"
       @select-workspace="(id) => workspaces.setActive(id)"
       @close-workspace="(id) => workspaces.removeWorkspace(id)"

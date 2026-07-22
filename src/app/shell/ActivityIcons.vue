@@ -9,6 +9,10 @@ import { NIcon } from "naive-ui";
 import { computed } from "vue";
 import { t } from "@/modules/i18n/translate";
 import type { ActivityKey } from "@/app/useWorkbenchLayout";
+import {
+  LOCAL_WORKSPACE,
+  type WorkspaceEnv,
+} from "@/modules/workspace/workspaceEnvSnapshot";
 
 defineProps<{
   activity: ActivityKey;
@@ -16,7 +20,7 @@ defineProps<{
 
 const emit = defineEmits<{
   "select-activity": [key: ActivityKey];
-  "add-workspace": [];
+  "add-workspace": [env: WorkspaceEnv];
   "open-in-new-window": [];
 }>();
 
@@ -44,7 +48,7 @@ const activities = computed(() => [
       data-add-workspace
       :title="t('app.leftSidebar.addWorkspace')"
       class="nexterm-icon-button"
-      @click="emit('add-workspace')"
+      @click="emit('add-workspace', LOCAL_WORKSPACE)"
     >
       <NIcon :component="AddOutline" :size="16" />
     </button>

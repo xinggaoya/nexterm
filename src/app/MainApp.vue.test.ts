@@ -113,7 +113,7 @@ vi.mock("./shell/TitleBar.vue", () => ({
       "openInNewWindow",
     ],
     template:
-      '<header data-title-bar><button data-add-workspace @click="$emit(\'addWorkspace\')" /><button data-open-settings @click="$emit(\'openSettings\')" /><button data-open-command-palette @click="$emit(\'openCommandPalette\')" /></header>',
+      '<header data-title-bar><button data-add-workspace @click="$emit(\'addWorkspace\', { kind: \'local\' })" /><button data-add-wsl-workspace @click="$emit(\'addWorkspace\', { kind: \'wsl\', distro: \'Ubuntu\' })" /><button data-open-settings @click="$emit(\'openSettings\')" /><button data-open-command-palette @click="$emit(\'openCommandPalette\')" /></header>',
   },
 }));
 
@@ -147,7 +147,7 @@ vi.mock("./components/WorkspaceWelcome.vue", () => ({
     props: ["recentWorkspaces", "loading", "error"],
     emits: ["chooseWorkspace", "openRecent", "workspaceEnvChange"],
     template:
-      '<section data-workspace-welcome><span>{{ error ?? "welcome" }}</span><button data-welcome-open @click="$emit(\'chooseWorkspace\')" /></section>',
+      '<section data-workspace-welcome><span>{{ error ?? "welcome" }}</span><button data-welcome-open @click="$emit(\'chooseWorkspace\', { kind: \'local\' })" /></section>',
   },
 }));
 
@@ -328,6 +328,26 @@ describe("MainApp.vue", () => {
 
     // 工作区已添加到 workspaces store 并被 WorkspaceHost 渲染。
     expect(wrapper.find("[data-workspace-host]").text()).toContain("/repo");
+  });
+
+  it("passes the selected WSL distro into the workspace picker", async () => {
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    const wslEnv = { kind: "wsl" as const, distro: "Ubuntu" };
+    workspaceRoot.pickWorkspaceDirectory = vi.fn(async () => ({
+      path: "/home/dev/repo",
+      env: wslEnv,
+    }));
+
+    const wrapper = mount(MainApp, {
+      global: { plugins: [pinia, i18n] },
+    });
+
+    await wrapper.find("[data-add-wsl-workspace]").trigger("click");
+    await flushPromises();
+    await nextTick();
+
+    expect(workspaceRoot.pickWorkspaceDirectory).toHaveBeenCalledWith(wslEnv);
   });
 
   it("opens settings inside the main window without invoking a Tauri settings window", async () => {
