@@ -59,7 +59,7 @@ const activities = computed(() => [
       <NIcon :component="OpenOutline" :size="15" />
     </button>
 
-    <div class="my-1 h-px w-6 bg-border/50" />
+    <div class="v2-hairline my-1 h-px w-6 border-t" />
 
     <button
       v-for="item in activities"
@@ -68,7 +68,7 @@ const activities = computed(() => [
       :data-activity="item.key"
       :aria-pressed="activity === item.key"
       :title="item.label"
-      class="relative grid size-8 place-items-center rounded-md transition-colors before:absolute before:inset-y-1.5 before:left-[-6px] before:w-0.5 before:rounded-full"
+      class="relative grid size-8 place-items-center rounded-[6px] transition-colors duration-[var(--dur-fast)] before:absolute before:inset-y-1.5 before:left-[-6px] before:w-0.5 before:rounded-full"
       :class="
         activity === item.key
           ? 'bg-accent text-primary before:bg-primary'

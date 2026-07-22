@@ -56,23 +56,36 @@ onMounted(() => {
 <template>
   <section
     data-workspace-welcome
-    class="flex h-full min-h-0 items-center justify-center bg-shell-bg px-6 py-8"
+    class="v2-anim-fade relative flex h-full min-h-0 items-center justify-center overflow-hidden bg-shell-bg px-6 py-8"
   >
-    <div class="grid w-full max-w-5xl overflow-hidden border-y border-border lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div class="flex min-h-[420px] flex-col justify-center px-2 py-8 lg:pr-10">
-        <div class="mb-7 flex items-center gap-3 text-foreground">
-          <div class="grid size-10 place-items-center text-primary">
-            <NIcon :component="FolderOpenOutline" :size="22" />
-          </div>
-          <div class="min-w-0">
-            <h1 class="text-xl font-semibold tracking-normal">Nexterm</h1>
-            <div class="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-              <WorkspaceEnvSelector @select="(env) => emit('workspaceEnvChange', env)" />
-            </div>
-          </div>
+    <!-- ambient accent glow -->
+    <div
+      class="pointer-events-none absolute -top-1/4 left-1/2 size-[640px] -translate-x-1/2 rounded-full bg-primary/10 blur-[120px]"
+    />
+
+    <div
+      class="v2-glass relative grid w-full max-w-5xl overflow-hidden rounded-[var(--radius)] lg:grid-cols-[minmax(0,1fr)_340px]"
+    >
+      <div class="flex min-h-[440px] flex-col justify-center px-8 py-10 lg:pr-10">
+        <div class="mb-8 flex items-center gap-3">
+          <span class="v2-dot-glow size-2.5 rounded-full bg-primary" />
+          <span class="text-[13px] font-semibold tracking-tight text-foreground">
+            Nexterm
+          </span>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
+        <h1 class="text-2xl font-semibold tracking-tight text-foreground">
+          {{ t("app.welcome.tagline") }}
+        </h1>
+        <p class="mt-2 text-[13px] text-muted-foreground">
+          {{ t("app.welcome.subtitle") }}
+        </p>
+
+        <div class="mt-5 flex items-center gap-2 text-xs text-muted-foreground">
+          <WorkspaceEnvSelector @select="(env) => emit('workspaceEnvChange', env)" />
+        </div>
+
+        <div class="mt-6 flex flex-wrap items-center gap-2">
           <NButton
             type="primary"
             size="large"
@@ -109,17 +122,17 @@ onMounted(() => {
 
         <div
           v-if="props.error"
-          class="mt-5 flex max-w-xl items-start gap-2 rounded-sm border border-destructive/25 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+          class="mt-5 flex max-w-xl items-start gap-2 rounded-[6px] border border-destructive/25 bg-destructive/10 px-3 py-2 text-xs text-destructive"
         >
           <NIcon :component="AlertCircleOutline" :size="14" class="mt-0.5 shrink-0" />
           <span class="min-w-0 break-words">{{ props.error }}</span>
         </div>
       </div>
 
-      <aside class="min-h-0 border-t border-border bg-surface-subtle lg:border-l lg:border-t-0">
-        <div class="nexterm-toolbar flex h-9 items-center gap-2 px-3">
+      <aside class="min-h-0 border-t border-border/60 bg-surface-subtle/50 lg:border-l lg:border-t-0">
+        <div class="flex h-9 items-center gap-2 px-3">
           <NIcon :component="TimeOutline" :size="15" class="text-muted-foreground" />
-          <h2 class="text-xs font-semibold tracking-normal text-foreground/85">
+          <h2 class="text-xs font-medium tracking-normal text-foreground/85">
             {{ t("app.welcome.recentWorkspaces") }}
           </h2>
         </div>
@@ -133,7 +146,7 @@ onMounted(() => {
         >
           {{ t("app.welcome.noRecentWorkspaces") }}
         </div>
-        <div v-else class="max-h-[420px] overflow-y-auto p-1">
+        <div v-else class="max-h-[440px] overflow-y-auto p-1">
           <button
             v-for="workspace in props.recentWorkspaces"
             :key="`${envLabel(workspace.env)}:${workspace.path}`"

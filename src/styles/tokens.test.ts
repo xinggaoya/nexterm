@@ -55,6 +55,6 @@ describe("app token colors", () => {
 
     const tokens = readAppTokens();
 
-    expect(tokens.primary).toBe("rgb(0, 127, 149)");
+    expect(tokens.primary).toBe("rgb(124, 215, 232)");
   });
 });
