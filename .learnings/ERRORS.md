@@ -321,3 +321,71 @@ rg: unrecognized flag --(background|foreground|primary|...)
 - **Notes**: 使用 `rg -n -- '<pattern>'` 重新执行检查。
 
 ---
+
+## [ERR-20260722-002] vitest_project_worktree_scan
+
+**Logged**: 2026-07-22T23:30:37+08:00
+**Priority**: medium
+**Status**: resolved
+**Area**: tests
+
+### Summary
+从主工作树运行 Vitest 时，项目内尚未清理的 `.worktrees/` 被当作测试源码重复扫描。
+
+### Error
+```text
+同一批测试同时从 src/ 和 .worktrees/<branch>/src/ 执行，第二套 Vue/Pinia
+运行时产生 getActivePinia()、window is not defined 等交叉污染失败。
+```
+
+### Context
+- 操作：功能分支快进合并到 `main` 后，在清理项目内 worktree 前执行 `pnpm test`。
+- Vitest 默认递归发现 `*.test.ts`，Git 忽略规则不会排除测试发现。
+- 产品代码在独立 worktree 中的测试此前已通过；清理 worktree 后主树全量测试恢复通过。
+
+### Suggested Fix
+合并项目内 worktree 后，先按分支收尾流程删除该 worktree，再从主树运行最终测试。若需长期保留项目内 worktree，应在 Vitest 配置中显式排除 `**/.worktrees/**`。
+
+### Metadata
+- Reproducible: yes
+- Related Files: `.gitignore`, `vite.config.ts`
+
+### Resolution
+- **Resolved**: 2026-07-22T23:29:10+08:00
+- **Commit/PR**: `a16f733`
+- **Notes**: 删除已合并 worktree 和功能分支后重新运行，110 个测试文件通过。
+
+---
+
+## [ERR-20260722-003] existing_learning_log_overwrite
+
+**Logged**: 2026-07-22T23:31:32+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: docs
+
+### Summary
+未先检查 `.learnings` 文件是否存在，误用新增文件补丁覆盖了受版本控制的历史记录。
+
+### Error
+```text
+git commit 统计显示 .learnings 中 314 行既有内容被删除。
+```
+
+### Context
+- `git status` 在修改前为空，说明这些文件本来已受版本控制，而不是缺失。
+- 错误提交后立即通过提交统计识别问题，没有继续基于错误状态工作。
+
+### Suggested Fix
+执行 self-improvement 初始化前，逐个用只读检查确认文件是否存在；已有文件只能使用 Update File 在末尾追加记录，不能使用 Add File。
+
+### Metadata
+- Reproducible: yes
+- Related Files: `.learnings/ERRORS.md`, `.learnings/LEARNINGS.md`
+
+### Resolution
+- **Resolved**: 2026-07-22T23:31:32+08:00
+- **Commit/PR**: `d971d2a`
+- **Notes**: 使用非破坏性 revert 完整恢复既有历史，再按原格式追加记录。
+
+---
