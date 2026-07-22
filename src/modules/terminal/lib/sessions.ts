@@ -48,7 +48,19 @@ interface CreateSessionOptions {
   callbacks: SessionCallbacks;
   /** Env-bound native surface for the workspace owning this session. */
   wsNative: WorkspaceNative;
+  /**
+   * PTY 打开后若在 watchdogMs 内既无输出也未退出，视为 shell 假死
+   * （WSL 冷启动常见：wsl.exe 进程创建成功但 shell 半启动、无输出）。
+   * 触发后回调上层销毁坏 session 并重建。正常 shell 首帧会在毫秒级到达，
+   * 首次 onData 即清 watchdog，零开销。
+   */
+  onDeadStart?: () => void;
+  /** 启动 watchdog 超时阈值（ms），默认 8000（WSL 冷启动给宽限）。 */
+  watchdogMs?: number;
 }
+
+/** 默认启动 watchdog 阈值。WSL 冷启动可能数秒才出首帧，给宽限。 */
+const DEFAULT_STARTUP_WATCHDOG_MS = 8000;
 
 export async function createSession(
   opts: CreateSessionOptions,
@@ -60,11 +72,38 @@ export async function createSession(
   let exitCode: number | undefined;
   let pendingOsc = "";
 
+  // pty_open 的 authorize_spawn_cwd 会校验 cwd 是否落在已授权工作区内。
+  // 冷启动时 source-control 的 workspaceAuthorize 可能尚未完成,导致首个
+  // 终端的 pty_open 被拒、term.onData 永不绑定、面板静默卡死。这里在开
+  // PTY 前显式授权一次(幂等),失败则交由 pty_open 的 authorize_spawn_cwd
+  // 给出精确错误,因此静默忽略此处错误。
+  if (opts.cwd) {
+    try {
+      await opts.wsNative.workspaceAuthorize(opts.cwd);
+    } catch {
+      /* 交由 pty_open 报错 */
+    }
+  }
+  // 启动 watchdog：PTY 打开后若既无输出也未退出，视为 shell 假死
+  // （WSL 冷启动时 wsl.exe 创建成功但 shell 半启动、reader 永久阻塞）。
+  // 正常 shell 首帧毫秒级到达，首次 onData 即清除此定时器，零开销。
+  let receivedData = false;
+  let startWatchdog: ReturnType<typeof setTimeout> | null = null;
+  const clearStartWatchdog = () => {
+    if (startWatchdog !== null) {
+      clearTimeout(startWatchdog);
+      startWatchdog = null;
+    }
+  };
   const pty = await opts.wsNative.ptyOpen(
     opts.term.cols,
     opts.term.rows,
     {
       onData: (chunk) => {
+        if (!receivedData) {
+          receivedData = true;
+          clearStartWatchdog();
+        }
         const { cleaned, events, pendingBuffer } = handleOscData(
           chunk,
           pendingOsc,
@@ -74,6 +113,7 @@ export async function createSession(
         if (cleaned) opts.term.write(cleaned);
       },
       onExit: (code) => {
+        clearStartWatchdog();
         state = "exited";
         exitCode = code;
         callbacks.onStateChange("exited", code);
@@ -81,6 +121,23 @@ export async function createSession(
     },
     opts.cwd,
   );
+  // PTY 打开成功后挂上 watchdog（仅当上层关心假死时）。
+  if (opts.onDeadStart) {
+    startWatchdog = setTimeout(() => {
+      if (!receivedData && (state as SessionState) !== "exited") {
+        console.warn(
+          "[pty] startup watchdog: shell produced no output within " +
+            `${opts.watchdogMs ?? DEFAULT_STARTUP_WATCHDOG_MS}ms, ` +
+            "treating as dead start (common on WSL cold boot)",
+        );
+        clearStartWatchdog();
+        void pty.close().catch((e) => {
+          console.debug("[pty] close dropped during dead-start", e);
+        });
+        opts.onDeadStart?.();
+      }
+    }, opts.watchdogMs ?? DEFAULT_STARTUP_WATCHDOG_MS);
+  }
   const id = pty.id;
 
   // A very fast-exiting shell can fire onExit during the await above; only
@@ -94,20 +151,29 @@ export async function createSession(
     leafId: id.toString(),
     ptyId: id,
     dispose: () => {
-      void pty.close().catch(() => {});
+      clearStartWatchdog();
+      void pty.close().catch((e) => {
+        console.debug("[pty] close dropped", e);
+      });
     },
     write: (data) => {
-      void pty.write(data).catch(() => {});
+      void pty.write(data).catch((e) => {
+        console.debug("[pty] write dropped", e);
+      });
     },
     resize: (cols, rows) => {
-      void pty.resize(cols, rows).catch(() => {});
+      void pty.resize(cols, rows).catch((e) => {
+        console.debug("[pty] resize dropped", e);
+      });
     },
     restart: () => {
       // ptyKill lives on the global native surface (id-keyed, not env-scoped)
       // but we intentionally avoid importing the singleton here; the pane owns
       // restart via its own channel if needed. Kept as best-effort no-op
       // fallback for legacy callers.
-      void pty.close().catch(() => {});
+      void pty.close().catch((e) => {
+        console.debug("[pty] close dropped (restart)", e);
+      });
     },
     getState: () => state,
     getExitCode: () => exitCode,
