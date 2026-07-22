@@ -244,12 +244,18 @@ defineExpose({
       :min-width="200"
       :max-width="480"
       :workspace="workspace"
+      :active-repo-root="activeRepoRoot"
+      :fs-event="workspaceFsEvent"
+      :show-branches-modal="showBranchesModalProp"
       @select-activity="(k) => workbenchLayout.setLeftSidebarActivity(k)"
       @add-workspace="emit('add-workspace')"
       @open-in-new-window="emit('open-in-new-window')"
       @select-workspace="(id) => workspaces.setActive(id)"
       @close-workspace="(id) => workspaces.removeWorkspace(id)"
       @resize-width="(w) => workbenchLayout.setLeftSidebarWidth(w)"
+      @open-diff="openSourceDiff"
+      @open-history="openSourceHistory"
+      @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
     />
 
     <div class="flex min-w-0 flex-1 flex-col">

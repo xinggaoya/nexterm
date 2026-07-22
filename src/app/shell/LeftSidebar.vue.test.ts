@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
-import { defineComponent, h } from "vue";
+import { defineComponent, h, ref } from "vue";
 import { describe, expect, it } from "vitest";
 import LeftSidebar from "./LeftSidebar.vue";
 
@@ -45,6 +45,9 @@ const baseProps = {
   minWidth: 200,
   maxWidth: 480,
   workspace: stubWorkspace,
+  activeRepoRoot: null,
+  fsEvent: null,
+  showBranchesModal: ref(false),
 };
 
 describe("LeftSidebar", () => {

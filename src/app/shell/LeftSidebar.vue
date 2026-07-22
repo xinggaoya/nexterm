@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from "vue";
+import { onBeforeUnmount, ref, type Ref } from "vue";
 import ActivityIcons from "./ActivityIcons.vue";
 import SourceControlPanel from "@/modules/source-control/SourceControlPanel.vue";
 import WorkspaceBar from "./WorkspaceBar.vue";
@@ -8,14 +8,20 @@ import type {
   PanelKey,
 } from "@/app/useWorkbenchLayout";
 import type { WorkspaceInstance } from "@/modules/workspace";
+import type { GitDecorationMap } from "@/modules/source-control";
+import type { GitCommitResult } from "@/lib/native";
+import type { WorkspaceFsChangedEvent } from "@/lib/native";
 
-defineProps<{
+const props = defineProps<{
   activity: ActivityKey;
   open: boolean;
   width: number;
   minWidth: number;
   maxWidth: number;
   workspace: WorkspaceInstance;
+  activeRepoRoot: string | null;
+  fsEvent: WorkspaceFsChangedEvent | null;
+  showBranchesModal: Ref<boolean>;
 }>();
 
 const emit = defineEmits<{
@@ -26,6 +32,26 @@ const emit = defineEmits<{
   "close-workspace": [id: string];
   "resize-width": [width: number];
   "toggle-panel": [key: PanelKey];
+  "open-diff": [
+    input: {
+      repoRoot: string;
+      path: string;
+      mode: "+" | "-";
+      originalPath: string | null;
+      title: string;
+    },
+  ];
+  "open-history": [
+    input: {
+      repoRoot: string;
+      branch: string | null;
+      refName: string | null;
+      allRefs: boolean;
+    },
+  ];
+  "repo-selected": [repoRoot: string | null];
+  "decoration-change": [decorations: GitDecorationMap];
+  committed: [result: GitCommitResult];
 }>();
 
 const dragging = ref(false);
@@ -83,6 +109,14 @@ onBeforeUnmount(() => {
         v-show="activity === 'sourceControl'"
         :root-path="workspace.rootPath"
         :workspace-scope="workspace.env.kind === 'wsl' ? `wsl:${workspace.env.distro}` : 'local'"
+        :active-repo-root="activeRepoRoot"
+        :fs-event="fsEvent"
+        :show-branches-modal="showBranchesModal"
+        @open-diff="(input) => emit('open-diff', input)"
+        @open-history="(input) => emit('open-history', input)"
+        @repo-selected="(repoRoot) => emit('repo-selected', repoRoot)"
+        @decorations-change="(d) => emit('decoration-change', d)"
+        @committed="(result) => emit('committed', result)"
       />
       <WorkspaceBar
         v-show="activity === 'workspace'"
