@@ -23,7 +23,6 @@ const props = defineProps<{
   activeId: number;
   canSplit: boolean;
   showActions: boolean;
-  workspaceRoot?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -39,9 +38,6 @@ const emit = defineEmits<{
   duplicateTerminal: [tabId: number];
   renameTab: [tabId: number, title: string];
   requestRename: [tabId: number];
-  copyPath: [path: string];
-  copyRelativePath: [rootPath: string, path: string];
-  moveToNewWindow: [tabId: number];
 }>();
 
 
@@ -352,7 +348,6 @@ function handleSplitSelect(key: string | number) {
 
     <TabContextMenu
       :target="tabContextMenu"
-      :root-path="workspaceRoot ?? null"
       @close="closeTabContextMenu"
       @close-tab="(id) => emit('closeTab', id)"
       @close-others="(id) => emit('closeOthers', id)"
@@ -362,9 +357,6 @@ function handleSplitSelect(key: string | number) {
       @rename-tab="(id, title) => emit('renameTab', id, title)"
       @request-rename="(id) => emit('requestRename', id)"
       @pin-editor="(id) => emit('pinTab', id)"
-      @copy-path="(path) => emit('copyPath', path)"
-      @copy-relative-path="(root, path) => emit('copyRelativePath', root, path)"
-      @move-to-new-window="(id) => emit('moveToNewWindow', id)"
     />
   </div>
 </template>
