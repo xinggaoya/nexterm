@@ -1,24 +1,15 @@
 <script setup lang="ts">
 import {
-  BrowsersOutline,
-  DesktopOutline,
-  FolderOpenOutline,
-} from "@vicons/ionicons5";
-import {
   NConfigProvider,
   NDialogProvider,
   NDrawer,
   NDrawerContent,
-  NIcon,
   NMessageProvider,
-  NModal,
   NNotificationProvider,
 } from "naive-ui";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
 import TitleBar from "./shell/TitleBar.vue";
 import StatusBar from "./shell/StatusBar.vue";
-import WorkspaceBar from "./shell/WorkspaceBar.vue";
 import WorkspaceHost from "./shell/WorkspaceHost.vue";
 import { applyLanguagePreference } from "@/modules/i18n";
 import { getNaiveLocaleConfig } from "@/modules/i18n/naive";
@@ -55,7 +46,6 @@ import { useWorkbenchLayout } from "./useWorkbenchLayout";
 import { useWindowChromeState } from "./useWindowChromeState";
 import { LOCAL_WORKSPACE } from "@/modules/workspace";
 
-const { t } = useI18n();
 const prefs = usePreferencesPiniaStore();
 const tabs = useTabsPiniaStore();
 const workspaces = useWorkspacesPiniaStore();
@@ -63,7 +53,6 @@ const workspaceRootStore = useWorkspaceRootPiniaStore();
 const workspaceEnv = useWorkspaceEnvPiniaStore();
 
 const settingsOpen = ref(false);
-const workspaceOpenChoice = ref<WorkspaceSelection | null>(null);
 const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
 const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
 // closeGuard is wired via template ref on UnsavedCloseGuard; the guard emits
@@ -140,19 +129,12 @@ const activeTab = computed<Tab | null>(() => {
   const activeId = tabs.activeIdByWorkspace[ws.id] ?? 0;
   return list.find((tab) => tab.id === activeId) ?? null;
 });
-const activeCwd = computed(() =>
-  activeTab.value?.kind === "terminal" ? activeTab.value.cwd ?? null : null,
-);
 const gitBranch = ref<string | null>(null);
 
 const workbenchLayout = useWorkbenchLayout({ prefs });
 useWindowChromeState();
-const {
-  toggleLeftPanel,
-  toggleRightPanel,
-  startLayoutObservers,
-  stopLayoutObservers,
-} = workbenchLayout;
+const { startLayoutObservers, stopLayoutObservers, togglePanel } =
+  workbenchLayout;
 
 function syncDocumentTheme() {
   const root = document.documentElement;
@@ -182,34 +164,16 @@ async function startAddWorkspace(env: WorkspaceEnv = workspaceEnv.pendingEnv) {
   try {
     const selection = await workspaceRootStore.pickWorkspaceDirectory(env);
     if (!selection) return;
-    workspaceOpenChoice.value = selection;
-  } catch (error) {
-    window.alert(String(error));
-  }
-}
-
-function selectedWorkspaceLabel(selection: WorkspaceSelection): string {
-  return selection.env.kind === "wsl"
-    ? `WSL · ${selection.env.distro}`
-    : t("common.local");
-}
-
-async function openSelectedWorkspaceInCurrentWindow() {
-  const selection = workspaceOpenChoice.value;
-  workspaceOpenChoice.value = null;
-  if (!selection) return;
-  try {
     await workspaces.addWorkspace(selection.path, selection.env);
   } catch (error) {
     window.alert(String(error));
   }
 }
 
-async function openSelectedWorkspaceInNewWindow() {
-  const selection = workspaceOpenChoice.value;
-  workspaceOpenChoice.value = null;
-  if (!selection) return;
+async function openWorkspaceInNewWindow(env: WorkspaceEnv = workspaceEnv.pendingEnv) {
   try {
+    const selection = await workspaceRootStore.pickWorkspaceDirectory(env);
+    if (!selection) return;
     const { openWorkspaceInNewWindow } = await import(
       "@/modules/workspace/workspaceWindow"
     );
@@ -313,18 +277,14 @@ watch(
               @close-tab="(id) => tabs.closeTab(id)"
             />
             <TitleBar
-              :workspace-root="workspaceRoot"
-              :git-branch="gitBranch"
               :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
-              :active-tab="activeTab"
               @open-command-palette="commandPaletteOpen = true"
               @open-settings="openSettings"
-              @choose-workspace="startAddWorkspace()"
-              @choose-workspace-in-env="(env) => startAddWorkspace(env)"
-              @toggle-explorer="toggleRightPanel"
-              @toggle-source-control="toggleLeftPanel"
+              @select-workspace="(id) => workspaces.setActive(id)"
+              @close-workspace="(id) => workspaces.removeWorkspace(id)"
+              @add-workspace="() => startAddWorkspace()"
+              @open-in-new-window="() => openWorkspaceInNewWindow()"
             />
-            <WorkspaceBar @add-workspace="startAddWorkspace()" />
             <div class="flex min-h-0 flex-1 flex-col">
               <!--
                 All open workspaces are mounted simultaneously and toggled via
@@ -337,6 +297,8 @@ watch(
                 :key="ws.id"
                 v-show="ws.id === workspaces.activeWorkspaceId"
                 :workspace="ws"
+                @add-workspace="() => startAddWorkspace()"
+                @open-in-new-window="() => openWorkspaceInNewWindow()"
               />
               <WorkspaceWelcome
                 v-if="!hasWorkspace"
@@ -349,71 +311,16 @@ watch(
               />
             </div>
             <StatusBar
-              :workspace-root="workspaceRoot"
-              :terminal-cwd="activeCwd"
+              :workspace-name="activeWorkspace?.name ?? null"
               :git-branch="gitBranch"
-              :workspace-switching="false"
-              :switching-workspace-env="null"
-              @workspace-change="(env) => startAddWorkspace(env)"
+              :panel-states="{
+                workspace: workbenchLayout.panelVisibility.value.workspace,
+                sourceControl: workbenchLayout.panelVisibility.value.sourceControl,
+                explorer: workbenchLayout.panelVisibility.value.explorer,
+                taskConsole: workbenchLayout.panelVisibility.value.taskConsole,
+              }"
+              @toggle-panel="togglePanel"
             />
-
-            <NModal
-              :show="!!workspaceOpenChoice"
-              preset="card"
-              :title="t('app.workspaceOpen.title')"
-              :bordered="false"
-              :auto-focus="false"
-              :mask-closable="true"
-              class="max-w-[420px]"
-              @update:show="(show) => { if (!show) workspaceOpenChoice = null; }"
-            >
-              <div v-if="workspaceOpenChoice" class="space-y-4">
-                <div
-                  data-workspace-open-choice-path
-                  class="rounded-md border border-border/70 bg-muted/40 px-3 py-2"
-                >
-                  <div class="flex min-w-0 items-center gap-2 text-[12px] text-muted-foreground">
-                    <NIcon :component="FolderOpenOutline" class="shrink-0" />
-                    <span class="truncate">{{ selectedWorkspaceLabel(workspaceOpenChoice) }}</span>
-                  </div>
-                  <div class="mt-1 truncate text-[13px] text-foreground">
-                    {{ workspaceOpenChoice.path }}
-                  </div>
-                </div>
-                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    data-open-workspace-current
-                    class="flex min-h-20 items-center gap-3 rounded-md border border-border/70 bg-card px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    @click="openSelectedWorkspaceInCurrentWindow"
-                  >
-                    <span class="grid size-8 shrink-0 place-items-center rounded-md bg-accent text-foreground">
-                      <NIcon :component="DesktopOutline" :size="17" />
-                    </span>
-                    <span class="min-w-0">
-                      <span class="block text-[13px] font-medium text-foreground">
-                        {{ t("app.workspaceOpen.currentWindow") }}
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    data-open-workspace-new-window
-                    class="flex min-h-20 items-center gap-3 rounded-md border border-border/70 bg-card px-3 py-3 text-left transition-colors hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    @click="openSelectedWorkspaceInNewWindow"
-                  >
-                    <span class="grid size-8 shrink-0 place-items-center rounded-md bg-accent text-foreground">
-                      <NIcon :component="BrowsersOutline" :size="17" />
-                    </span>
-                    <span class="min-w-0">
-                      <span class="block text-[13px] font-medium text-foreground">
-                        {{ t("app.workspaceOpen.newWindow") }}
-                      </span>
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </NModal>
 
             <NDrawer
               v-model:show="settingsOpen"
