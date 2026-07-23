@@ -1,6 +1,9 @@
 import { computed, nextTick, ref, watch, type Ref } from "vue";
 import { defineStore, storeToRefs } from "pinia";
 import {
+  LEFT_SIDEBAR_WIDTH_DEFAULT,
+  LEFT_SIDEBAR_WIDTH_MAX,
+  LEFT_SIDEBAR_WIDTH_MIN,
   SIDE_PANEL_WIDTH_MAX,
   SIDE_PANEL_WIDTH_MIN,
   setLayoutLeftSidebar,
@@ -41,13 +44,15 @@ export type WorkbenchLayoutOptions = {
   saveDelayMs?: number;
 };
 
-const DEFAULT_PANEL_RESIZE_TRIGGER_SIZE = 6;
+// 4px 与 WorkspaceHost 的 gap-1 间隙一致：让右侧 NSplit 的透明热区与左侧
+// 栏卡片到中间卡片的画布透出间隙视觉完全对齐。
+const DEFAULT_PANEL_RESIZE_TRIGGER_SIZE = 4;
 const DEFAULT_PANEL_WIDTH_SAVE_DELAY_MS = 250;
 
 const DEFAULT_LEFT_SIDEBAR: LeftSidebarState = {
   activity: "sourceControl",
   open: true,
-  width: 272,
+  width: LEFT_SIDEBAR_WIDTH_DEFAULT,
 };
 
 const DEFAULT_PANELS: PanelVisibilityState = {
@@ -88,9 +93,8 @@ function clampPanelWidth(value: number): number {
   );
 }
 
-const LEFT_SIDEBAR_WIDTH_MIN = 216;
-const LEFT_SIDEBAR_WIDTH_MAX = 420;
-const LEFT_SIDEBAR_WIDTH_DEFAULT = 272;
+// Sidebar width bounds come from the settings store so there is a single
+// source of truth shared with persistence (LEFT_SIDEBAR_WIDTH_* above).
 
 function clampLeftSidebarWidth(value: number): number {
   if (!Number.isFinite(value)) return LEFT_SIDEBAR_WIDTH_DEFAULT;
@@ -167,6 +171,7 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   const rightSplitHost = ref<HTMLElement | null>(null);
   const rightSplitWidth = ref(0);
   let rightSplitResizeObserver: ResizeObserver | null = null;
+  let stopRightSplitHostWatch: (() => void) | null = null;
   let sourceControlWidthSaveTimer: ReturnType<typeof setTimeout> | null = null;
   let explorerWidthSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -207,10 +212,10 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   });
   const explorerPaneClass = computed(() =>
     [
-      "h-full overflow-hidden border-l border-border",
+      "relative h-full overflow-hidden rounded-[6px] border border-border",
       rightPanelOpen.value
         ? "nexterm-surface"
-        : "bg-transparent",
+        : "bg-transparent border-transparent",
     ].join(" "),
   );
 
@@ -278,12 +283,29 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
       if (rightSplitHost.value) {
         rightSplitResizeObserver.observe(rightSplitHost.value);
       }
+      // The split host is bound by the Workbench component via a function ref,
+      // which may populate after this observer starts (e.g. on lazy mount or
+      // v-show workspace switches). Watch for it so we always begin observing
+      // the real element — otherwise the width stays 0 and NSplit locks up.
+      stopRightSplitHostWatch = watch(
+        rightSplitHost,
+        (el, prev) => {
+          if (prev) rightSplitResizeObserver?.unobserve(prev);
+          if (el) {
+            rightSplitResizeObserver?.observe(el);
+            void nextTick(measureRightSplitWidth);
+          }
+        },
+        { flush: "post" },
+      );
     }
     window.addEventListener("resize", measureRightSplitWidth);
     void nextTick(measureRightSplitWidth);
   }
 
   function stopLayoutObservers() {
+    stopRightSplitHostWatch?.();
+    stopRightSplitHostWatch = null;
     rightSplitResizeObserver?.disconnect();
     rightSplitResizeObserver = null;
     window.removeEventListener("resize", measureRightSplitWidth);
@@ -330,7 +352,15 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     explorerSplitSize,
     flushExplorerWidthSave,
     flushSourceControlWidthSave,
+    // Live width setter used by the custom card-edge resizer (mirrors the
+    // left sidebar's setLeftSidebarWidth). Clamps + schedules a debounced
+    // persist; call flushExplorerWidthSave() on drag end to persist immediately.
+    setExplorerPanelWidth: scheduleExplorerWidthSave,
     leftPanelOpen,
+    // Sidebar width bounds (mirrors of the store constants) so callers such
+    // as WorkspaceHost can bind min/max without hardcoding magic numbers.
+    leftSidebarWidthMax: LEFT_SIDEBAR_WIDTH_MAX,
+    leftSidebarWidthMin: LEFT_SIDEBAR_WIDTH_MIN,
     // Raw writable refs from the shared panel-visibility store, for callers
     // (e.g. useWorkbenchCommands) that need to assign `.value` directly.
     leftPanelOpenRef: storeToRefs(visibility).leftPanelOpen,

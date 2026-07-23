@@ -231,9 +231,9 @@ function handleSplitSelect(key: string | number) {
 </script>
 
 <template>
-  <div class="flex h-[34px] shrink-0 items-center border-b border-border bg-surface-subtle/60">
+  <div class="flex h-[34px] shrink-0 items-center rounded-t-[6px] border-b border-border bg-surface-subtle/60">
     <div class="no-scrollbar min-w-0 flex-1 overflow-x-auto">
-      <div class="flex min-w-full items-end gap-0.5 px-1.5 pt-1">
+      <div class="flex min-w-full items-end gap-0.5 px-1.5 py-1.5">
         <button
           v-for="tab in tabs"
           :key="tab.id"
@@ -242,7 +242,7 @@ function handleSplitSelect(key: string | number) {
           :aria-grabbed="draggingTabId === tab.id"
           :title="`${tabKindLabel(tab)}: ${tabLabel(tab)}`"
           :class="[
-            'group relative flex h-[29px] min-w-[5rem] max-w-48 flex-[1_1_8rem] items-center justify-between gap-1.5 rounded-t-[6px] px-2.5 text-left text-[12px] transition-[background-color,color,opacity] duration-[var(--dur-fast)]',
+            'group relative flex h-7 min-w-[5rem] max-w-48 flex-[1_1_8rem] items-center justify-between gap-1.5 rounded-[6px] px-2.5 text-left text-[12px] transition-[background-color,color,opacity] duration-[var(--dur-fast)]',
             draggingTabId === tab.id ? 'opacity-60' : '',
             dropTarget?.id === tab.id && dropTarget.placement === 'before'
               ? 'before:absolute before:inset-y-1.5 before:left-[-2px] before:w-0.5 before:rounded-full before:bg-primary'
@@ -251,8 +251,8 @@ function handleSplitSelect(key: string | number) {
               ? 'after:absolute after:inset-y-1.5 after:right-[-2px] after:w-0.5 after:rounded-full after:bg-primary'
               : '',
             tab.id === activeId
-              ? 'bg-card text-foreground after:absolute after:inset-x-2.5 after:bottom-0 after:h-[2px] after:rounded-t-full after:bg-primary'
-              : 'text-muted-foreground hover:bg-surface-hover/60 hover:text-foreground',
+              ? 'bg-accent/70 text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
+              : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
           ]"
           @click="handleTabClick(tab)"
           @dblclick="pinPreviewTab(tab)"

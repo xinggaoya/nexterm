@@ -324,13 +324,16 @@ defineExpose({
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1" :data-workspace-id="workspace.id">
+  <div
+    class="flex min-h-0 flex-1 gap-1 bg-shell-bg p-1"
+    :data-workspace-id="workspace.id"
+  >
     <LeftSidebar
       :activity="workbenchLayout.leftSidebar.value.activity"
       :open="workbenchLayout.leftSidebar.value.open"
       :width="workbenchLayout.leftSidebar.value.width"
-      :min-width="216"
-      :max-width="420"
+      :min-width="workbenchLayout.leftSidebarWidthMin"
+      :max-width="workbenchLayout.leftSidebarWidthMax"
       :workspace="workspace"
       :active-repo-root="activeRepoRoot"
       :fs-event="workspaceFsEvent"
