@@ -376,9 +376,22 @@ defineExpose({
   height: 100% !important;
   width: 100% !important;
   /* .xterm 是 position:relative,这里变成裁剪容器,挡住 IME 期间
-   * xterm 把 .xterm-helper-textarea / .composition-view 改大后向右
+   * xterm 把 helper textarea / composition 视图改大后向右
    * 撑开 scrollWidth 的传导 —— 这是"终端整体右移"问题的根因。 */
   overflow: hidden;
+  /* f48fea0 给承载 section 加了 rounded-[6px] border border-border,
+   * 浏览器为裁剪 xterm 子树会反复升级合成层,DOM 渲染器下每行 canvas
+   * 重绘都走合成开销,体感卡顿。提前升合成层可收口。 */
+  will-change: transform;
+}
+/* IME 候选词窗口锚定到 helper textarea 的 caret(在 preedit 文本末尾)。
+ * xterm CompositionHelper 把 textarea 宽设为 composition 视图的自然宽度——
+ * 长候选时 textarea 右缘伸出 .xterm,OS 把 IME 候选窗口拉回屏幕内(贴左)造成
+ * "左移"。这里只钳 textarea 的渲染宽度,不动 composition 视图本身,这样
+ * xterm 读回的 getBoundingClientRect().width 仍是自然宽度,preedit 渲染与
+ * 提交文本不受影响,3669f22 担心的"候选词 ≠ 提交文本"回归不复现。 */
+.terminal-pane-body .xterm .xterm-helper-textarea {
+  max-width: 100%;
 }
 .terminal-pane-body .xterm-viewport {
   background-color: transparent !important;
