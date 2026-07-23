@@ -161,11 +161,22 @@ export async function createTerminalRenderer(
   term.open(options.container);
 
   // 6) 主题响应
+  // 把当前 font stack 的字体族告诉监听器:只有本终端关心的字体(以及
+  // 主题 class / style 变更 / prefs-changed)才触发 applyTerminalTheme。
+  // 编辑器 / 文件树 / UI 等其他模块加载字体时不再让本终端白白跑一遍
+  // 24 个 token 的 getComputedStyle。
+  const watchedFontFamilies = [
+    stack.primary,
+    stack.symbol,
+    stack.cjk,
+    stack.emoji,
+  ].filter(Boolean);
   const detachThemeWatch = watchTerminalTheme(() => {
     if (!disposed) applyTerminalTheme(term);
-  });
+  }, watchedFontFamilies);
 
   // 7) 字体异步加载完成后重画
+  // 同上,过滤到本终端的字体族,避免其他模块加载字体时触发整屏 refresh。
   const detachFontWatch = watchFontLoadingDone(() => {
     if (!disposed) {
       try {
@@ -175,7 +186,7 @@ export async function createTerminalRenderer(
         // ignore
       }
     }
-  });
+  }, watchedFontFamilies);
 
   // 8) 渲染器管线
   let pipeline: RendererPipeline | null = attachRendererPipeline({
