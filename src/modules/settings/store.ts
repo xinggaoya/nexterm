@@ -215,9 +215,9 @@ export type PanelVisibilityPref = {
   taskConsole: boolean;
 };
 
-export const LEFT_SIDEBAR_WIDTH_DEFAULT = 280;
-export const LEFT_SIDEBAR_WIDTH_MIN = 200;
-export const LEFT_SIDEBAR_WIDTH_MAX = 480;
+export const LEFT_SIDEBAR_WIDTH_DEFAULT = 320;
+export const LEFT_SIDEBAR_WIDTH_MIN = 240;
+export const LEFT_SIDEBAR_WIDTH_MAX = 520;
 
 const ACTIVITY_VALUES: readonly LeftSidebarPref["activity"][] = [
   "workspace",
@@ -273,14 +273,14 @@ function normalizePanelVisibilityPref(value: unknown): PanelVisibilityPref {
   };
 }
 
-export const SIDE_PANEL_WIDTH_DEFAULT = 288;
+export const SIDE_PANEL_WIDTH_DEFAULT = 320;
 
 export const EDITOR_FONT_SIZE_DEFAULT = 13;
 export const EDITOR_FONT_SIZE_MIN = 10;
 export const EDITOR_FONT_SIZE_MAX = 24;
 export const EDITOR_TAB_SIZE_DEFAULT = 2;
-export const SIDE_PANEL_WIDTH_MIN = 220;
-export const SIDE_PANEL_WIDTH_MAX = 440;
+export const SIDE_PANEL_WIDTH_MIN = 240;
+export const SIDE_PANEL_WIDTH_MAX = 520;
 
 export const TERMINAL_FONT_SIZE_DEFAULT = 14;
 export const TERMINAL_FONT_SIZE_MIN = 8;

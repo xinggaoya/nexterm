@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, type ComputedRef, type Ref } from "vue";
+import { ref, computed, onBeforeUnmount, type ComputedRef, type Ref } from "vue";
 import { NSplit } from "naive-ui";
 import { native, type WorkspaceFsChangedEvent } from "@/lib/native";
 import { getPtyIdForLeaf, TerminalWorkspace, disposeSession } from "@/modules/terminal";
@@ -19,6 +19,7 @@ import type { Tab, TerminalTab } from "@/modules/tabs/tabsTypes";
 
 type WorkbenchLayoutBinding = {
   explorerPaneClass: ComputedRef<string>;
+  explorerPanelWidth: Ref<number>;
   explorerSplitMax: ComputedRef<string>;
   explorerSplitMin: ComputedRef<string>;
   explorerSplitSize: ComputedRef<string>;
@@ -26,6 +27,7 @@ type WorkbenchLayoutBinding = {
   panelResizeTriggerSize: number;
   rightPanelOpen: ComputedRef<boolean> | Ref<boolean>;
   rightSplitHost: Ref<HTMLElement | null>;
+  setExplorerPanelWidth: (width: number) => void;
   updateExplorerSplitSize: (size: string | number) => void;
 };
 
@@ -165,11 +167,55 @@ const terminalTabs = computed<TerminalTab[]>(() =>
   props.tabs.filter((tab): tab is TerminalTab => tab.kind === "terminal"),
 );
 
+// ── Explorer card-edge resizer ──────────────────────────────────────────
+// Mirrors the left sidebar resizer (LeftSidebar.vue): a w-1 strip pinned to
+// the explorer card's left edge, transparent by default and highlighted on
+// hover. Dragging it calls layout.setExplorerPanelWidth so the card grows
+// toward the left — same feel as resizing the left sidebar, only reversed.
+// NSplit's built-in trigger is rendered transparent and inert (see template),
+// so this card-edge handle is the single resize affordance on the right side.
+let detachMove: (() => void) | null = null;
+let detachUp: (() => void) | null = null;
+
+function onExplorerResizeStart(e: PointerEvent) {
+  if (!props.layout.rightPanelOpen.value) return;
+  e.preventDefault();
+  const startX = e.clientX;
+  const startWidth = props.layout.explorerPanelWidth.value;
+
+  function onMove(ev: PointerEvent) {
+    const dx = ev.clientX - startX;
+    // Dragging left (dx < 0) widens the explorer panel.
+    props.layout.setExplorerPanelWidth(startWidth - dx);
+  }
+
+  function onUp() {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    detachMove = null;
+    detachUp = null;
+    props.layout.flushExplorerWidthSave();
+  }
+
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+  detachMove = () => window.removeEventListener("pointermove", onMove);
+  detachUp = () => window.removeEventListener("pointerup", onUp);
+}
+
+onBeforeUnmount(() => {
+  detachMove?.();
+  detachUp?.();
+});
+
 defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
 </script>
 
 <template>
-  <div class="nexterm-surface h-full min-h-0 min-w-0">
+  <div
+    :ref="(el) => (layout.rightSplitHost.value = el as HTMLElement | null)"
+    class="h-full min-h-0 min-w-0"
+  >
     <NSplit
       class="h-full min-h-0 min-w-0"
       direction="horizontal"
@@ -183,7 +229,9 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
       @drag-end="layout.flushExplorerWidthSave"
     >
       <template #1>
-        <section class="nexterm-surface flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+        <section
+          class="nexterm-surface flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[6px] border border-border"
+        >
           <slot name="tab-bar" />
           <div class="relative min-h-0 flex-1">
             <div
@@ -294,10 +342,9 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
         </section>
       </template>
       <template #resize-trigger>
-        <div
-          v-if="layout.rightPanelOpen.value"
-          class="h-full w-full bg-pane-handle transition-colors duration-[var(--dur-fast)] hover:bg-pane-handle-active"
-        />
+        <!-- NSplit 的内置 trigger 不可见也不承担交互：右侧拖拽由下方贴在 explorer
+             卡片左边缘的自定义 resizer 接管，与左侧栏卡片边缘拖拽体验完全一致。 -->
+        <span class="pointer-events-none block h-full w-full" />
       </template>
       <template #2>
         <FileExplorer
@@ -310,6 +357,15 @@ defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
           @open-markdown-preview="(path) => emit('open-markdown-preview', path)"
           @open-in-terminal="(path) => emit('open-in-terminal', path)"
           @open-search-result="(path, line) => emit('open-search-result', path, line)"
+        />
+        <!-- 卡片左边缘拖拽手柄：样式与 LeftSidebar 的 resizer 一致（默认透明，
+             hover 高亮主色），骑在卡片左边框上并覆盖 NSplit 的内置 trigger 热区，
+             因此只在卡片边缘可拖、且 hover 时显形。 -->
+        <div
+          v-if="layout.rightPanelOpen.value"
+          data-explorer-resizer
+          class="absolute inset-y-0 left-0 z-20 w-1 cursor-col-resize bg-transparent transition-colors duration-[var(--dur-fast)] hover:bg-primary/30"
+          @pointerdown="onExplorerResizeStart"
         />
       </template>
     </NSplit>

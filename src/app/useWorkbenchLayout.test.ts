@@ -30,14 +30,14 @@ describe("useWorkbenchLayout", () => {
 
     layout.updateSourceControlSplitSize("900px");
 
-    expect(layout.sourceControlPanelWidth.value).toBe(440);
+    expect(layout.sourceControlPanelWidth.value).toBe(520);
     expect(prefs.updateSourceControlPanelWidth).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(249);
     expect(prefs.updateSourceControlPanelWidth).not.toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(prefs.updateSourceControlPanelWidth).toHaveBeenCalledWith(440);
+    expect(prefs.updateSourceControlPanelWidth).toHaveBeenCalledWith(520);
   });
 
   it("converts center split size into explorer panel width", async () => {
@@ -64,15 +64,15 @@ describe("useWorkbenchLayout", () => {
     prefs.explorerPanelWidth = 1000;
     await nextTick();
 
-    expect(layout.sourceControlPanelWidth.value).toBe(220);
-    expect(layout.explorerPanelWidth.value).toBe(440);
+    expect(layout.sourceControlPanelWidth.value).toBe(240);
+    expect(layout.explorerPanelWidth.value).toBe(520);
   });
 
   it("uses the compact workbench defaults", () => {
     const layout = useWorkbenchLayout({ prefs: createPrefs() });
 
-    expect(layout.leftSidebar.value.width).toBe(272);
-    expect(layout.panelResizeTriggerSize).toBe(6);
+    expect(layout.leftSidebar.value.width).toBe(320);
+    expect(layout.panelResizeTriggerSize).toBe(4);
   });
 
   it("flushes pending panel width saves", () => {
@@ -86,8 +86,8 @@ describe("useWorkbenchLayout", () => {
     layout.flushExplorerWidthSave();
 
     expect(prefs.updateSourceControlPanelWidth).toHaveBeenCalledWith(320);
-    // usableWidth = rightSplitWidth(900) - panelResizeTriggerSize(6) = 894；
-    // explorer 宽度 = 894 - centerWidth(620) = 274。
-    expect(prefs.updateExplorerPanelWidth).toHaveBeenCalledWith(274);
+    // usableWidth = rightSplitWidth(900) - panelResizeTriggerSize(4) = 896；
+    // explorer 宽度 = 896 - centerWidth(620) = 276。
+    expect(prefs.updateExplorerPanelWidth).toHaveBeenCalledWith(276);
   });
 });
