@@ -386,4 +386,18 @@ defineExpose({
 .terminal-pane-body .xterm .xterm-screen canvas {
   outline: none;
 }
+
+/* 中文 IME 修复:xterm CompositionHelper 在组字期间会按 .composition-view
+ * 的 getBoundingClientRect().width 重设 textarea 的宽度。候选文本较长时
+ * 该宽度超过终端列宽,需把 .composition-view 钳到容器宽度,让 xterm 读回
+ * 有界值;超出的候选在 pane 右边缘裁剪(与 iTerm2 / VSCode 一致)。 */
+.terminal-pane-body .xterm .composition-view {
+  max-width: 100%;
+  overflow: hidden;
+}
+/* 防御层:即便 xterm 运行时再次改写 textarea 的 inline width,max-width
+ * 仍生效,确保 helper-textarea 不超过容器宽度。 */
+.terminal-pane-body .xterm .xterm-helper-textarea {
+  max-width: 100%;
+}
 </style>
