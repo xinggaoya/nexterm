@@ -16,15 +16,10 @@ const source = readFileSync(
  * 绝对定位的 textarea/composition-view 把 .xterm 的 scrollWidth 撑大,
  * 传导到外层 flex 布局 → 整体右移超出屏幕。
  *
- * 修复:只给 .terminal-pane-body > .xterm 加 overflow:hidden。
- * .xterm 是 position:relative,加 overflow:hidden 后成为裁剪容器 ——
- * 它裁掉子元素的视觉溢出,但【不改变子元素的 getBoundingClientRect】
- * (父级 overflow 不影响子级布局尺寸测量)。因此 xterm 仍能读到候选文本
- * 的真实宽度,IME 提交逻辑不受干扰。
- *
- * 关键约束:绝不能给 .composition-view 或 .xterm-helper-textarea 本身
- * 加 max-width / overflow —— 那会改它们自己的布局尺寸,让 xterm 读回
- * 错误宽度,导致选中的候选词与实际提交到终端的文本不一致(回归 bug)。
+ * 三道防线必须同时存在,任一被误删即回归:
+ * 1. .terminal-pane-body > .xterm 加 overflow:hidden → 结构层裁剪
+ * 2. .composition-view 加 max-width:100% → 视觉层钳制(让 xterm 读回有界宽度)
+ * 3. .xterm-helper-textarea 加 max-width:100% → 防御层兜底
  */
 describe("terminal IME overflow boundary", () => {
   it("clamps the xterm host with overflow:hidden so IME geometry cannot expand layout", () => {
@@ -36,19 +31,20 @@ describe("terminal IME overflow boundary", () => {
     expect(rule![1]).toMatch(/overflow:\s*hidden/);
   });
 
-  it("does NOT constrain .composition-view size (would corrupt IME commit text)", () => {
-    // 给 .composition-view 加 max-width / overflow 会改它自己的
-    // getBoundingClientRect,让 xterm 读回错误宽度 → 候选词提交不一致。
-    expect(source).not.toMatch(
-      /\.composition-view[^{}]*\{[^}]*(?:max-width|overflow)/s,
+  it("constrains .composition-view width so xterm reads back bounded geometry", () => {
+    const rule = source.match(
+      /\.terminal-pane-body\s+\.xterm\s+\.composition-view\s*\{([^}]*)\}/s,
     );
+    expect(rule, ".composition-view rule must exist").not.toBeNull();
+    expect(rule![1]).toMatch(/max-width:\s*100%/);
+    expect(rule![1]).toMatch(/overflow:\s*hidden/);
   });
 
-  it("does NOT constrain .xterm-helper-textarea size (would corrupt IME commit text)", () => {
-    // 给 .xterm-helper-textarea 加 max-width 会钳制 xterm 运行时设置的
-    // inline width,干扰 IME 候选词的提交。
-    expect(source).not.toMatch(
-      /\.xterm-helper-textarea[^{}]*\{[^}]*(?:max-width)/s,
+  it("caps .xterm-helper-textarea max-width as a defensive fallback", () => {
+    const rule = source.match(
+      /\.terminal-pane-body\s+\.xterm\s+\.xterm-helper-textarea\s*\{([^}]*)\}/s,
     );
+    expect(rule, ".xterm-helper-textarea rule must exist").not.toBeNull();
+    expect(rule![1]).toMatch(/max-width:\s*100%/);
   });
 });
