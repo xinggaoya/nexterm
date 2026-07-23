@@ -96,21 +96,9 @@ export function applyTerminalTheme(target: {
  * 监听文档主题变化 + 字体加载完成事件 + 偏好变更事件,
  * 任一触发即调用 callback。callback 通常是 applyTerminalTheme。
  *
- * `watchedFonts` 用来过滤 `document.fonts.loadingdone`:仅当加载完成的
- * 字体属于给定族(去引号/小写化后比较)时才触发 callback。调用方应把
- * 自己关心的字体栈(primary/symbol/cjk/emoji)传进来,避免编辑器、
- * 文件树、UI 等其他模块的字体加载让终端白白跑一次 `getComputedStyle()`
- * 全部 24 个 token 的主题重应用。
- *
- * 不传或传空数组时保持旧的"任意字体都触发"行为,作为向旧调用方兼容
- * 的兜底(但建议都传)。
- *
  * 返回 dispose。
  */
-export function watchTerminalTheme(
-  callback: () => void,
-  watchedFonts?: readonly string[],
-): () => void {
+export function watchTerminalTheme(callback: () => void): () => void {
   const disposers: Array<() => void> = [];
   let disposed = false;
 
@@ -133,34 +121,8 @@ export function watchTerminalTheme(
   });
   disposers.push(() => observer.disconnect());
 
-  // 规范化要监听的字体族名(去引号、去空白、小写),与
-  // fontStack.ts watchFontLoadingDone 的规范化保持一致。
-  const wantedFonts = new Set(
-    (watchedFonts ?? []).map((f) =>
-      f.replace(/^["']|["']$/g, "").trim().toLowerCase(),
-    ),
-  );
-
   if (document.fonts?.addEventListener) {
-    const handler = (ev: Event) => {
-      // 兼容老 API: 没有 fontface 属性时按"全部命中"语义走,与
-      // fontStack.ts 行为保持一致。
-      const ff = (ev as { fontface?: FontFace }).fontface;
-      if (!ff) {
-        safeCallback();
-        return;
-      }
-      if (wantedFonts.size === 0) {
-        // 调用方没声明感兴趣的字体族,保留旧行为:任意字体加载都触发。
-        safeCallback();
-        return;
-      }
-      const family = ff.family
-        .replace(/^["']|["']$/g, "")
-        .trim()
-        .toLowerCase();
-      if (wantedFonts.has(family)) safeCallback();
-    };
+    const handler = () => safeCallback();
     document.fonts.addEventListener("loadingdone", handler);
     disposers.push(() =>
       document.fonts.removeEventListener("loadingdone", handler),
