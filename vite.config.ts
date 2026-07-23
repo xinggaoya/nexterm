@@ -48,6 +48,34 @@ export default defineConfig(async ({ mode }) => ({
           }),
         ]
       : []),
+    // monaco-editor 0.52.0 在 esm/vs/base/common/marked/marked.js 末尾带上
+    // //# sourceMappingURL=marked.umd.js.map，但该 map 文件并未随包发布。
+    // Vite 的 extractSourcemapFromFile 会在每次请求时尝试读取它并打印
+    // "Failed to load source map" 警告。在 load 阶段把这条无效注释剥掉，
+    // 既保持原 sourcemap 行为（本来就不可用），又消除控制台噪声。
+    {
+      name: "nexterm:strip-monaco-marked-sourcemap",
+      enforce: "pre",
+      load(id) {
+        // Vite 给 id 追加 ?v=<hash> 之类的查询参数，先剥掉再匹配。
+        const cleanId = id.split("?", 1)[0];
+        if (
+          cleanId.includes("monaco-editor") &&
+          /[\\/]vs[\\/]base[\\/]common[\\/]marked[\\/]marked\.js$/.test(cleanId)
+        ) {
+          try {
+            const code = readFileSync(cleanId, "utf-8").replace(
+              /\n\/\/# sourceMappingURL=marked\.umd\.js\.map\s*$/,
+              "\n",
+            );
+            return code;
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      },
+    },
     tailwindcss(),
   ],
   resolve: {
