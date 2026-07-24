@@ -7,6 +7,7 @@ import {
 } from "@vicons/ionicons5";
 import { NDropdown, NIcon, type DropdownOption } from "naive-ui";
 import { computed, h, onBeforeUnmount, ref, type VNode } from "vue";
+import NextermIconButton from "@/components/NextermIconButton.vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
 import { tabLabel } from "@/modules/tabs/tabLabel";
@@ -299,14 +300,12 @@ function handleSplitSelect(key: string | number) {
 
     <div v-if="showActions" class="flex shrink-0 items-center gap-0.5 pr-1.5">
       <TooltipTitle :label="t('app.header.newTerminal')">
-        <button
-          type="button"
+        <NextermIconButton
           data-new-tab
-          class="nexterm-icon-button size-7"
           @click="emit('newTab')"
         >
           <NIcon :component="AddOutline" :size="14" />
-        </button>
+        </NextermIconButton>
       </TooltipTitle>
       <TooltipTitle :label="t('app.header.splitActions')">
         <NDropdown
@@ -317,13 +316,11 @@ function handleSplitSelect(key: string | number) {
           :render-icon="renderSplitIcon"
           @select="handleSplitSelect"
         >
-          <button
-            type="button"
-            class="nexterm-icon-button size-7"
+          <NextermIconButton
             :disabled="!canSplit"
           >
             <NIcon :component="DuplicateOutline" :size="14" />
-          </button>
+          </NextermIconButton>
         </NDropdown>
       </TooltipTitle>
     </div>

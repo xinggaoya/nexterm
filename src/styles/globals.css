@@ -298,17 +298,15 @@
 
 @layer components {
   .nexterm-surface {
-    background-color: var(--card);
-    color: var(--card-foreground);
+    @apply bg-card text-card-foreground;
   }
   .nexterm-toolbar {
+    @apply flex shrink-0 items-center bg-surface-subtle border-b border-border;
     min-height: 32px;
-    background-color: var(--surface-subtle);
-    border-bottom: 1px solid var(--border);
   }
   .nexterm-row {
-    border-radius: 4px;
-    transition: background-color 120ms ease, color 120ms ease;
+    @apply rounded-md transition-colors;
+    transition-duration: 120ms;
   }
   .nexterm-row:hover,
   .nexterm-row[data-active="true"] {
@@ -320,27 +318,21 @@
     outline-offset: -1px;
   }
   .nexterm-icon-button {
-    display: inline-grid;
+    @apply inline-grid place-items-center text-muted-foreground transition-colors;
     width: 28px;
     height: 28px;
     flex: 0 0 auto;
-    place-items: center;
     border-radius: 4px;
-    color: var(--muted-foreground);
-    transition: background-color 120ms ease, color 120ms ease;
+    transition-duration: 120ms;
   }
   .nexterm-icon-button:hover {
-    background-color: var(--surface-hover);
-    color: var(--foreground);
+    @apply bg-surface-hover text-foreground;
   }
   .nexterm-icon-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.45;
+    @apply cursor-not-allowed opacity-45;
   }
   .nexterm-overlay {
-    background-color: var(--popover);
-    color: var(--popover-foreground);
-    border: 1px solid var(--border);
+    @apply bg-popover text-popover-foreground border border-border;
     border-radius: 8px;
     box-shadow: var(--overlay-shadow);
   }
@@ -370,7 +362,7 @@
     border-bottom: 1px solid var(--border);
   }
   .nexterm-card-row-hover {
-    transition: background-color 120ms ease;
+    @apply transition-colors;
   }
   .nexterm-card-row-hover:hover {
     background-color: var(--surface-hover);

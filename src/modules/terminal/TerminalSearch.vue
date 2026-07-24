@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from "vue";
+import { NButton, NInput, type InputInst } from "naive-ui";
+import { nextTick, ref, watch } from "vue";
 
 const props = defineProps<{
   visible: boolean;
@@ -11,7 +12,7 @@ const emit = defineEmits<{
 }>();
 
 const query = ref("");
-const inputRef = ref<HTMLInputElement | null>(null);
+const inputRef = ref<InputInst | null>(null);
 
 watch(
   () => props.visible,
@@ -40,51 +41,27 @@ function handleKey(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div v-if="visible" class="nexterm-overlay terminal-search">
-    <input
+  <div
+    v-if="visible"
+    class="nexterm-overlay absolute top-9 right-4 z-30 flex items-center gap-1 p-1.5"
+    @keydown="handleKey"
+  >
+    <NInput
       ref="inputRef"
-      v-model="query"
-      type="text"
+      v-model:value="query"
+      size="small"
       placeholder="Search…"
-      class="terminal-search-input"
+      class="!w-48"
       @keydown="handleKey"
     />
-    <button type="button" class="terminal-search-close" @click="emit('close')">
-      ×
-    </button>
+    <NButton
+      quaternary
+      circle
+      size="tiny"
+      aria-label="Close search"
+      @click="emit('close')"
+    >
+      <span class="text-base leading-none">×</span>
+    </NButton>
   </div>
 </template>
-
-<style scoped>
-.terminal-search {
-  position: absolute;
-  top: 36px;
-  right: 16px;
-  display: flex;
-  align-items: center;
-  padding: 4px 8px;
-  gap: 4px;
-  z-index: 30;
-  font-family: var(--font-sans);
-}
-.terminal-search-input {
-  background: transparent;
-  border: 0;
-  outline: 0;
-  color: var(--term-pane-header-fg);
-  font-size: 12px;
-  width: 200px;
-  font-family: inherit;
-}
-.terminal-search-close {
-  background: transparent;
-  border: 0;
-  color: var(--term-pane-header-fg-muted);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-}
-.terminal-search-close:hover {
-  color: var(--term-pane-header-fg);
-}
-</style>

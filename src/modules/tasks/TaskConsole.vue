@@ -78,22 +78,16 @@ function runInTerminal(run: TaskRun) {
           {{ t("tasks.consoleTitle") }}
         </div>
       </div>
-      <div class="flex items-center rounded-md bg-surface-subtle p-0.5">
-        <button
-          type="button"
-          :class="[
-            'h-6 rounded px-2 text-[11px] transition-colors',
-            view === 'tasks'
-              ? 'bg-accent text-primary'
-              : 'text-muted-foreground hover:text-foreground',
-          ]"
-          data-task-console-view-tasks
-          @click="emit('updateView', 'tasks')"
-        >
-          {{ t("tasks.tasksTab") }}
-        </button>
-
-      </div>
+      <NButton
+        size="tiny"
+        ghost
+        :focusable="false"
+        :type="view === 'tasks' ? 'primary' : 'default'"
+        data-task-console-view-tasks
+        @click="emit('updateView', 'tasks')"
+      >
+        {{ t("tasks.tasksTab") }}
+      </NButton>
       <NButton
         size="tiny"
         quaternary

@@ -2,6 +2,7 @@
 import { AddOutline, ServerOutline } from "@vicons/ionicons5";
 import { NDropdown, NIcon, type DropdownOption } from "naive-ui";
 import { computed, ref } from "vue";
+import NextermIconButton from "@/components/NextermIconButton.vue";
 import { IS_WINDOWS } from "@/lib/platform";
 import { t } from "@/modules/i18n/translate";
 import {
@@ -82,9 +83,7 @@ function addWslWorkspace(key: string | number): void {
   </template>
 
   <template v-else>
-    <button
-      type="button"
-      class="nexterm-icon-button size-7"
+    <NextermIconButton
       :title="t('app.workspaceBar.addLocal')"
       :aria-label="t('app.workspaceBar.addLocal')"
       data-add-workspace
@@ -92,7 +91,7 @@ function addWslWorkspace(key: string | number): void {
       @click="addLocalWorkspace"
     >
       <NIcon :component="AddOutline" :size="15" />
-    </button>
+    </NextermIconButton>
 
     <NDropdown
       v-if="showWslAction"
@@ -101,9 +100,7 @@ function addWslWorkspace(key: string | number): void {
       :options="wslOptions"
       @select="addWslWorkspace"
     >
-      <button
-        type="button"
-        class="nexterm-icon-button size-7"
+      <NextermIconButton
         :title="t('app.workspaceBar.addWsl')"
         :aria-label="t('app.workspaceBar.addWsl')"
         aria-haspopup="menu"
@@ -111,7 +108,7 @@ function addWslWorkspace(key: string | number): void {
         data-add-workspace-wsl
       >
         <NIcon :component="ServerOutline" :size="14" />
-      </button>
+      </NextermIconButton>
     </NDropdown>
   </template>
 </template>

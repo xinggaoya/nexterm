@@ -7,6 +7,7 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { NIcon } from "naive-ui";
 import { onMounted } from "vue";
+import NextermIconButton from "@/components/NextermIconButton.vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import WindowControls from "@/components/WindowControls.vue";
 import { IS_MAC, IS_WINDOWS } from "@/lib/platform";
@@ -85,22 +86,19 @@ async function startWindowDrag(event: PointerEvent) {
     <!-- Right: command center + AI + settings + window controls -->
     <div class="flex w-28 shrink-0 items-center justify-end gap-0.5 pr-1">
       <TooltipTitle :label="t('app.header.openCommandCenter')">
-        <button
-          type="button"
+        <NextermIconButton
           data-open-command-palette
           :aria-label="t('app.header.openCommandCenter')"
-          class="nexterm-icon-button"
           @click="emit('openCommandPalette')"
         >
           <NIcon :component="SearchOutline" :size="14" />
-        </button>
+        </NextermIconButton>
       </TooltipTitle>
       <TooltipTitle :label="t('app.header.openAiAssistant')">
-        <button
-          type="button"
+        <NextermIconButton
           data-open-ai-assistant
           :aria-label="t('app.header.openAiAssistant')"
-          class="nexterm-icon-button group"
+          class="group"
           @click="emit('openAiAssistant')"
         >
           <NIcon
@@ -108,18 +106,16 @@ async function startWindowDrag(event: PointerEvent) {
             :size="14"
             class="transition-colors group-hover:text-primary"
           />
-        </button>
+        </NextermIconButton>
       </TooltipTitle>
       <TooltipTitle :label="t('common.settings')">
-        <button
-          type="button"
+        <NextermIconButton
           data-open-settings
           :aria-label="t('common.settings')"
-          class="nexterm-icon-button"
           @click="emit('openSettings')"
         >
           <NIcon :component="SettingsOutline" :size="14" />
-        </button>
+        </NextermIconButton>
       </TooltipTitle>
       <WindowControls v-if="showWindowControls && !IS_MAC" />
     </div>

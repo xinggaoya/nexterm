@@ -8,8 +8,8 @@ import {
   OptionsOutline,
   TerminalOutline,
 } from "@vicons/ionicons5";
-import { NButton, NIcon } from "naive-ui";
-import { computed, ref, type Component } from "vue";
+import { NButton, NIcon, NMenu, type MenuOption } from "naive-ui";
+import { computed, h, ref, type Component } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import {
   SETTINGS_DEFAULT_TAB,
@@ -83,6 +83,28 @@ function selectTab(tab: SettingsTab) {
   fallbackTab.value = tab;
   emit("update:activeTab", tab);
 }
+
+const menuOptions = computed<MenuOption[]>(() =>
+  tabs.map((tab) => ({
+    key: tab.id,
+    label: t(tab.labelKey),
+    icon: () => h(NIcon, null, { default: () => h(tab.icon) }),
+  })),
+);
+
+function renderMenuLabel(option: MenuOption) {
+  // The key carries the settings tab id — use it to emit the data attribute
+  // for the existing test selectors without expanding the MenuOption shape.
+  const tabKey = String(option.key ?? "");
+  return h(
+    "span",
+    {
+      "data-settings-tab": tabKey,
+      class: "truncate",
+    },
+    String(option.label ?? ""),
+  );
+}
 </script>
 
 <template>
@@ -113,25 +135,13 @@ function selectTab(tab: SettingsTab) {
       <aside
         class="no-scrollbar shrink-0 overflow-x-auto border-b border-border bg-sidebar px-2 py-2 sm:w-44 sm:overflow-y-auto sm:border-r sm:border-b-0 sm:py-3"
       >
-        <nav class="flex gap-1 sm:flex-col" aria-label="Settings sections">
-          <button
-            v-for="tab in tabs"
-            :key="tab.id"
-            type="button"
-            :data-settings-tab="tab.id"
-            :aria-pressed="selectedTab === tab.id"
-            :class="[
-              'nexterm-row inline-flex h-7 shrink-0 items-center gap-2 px-2.5 text-xs font-medium sm:w-full',
-              selectedTab === tab.id
-                ? 'bg-accent text-primary'
-                : 'text-muted-foreground hover:text-foreground',
-            ]"
-            @click="selectTab(tab.id)"
-          >
-            <NIcon :component="tab.icon" :size="14" />
-            <span class="truncate">{{ t(tab.labelKey) }}</span>
-          </button>
-        </nav>
+        <NMenu
+          :value="selectedTab"
+          :options="menuOptions"
+          :render-label="renderMenuLabel"
+          :indent="18"
+          @update:value="(key: string) => selectTab(key as SettingsTab)"
+        />
       </aside>
 
       <main class="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pt-5 pb-6">

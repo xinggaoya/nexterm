@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NButton } from "naive-ui";
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import { t } from "@/modules/i18n/translate";
@@ -152,106 +153,123 @@ onBeforeUnmount(() => {
     ref="menuElement"
     class="nexterm-overlay fixed z-50 min-w-44 p-1 text-[12px]"
     :style="{ left: `${target.x}px`, top: `${target.y}px` }"
-    @click.stop
     @contextmenu.prevent
   >
-    <button
-      type="button"
+    <NButton
+      text
+      block
+      size="tiny"
       data-menu-action="close"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="emitClose('close')"
     >
       {{ t("tabMenu.close") }}
-    </button>
-    <button
+    </NButton>
+    <NButton
       v-if="target.total > 1"
-      type="button"
+      text
+      block
+      size="tiny"
       data-menu-action="close-others"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="emitClose('others')"
     >
       {{ t("tabMenu.closeOthers") }}
-    </button>
-    <button
+    </NButton>
+    <NButton
       v-if="target.index < target.total - 1"
-      type="button"
+      text
+      block
+      size="tiny"
       data-menu-action="close-right"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="emitClose('right')"
     >
       {{ t("tabMenu.closeRight") }}
-    </button>
-    <button
+    </NButton>
+    <NButton
       v-if="target.total > 1"
-      type="button"
+      text
+      block
+      size="tiny"
       data-menu-action="close-all"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="emitClose('all')"
     >
       {{ t("tabMenu.closeAll") }}
-    </button>
+    </NButton>
     <template v-if="target.tab.kind === 'terminal'">
       <div class="my-1 h-px bg-border/70" />
-      <button
-        type="button"
+      <NButton
+        text
+        block
+        size="tiny"
         data-menu-action="duplicate"
-        class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+       
         @click="emitDuplicate"
       >
         {{ t("tabMenu.duplicate") }}
-      </button>
-      <button
-        type="button"
+      </NButton>
+      <NButton
+        text
+        block
+        size="tiny"
         data-menu-action="rename"
-        class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+       
         @click="emitRename"
       >
         {{ t("tabMenu.rename") }}
-      </button>
+      </NButton>
     </template>
     <template
       v-else-if="target.tab.kind === 'editor' || target.tab.kind === 'markdown' || target.tab.kind === 'preview'"
     >
       <div class="my-1 h-px bg-border/70" />
-      <button
+      <NButton
         v-if="target.tab.kind === 'editor'"
-        type="button"
+        text
+        block
+        size="tiny"
         data-menu-action="pin"
-        class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+       
         @click="emitPin"
       >
-        {{
-          target.tab.preview ? t("tabMenu.pin") : t("tabMenu.unpin")
-        }}
-      </button>
-      <button
-        type="button"
+        {{ target.tab.preview ? t("tabMenu.pin") : t("tabMenu.unpin") }}
+      </NButton>
+      <NButton
+        text
+        block
+        size="tiny"
         data-menu-action="move-to-new-window"
-        class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+       
         @click="emitMoveToNewWindow"
       >
         {{ t("tabMenu.moveToNewWindow") }}
-      </button>
+      </NButton>
     </template>
     <template v-if="pathFor(target.tab)">
       <div class="my-1 h-px bg-border/70" />
-      <button
-        type="button"
+      <NButton
+        text
+        block
+        size="tiny"
         data-menu-action="copy-path"
-        class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+       
         @click="emitCopyPath(false)"
       >
         {{ t("tabMenu.copyPath") }}
-      </button>
-      <button
+      </NButton>
+      <NButton
         v-if="rootPath && pathFor(target.tab)?.startsWith(`${rootPath}/`)"
-        type="button"
+        text
+        block
+        size="tiny"
         data-menu-action="copy-relative-path"
-        class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+       
         @click="emitCopyPath(true)"
       >
         {{ t("tabMenu.copyRelativePath") }}
-      </button>
+      </NButton>
     </template>
   </div>
 </template>

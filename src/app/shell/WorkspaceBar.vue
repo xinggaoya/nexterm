@@ -7,6 +7,7 @@ import {
 } from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
 import { computed } from "vue";
+import NextermIconButton from "@/components/NextermIconButton.vue";
 import { useWorkspacesPiniaStore } from "@/modules/workspace/workspacesPinia";
 import type { WorkspaceInstance } from "@/modules/workspace/workspacesPinia";
 import type { WorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
@@ -107,15 +108,13 @@ function close(event: MouseEvent, id: string): void {
         @add-workspace="(env) => emit('addWorkspace', env)"
       />
 
-      <button
-        type="button"
-        class="nexterm-icon-button size-7"
+      <NextermIconButton
         :title="t('app.leftSidebar.openInNewWindow')"
         data-open-in-new-window
         @click="emit('openInNewWindow')"
       >
         <NIcon :component="OpenOutline" :size="14" />
-      </button>
+      </NextermIconButton>
     </template>
 
     <template v-else>

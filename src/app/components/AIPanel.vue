@@ -11,6 +11,7 @@
 import { SparklesOutline, SendOutline, CloseOutline } from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
 import { ref } from "vue";
+import NextermIconButton from "@/components/NextermIconButton.vue";
 import { t } from "@/modules/i18n/translate";
 
 const emit = defineEmits<{
@@ -38,14 +39,13 @@ function handleSend() {
           {{ t("app.ai.title") }}
         </span>
       </div>
-      <button
-        type="button"
-        class="nexterm-icon-button size-6"
+      <NextermIconButton
+        class="!size-6"
         :aria-label="t('app.ai.close')"
         @click="emit('close')"
       >
         <NIcon :component="CloseOutline" :size="14" />
-      </button>
+      </NextermIconButton>
     </header>
 
     <!-- Conversation area -->

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NInput, type InputInst } from "naive-ui";
 import { nextTick, onMounted, ref } from "vue";
 
 const props = withDefaults(
@@ -16,7 +17,7 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
-const inputRef = ref<HTMLInputElement | null>(null);
+const inputRef = ref<InputInst | null>(null);
 const value = ref(props.initial);
 let done = false;
 
@@ -42,26 +43,37 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 
+function handleBlur() {
+  commit();
+}
+
+function focusAndSelect() {
+  const inst = inputRef.value;
+  if (!inst) return;
+  // InputInst exposes the native input through `inputElRef` (Naive UI v2.44+).
+  const el = inst.inputElRef ?? null;
+  if (!el) return;
+  el.focus({ preventScroll: true });
+  const dot = props.initial.lastIndexOf(".");
+  if (dot > 0) el.setSelectionRange(0, dot);
+  else el.select();
+}
+
 onMounted(() => {
-  void nextTick(() => {
-    const input = inputRef.value;
-    if (!input) return;
-    input.focus({ preventScroll: true });
-    const dot = props.initial.lastIndexOf(".");
-    if (dot > 0) input.setSelectionRange(0, dot);
-    else input.select();
-  });
+  void nextTick(focusAndSelect);
 });
 </script>
 
 <template>
-  <input
+  <NInput
     ref="inputRef"
-    v-model="value"
-    data-inline-tree-input
+    v-model:value="value"
+    size="tiny"
     :placeholder="placeholder"
-    class="min-w-0 flex-1 truncate rounded-sm border border-border bg-background px-1.5 py-0.5 text-[12px] text-foreground outline-none focus:border-ring"
-    @keydown="handleKeydown"
-    @blur="commit"
+    :input-props="{
+      'data-inline-tree-input': '',
+      onKeydown: handleKeydown,
+      onBlur: handleBlur,
+    } as Record<string, unknown>"
   />
 </template>

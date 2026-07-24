@@ -5,6 +5,7 @@ import { NIcon } from "naive-ui";
 import { onMounted, onUnmounted, ref } from "vue";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { t } from "@/modules/i18n/translate";
+import NextermIconButton from "./NextermIconButton.vue";
 import TooltipTitle from "./TooltipTitle.vue";
 
 const props = defineProps<{
@@ -41,35 +42,30 @@ onUnmounted(() => {
   >
     <template v-if="!closeOnly">
       <TooltipTitle :label="t('app.windowControls.minimize')">
-        <button
-          type="button"
+        <NextermIconButton
           :aria-label="t('app.windowControls.minimize')"
-          class="nexterm-icon-button"
           @click="windowRef.minimize()"
         >
           <NIcon :component="RemoveOutline" :size="13" />
-        </button>
+        </NextermIconButton>
       </TooltipTitle>
       <TooltipTitle :label="maximized ? t('app.windowControls.restore') : t('app.windowControls.maximize')">
-        <button
-          type="button"
+        <NextermIconButton
           :aria-label="maximized ? t('app.windowControls.restore') : t('app.windowControls.maximize')"
-          class="nexterm-icon-button"
           @click="windowRef.toggleMaximize()"
         >
           <NIcon :component="maximized ? CopyOutline : SquareOutline" :size="13" />
-        </button>
+        </NextermIconButton>
       </TooltipTitle>
     </template>
     <TooltipTitle :label="t('app.windowControls.close')">
-      <button
-        type="button"
+      <NextermIconButton
         :aria-label="t('app.windowControls.close')"
-        class="nexterm-icon-button hover:bg-destructive/15 hover:text-destructive"
+        class="hover:!bg-destructive/15 hover:!text-destructive"
         @click="windowRef.close()"
       >
         <NIcon :component="CloseOutline" :size="15" />
-      </button>
+      </NextermIconButton>
     </TooltipTitle>
   </div>
 </template>

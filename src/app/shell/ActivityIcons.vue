@@ -7,6 +7,7 @@ import {
 } from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
 import { computed } from "vue";
+import NextermIconButton from "@/components/NextermIconButton.vue";
 import { t } from "@/modules/i18n/translate";
 import type { ActivityKey } from "@/app/useWorkbenchLayout";
 import {
@@ -43,25 +44,21 @@ const activities = computed(() => [
     class="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-border bg-activity-bar py-1.5"
     aria-label="Activity icons"
   >
-    <button
-      type="button"
+    <NextermIconButton
       data-add-workspace
       :title="t('app.leftSidebar.addWorkspace')"
-      class="nexterm-icon-button"
       @click="emit('add-workspace', LOCAL_WORKSPACE)"
     >
       <NIcon :component="AddOutline" :size="16" />
-    </button>
+    </NextermIconButton>
 
-    <button
-      type="button"
+    <NextermIconButton
       data-open-in-new-window
       :title="t('app.leftSidebar.openInNewWindow')"
-      class="nexterm-icon-button"
       @click="emit('open-in-new-window')"
     >
       <NIcon :component="OpenOutline" :size="15" />
-    </button>
+    </NextermIconButton>
 
     <div class="v2-hairline my-1 h-px w-6 border-t" />
 

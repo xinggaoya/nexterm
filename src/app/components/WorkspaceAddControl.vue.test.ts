@@ -17,7 +17,7 @@ vi.mock("@/lib/platform", () => ({
 }));
 
 vi.mock("naive-ui", async () => {
-  const { defineComponent } = await vi.importActual<typeof import("vue")>("vue");
+  const { defineComponent, h } = await vi.importActual<typeof import("vue")>("vue");
   return {
     NDropdown: defineComponent({
       props: ["options"],
@@ -27,6 +27,21 @@ vi.mock("naive-ui", async () => {
     }),
     NIcon: defineComponent({
       template: "<span><slot /></span>",
+    }),
+    NButton: defineComponent({
+      name: "NButton",
+      emits: ["click"],
+      setup(_, { slots, attrs, emit }) {
+        return () =>
+          h(
+            "button",
+            {
+              ...attrs,
+              onClick: (event: MouseEvent) => emit("click", event),
+            },
+            slots.default?.(),
+          );
+      },
     }),
   };
 });

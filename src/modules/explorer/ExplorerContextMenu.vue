@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NButton } from "naive-ui";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   copyToClipboard,
@@ -154,100 +155,122 @@ onBeforeUnmount(() => {
     ref="menuElement"
     class="nexterm-overlay fixed z-50 min-w-44 p-1 text-[12px]"
     :style="{ left: `${target.x}px`, top: `${target.y}px` }"
-    @click.stop
     @contextmenu.prevent
   >
-    <button
+    <NButton
       v-if="!target.isDir"
-      type="button"
+      text
+      block
+      size="tiny"
       data-menu-action="open"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="openFile(true)"
     >
       {{ t("explorer.open") }}
-    </button>
-    <button
+    </NButton>
+    <NButton
       v-if="!target.isDir && isMarkdownPath(target.path)"
-      type="button"
+      text
+      block
+      size="tiny"
       data-menu-action="open-preview"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="openMarkdownPreview"
     >
       {{ t("explorer.openPreview") }}
-    </button>
-    <button
-      type="button"
+    </NButton>
+    <NButton
+      text
+      block
+      size="tiny"
       data-menu-action="reveal"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="revealTarget"
     >
       {{ t("explorer.revealInFinder") }}
-    </button>
-    <button
+    </NButton>
+    <NButton
       v-if="target.isDir"
-      type="button"
+      text
+      block
+      size="tiny"
       data-menu-action="open-in-terminal"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="openInTerminal"
     >
       {{ t("explorer.openInTerminal") }}
-    </button>
-    <button
-      type="button"
+    </NButton>
+    <NButton
+      text
+      block
+      size="tiny"
       data-menu-action="duplicate"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="duplicate"
     >
       {{ t("explorer.duplicate") }}
-    </button>
+    </NButton>
     <div class="my-1 h-px bg-border/70" />
-    <button
-      type="button"
+    <NButton
+      text
+      block
+      size="tiny"
       data-menu-action="new-file"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="create('file')"
     >
       {{ t("explorer.newFile") }}
-    </button>
-    <button
-      type="button"
+    </NButton>
+    <NButton
+      text
+      block
+      size="tiny"
       data-menu-action="new-folder"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="create('dir')"
     >
       {{ t("explorer.newFolder") }}
-    </button>
+    </NButton>
     <div class="my-1 h-px bg-border/70" />
-    <button
-      type="button"
+    <NButton
+      text
+      block
+      size="tiny"
       data-menu-action="copy-path"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="copyPath(false)"
     >
       {{ t("explorer.copyPath") }}
-    </button>
-    <button
-      type="button"
+    </NButton>
+    <NButton
+      text
+      block
+      size="tiny"
       data-menu-action="copy-relative-path"
-      class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+     
       @click="copyPath(true)"
     >
       {{ t("explorer.copyRelativePath") }}
-    </button>
+    </NButton>
     <template v-if="target.source !== 'root'">
       <div class="my-1 h-px bg-border/70" />
-      <button
-        type="button"
+      <NButton
+        text
+        block
+        size="tiny"
         data-menu-action="rename"
-        class="flex h-7 w-full items-center rounded-md px-2 text-left hover:bg-accent"
+       
         @click="beginRename"
       >
         {{ t("explorer.rename") }}
-      </button>
-      <button
-        type="button"
+      </NButton>
+      <NButton
+        text
+        block
+        size="tiny"
         data-menu-action="delete"
-        class="flex h-7 w-full items-center rounded-md px-2 text-left text-destructive hover:bg-destructive/10"
+        :type="confirmDeletePath === target.path ? 'error' : 'default'"
+       
         @click="confirmDelete"
       >
         {{
@@ -255,7 +278,7 @@ onBeforeUnmount(() => {
             ? t("explorer.clickAgainToConfirm")
             : t("explorer.delete")
         }}
-      </button>
+      </NButton>
     </template>
   </div>
 </template>
