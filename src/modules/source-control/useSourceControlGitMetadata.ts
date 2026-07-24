@@ -2,6 +2,7 @@ import { getCurrentInstance, onBeforeUnmount, ref, watch } from "vue";
 import type { ReadonlyRef } from "@/lib/refs";
 import type {
   GitBranchInfo,
+  GitRemoteInfo,
   GitStashEntry,
   WorkspaceNative,
 } from "@/lib/native";
@@ -15,6 +16,7 @@ type SourceControlGitMetadataOptions = {
 export function useSourceControlGitMetadata(options: SourceControlGitMetadataOptions) {
   const branches = ref<GitBranchInfo[]>([]);
   const stashes = ref<GitStashEntry[]>([]);
+  const remotes = ref<GitRemoteInfo[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
   const requestId = ref(0);
@@ -24,6 +26,7 @@ export function useSourceControlGitMetadata(options: SourceControlGitMetadataOpt
     if (!root) {
       branches.value = [];
       stashes.value = [];
+      remotes.value = [];
       error.value = null;
       return;
     }
@@ -31,18 +34,27 @@ export function useSourceControlGitMetadata(options: SourceControlGitMetadataOpt
     loading.value = true;
     error.value = null;
     try {
-      const [nextBranches, nextStashes] = await Promise.all([
+      const [nextBranches, nextStashes, nextRemotes] = await Promise.all([
         options.wsNative.gitBranchList(root),
         options.wsNative.gitStashList(root),
+        options.wsNative.gitRemoteList(root).catch((err) => {
+          // Remotes are a soft signal — keep branches/stashes rendering even
+          // when the remote list can't be read (e.g. corrupted config). The
+          // error is surfaced to the reminders/modal via the `error` ref.
+          error.value = normalizeError(err);
+          return [] as GitRemoteInfo[];
+        }),
       ]);
       if (currentId !== requestId.value) return;
       branches.value = nextBranches;
       stashes.value = nextStashes;
+      remotes.value = nextRemotes;
     } catch (err) {
       if (currentId !== requestId.value) return;
       error.value = normalizeError(err);
       branches.value = [];
       stashes.value = [];
+      remotes.value = [];
     } finally {
       if (currentId === requestId.value) loading.value = false;
     }
@@ -67,6 +79,7 @@ export function useSourceControlGitMetadata(options: SourceControlGitMetadataOpt
   return {
     branches,
     stashes,
+    remotes,
     loading,
     error,
     refreshGitMetadata,

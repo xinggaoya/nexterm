@@ -38,6 +38,9 @@ export type BusyAction =
   | "push"
   | "branch-create"
   | "stash-save"
+  | "remote-add"
+  | "remote-update"
+  | "remote-remove"
   | `stage:${string}`
   | `unstage:${string}`
   | `discard:${string}`

@@ -165,6 +165,22 @@ export type GitRepositoryDiscovery = {
   truncated: boolean;
 };
 
+export type GitRemoteInfo = {
+  name: string;
+  fetchUrl: string;
+  pushUrl: string;
+};
+
+export type GitRemoteInput = {
+  name: string;
+  url: string;
+};
+
+export type GitRemoteUrlUpdate = {
+  name: string;
+  newUrl: string;
+};
+
 export type ShellBgLogResponse = {
   bytes: string;
   nextOffset: number;
@@ -470,6 +486,22 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
       invoke<string | null>("git_remote_url", {
         repoRoot,
         name: name ?? null,
+        workspace,
+      }),
+    gitRemoteList: (repoRoot: string) =>
+      invoke<GitRemoteInfo[]>("git_remote_list", { repoRoot, workspace }),
+    gitRemoteAdd: (repoRoot: string, input: GitRemoteInput) =>
+      invoke<GitRemoteInfo>("git_remote_add", {
+        repoRoot,
+        input,
+        workspace,
+      }),
+    gitRemoteRemove: (repoRoot: string, name: string) =>
+      invoke<void>("git_remote_remove", { repoRoot, name, workspace }),
+    gitRemoteSetUrl: (repoRoot: string, input: GitRemoteUrlUpdate) =>
+      invoke<GitRemoteInfo>("git_remote_set_url", {
+        repoRoot,
+        input,
         workspace,
       }),
     gitDiscoverRepositories: (

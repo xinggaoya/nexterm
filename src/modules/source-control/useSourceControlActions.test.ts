@@ -518,4 +518,253 @@ describe("useSourceControlActions", () => {
       "Stash was not applied",
     );
   });
+
+  it("adds a remote and refreshes status + metadata after the IPC call resolves", async () => {
+    const state = createState();
+    const refreshGitMetadata = vi.fn().mockResolvedValue(undefined);
+    const wsNative = {
+      gitStage: vi.fn(),
+      gitUnstage: vi.fn(),
+      gitDiscard: vi.fn(),
+      gitCommit: vi.fn(),
+      gitFetch: vi.fn(),
+      gitPullFfOnly: vi.fn(),
+      gitPush: vi.fn(),
+      gitCheckoutBranch: vi.fn(),
+      gitCreateBranch: vi.fn(),
+      gitStashPush: vi.fn(),
+      gitStashPop: vi.fn(),
+      gitStashDrop: vi.fn(),
+      gitStashApply: vi.fn(),
+      gitRemoteList: vi.fn(),
+      gitRemoteAdd: vi.fn().mockResolvedValue({
+        name: "origin",
+        fetchUrl: "git@github.com:test/test.git",
+        pushUrl: "git@github.com:test/test.git",
+      }),
+      gitRemoteRemove: vi.fn(),
+      gitRemoteSetUrl: vi.fn(),
+    };
+    const actions = useSourceControlActions({
+      state,
+      wsNative: wsNative as unknown as WorkspaceNative,
+      dialog: { warning: vi.fn() },
+      t: (key, params) => (params?.name ? `${key}:${params.name}` : key),
+      emitCommitted: vi.fn(),
+      refreshGitMetadata,
+    });
+
+    await actions.addRemote({ name: "origin", url: "git@github.com:test/test.git" });
+
+    expect(wsNative.gitRemoteAdd).toHaveBeenCalledWith("/repo", {
+      name: "origin",
+      url: "git@github.com:test/test.git",
+    });
+    expect(state.refreshStatus).toHaveBeenCalled();
+    expect(refreshGitMetadata).toHaveBeenCalled();
+    expect(notifySuccess).toHaveBeenCalledWith(
+      "sourceControl.remoteAddSuccess:origin",
+      "origin → git@github.com:test/test.git",
+    );
+  });
+
+  it("updates a remote URL and surfaces the success notification", async () => {
+    const state = createState();
+    const wsNative = {
+      gitStage: vi.fn(),
+      gitUnstage: vi.fn(),
+      gitDiscard: vi.fn(),
+      gitCommit: vi.fn(),
+      gitFetch: vi.fn(),
+      gitPullFfOnly: vi.fn(),
+      gitPush: vi.fn(),
+      gitCheckoutBranch: vi.fn(),
+      gitCreateBranch: vi.fn(),
+      gitStashPush: vi.fn(),
+      gitStashPop: vi.fn(),
+      gitStashDrop: vi.fn(),
+      gitStashApply: vi.fn(),
+      gitRemoteList: vi.fn(),
+      gitRemoteAdd: vi.fn(),
+      gitRemoteRemove: vi.fn(),
+      gitRemoteSetUrl: vi.fn().mockResolvedValue({
+        name: "origin",
+        fetchUrl: "git@github.com:test/renamed.git",
+        pushUrl: "git@github.com:test/renamed.git",
+      }),
+    };
+    const actions = useSourceControlActions({
+      state,
+      wsNative: wsNative as unknown as WorkspaceNative,
+      dialog: { warning: vi.fn() },
+      t: (key, params) => (params?.name ? `${key}:${params.name}` : key),
+      emitCommitted: vi.fn(),
+      refreshGitMetadata: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await actions.updateRemote({
+      name: "origin",
+      newUrl: "git@github.com:test/renamed.git",
+    });
+
+    expect(wsNative.gitRemoteSetUrl).toHaveBeenCalledWith("/repo", {
+      name: "origin",
+      newUrl: "git@github.com:test/renamed.git",
+    });
+    expect(notifySuccess).toHaveBeenCalledWith(
+      "sourceControl.remoteUpdateSuccess:origin",
+      "origin → git@github.com:test/renamed.git",
+    );
+  });
+
+  it("shows a confirmation dialog before removing a remote and runs the IPC after confirmation", async () => {
+    const state = createState();
+    const wsNative = {
+      gitStage: vi.fn(),
+      gitUnstage: vi.fn(),
+      gitDiscard: vi.fn(),
+      gitCommit: vi.fn(),
+      gitFetch: vi.fn(),
+      gitPullFfOnly: vi.fn(),
+      gitPush: vi.fn(),
+      gitCheckoutBranch: vi.fn(),
+      gitCreateBranch: vi.fn(),
+      gitStashPush: vi.fn(),
+      gitStashPop: vi.fn(),
+      gitStashDrop: vi.fn(),
+      gitStashApply: vi.fn(),
+      gitRemoteList: vi.fn(),
+      gitRemoteAdd: vi.fn(),
+      gitRemoteRemove: vi.fn().mockResolvedValue(undefined),
+      gitRemoteSetUrl: vi.fn(),
+    };
+    const confirm = vi.fn(
+      ({ onPositiveClick }: { onPositiveClick: () => void | Promise<void> }) =>
+        onPositiveClick(),
+    );
+    const actions = useSourceControlActions({
+      state,
+      wsNative: wsNative as unknown as WorkspaceNative,
+      dialog: { warning: confirm },
+      t: (key, params) => (params?.name ? `${key}:${params.name}` : key),
+      emitCommitted: vi.fn(),
+      refreshGitMetadata: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await actions.removeRemote("origin");
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "sourceControl.remoteRemoveTitle",
+        positiveText: "sourceControl.remoteRemove",
+        negativeText: "common.cancel",
+      }),
+    );
+    expect(wsNative.gitRemoteRemove).toHaveBeenCalledWith("/repo", "origin");
+    expect(notifySuccess).toHaveBeenCalledWith(
+      "sourceControl.remoteRemoveSuccess:origin",
+      "origin",
+    );
+  });
+
+  it("reports add-remote failures and does not refresh status or metadata", async () => {
+    const state = createState();
+    const refreshGitMetadata = vi.fn().mockResolvedValue(undefined);
+    const wsNative = {
+      gitStage: vi.fn(),
+      gitUnstage: vi.fn(),
+      gitDiscard: vi.fn(),
+      gitCommit: vi.fn(),
+      gitFetch: vi.fn(),
+      gitPullFfOnly: vi.fn(),
+      gitPush: vi.fn(),
+      gitCheckoutBranch: vi.fn(),
+      gitCreateBranch: vi.fn(),
+      gitStashPush: vi.fn(),
+      gitStashPop: vi.fn(),
+      gitStashDrop: vi.fn(),
+      gitStashApply: vi.fn(),
+      gitRemoteList: vi.fn(),
+      gitRemoteAdd: vi.fn().mockRejectedValue("remote origin already exists"),
+      gitRemoteRemove: vi.fn(),
+      gitRemoteSetUrl: vi.fn(),
+    };
+    const actions = useSourceControlActions({
+      state,
+      wsNative: wsNative as unknown as WorkspaceNative,
+      dialog: { warning: vi.fn() },
+      t: (key) => key,
+      emitCommitted: vi.fn(),
+      refreshGitMetadata,
+    });
+
+    await actions.addRemote({ name: "origin", url: "git@github.com:test/test.git" });
+
+    expect(notifyError).toHaveBeenCalledWith(
+      "sourceControl.remoteAddFailed",
+      "remote origin already exists",
+    );
+    expect(state.refreshStatus).not.toHaveBeenCalled();
+    expect(refreshGitMetadata).not.toHaveBeenCalled();
+  });
+
+  it("listRemotes returns the IPC payload and handles missing repoRoot", async () => {
+    const wsNative = {
+      gitStage: vi.fn(),
+      gitUnstage: vi.fn(),
+      gitDiscard: vi.fn(),
+      gitCommit: vi.fn(),
+      gitFetch: vi.fn(),
+      gitPullFfOnly: vi.fn(),
+      gitPush: vi.fn(),
+      gitCheckoutBranch: vi.fn(),
+      gitCreateBranch: vi.fn(),
+      gitStashPush: vi.fn(),
+      gitStashPop: vi.fn(),
+      gitStashDrop: vi.fn(),
+      gitStashApply: vi.fn(),
+      gitRemoteList: vi.fn().mockResolvedValue([
+        {
+          name: "origin",
+          fetchUrl: "git@github.com:test/test.git",
+          pushUrl: "git@github.com:test/test.git",
+        },
+      ]),
+      gitRemoteAdd: vi.fn(),
+      gitRemoteRemove: vi.fn(),
+      gitRemoteSetUrl: vi.fn(),
+    };
+
+    const stateActive = createState();
+    const activeAction = useSourceControlActions({
+      state: stateActive,
+      wsNative: wsNative as unknown as WorkspaceNative,
+      dialog: { warning: vi.fn() },
+      t: (key) => key,
+      emitCommitted: vi.fn(),
+    });
+    const list = await activeAction.listRemotes();
+    expect(wsNative.gitRemoteList).toHaveBeenCalledWith("/repo");
+    expect(list).toHaveLength(1);
+    expect(list[0].name).toBe("origin");
+
+    const stateMissing = createState();
+    // `repoRoot` is a ReadonlyRef in the public type, but the source
+    // composable reads `.value` synchronously. We can rebind it here for
+    // the missing-root branch by reconstructing the runtime state.
+    const missingRepoRoot = ref<string | null>(null);
+    const missingState = {
+      ...stateMissing,
+      repoRoot: missingRepoRoot as unknown as SourceControlRuntimeState["repoRoot"],
+    };
+    const missingAction = useSourceControlActions({
+      state: missingState,
+      wsNative: wsNative as unknown as WorkspaceNative,
+      dialog: { warning: vi.fn() },
+      t: (key) => key,
+      emitCommitted: vi.fn(),
+    });
+    const empty = await missingAction.listRemotes();
+    expect(empty).toEqual([]);
+  });
 });

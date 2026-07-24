@@ -13,6 +13,7 @@ import { t } from "@/modules/i18n/translate";
 import SourceControlChangeList from "./SourceControlChangeList.vue";
 import SourceControlCommitBox from "./SourceControlCommitBox.vue";
 import SourceControlGitWorkflows from "./SourceControlGitWorkflows.vue";
+import SourceControlRemotes from "./SourceControlRemotes.vue";
 import SourceControlToolbar from "./SourceControlToolbar.vue";
 import type {
   SourceControlFileEntry,
@@ -105,6 +106,14 @@ const showBranchesModal = computed({
   },
 });
 
+const showRemotesModal = ref(false);
+function openRemotesModal() {
+  showRemotesModal.value = true;
+  // Pull the latest remote list right before the modal opens so the user
+  // sees the current state rather than the snapshot from the last refresh.
+  void gitMetadata.refreshGitMetadata();
+}
+
 const {
   panelState,
   status,
@@ -133,6 +142,9 @@ const {
   fetchRemote,
   pullRemote,
   pushRemote,
+  addRemote,
+  updateRemote,
+  removeRemote,
   checkoutBranch,
   createBranch,
   stashChanges,
@@ -399,6 +411,7 @@ async function handleCheckoutBranch(branch: GitBranchInfo) {
       @refresh="refresh"
       @open-history="openHistory"
       @open-branches="showBranchesModal = true"
+      @manage-remotes="openRemotesModal"
     />
 
     <div v-if="panelState === 'no-root'" class="grid min-h-0 flex-1 place-items-center p-4 text-center">
@@ -471,6 +484,17 @@ async function handleCheckoutBranch(branch: GitBranchInfo) {
         @stash-pop="({ selector, fullSha }) => popStash(selector, fullSha)"
         @stash-drop="({ selector, fullSha }) => dropStash(selector, fullSha)"
         @stash-apply="({ selector, fullSha }) => applyStash(selector, fullSha)"
+      />
+      <SourceControlRemotes
+        v-if="showRemotesModal"
+        :show="showRemotesModal"
+        :remotes="gitMetadata.remotes.value"
+        :loading="gitMetadata.loading.value"
+        :busy-action="busyAction"
+        @close="showRemotesModal = false"
+        @add-remote="addRemote"
+        @update-remote="updateRemote"
+        @remove-remote="removeRemote"
       />
     </template>
   </aside>

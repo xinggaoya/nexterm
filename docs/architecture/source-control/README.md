@@ -2,13 +2,14 @@
 
 ## 1. 概述
 
-源代码控制模块提供 Git 状态面板：变更列表、暂存 / 取消暂存、提交、分支工作流、远程同步、Stash 管理。
+源代码控制模块提供 Git 状态面板：变更列表、暂存 / 取消暂存、提交、分支工作流、远程同步、Stash 管理、远程仓库管理。
 
 核心能力：
 
 - 工作区下的 **嵌套仓库发现**：单仓库 monorepo 时直接显示当前仓库；多于 1 个候选时显示仓库切换下拉框（`activeRepoRoot`）。
 - **分支面板** 分为 Current / Local / Remote 三组，支持搜索、显示上游 ahead/behind、最近一次提交主题。
 - **Stash 面板** 对每条 stash 提供 `Apply (keep)` / `Pop` / `Drop` 三个独立动作；保存时支持 `Include untracked` / `Keep staged` 选项。
+- **远程仓库管理**：`SourceControlToolbar` 网络下拉菜单新增「管理远程…」一项，唤起 `SourceControlRemotes` 模态：列出所有远程、添加、编辑（仅改 URL）、删除（带确认弹窗）。Edit 不会改 name 以避免破坏 upstream 跟踪。
 - 命令面板与 Source Control 共享同一个 `activeRepoRoot`（通过 `useWorkbenchCommands.resolveCurrentRepo`）。
 - 自动刷新策略与 Git 状态变更：`nexterm://workspace-fs-changed` 触发 80ms（git 相关）/ 500ms 防抖。
 
@@ -19,8 +20,9 @@
 ```
 src/modules/source-control/
   SourceControlPanel.vue            # 主面板（仓库选择 + 状态 + 变更 + 提交）
-  SourceControlToolbar.vue          # 顶部工具条（分支名 + fetch/pull/push + 刷新 + 历史）
+  SourceControlToolbar.vue          # 顶部工具条（分支名 + fetch/pull/push + 管理远程 + 刷新 + 历史）
   SourceControlGitWorkflows.vue     # 分支 + Stash 面板
+  SourceControlRemotes.vue          # 远程仓库管理模态（列表 + 新增/编辑/删除）
   SourceControlChangeList.vue       # 变更列表（虚拟滚动 + 分组）
   SourceControlChangeRow.vue        # 单行
   SourceControlCommitBox.vue        # 提交输入
@@ -29,8 +31,8 @@ src/modules/source-control/
   sourceControlFormat.ts            # 状态码 -> 标签/样式
   gitDecorations.ts                 # 装饰映射（status -> color/letter/tooltip）
   useSourceControlState.ts          # 状态 composable（panel + entries + 装饰）
-  useSourceControlActions.ts        # 动作 composable（stage/unstage/discard/commit/branch/stash）
-  useSourceControlGitMetadata.ts    # 分支 + Stash 列表 composable
+  useSourceControlActions.ts        # 动作 composable（stage/unstage/discard/commit/branch/stash/remote）
+  useSourceControlGitMetadata.ts    # 分支 + Stash + 远程列表 composable
   useGitRepositoryRegistry.ts       # 工作区下嵌套仓库发现 composable
   index.ts
 ```
@@ -132,6 +134,11 @@ type GitRepositoryDiscovery = {
 | `git_checkout_branch` | `git switch`；`remote=true` 时如本地同名分支已存在则自动切换到本地分支，否则 `--track` 到远端 ref |
 | `git_create_branch` | `git switch -c` 风格的创建并切换 |
 | `git_stash_list` / `git_stash_push` / `git_stash_pop` / `git_stash_drop` / `git_stash_apply` | Stash 全部操作；后三者带 `expectedSha` 用于乐观锁 |
+| `git_remote_url` | 读取单个远程的 fetch URL（仅 `origin` 用途） |
+| `git_remote_list` | 列出所有远程：`name` + `fetchUrl` + `pushUrl`（缺失 pushurl 时复用 fetch_url） |
+| `git_remote_add` | 新增远程，`input: { name, url }` 返回新建的 `GitRemoteInfo` |
+| `git_remote_remove` | 删除远程（按 `name`） |
+| `git_remote_set_url` | 编辑远程 URL，`input: { name, newUrl }` 返回更新后的 `GitRemoteInfo` |
 | `git_discover_repositories` | 工作区下嵌套仓库发现（`maxDepth=4`、`maxRepos=32`），按 workspace 区分 local / WSL 收集策略 |
 
 ### 4.3 事件
@@ -152,6 +159,8 @@ type GitRepositoryDiscovery = {
 - 自动刷新延迟：Git 事件 80ms，非 Git 事件 500ms（防抖）。
 - 装饰（`gitDecorations`）根据 status code 映射到 `{statusKind, staged, unstaged, hasDescendantChanges, count}`，对每个文件路径向上合并到所有祖先目录。
 - Stash Apply（保留 stash）/ Pop（应用并移除）/ Drop 三种动作走独立的 IPC 命令与独立通知文案，避免单条 `git_stash_pop` 串味。
+- `useSourceControlGitMetadata.refreshGitMetadata` 当前拉 3 路（`git_branch_list` / `git_stash_list` / `git_remote_list`）放在同一个 `Promise.all`；`git_remote_list` 的失败被单独 `.catch` 兜底为 `[]` 并写入 `error` ref，避免阻塞分支 / Stash 列表的渲染。`remotes` 状态对外是只读快照，UI 通过 `useSourceControlActions.addRemote/updateRemote/removeRemote`（每个动作成功后均调用 `refreshGitMetadata` + `refreshStatus`）触发重新拉取。
+- 远程仓库管理（`SourceControlRemotes.vue`）的 `name` 字段在客户端用 `/^[A-Za-z0-9_][A-Za-z0-9._-]*$/`、`len ≤ 64` 校验；URL 仅校验非空，让 git 端做最终判断；后端 `validate_remote_name` 复用同一规则并增加 `--` 开头拒绝（防止被解析为选项）。
 
 ## 7. 配置项
 
@@ -164,11 +173,13 @@ type GitRepositoryDiscovery = {
 ## 8. 测试
 
 - `gitDecorations.test.ts` / `sourceControlFormat.test.ts` / `sourceControlModel.test.ts`
-- `useSourceControlState.test.ts` / `useSourceControlActions.test.ts`
+- `useSourceControlState.test.ts` / `useSourceControlActions.test.ts`（含 addRemote / updateRemote / removeRemote / listRemotes 4 个用例）
 - `useGitRepositoryRegistry.test.ts`
-- `SourceControlPanel.vue.test.ts`（main 上有 1 个预存在失败：runs fetch pull and push operations then refreshes status）
+- `SourceControlPanel.vue.test.ts`
 - `SourceControlGitWorkflows.vue.test.ts`
+- `SourceControlRemotes.vue.test.ts`（覆盖空态、列表、添加、编辑、删除、名称校验）
 - `sourceControlVueBoundary.test.ts`
+- 后端：`src-tauri/src/modules/git/operations.rs` 内 `mod tests::remote` 覆盖 `validate_remote_name` / `parse_remote_name` / `remote_list` / `remote_add` / `remote_remove` / `remote_set_url` 集成路径。
 
 ## 9. 相关文档
 

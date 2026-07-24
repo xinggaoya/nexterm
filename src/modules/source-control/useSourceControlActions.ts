@@ -3,6 +3,8 @@ import type {
   GitBranchInfo,
   GitCommitResult,
   GitDiscardEntry,
+  GitRemoteInfo,
+  GitRemoteInput,
   GitStashPushOptions,
   GitStashResult,
   WorkspaceNative,
@@ -229,6 +231,80 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     });
   }
 
+  async function addRemote(input: GitRemoteInput) {
+    const root = options.state.repoRoot.value;
+    if (!root) return;
+    const name = input.name.trim();
+    const url = input.url.trim();
+    if (!name || !url) return;
+    await runWithBusy("remote-add", async () => {
+      const next = await options.wsNative.gitRemoteAdd(root, { name, url });
+      actionMessage.value = `${next.name} → ${next.fetchUrl}`;
+      notifySuccess(
+        options.t("sourceControl.remoteAddSuccess", { name: next.name }),
+        actionMessage.value,
+      );
+      await options.state.refreshStatus();
+      await options.refreshGitMetadata?.();
+    });
+  }
+
+  async function updateRemote(input: { name: string; newUrl: string }) {
+    const root = options.state.repoRoot.value;
+    const trimmedName = input.name.trim();
+    const trimmedUrl = input.newUrl.trim();
+    if (!root || !trimmedName || !trimmedUrl) return;
+    await runWithBusy("remote-update", async () => {
+      const next = await options.wsNative.gitRemoteSetUrl(root, {
+        name: trimmedName,
+        newUrl: trimmedUrl,
+      });
+      actionMessage.value = `${next.name} → ${next.fetchUrl}`;
+      notifySuccess(
+        options.t("sourceControl.remoteUpdateSuccess", { name: next.name }),
+        actionMessage.value,
+      );
+      await options.state.refreshStatus();
+      await options.refreshGitMetadata?.();
+    });
+  }
+
+  async function removeRemoteExecute(name: string) {
+    const root = options.state.repoRoot.value;
+    if (!root) return;
+    await runWithBusy("remote-remove", async () => {
+      await options.wsNative.gitRemoteRemove(root, name);
+      actionMessage.value = name;
+      notifySuccess(
+        options.t("sourceControl.remoteRemoveSuccess", { name }),
+        actionMessage.value,
+      );
+      await options.state.refreshStatus();
+      await options.refreshGitMetadata?.();
+    });
+  }
+
+  function removeRemote(name: string) {
+    if (options.state.busyAction.value) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    options.dialog.warning({
+      title: options.t("sourceControl.remoteRemoveTitle"),
+      content: options.t("sourceControl.remoteRemoveConfirmContent", {
+        name: trimmed,
+      }),
+      positiveText: options.t("sourceControl.remoteRemove"),
+      negativeText: options.t("common.cancel"),
+      onPositiveClick: () => removeRemoteExecute(trimmed),
+    });
+  }
+
+  async function listRemotes() {
+    const root = options.state.repoRoot.value;
+    if (!root) return [] as GitRemoteInfo[];
+    return options.wsNative.gitRemoteList(root);
+  }
+
   async function checkoutBranch(
     branch: Pick<GitBranchInfo, "name" | "isRemote">,
   ) {
@@ -441,6 +517,10 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     fetchRemote,
     pullRemote,
     pushRemote,
+    addRemote,
+    updateRemote,
+    removeRemote,
+    listRemotes,
     checkoutBranch,
     createBranch,
     stashChanges,
@@ -458,6 +538,9 @@ function errorTitleForBusy(busy: BusyAction): string {
   if (busy === "push") return "sourceControl.pushFailed";
   if (busy === "commit") return "sourceControl.commitFailed";
   if (busy === "branch-create") return "sourceControl.branchCreateFailed";
+  if (busy === "remote-add") return "sourceControl.remoteAddFailed";
+  if (busy === "remote-update") return "sourceControl.remoteUpdateFailed";
+  if (busy === "remote-remove") return "sourceControl.remoteRemoveFailed";
   if (busy.startsWith("checkout:")) return "sourceControl.branchCheckoutFailed";
   if (busy === "stash-save") return "sourceControl.stashSaveFailed";
   if (busy.startsWith("stash-pop:")) return "sourceControl.stashPopFailed";

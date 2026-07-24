@@ -5,6 +5,7 @@ import {
   GitBranchOutline,
   GitNetworkOutline,
   RefreshOutline,
+  SettingsOutline,
   SyncOutline,
   TimeOutline,
 } from "@vicons/ionicons5";
@@ -30,6 +31,7 @@ const emit = defineEmits<{
   refresh: [];
   openHistory: [];
   openBranches: [];
+  manageRemotes: [];
 }>();
 
 const remoteOptions = computed<DropdownOption[]>(() => [
@@ -51,12 +53,23 @@ const remoteOptions = computed<DropdownOption[]>(() => [
     icon: () => h(NIcon, null, { default: () => h(ArrowUpOutline) }),
     disabled: !props.repoRoot || props.busyAction !== null,
   },
+  {
+    type: "divider",
+    key: "divider-remote",
+  },
+  {
+    key: "manage",
+    label: t("sourceControl.manageRemotes"),
+    icon: () => h(NIcon, null, { default: () => h(SettingsOutline) }),
+    disabled: !props.repoRoot || props.busyAction !== null,
+  },
 ]);
 
 function handleRemoteSelect(key: string | number) {
   if (key === "fetch") emit("fetch");
   if (key === "pull") emit("pull");
   if (key === "push") emit("push");
+  if (key === "manage") emit("manageRemotes");
 }
 </script>
 

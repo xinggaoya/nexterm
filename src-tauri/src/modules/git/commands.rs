@@ -4,8 +4,9 @@ use crate::modules::git::operations;
 use crate::modules::git::types::{
     DiscardEntry, GitBranchInfo, GitBranchResult, GitCommitFileChange, GitCommitResult,
     GitDiffContentResult, GitDiffResult, GitFetchResult, GitLogOptions, GitLogPage,
-    GitPanelSnapshot, GitPullResult, GitPushResult, GitRepoInfo, GitRepositoryDiscovery,
-    GitStashEntry, GitStashPushOptions, GitStashResult, GitStatusSnapshot,
+    GitPanelSnapshot, GitPullResult, GitPushResult, GitRemoteInfo, GitRemoteInput,
+    GitRemoteUrlUpdate, GitRepoInfo, GitRepositoryDiscovery, GitStashEntry, GitStashPushOptions,
+    GitStashResult, GitStatusSnapshot,
 };
 use crate::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
 
@@ -407,6 +408,61 @@ pub async fn git_remote_url(
     let workspace = WorkspaceEnv::from_option(workspace);
     blocking(app, move |r| {
         operations::remote_url(r, &repo_root, &remote, &workspace).map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_remote_list(
+    repo_root: String,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<Vec<GitRemoteInfo>, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    blocking(app, move |r| {
+        operations::remote_list(r, &repo_root, &workspace).map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_remote_add(
+    repo_root: String,
+    input: GitRemoteInput,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<GitRemoteInfo, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    blocking(app, move |r| {
+        operations::remote_add(r, &repo_root, &input, &workspace).map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_remote_remove(
+    repo_root: String,
+    name: String,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    blocking(app, move |r| {
+        operations::remote_remove(r, &repo_root, &name, &workspace).map_err(Into::into)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_remote_set_url(
+    repo_root: String,
+    input: GitRemoteUrlUpdate,
+    workspace: Option<WorkspaceEnv>,
+    app: AppHandle,
+) -> Result<GitRemoteInfo, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    blocking(app, move |r| {
+        operations::remote_set_url(r, &repo_root, &input, &workspace).map_err(Into::into)
     })
     .await
 }

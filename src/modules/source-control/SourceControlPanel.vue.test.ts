@@ -206,6 +206,10 @@ const mockWsNative = {
   gitStashPop: vi.fn(),
   gitStashDrop: vi.fn(),
   gitStashApply: vi.fn(),
+  gitRemoteList: vi.fn(),
+  gitRemoteAdd: vi.fn(),
+  gitRemoteRemove: vi.fn(),
+  gitRemoteSetUrl: vi.fn(),
 };
 vi.mock("@/app/workspaceContext", () => ({
   useWorkspaceContext: () => ({
@@ -353,6 +357,18 @@ describe("SourceControlPanel.vue", () => {
         message: "WIP on main: source control",
       },
     ]);
+    vi.mocked(mockWsNative.gitRemoteList).mockResolvedValue([]);
+    vi.mocked(mockWsNative.gitRemoteAdd).mockResolvedValue({
+      name: "origin",
+      fetchUrl: "git@github.com:test/test.git",
+      pushUrl: "git@github.com:test/test.git",
+    });
+    vi.mocked(mockWsNative.gitRemoteRemove).mockResolvedValue(undefined);
+    vi.mocked(mockWsNative.gitRemoteSetUrl).mockResolvedValue({
+      name: "origin",
+      fetchUrl: "git@github.com:test/test.git",
+      pushUrl: "git@github.com:test/test.git",
+    });
   });
 
   afterEach(() => {

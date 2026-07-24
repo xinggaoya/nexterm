@@ -236,6 +236,28 @@ pub struct GitRepositoryDiscovery {
     pub truncated: bool,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRemoteInfo {
+    pub name: String,
+    pub fetch_url: String,
+    pub push_url: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRemoteInput {
+    pub name: String,
+    pub url: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRemoteUrlUpdate {
+    pub name: String,
+    pub new_url: String,
+}
+
 pub(crate) struct GitOutput {
     pub(crate) stdout: Vec<u8>,
     pub(crate) stderr: Vec<u8>,
