@@ -4,6 +4,7 @@ import {
   DEFAULT_PREFERENCES,
   loadPreferences,
   onPreferencesChange,
+  setAccent,
   setAutostart,
   setEditorTheme,
   setExplorerPanelWidth,
@@ -55,6 +56,7 @@ import {
   clampTerminalFontWeight,
   clampTerminalMinimumContrastRatio,
   clampTerminalRenderer,
+  type AccentPref,
   type EditorLspTypescriptMode,
   type EditorThemeId,
   type FileOpenMode,
@@ -77,6 +79,7 @@ import {
 export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const theme = ref<ThemePref>(DEFAULT_PREFERENCES.theme);
   const language = ref<LanguagePref>(DEFAULT_PREFERENCES.language);
+  const accent = ref<AccentPref>(DEFAULT_PREFERENCES.accent);
   const editorTheme = ref<EditorThemeId>(DEFAULT_PREFERENCES.editorTheme);
   const autostart = ref<boolean>(DEFAULT_PREFERENCES.autostart);
   const restoreWindowState = ref<boolean>(
@@ -212,6 +215,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   function applySnapshot(snapshot: Preferences): void {
     theme.value = snapshot.theme;
     language.value = snapshot.language;
+    accent.value = snapshot.accent;
     editorTheme.value = snapshot.editorTheme;
     autostart.value = snapshot.autostart;
     restoreWindowState.value = snapshot.restoreWindowState;
@@ -292,6 +296,12 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     language.value = value;
     patchPreferencesSnapshot("language", value);
     await setLanguage(value);
+  }
+
+  async function updateAccent(value: AccentPref): Promise<void> {
+    accent.value = value;
+    patchPreferencesSnapshot("accent", value);
+    await setAccent(value);
   }
 
   async function updateEditorTheme(value: EditorThemeId): Promise<void> {
@@ -602,6 +612,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     return {
       theme: theme.value,
       language: language.value,
+      accent: accent.value,
       editorTheme: editorTheme.value,
       autostart: autostart.value,
       restoreWindowState: restoreWindowState.value,
@@ -659,6 +670,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   return {
     theme,
     language,
+    accent,
     editorTheme,
     autostart,
     restoreWindowState,
@@ -715,6 +727,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     hydrate,
     updateTheme,
     updateLanguage,
+    updateAccent,
     updateEditorTheme,
     updateAutostart,
     updateRestoreWindowState,

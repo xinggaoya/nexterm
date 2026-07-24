@@ -32,9 +32,16 @@ describe("preferences snapshot", () => {
     patchPreferencesSnapshot("terminalFontFamily", "Fira Code");
     patchPreferencesSnapshot("fileOpenMode", "pinned");
     patchPreferencesSnapshot("language", "zh-CN");
+    patchPreferencesSnapshot("accent", "violet");
 
     expect(readPreferencesSnapshot().terminalFontFamily).toBe("Fira Code");
     expect(readPreferencesSnapshot().fileOpenMode).toBe("pinned");
     expect(readPreferencesSnapshot().language).toBe("zh-CN");
+    expect(readPreferencesSnapshot().accent).toBe("violet");
+  });
+
+  it("defaults accent to cyan", () => {
+    replacePreferencesSnapshot(DEFAULT_PREFERENCES);
+    expect(readPreferencesSnapshot().accent).toBe("cyan");
   });
 });

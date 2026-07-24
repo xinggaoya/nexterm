@@ -10,6 +10,51 @@ export type ThemePref = "system" | "light" | "dark";
 export type FileOpenMode = "preview" | "pinned";
 export type TouchMode = "auto" | "on" | "off";
 
+// ── accent palette presets ──────────────────────────────────────────────
+// 与 theme 三档正交;每个预设都自带 light + dark 两套色,在 globals.css
+// 中以 `[data-accent="<id>"]` / `.dark[data-accent="<id>"]` 形式覆盖。
+export const ACCENT_PRESETS = [
+  "cyan", // 默认 - 现行青蓝
+  "violet", // Tokyo Night 紫
+  "rose", // Rose Pine 粉
+  "emerald", // Catppuccin 绿
+  "amber", // Monokai 橙
+  "blue", // 经典蓝
+] as const;
+
+export type AccentPref = (typeof ACCENT_PRESETS)[number];
+
+export const ACCENT_PRESET_LABELS: Record<AccentPref, string> = {
+  cyan: "Cyan",
+  violet: "Violet",
+  rose: "Rose",
+  emerald: "Emerald",
+  amber: "Amber",
+  blue: "Blue",
+};
+
+// 设置页色卡所需的 RGB 预览值。给的是 primary 在 light / dark 两个
+// 模式下的代表色,便于用户在切换前同时看到两套搭配效果。
+export const ACCENT_PRESET_SWATCHES: Record<
+  AccentPref,
+  { light: string; dark: string }
+> = {
+  cyan: { light: "rgb(64, 154, 184)", dark: "rgb(124, 215, 232)" },
+  violet: { light: "rgb(108, 99, 198)", dark: "rgb(170, 140, 224)" },
+  rose: { light: "rgb(196, 92, 130)", dark: "rgb(232, 142, 178)" },
+  emerald: { light: "rgb(54, 152, 104)", dark: "rgb(122, 207, 160)" },
+  amber: { light: "rgb(196, 132, 36)", dark: "rgb(232, 178, 92)" },
+  blue: { light: "rgb(64, 120, 214)", dark: "rgb(118, 168, 234)" },
+};
+
+const ACCENT_PRESET_SET = new Set<string>(ACCENT_PRESETS);
+
+export function normalizeAccentPref(value: unknown): AccentPref {
+  return ACCENT_PRESET_SET.has(value as string)
+    ? (value as AccentPref)
+    : "cyan";
+}
+
 const TOUCH_MODES: readonly TouchMode[] = ["auto", "on", "off"];
 
 function normalizeTouchMode(value: unknown): TouchMode {
@@ -84,6 +129,7 @@ export type PersistedWorkspace = {
 export type Preferences = {
   theme: ThemePref;
   language: LanguagePref;
+  accent: AccentPref;
   editorTheme: EditorThemeId;
   autostart: boolean;
   restoreWindowState: boolean;
@@ -147,6 +193,7 @@ export type Preferences = {
 const STORE_PATH = "nexterm-settings.json";
 const KEY_THEME = "theme";
 const KEY_LANGUAGE = "language";
+const KEY_ACCENT = "accent";
 const KEY_EDITOR_THEME = "editorTheme";
 const KEY_AUTOSTART = "autostart";
 const KEY_RESTORE_WINDOW = "restoreWindowState";
@@ -373,6 +420,7 @@ export const TERMINAL_SCROLLBACK_PRESETS = [
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: "dark",
   language: "system",
+  accent: "cyan",
   editorTheme: "atomone",
   autostart: false,
   restoreWindowState: true,
@@ -468,6 +516,7 @@ export async function loadPreferences(): Promise<Preferences> {
   return {
     theme: get<ThemePref>(KEY_THEME) ?? DEFAULT_PREFERENCES.theme,
     language: get<LanguagePref>(KEY_LANGUAGE) ?? DEFAULT_PREFERENCES.language,
+    accent: normalizeAccentPref(get(KEY_ACCENT)),
     editorTheme:
       get<EditorThemeId>(KEY_EDITOR_THEME) ?? DEFAULT_PREFERENCES.editorTheme,
     autostart: get<boolean>(KEY_AUTOSTART) ?? DEFAULT_PREFERENCES.autostart,
@@ -613,6 +662,10 @@ export async function setTheme(value: ThemePref): Promise<void> {
 
 export async function setLanguage(value: LanguagePref): Promise<void> {
   await writePref(KEY_LANGUAGE, value);
+}
+
+export async function setAccent(value: AccentPref): Promise<void> {
+  await writePref(KEY_ACCENT, normalizeAccentPref(value));
 }
 
 export async function setEditorTheme(value: EditorThemeId): Promise<void> {
@@ -996,6 +1049,7 @@ export async function onPreferencesChange(
   const map: Record<string, PrefKey> = {
     [KEY_THEME]: "theme",
     [KEY_LANGUAGE]: "language",
+    [KEY_ACCENT]: "accent",
     [KEY_EDITOR_THEME]: "editorTheme",
     [KEY_AUTOSTART]: "autostart",
     [KEY_RESTORE_WINDOW]: "restoreWindowState",

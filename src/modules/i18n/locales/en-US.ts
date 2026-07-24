@@ -244,14 +244,23 @@ const enUS = {
       terminalRendererWebgl: "WebGL",
       terminalRendererDom: "DOM",
       terminalRendererAutoFallback: "Auto fallback to DOM",
+      accent: "Accent",
+      accentDescription:
+        "Pick an accent. Light and dark variants switch with the theme mode.",
     },
     options: {
+      amber: "Amber",
+      blue: "Blue",
+      cyan: "Cyan",
       dark: "Dark",
+      emerald: "Emerald",
       enUS: "English",
       light: "Light",
       openPinned: "Open pinned",
       previewFirst: "Preview first",
+      rose: "Rose",
       system: "System",
+      violet: "Violet",
       zhCN: "Simplified Chinese",
     },
     about: {

@@ -682,3 +682,196 @@ html *::-webkit-scrollbar {
   transform: translateX(-100%);
   opacity: 0;
 }
+
+/* ---------------------------------------------------------------
+ * Accent palette presets
+ *
+ * `data-accent="<id>"` is mounted on <html> by MainApp whenever
+ * `prefs.accent` changes. Only hue-bearing tokens are overridden
+ * here — surface/foreground/border tokens stay on the light/dark
+ * defaults so contrast remains predictable.
+ *
+ * Each preset overrides both the light + dark scopes. Terminal ANSI
+ * keeps its 16-color plate; we only retune the cyan slot and the
+ * cursor/link/selection trio so the accent flows into xterm.
+ * --------------------------------------------------------------- */
+
+/* Cyan — default (matches the historical Tokyo Night–tuned skin). */
+html[data-accent="cyan"] {
+  --primary: oklch(0.55 0.13 220);
+  --primary-foreground: oklch(0.99 0.004 220);
+  --ring: oklch(0.55 0.13 220);
+  --terminal-focus: oklch(0.55 0.13 220);
+  --pane-handle-active: oklch(0.55 0.13 220);
+  --chart-1: oklch(0.55 0.13 220);
+  --term-cursor: oklch(0.55 0.13 220);
+  --term-cursor-accent: oklch(0.99 0.004 220);
+  --term-link: oklch(0.55 0.13 220);
+  --term-selection: oklch(0.55 0.13 220 / 0.2);
+  --term-cyan: oklch(0.55 0.13 220);
+  --term-bright-cyan: oklch(0.7 0.15 220);
+}
+.dark[data-accent="cyan"] {
+  --primary: oklch(0.82 0.13 220);
+  --primary-foreground: oklch(0.14 0.01 250);
+  --ring: oklch(0.82 0.13 220);
+  --terminal-focus: oklch(0.82 0.13 220);
+  --pane-handle-active: oklch(0.82 0.13 220);
+  --chart-1: oklch(0.82 0.13 220);
+  --term-cursor: oklch(0.82 0.13 220);
+  --term-cursor-accent: oklch(0.14 0.01 250);
+  --term-link: oklch(0.82 0.13 220);
+  --term-selection: oklch(0.82 0.13 220 / 0.26);
+  --term-cyan: oklch(0.82 0.13 220);
+  --term-bright-cyan: oklch(0.88 0.13 220);
+}
+
+/* Violet — Tokyo Night style purple. */
+html[data-accent="violet"] {
+  --primary: oklch(0.55 0.16 285);
+  --primary-foreground: oklch(0.99 0.004 285);
+  --ring: oklch(0.55 0.16 285);
+  --terminal-focus: oklch(0.55 0.16 285);
+  --pane-handle-active: oklch(0.55 0.16 285);
+  --chart-1: oklch(0.55 0.16 285);
+  --term-cursor: oklch(0.55 0.16 285);
+  --term-cursor-accent: oklch(0.99 0.004 285);
+  --term-link: oklch(0.55 0.16 285);
+  --term-selection: oklch(0.55 0.16 285 / 0.2);
+  --term-cyan: oklch(0.55 0.16 285);
+  --term-bright-cyan: oklch(0.7 0.18 285);
+}
+.dark[data-accent="violet"] {
+  --primary: oklch(0.78 0.16 285);
+  --primary-foreground: oklch(0.14 0.01 285);
+  --ring: oklch(0.78 0.16 285);
+  --terminal-focus: oklch(0.78 0.16 285);
+  --pane-handle-active: oklch(0.78 0.16 285);
+  --chart-1: oklch(0.78 0.16 285);
+  --term-cursor: oklch(0.78 0.16 285);
+  --term-cursor-accent: oklch(0.14 0.01 285);
+  --term-link: oklch(0.78 0.16 285);
+  --term-selection: oklch(0.78 0.16 285 / 0.28);
+  --term-cyan: oklch(0.78 0.16 285);
+  --term-bright-cyan: oklch(0.86 0.17 285);
+}
+
+/* Rose — Rose Pine inspired dusty pink. */
+html[data-accent="rose"] {
+  --primary: oklch(0.6 0.14 350);
+  --primary-foreground: oklch(0.99 0.004 350);
+  --ring: oklch(0.6 0.14 350);
+  --terminal-focus: oklch(0.6 0.14 350);
+  --pane-handle-active: oklch(0.6 0.14 350);
+  --chart-1: oklch(0.6 0.14 350);
+  --term-cursor: oklch(0.6 0.14 350);
+  --term-cursor-accent: oklch(0.99 0.004 350);
+  --term-link: oklch(0.6 0.14 350);
+  --term-selection: oklch(0.6 0.14 350 / 0.2);
+  --term-cyan: oklch(0.6 0.14 350);
+  --term-bright-cyan: oklch(0.74 0.14 350);
+}
+.dark[data-accent="rose"] {
+  --primary: oklch(0.8 0.13 350);
+  --primary-foreground: oklch(0.16 0.01 350);
+  --ring: oklch(0.8 0.13 350);
+  --terminal-focus: oklch(0.8 0.13 350);
+  --pane-handle-active: oklch(0.8 0.13 350);
+  --chart-1: oklch(0.8 0.13 350);
+  --term-cursor: oklch(0.8 0.13 350);
+  --term-cursor-accent: oklch(0.16 0.01 350);
+  --term-link: oklch(0.8 0.13 350);
+  --term-selection: oklch(0.8 0.13 350 / 0.28);
+  --term-cyan: oklch(0.8 0.13 350);
+  --term-bright-cyan: oklch(0.88 0.12 350);
+}
+
+/* Emerald — Catppuccin inspired green. */
+html[data-accent="emerald"] {
+  --primary: oklch(0.6 0.13 152);
+  --primary-foreground: oklch(0.99 0.004 152);
+  --ring: oklch(0.6 0.13 152);
+  --terminal-focus: oklch(0.6 0.13 152);
+  --pane-handle-active: oklch(0.6 0.13 152);
+  --chart-1: oklch(0.6 0.13 152);
+  --term-cursor: oklch(0.6 0.13 152);
+  --term-cursor-accent: oklch(0.99 0.004 152);
+  --term-link: oklch(0.6 0.13 152);
+  --term-selection: oklch(0.6 0.13 152 / 0.2);
+  --term-cyan: oklch(0.6 0.13 152);
+  --term-bright-cyan: oklch(0.74 0.15 152);
+}
+.dark[data-accent="emerald"] {
+  --primary: oklch(0.82 0.15 152);
+  --primary-foreground: oklch(0.14 0.01 152);
+  --ring: oklch(0.82 0.15 152);
+  --terminal-focus: oklch(0.82 0.15 152);
+  --pane-handle-active: oklch(0.82 0.15 152);
+  --chart-1: oklch(0.82 0.15 152);
+  --term-cursor: oklch(0.82 0.15 152);
+  --term-cursor-accent: oklch(0.14 0.01 152);
+  --term-link: oklch(0.82 0.15 152);
+  --term-selection: oklch(0.82 0.15 152 / 0.28);
+  --term-cyan: oklch(0.82 0.15 152);
+  --term-bright-cyan: oklch(0.88 0.16 152);
+}
+
+/* Amber — Monokai inspired orange. */
+html[data-accent="amber"] {
+  --primary: oklch(0.66 0.15 75);
+  --primary-foreground: oklch(0.18 0.01 75);
+  --ring: oklch(0.66 0.15 75);
+  --terminal-focus: oklch(0.66 0.15 75);
+  --pane-handle-active: oklch(0.66 0.15 75);
+  --chart-1: oklch(0.66 0.15 75);
+  --term-cursor: oklch(0.66 0.15 75);
+  --term-cursor-accent: oklch(0.18 0.01 75);
+  --term-link: oklch(0.66 0.15 75);
+  --term-selection: oklch(0.66 0.15 75 / 0.22);
+  --term-cyan: oklch(0.66 0.15 75);
+  --term-bright-cyan: oklch(0.78 0.16 75);
+}
+.dark[data-accent="amber"] {
+  --primary: oklch(0.84 0.15 80);
+  --primary-foreground: oklch(0.16 0.01 80);
+  --ring: oklch(0.84 0.15 80);
+  --terminal-focus: oklch(0.84 0.15 80);
+  --pane-handle-active: oklch(0.84 0.15 80);
+  --chart-1: oklch(0.84 0.15 80);
+  --term-cursor: oklch(0.84 0.15 80);
+  --term-cursor-accent: oklch(0.16 0.01 80);
+  --term-link: oklch(0.84 0.15 80);
+  --term-selection: oklch(0.84 0.15 80 / 0.28);
+  --term-cyan: oklch(0.84 0.15 80);
+  --term-bright-cyan: oklch(0.9 0.16 80);
+}
+
+/* Blue — classic IDE blue. */
+html[data-accent="blue"] {
+  --primary: oklch(0.55 0.16 255);
+  --primary-foreground: oklch(0.99 0.004 255);
+  --ring: oklch(0.55 0.16 255);
+  --terminal-focus: oklch(0.55 0.16 255);
+  --pane-handle-active: oklch(0.55 0.16 255);
+  --chart-1: oklch(0.55 0.16 255);
+  --term-cursor: oklch(0.55 0.16 255);
+  --term-cursor-accent: oklch(0.99 0.004 255);
+  --term-link: oklch(0.55 0.16 255);
+  --term-selection: oklch(0.55 0.16 255 / 0.2);
+  --term-cyan: oklch(0.55 0.16 255);
+  --term-bright-cyan: oklch(0.7 0.18 255);
+}
+.dark[data-accent="blue"] {
+  --primary: oklch(0.78 0.16 255);
+  --primary-foreground: oklch(0.14 0.01 255);
+  --ring: oklch(0.78 0.16 255);
+  --terminal-focus: oklch(0.78 0.16 255);
+  --pane-handle-active: oklch(0.78 0.16 255);
+  --chart-1: oklch(0.78 0.16 255);
+  --term-cursor: oklch(0.78 0.16 255);
+  --term-cursor-accent: oklch(0.14 0.01 255);
+  --term-link: oklch(0.78 0.16 255);
+  --term-selection: oklch(0.78 0.16 255 / 0.28);
+  --term-cyan: oklch(0.78 0.16 255);
+  --term-bright-cyan: oklch(0.88 0.17 255);
+}

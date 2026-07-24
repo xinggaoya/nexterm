@@ -119,6 +119,13 @@ function syncDocumentTheme() {
   const root = document.documentElement;
   root.classList.remove("light", "dark");
   root.classList.add(resolvedTheme.value);
+  // Accent palette — pinned on <html> so the [data-accent="<id>"] rules
+  // in globals.css override the light/dark defaults for hue-bearing
+  // tokens. The matching --nexterm-accent inline property also lives on
+  // <html>'s `style` attribute so xterm's MutationObserver (which only
+  // listens to class/style mutations) re-reads --term-* on switch.
+  root.dataset.accent = prefs.accent;
+  root.style.setProperty("--nexterm-accent", prefs.accent);
   try {
     window.localStorage.setItem("nexterm-ui-theme-shadow", prefs.theme);
   } catch {
@@ -289,6 +296,7 @@ watch(
   },
 );
 watch(resolvedTheme, syncDocumentTheme, { immediate: true });
+watch(() => prefs.accent, syncDocumentTheme);
 watch(
   () => prefs.language,
   () => {

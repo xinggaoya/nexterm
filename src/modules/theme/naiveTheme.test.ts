@@ -5,6 +5,7 @@ import {
   type ResolvedTheme,
 } from "./naiveTheme";
 import type { AppTokens } from "@/styles/tokens";
+import { ACCENT_PRESETS, ACCENT_PRESET_SWATCHES } from "@/modules/settings/store";
 
 const mockTokens: AppTokens = {
   background: "rgb(10, 10, 10)",
@@ -81,5 +82,22 @@ describe("naive theme bridge", () => {
   it("keeps the resolved theme type explicit for providers", () => {
     const theme: ResolvedTheme = "light";
     expect(getNaiveTheme(theme)).toBeNull();
+  });
+
+  it("drops oklch through for every accent preset swatch", () => {
+    for (const preset of ACCENT_PRESETS) {
+      const swatch = ACCENT_PRESET_SWATCHES[preset];
+      const overrides = buildNaiveThemeOverrides({
+        ...mockTokens,
+        primary: swatch.dark,
+        ring: swatch.dark,
+        "terminal-focus": swatch.dark,
+      });
+      expect(overrides.common?.primaryColor).toMatch(/^rgb\(/);
+      expect(overrides.common?.primaryColor).not.toContain("oklch");
+      expect(overrides.common?.primaryColorHover).toMatch(/^rgb\(/);
+      expect(overrides.common?.primaryColorPressed).toMatch(/^rgb\(/);
+      expect(overrides.common?.primaryColorSuppl).toMatch(/^rgb\(/);
+    }
   });
 });

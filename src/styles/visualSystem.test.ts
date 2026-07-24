@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { ACCENT_PRESETS } from "@/modules/settings/store";
 
 const globalsCss = readFileSync(
   new URL("./globals.css", import.meta.url),
@@ -105,19 +106,36 @@ describe("visual system contract", () => {
   });
 
   it("keeps xterm-consumed custom properties concrete", () => {
-    for (const name of [
-      "term-bg",
-      "term-fg",
-      "term-cursor",
-      "term-cursor-accent",
-      "term-selection",
-      "term-link",
-    ]) {
+    // `--term-bg` / `--term-fg` are only declared once per mode (no accent
+    // overrides — they belong to the neutral surface). The rest are also
+    // overridden by every accent preset in both modes.
+    const expectedCounts: Record<string, number> = {
+      "term-bg": 2,
+      "term-fg": 2,
+      "term-cursor": 2 + ACCENT_PRESETS.length * 2,
+      "term-cursor-accent": 2 + ACCENT_PRESETS.length * 2,
+      "term-selection": 2 + ACCENT_PRESETS.length * 2,
+      "term-link": 2 + ACCENT_PRESETS.length * 2,
+    };
+    for (const [name, expected] of Object.entries(expectedCounts)) {
       const declarations = globalsCss.match(
         new RegExp(`--${name}:\\s*([^;]+);`, "g"),
       );
-      expect(declarations?.length).toBe(2);
+      expect(declarations?.length).toBe(expected);
       expect(declarations?.every((value) => !value.includes("var("))).toBe(true);
+    }
+  });
+
+  it("declares an accent override block for every preset in both modes", () => {
+    for (const preset of ACCENT_PRESETS) {
+      const lightRegex = new RegExp(
+        `html\\[data-accent="${preset}"\\][\\s\\S]*?--primary:[\\s\\S]*?--term-cursor:`,
+      );
+      const darkRegex = new RegExp(
+        `\\.dark\\[data-accent="${preset}"\\][\\s\\S]*?--primary:[\\s\\S]*?--term-cursor:`,
+      );
+      expect(globalsCss).toMatch(lightRegex);
+      expect(globalsCss).toMatch(darkRegex);
     }
   });
 });
