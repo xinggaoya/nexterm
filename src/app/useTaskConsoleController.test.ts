@@ -28,7 +28,7 @@ describe("useTaskConsoleController", () => {
       stopRun: vi.fn(async () => undefined),
       stopRunGroup: vi.fn(async () => undefined),
       rerun: vi.fn(async () => null),
-      dispose: vi.fn(),
+      dispose: vi.fn(async () => undefined),
     };
   }
 
@@ -95,7 +95,7 @@ describe("useTaskConsoleController", () => {
     expect(discoverTasks).toHaveBeenLastCalledWith("/other", expect.any(Function));
   });
 
-  it("opens task runs in a terminal and disposes the run store", () => {
+  it("opens task runs in a terminal and disposes the run store", async () => {
     const taskRuns = createTaskRuns();
     const openTaskTerminal = vi.fn();
     const controller = useTaskConsoleController({
@@ -107,7 +107,9 @@ describe("useTaskConsoleController", () => {
     });
 
     controller.runTaskInTerminal({ command: "pnpm test", cwd: "/repo" });
-    controller.disposeTaskConsole();
+    // disposeTaskConsole 返回 store.dispose() 的 Promise —— 工作区移除时
+    // WorkspaceHost 会 await 它以确保后台任务被 kill 后再继续清理。
+    await controller.disposeTaskConsole();
 
     expect(openTaskTerminal).toHaveBeenCalledWith({
       command: "pnpm test",

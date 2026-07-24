@@ -260,8 +260,33 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
     return runCommand(run.command, run.cwd);
   }
 
-  function dispose() {
+  /**
+   * Tear down the store: stop every still-running background process and
+   * clear all poll timers. Used when a workspace is removed — without this
+   * the backend `shell_bg` children would outlive their UI and leak.
+   *
+   * Best-effort and idempotent: each kill runs via `Promise.allSettled` so a
+   * single failure cannot abort the rest, and the function never rejects.
+   */
+  async function dispose(): Promise<void> {
     for (const id of timers.keys()) clearPollTimer(id);
+    const running = runs.value.filter(
+      (run) => run.status === "running" && run.handle !== null,
+    );
+    await Promise.allSettled(
+      running.map(async (run) => {
+        try {
+          await api.shellBgKill(run.handle!);
+        } catch {
+          // 后端可能已自行退出或 handle 失效；忽略以保证其余 kill 继续。
+        }
+        const stored = findRun(run.id);
+        if (stored && stored.status === "running") {
+          stored.status = "stopped";
+          updateRunGroupStatus(stored.groupId);
+        }
+      }),
+    );
   }
 
   return {

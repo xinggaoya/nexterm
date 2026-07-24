@@ -227,9 +227,18 @@ onMounted(() => {
   workbenchLayout.startLayoutObservers();
 });
 
-onBeforeUnmount(() => {
+onBeforeUnmount(async () => {
+  // WorkspaceHost is unmounted when its workspace is removed from the store
+  // (MainApp renders via `v-for` + `:key="ws.id"`). This is the single place
+  // that must reclaim this workspace's resources, in order:
+  //   1. FS watcher (already correct)
+  //   2. Background task processes (kill + clear poll timers)
+  //   3. Terminal PTY sessions + tab state (disposeWorkspaceTabs internally
+  //      calls disposeWorkspaceSessions(id), closing every backend PTY for
+  //      this workspace and clearing the tabsByWorkspace maps)
   stopWorkspaceLifecycle();
-  taskConsole.disposeTaskConsole();
+  await taskConsole.disposeTaskConsole();
+  tabs.disposeWorkspaceTabs(props.workspace.id);
   workbenchLayout.stopLayoutObservers();
 });
 

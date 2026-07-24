@@ -17,7 +17,7 @@ import type { TaskConsoleView } from "@/modules/tasks/taskConsoleTypes";
 
 type TaskRunStoreLike = {
   activeRun: ComputedRef<TaskRun | null> | Ref<TaskRun | null>;
-  dispose: () => void;
+  dispose: () => Promise<void>;
   rerun: (id: number) => Promise<unknown>;
   runCommand: (command: string, cwd: string) => Promise<unknown>;
   runGroups: Ref<TaskRunGroup[]>;
@@ -108,8 +108,8 @@ export function useTaskConsoleController(options: TaskConsoleControllerOptions) 
     options.openTaskTerminal(input);
   }
 
-  function disposeTaskConsole() {
-    taskRuns.dispose();
+  function disposeTaskConsole(): Promise<void> {
+    return taskRuns.dispose();
   }
 
   watch(options.workspaceRoot, () => {

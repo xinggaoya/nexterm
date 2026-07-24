@@ -82,6 +82,7 @@ vi.mock("@/modules/terminal", () => ({
 
 vi.mock("@/modules/terminal/lib/sessions", () => ({
   disposeSession: vi.fn(),
+  disposeAllSessions: vi.fn(),
 }));
 
 vi.mock("@/modules/tabs/terminalDisposal", () => ({

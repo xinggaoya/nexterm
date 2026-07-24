@@ -19,6 +19,7 @@ import { resolveAppLocale } from "@/modules/i18n/types";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { useEventListener } from "@/lib/useEventListener";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   SETTINGS_DEFAULT_TAB,
   type SettingsTab,
@@ -39,7 +40,10 @@ import UnsavedCloseGuard from "./components/UnsavedCloseGuard.vue";
 import RenameTerminalDialog from "./components/RenameTerminalDialog.vue";
 import { applyTerminalSessionTheme } from "@/modules/terminal";
 import { configureTerminalSessionDisposer } from "@/modules/tabs/terminalDisposal";
-import { disposeSession } from "@/modules/terminal/lib/sessions";
+import {
+  disposeAllSessions,
+  disposeSession,
+} from "@/modules/terminal/lib/sessions";
 import { buildNaiveThemeOverrides, getNaiveTheme } from "@/modules/theme/naiveTheme";
 import { FALLBACK_APP_TOKENS, readAppTokens } from "@/styles/tokens";
 import SettingsPanel from "@/settings/SettingsPanel.vue";
@@ -63,6 +67,16 @@ const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
 const aiPanelOpen = ref(false);
 // closeGuard is wired via template ref on UnsavedCloseGuard; the guard emits
 // close-tab events handled directly in the template.
+
+// Window-close PTY teardown listener. WorkspaceHost.onBeforeUnmount already
+// reclaims sessions when a workspace is removed, and a normal close unmounts
+// every host — but we register an additional best-effort `disposeAllSessions`
+// on CloseRequested so backend PTY processes are killed even if a host fails
+// to unmount cleanly (crash, hot-reload residue). Multiple onCloseRequested
+// listeners coexist; this one never calls preventDefault.
+// Typed loosely to avoid importing UnlistenFn from the Tauri event module
+// (kept out of MainApp by the event-boundary rule; see eventBoundary.test.ts).
+let windowCloseUnlisten: (() => void) | null = null;
 
 // ── Terminal disposal wiring ────────────────────────────────────────────
 // The tabs store calls `disposeTerminalSession(leafId)` when closing tabs,
@@ -276,6 +290,19 @@ onMounted(() => {
   if (hasTauriInternals()) void prefs.hydrate();
   startLayoutObservers();
   window.addEventListener("keydown", handleGlobalCommandKeydown, true);
+  // Best-effort PTY teardown on window close (see windowCloseUnlisten comment).
+  if (hasTauriInternals()) {
+    getCurrentWindow()
+      .onCloseRequested(() => {
+        disposeAllSessions();
+      })
+      .then((unlisten) => {
+        windowCloseUnlisten = unlisten;
+      })
+      .catch((error) => {
+        console.warn("window close PTY teardown unavailable:", error);
+      });
+  }
 });
 
 if (colorSchemeQuery) {
@@ -287,6 +314,8 @@ useEventListener(window, "contextmenu", preventNativeContextMenu);
 onUnmounted(() => {
   stopLayoutObservers();
   window.removeEventListener("keydown", handleGlobalCommandKeydown, true);
+  windowCloseUnlisten?.();
+  windowCloseUnlisten = null;
 });
 
 watch(
