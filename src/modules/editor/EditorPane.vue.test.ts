@@ -63,10 +63,16 @@ const fakeEditor: any = {
         startColumn: 1,
         endColumn: 1,
       }),
+      getLineMaxColumn: () => 1,
       dispose: () => undefined,
     };
   },
   getSelection: () => ({ isEmpty: () => true }),
+  setSelection: () => undefined,
+  getScrollTop: () => 0,
+  setScrollTop: () => undefined,
+  getScrollLeft: () => 0,
+  setScrollLeft: () => undefined,
   onDidChangeModelContent(cb: () => void) {
     this._onDidChangeContent = cb;
     return noopDisposable;
@@ -77,6 +83,7 @@ const fakeEditor: any = {
   layout: () => undefined,
   setPosition: () => undefined,
   revealLine: () => undefined,
+  updateOptions: () => undefined,
   executeEdits(_source: string, edits: Array<{ text: string }>) {
     const next = edits.map((e) => e.text).join("");
     this._value = next;

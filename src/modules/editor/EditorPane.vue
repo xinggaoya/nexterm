@@ -51,6 +51,12 @@ const savedContent = ref("");
 const buffer = ref("");
 const dirty = ref(false);
 const externalChangePending = ref(false);
+// 保存回环抑制：写盘后 fs_write_file 会主动发一次 workspace-fs-changed 事件，
+// 路径正是当前文件。用一个短期窗口忽略"自己刚保存的那一次"外部重载事件，
+// 避免光标被 safeReplaceValue 重置。窗口取 1.5s 足以覆盖后端 batcher 的去重时延。
+const IGNORE_SELF_SAVE_MS = 1500;
+const lastSavedPath = ref("");
+const lastSavedAt = ref(0);
 const mode = ref<EditorViewMode>("source");
 const line = ref(1);
 const column = ref(1);
@@ -152,10 +158,10 @@ function normalizePath(path: string): string {
 
 function fsEventTouchesPath(event: WorkspaceFsChangedEvent, path: string): boolean {
   const current = normalizePath(path);
-  if (event.paths.length === 0) {
-    const root = normalizePath(event.rootPath);
-    return current === root || current.startsWith(`${root}/`);
-  }
+  // 空 paths 的 root-refresh 事件（WSL/polling watcher 周期性发送）语义上是
+  // 给 Explorer/SourceControl 刷新目录树用的，单文件编辑器只关心显式命中本
+  // 文件路径的事件，否则会导致工作区内任意打开的文件被周期性全量重载、光标重置。
+  if (event.paths.length === 0) return false;
   return event.paths.some((eventPath) => normalizePath(eventPath) === current);
 }
 
@@ -164,12 +170,28 @@ async function reloadExternalChange(force = false) {
     externalChangePending.value = true;
     return;
   }
+  // 抑制"自己刚保存的那一次"外部事件回环：保存后短期内到达的同路径事件
+  // 内容就是我们刚写下去的，重载只会把光标挤回 (1,1)。
+  if (
+    !force &&
+    props.path === lastSavedPath.value &&
+    Date.now() - lastSavedAt.value < IGNORE_SELF_SAVE_MS
+  ) {
+    return;
+  }
   const currentPath = props.path;
   const result = await readEditorDocument(wsCtx.wsNative, currentPath);
   if (props.path !== currentPath || (dirty.value && !force)) return;
   doc.value = result;
   externalChangePending.value = false;
   if (result.status === "ready") {
+    // 内容相等短路：磁盘内容和当前 buffer 一致时只刷新 size，不做全量替换，
+    // 避免无意义的 executeEdits 打断光标/撤销栈。
+    if (result.content === buffer.value) {
+      savedContent.value = result.content;
+      setDirty(false);
+      return;
+    }
     buffer.value = result.content;
     savedContent.value = result.content;
     setDirty(false);
@@ -188,6 +210,9 @@ async function saveConfirmed() {
   await writeEditorDocument(wsCtx.wsNative, props.path, buffer.value);
   savedContent.value = buffer.value;
   externalChangePending.value = false;
+  // 记录本次保存，供 reloadExternalChange 在短期内忽略同路径的回环事件。
+  lastSavedPath.value = props.path;
+  lastSavedAt.value = Date.now();
   setDirty(false);
   emit("saved");
 }
@@ -266,7 +291,15 @@ watch(
 watch(
   () => [prefs.editorFontSize, prefs.editorTabSize, prefs.editorWordWrap],
   () => {
-    if (doc.value.status === "ready") void createEditor(buffer.value);
+    // 字体/缩进/换行只更新 options，不重建编辑器实例——重建会丢失光标位置和
+    // 撤销栈，且会打断正在进行的编辑。
+    const editor = mount.value?.editor;
+    if (!editor) return;
+    editor.updateOptions({
+      fontSize: prefs.editorFontSize,
+      tabSize: prefs.editorTabSize,
+      wordWrap: prefs.editorWordWrap ? "on" : "off",
+    });
   },
 );
 
