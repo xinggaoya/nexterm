@@ -32,8 +32,22 @@ const wslOptions = computed<DropdownOption[]>(() =>
     label: distro.name,
   })),
 );
+// 只有一个 WSL distro 时，直接打开无需弹出下拉。
+const singleWslDistro = computed(() =>
+  IS_WINDOWS && workspaceEnv.distros.length === 1
+    ? workspaceEnv.distros[0]?.name ?? null
+    : null,
+);
 const showWslAction = computed(
   () => IS_WINDOWS && wslOptions.value.length > 0,
+);
+// 多 distro 时才渲染下拉；单 distro 时走直开按钮。
+const showWslDropdown = computed(
+  () => showWslAction.value && !singleWslDistro.value,
+);
+// 单 distro 时渲染直开按钮。
+const showWslDirect = computed(
+  () => IS_WINDOWS && singleWslDistro.value !== null,
 );
 
 function addLocalWorkspace(): void {
@@ -42,6 +56,12 @@ function addLocalWorkspace(): void {
 
 function addWslWorkspace(key: string | number): void {
   emit("addWorkspace", { kind: "wsl", distro: String(key) });
+}
+
+// 单 distro 直开：绕过下拉直接发起添加。
+function addSingleWslWorkspace(): void {
+  const distro = singleWslDistro.value;
+  if (distro) addWslWorkspace(distro);
 }
 </script>
 
@@ -61,7 +81,7 @@ function addWslWorkspace(key: string | number): void {
     </button>
 
     <NDropdown
-      v-if="showWslAction"
+      v-if="showWslDropdown"
       v-model:show="wslMenuOpen"
       trigger="click"
       :options="wslOptions"
@@ -80,6 +100,19 @@ function addWslWorkspace(key: string | number): void {
         <span class="truncate">{{ t("app.workspaceBar.addWsl") }}</span>
       </button>
     </NDropdown>
+
+    <button
+      v-else-if="showWslDirect"
+      type="button"
+      class="nexterm-row flex h-7 items-center gap-2 px-2 text-[12px] text-muted-foreground hover:text-foreground"
+      :title="t('app.workspaceBar.addWsl')"
+      :aria-label="t('app.workspaceBar.addWsl')"
+      data-add-workspace-wsl
+      @click="addSingleWslWorkspace"
+    >
+      <NIcon :component="ServerOutline" :size="13" />
+      <span class="truncate">{{ t("app.workspaceBar.addWsl") }}</span>
+    </button>
   </template>
 
   <template v-else>
@@ -94,7 +127,7 @@ function addWslWorkspace(key: string | number): void {
     </NextermIconButton>
 
     <NDropdown
-      v-if="showWslAction"
+      v-if="showWslDropdown"
       v-model:show="wslMenuOpen"
       trigger="click"
       :options="wslOptions"
@@ -110,5 +143,15 @@ function addWslWorkspace(key: string | number): void {
         <NIcon :component="ServerOutline" :size="14" />
       </NextermIconButton>
     </NDropdown>
+
+    <NextermIconButton
+      v-else-if="showWslDirect"
+      :title="t('app.workspaceBar.addWsl')"
+      :aria-label="t('app.workspaceBar.addWsl')"
+      data-add-workspace-wsl
+      @click="addSingleWslWorkspace"
+    >
+      <NIcon :component="ServerOutline" :size="14" />
+    </NextermIconButton>
   </template>
 </template>

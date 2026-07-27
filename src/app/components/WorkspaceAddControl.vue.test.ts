@@ -101,8 +101,10 @@ describe("WorkspaceAddControl.vue", () => {
 
   it("exposes accessible labels and menu state on compact actions", () => {
     const workspaceEnv = useWorkspaceEnvPiniaStore();
+    // 多 distro 场景：仍走下拉菜单，按钮带有 menu 语义。
     workspaceEnv.distros = [
       { name: "Ubuntu", default: true, running: true },
+      { name: "Debian", default: false, running: false },
     ];
     const wrapper = mount(WorkspaceAddControl);
 
@@ -113,5 +115,26 @@ describe("WorkspaceAddControl.vue", () => {
     expect(wslButton.attributes("aria-label")).toBe("Add WSL workspace");
     expect(wslButton.attributes("aria-haspopup")).toBe("menu");
     expect(wslButton.attributes("aria-expanded")).toBe("false");
+  });
+
+  it("opens directly without a dropdown when only one WSL distro exists", async () => {
+    const workspaceEnv = useWorkspaceEnvPiniaStore();
+    workspaceEnv.distros = [
+      { name: "Ubuntu", default: true, running: true },
+    ];
+    const wrapper = mount(WorkspaceAddControl);
+
+    // 单 distro：渲染直开按钮，无下拉选项，无 menu 语义。
+    const wslButton = wrapper.find("[data-add-workspace-wsl]");
+    expect(wslButton.exists()).toBe(true);
+    expect(wrapper.find("[data-wsl-option='Ubuntu']").exists()).toBe(false);
+    expect(wslButton.attributes("aria-haspopup")).toBeUndefined();
+
+    // 点击直接发起添加。
+    await wslButton.trigger("click");
+
+    expect(wrapper.emitted("addWorkspace")).toEqual([
+      [{ kind: "wsl", distro: "Ubuntu" }],
+    ]);
   });
 });
