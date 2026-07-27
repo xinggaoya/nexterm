@@ -292,6 +292,7 @@ const commandApi = useWorkbenchCommands({
   openSettings: () => emit("request-settings"),
   openTaskConsole: () => {
     workbenchLayout.panelVisibility.value.taskConsole = true;
+    void taskConsole.openTaskConsole();
   },
   requestCloseTab,
   saveActiveEditor,
@@ -329,6 +330,12 @@ defineExpose({
   killActiveTerminal,
   workspaceId,
   commandApi,
+  // 暴露 taskConsole 控制器，供 MainApp 的底部栏 taskConsole 按钮联动活动工作区。
+  taskConsole: {
+    open: () => void taskConsole.openTaskConsole(),
+    close: () => taskConsole.closeTaskConsole(),
+    isOpen: taskConsole.taskConsoleOpen,
+  },
 });
 </script>
 

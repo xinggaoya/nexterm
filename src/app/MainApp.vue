@@ -129,6 +129,25 @@ useWindowChromeState();
 const { startLayoutObservers, stopLayoutObservers, togglePanel } =
   workbenchLayout;
 
+// 底部栏面板切换的总入口：explorer/sourceControl/workspace 走 layout 的
+// togglePanel（已联动对应面板），taskConsole 单独驱动活动工作区的控制器
+// （因为 taskConsole 状态是 per-workspace 的）。
+function handleTogglePanel(key: Parameters<typeof togglePanel>[0]): void {
+  if (key !== "taskConsole") {
+    togglePanel(key);
+    return;
+  }
+  const taskConsole = activeHost.value?.taskConsole;
+  if (!taskConsole) return;
+  if (taskConsole.isOpen?.value) {
+    taskConsole.close();
+    workbenchLayout.panelVisibility.value.taskConsole = false;
+  } else {
+    void taskConsole.open();
+    workbenchLayout.panelVisibility.value.taskConsole = true;
+  }
+}
+
 function syncDocumentTheme() {
   const root = document.documentElement;
   root.classList.remove("light", "dark");
@@ -240,6 +259,12 @@ const activeHost = computed(
       : null) ?? null,
 );
 const activeCommandApi = computed(() => activeHost.value?.commandApi ?? null);
+
+// 活动工作区的 TaskConsole 开关状态。底部栏 taskConsole 按钮据此亮起，
+// 并通过 handleTogglePanel 驱动活动工作区的 taskConsole 控制器。
+const activeTaskConsoleOpen = computed(
+  () => activeHost.value?.taskConsole?.isOpen?.value ?? false,
+);
 
 // Derive the palette's reactive inputs from the active host's command api.
 // When no workspace is open these resolve to safe empties.
@@ -396,12 +421,12 @@ watch(
               :workspace-name="activeWorkspace?.name ?? null"
               :git-branch="gitBranch"
               :panel-states="{
-                workspace: workbenchLayout.panelVisibility.value.workspace,
+                workspace: workbenchLayout.leftSidebar.value.activity === 'workspace',
                 sourceControl: workbenchLayout.panelVisibility.value.sourceControl,
                 explorer: workbenchLayout.panelVisibility.value.explorer,
-                taskConsole: workbenchLayout.panelVisibility.value.taskConsole,
+                taskConsole: activeTaskConsoleOpen,
               }"
-              @toggle-panel="togglePanel"
+              @toggle-panel="handleTogglePanel"
             />
 
             <NDrawer

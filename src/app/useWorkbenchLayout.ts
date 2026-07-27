@@ -163,6 +163,16 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     if (key === "explorer") {
       visibility.rightPanelOpen = visibility.panelVisibility.explorer;
     }
+    if (key === "workspace") {
+      // workspace 与 sourceControl 共用左侧栏（靠 activity 切换视图），
+      // 所以这里切到 workspace 视图并确保左侧栏展开。panelVisibility.workspace
+      // 作为"左侧栏正停在 workspace 视图"的指示标志。
+      visibility.leftSidebar = {
+        ...visibility.leftSidebar,
+        activity: "workspace",
+        open: true,
+      };
+    }
   }
   const sourceControlPanelWidth = ref(
     clampPanelWidth(prefs.sourceControlPanelWidth),
