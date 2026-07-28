@@ -191,19 +191,10 @@ export function attachImeAnchor(
   function onCompositionStart(): void {
     composing = true;
     const buf = terminal.buffer.active;
-    // 启发式仅在 alternate buffer(TUI 模式)启用。普通 shell(normal buffer)
-    // 用硬件光标,xterm 默认锚点本就正确;若此时 buffer 里残留 TUI 的反相
-    // 元素(如输入框边框、状态条),启发式会误锁到残留位置。故 normal buffer
-    // 直接回退 xterm 默认行为。
-    if (buf.type !== "alternate") {
-      pinned = null;
-      onAnchor?.({
-        source: "hardware",
-        col: buf.cursorX,
-        row: buf.cursorY,
-      });
-      return;
-    }
+    // 注意:不能用 buf.type 判断 TUI 模式。部分 TUI(Claude Code 默认渲染)
+    // 在 normal buffer 里重绘而非进 alternate screen;若用 alternate 守卫会
+    // 把这类 TUI 误判为普通 shell 而跳过启发式。正确判断是"有没有反相视频
+    // 单元格"本身 —— findInverseCell 找不到就自然回退,普通 shell 不受影响。
     const hit = findInverseCell();
     if (!hit) {
       // 没有反相单元格 → 普通场景,让 xterm 默认硬件光标锚点生效。
