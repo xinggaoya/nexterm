@@ -91,6 +91,43 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
   // workspaceId → closed-tab undo stack (most recent last).
   const closedStackByWorkspace = ref<Record<string, Tab[]>>({});
   const CLOSED_STACK_MAX = 20;
+  // workspaceId → leafId → owning tabId. Lets `setLeafCwd` / `setLeafTitle`
+  // find the owning tab in O(1) instead of walking every terminal pane tree
+  // in the workspace. Critical because OSC emits cwd/title at potentially
+  // high frequency, and the previous `.map()` over all tabs in the workspace
+  // produced O(Tab 数) new tab objects per tick.
+  const leafOwnerByWorkspace = ref<Record<string, Record<number, number>>>({});
+
+  function registerLeaf(wsId: string, tabId: number, leafId: number): void {
+    const bucket = leafOwnerByWorkspace.value[wsId] ?? {};
+    bucket[leafId] = tabId;
+    leafOwnerByWorkspace.value = { ...leafOwnerByWorkspace.value, [wsId]: bucket };
+  }
+
+  function unregisterLeaf(wsId: string, leafId: number): void {
+    const bucket = leafOwnerByWorkspace.value[wsId];
+    if (!bucket || !(leafId in bucket)) return;
+    delete bucket[leafId];
+    leafOwnerByWorkspace.value = { ...leafOwnerByWorkspace.value, [wsId]: { ...bucket } };
+  }
+
+  function clearLeafOwnersForTab(wsId: string, tabId: number): void {
+    const bucket = leafOwnerByWorkspace.value[wsId];
+    if (!bucket) return;
+    let changed = false;
+    const next: Record<number, number> = {};
+    for (const [leafId, ownerId] of Object.entries(bucket)) {
+      const numLeaf = Number(leafId);
+      if (ownerId === tabId) {
+        changed = true;
+        continue;
+      }
+      next[numLeaf] = ownerId;
+    }
+    if (changed) {
+      leafOwnerByWorkspace.value = { ...leafOwnerByWorkspace.value, [wsId]: next };
+    }
+  }
 
   const activeWorkspaceId = computed<string | null>(
     () => useWorkspacesPiniaStore().activeWorkspaceId,
@@ -143,6 +180,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
   function createInitialTab(workspaceId: string, cwd?: string): TerminalTab {
     const tabId = nextId.value++;
     const leafId = nextId.value++;
+    registerLeaf(workspaceId, tabId, leafId);
     return {
       id: tabId,
       workspaceId,
@@ -208,6 +246,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
       },
       activeLeafId: leafId,
     };
+    registerLeaf(wsId, tabId, leafId);
     setWorkspaceTabs(wsId, [...workspaceTabs(wsId), tab]);
     setActiveIdRaw(wsId, tab.id);
     return tab.id;
@@ -554,6 +593,8 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     };
     const toDispose =
       target.kind === "terminal" ? leafIds(target.paneTree) : [];
+    // 清掉被关闭 tab 拥有的所有 leaf 归属，让 GC 释放 ownership map。
+    if (target.kind === "terminal") clearLeafOwnersForTab(wsId, target.id);
     const next = list.filter((tab) => tab.id !== id);
     setWorkspaceTabs(wsId, next);
     if (activeIdByWorkspace.value[wsId] === id) {
@@ -576,6 +617,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
         for (const leafId of leafIds(tab.paneTree)) {
           disposeTerminalSession(wsId, String(leafId));
         }
+        clearLeafOwnersForTab(wsId, tab.id);
       }
     }
     setWorkspaceTabs(wsId, [keep]);
@@ -593,6 +635,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
         for (const leafId of leafIds(tab.paneTree)) {
           disposeTerminalSession(wsId, String(leafId));
         }
+        clearLeafOwnersForTab(wsId, tab.id);
       }
     }
     setWorkspaceTabs(wsId, list.slice(0, idx + 1));
@@ -610,6 +653,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
         for (const leafId of leafIds(tab.paneTree)) {
           disposeTerminalSession(wsId, String(leafId));
         }
+        clearLeafOwnersForTab(wsId, tab.id);
       }
     }
     const tab = createInitialTab(wsId);
@@ -651,6 +695,9 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
       const visit = (node: typeof clone.paneTree) => {
         if (node.kind === "leaf") {
           node.id = reId(node.id as number);
+          // restore 时把每一个 leaf 重新登记到 ownership 表，否则后续 OSC
+          // cwd/title 会因为找不到 owner 而被新 setLeafCwd 直接 return。
+          registerLeaf(wsId, clone.id, node.id as number);
         } else {
           node.id = reId(node.id as number);
           for (const child of node.children) visit(child);
@@ -701,15 +748,24 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
 
   function setLeafCwd(leafId: number, cwd: string, workspaceId?: string): void {
     const wsId = resolveWorkspaceId(workspaceId);
-    setWorkspaceTabs(
-      wsId,
-      workspaceTabs(wsId).map((tab) => {
-        if (tab.kind !== "terminal") return tab;
-        const nextTree = setLeafCwdInTree(tab.paneTree, leafId, cwd);
-        const patch = tab.activeLeafId === leafId ? { cwd } : {};
-        return { ...tab, ...patch, paneTree: nextTree };
-      }),
-    );
+    // OSC 7 cwd 更新可能来自任意 pane，且每个 pane 频率不低。原先走
+    // workspaceTabs(wsId).map() 会给本工作区内每个 terminal tab 都生成
+    // 新对象（哪怕 leafId 不在它的 paneTree 里），把整个 TabBar 都打到。
+    // 这里用 ownership 表把所有权查找收敛到 O(1)，只在命中 tab 上做
+    // 单点 spread；非命中 tab 完全不参与，背景工作区的 cwd 抖动对前台
+    // TabBar 零影响。
+    const ownerTabId = leafOwnerByWorkspace.value[wsId]?.[leafId];
+    if (ownerTabId === undefined) return;
+    const list = workspaceTabs(wsId);
+    const tabIndex = list.findIndex((t) => t.id === ownerTabId);
+    if (tabIndex < 0) return;
+    const tab = list[tabIndex];
+    if (tab.kind !== "terminal") return;
+    const nextTree = setLeafCwdInTree(tab.paneTree, leafId, cwd);
+    const patch = tab.activeLeafId === leafId ? { cwd } : {};
+    const next = list.slice();
+    next[tabIndex] = { ...tab, ...patch, paneTree: nextTree };
+    setWorkspaceTabs(wsId, next);
   }
 
   function setLeafTitle(
@@ -718,18 +774,24 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     workspaceId?: string,
   ): void {
     const wsId = resolveWorkspaceId(workspaceId);
-    setWorkspaceTabs(
-      wsId,
-      workspaceTabs(wsId).map((tab) => {
-        if (tab.kind !== "terminal") return tab;
-        const nextTree = setLeafTitleInTree(tab.paneTree, leafId, terminalTitle);
-        return {
-          ...tab,
-          terminalTitle: findLeafTitle(nextTree, tab.activeLeafId),
-          paneTree: nextTree,
-        };
-      }),
-    );
+    // 同 setLeafCwd：靠 ownership 表 O(1) 找到 owner tab，单点 spread。
+    const ownerTabId = leafOwnerByWorkspace.value[wsId]?.[leafId];
+    if (ownerTabId === undefined) return;
+    const list = workspaceTabs(wsId);
+    const tabIndex = list.findIndex((t) => t.id === ownerTabId);
+    if (tabIndex < 0) return;
+    const tab = list[tabIndex];
+    if (tab.kind !== "terminal") return;
+    const nextTree = setLeafTitleInTree(tab.paneTree, leafId, terminalTitle);
+    // terminalTitle 字段在 TabBar 上用作标签标题，仅 active leaf 的 title
+    // 暴露在 tab.terminalTitle，非 active leaf 的变更不需要触发 TabBar 重渲。
+    const next = list.slice();
+    next[tabIndex] = {
+      ...tab,
+      ...(tab.activeLeafId === leafId ? { terminalTitle } : {}),
+      paneTree: nextTree,
+    };
+    setWorkspaceTabs(wsId, next);
   }
 
   function updateTab(id: number, patch: TabPatch, workspaceId?: string): void {
@@ -800,6 +862,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
           tab.cwd,
           splitId,
         );
+        registerLeaf(wsId, tabId, leafId);
         return { ...tab, paneTree: tree, activeLeafId: leafId };
       }),
     );
@@ -817,6 +880,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     const nextTree = removeLeaf(tab.paneTree, targetLeafId);
     if (nextTree === null) {
       if (list.length <= 1) return false;
+      clearLeafOwnersForTab(wsId, tabId);
       const nextTabs = list.filter((item) => item.id !== tabId);
       setWorkspaceTabs(wsId, nextTabs);
       if (activeIdByWorkspace.value[wsId] === tabId) {
@@ -836,6 +900,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
         ? (sibling as number)
         : (remaining[0] ?? targetLeafId);
     const cwd = findLeafCwd(nextTree, activeLeafId);
+    unregisterLeaf(wsId, Number(targetLeafId));
     setWorkspaceTabs(
       wsId,
       list.map((item) =>
@@ -862,6 +927,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     const nextTree = removeLeaf(tab.paneTree, leafId);
     if (nextTree === null) {
       if (list.length <= 1) return;
+      clearLeafOwnersForTab(wsId, tabId);
       const nextTabs = list.filter((item) => item.id !== tabId);
       setWorkspaceTabs(wsId, nextTabs);
       if (activeIdByWorkspace.value[wsId] === tabId) {
@@ -880,6 +946,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
         ? (sibling as number)
         : (remaining[0] ?? leafId);
     const cwd = findLeafCwd(nextTree, activeLeafId);
+    unregisterLeaf(wsId, leafId);
     setWorkspaceTabs(
       wsId,
       list.map((item) =>
@@ -912,6 +979,10 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     const nextStack = { ...closedStackByWorkspace.value };
     delete nextStack[workspaceId];
     closedStackByWorkspace.value = nextStack;
+    // ownership map 也得清理，否则会被 pinia 长期持有造成内存泄漏。
+    const nextOwners = { ...leafOwnerByWorkspace.value };
+    delete nextOwners[workspaceId];
+    leafOwnerByWorkspace.value = nextOwners;
   }
 
   return {
