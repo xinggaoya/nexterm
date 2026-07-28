@@ -18,6 +18,8 @@ import {
   type TerminalRenderer,
   type TerminalRendererPreferences,
 } from "./lib/renderer";
+// === [临时诊断] IME 候选框坐标偏差 —— 定位完根因后删除整段 ===
+import { attachImeDiagnostic } from "./lib/imeDiagnostic";
 import type { FontPreference } from "./lib/fontStack";
 import type { RendererKind } from "./lib/rendererPipeline";
 import TerminalContextMenu from "./TerminalContextMenu.vue";
@@ -62,6 +64,8 @@ let session: PtySessionHandle | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let detachThemeWatch: (() => void) | null = null;
 let detachClipboardShortcuts: (() => void) | null = null;
+// === [临时诊断] IME 候选框坐标偏差 —— 定位完根因后删除 ===
+let imeDiagnosticDetach: (() => void) | null = null;
 let mountRevision = 0;
 
 /** 假死重建的最大重试次数（WD 上 WSL 冷启动典型 1~2 次即可成功）。 */
@@ -224,6 +228,10 @@ onMounted(async () => {
     if (props.isActive) refreshLayout();
   });
   resizeObserver.observe(host);
+
+  // === [临时诊断] IME 候选框坐标偏差 —— 定位完根因后删除 ===
+  // 打开 devtools (F12) 查看 [IME-DIAG] 输出
+  imeDiagnosticDetach = attachImeDiagnostic(nextRenderer.term);
 });
 
 onBeforeUnmount(() => {
@@ -236,6 +244,8 @@ onBeforeUnmount(() => {
   deadStartInFlight = false;
   detachThemeWatch?.();
   detachClipboardShortcuts?.();
+  // === [临时诊断] IME 候选框坐标偏差 —— 定位完根因后删除 ===
+  imeDiagnosticDetach?.();
   resizeObserver?.disconnect();
   renderer?.dispose();
   renderer = null;
