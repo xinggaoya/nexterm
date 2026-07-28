@@ -183,6 +183,7 @@ export async function createTerminalRenderer(
     preferred: prefs.renderer,
     autoFallback: prefs.rendererAutoFallback,
     watchDpi: prefs.watchDpi,
+    customGlyphs: prefs.customGlyphs,
   });
 
   let lastCols = 0;

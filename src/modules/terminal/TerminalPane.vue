@@ -5,7 +5,6 @@ import {
   readClipboardText,
   writeClipboardText,
 } from "@/lib/clipboard";
-import { IS_WINDOWS } from "@/lib/platform";
 import { createSession, trackSession, getSessionForLeaf, disposeSession } from "./lib/sessions";
 import type { PtySessionHandle, SessionState } from "./lib/sessions";
 import { tryWorkspaceContext } from "@/app/workspaceContext";
@@ -282,27 +281,6 @@ function handleFocus() {
   emit("focus");
 }
 
-/**
- * Windows IME 修复:IME 会缓存 textarea 首次获焦时的位置,之后 xterm 根据光标
- * 移动 textarea 的 CSS 更新会被 IME 忽略,候选框停在 stale 位置(屏幕右下/边缘)。
- * 在 mousedown 时对 helper textarea 做一次 blur→focus 循环,强制 IME 重新读取
- * 光标位置,使候选框跟随光标。仅 Windows;macOS/Linux 无此缓存行为。
- * 参考:Coffee-CLI #88、xterm.js #5734 / #5839。
- */
-function resyncImeTextarea(): void {
-  if (!IS_WINDOWS) return;
-  const textarea = renderer?.term.textarea;
-  if (!textarea) return;
-  textarea.blur();
-  setTimeout(() => textarea.focus(), 0);
-}
-
-function handleMouseDown(event: MouseEvent): void {
-  handleFocus();
-  // 仅左键触发 IME 重同步,避免选中文本拖拽或右键菜单时误触焦点重置。
-  if (event.button === 0) resyncImeTextarea();
-}
-
 function openContextMenu(event: MouseEvent) {
   const term = renderer?.term;
   if (!prefs.terminalContextMenuEnabled || !term) return;
@@ -346,7 +324,7 @@ defineExpose({
     class="terminal-pane flex flex-col"
     :class="{ focused: isFocused, exited: state === 'exited' }"
     :style="{ flex: String(flex) }"
-    @mousedown="handleMouseDown"
+    @mousedown="handleFocus"
     @contextmenu="openContextMenu"
   >
     <div ref="container" class="terminal-pane-body" />

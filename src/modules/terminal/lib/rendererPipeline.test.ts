@@ -13,8 +13,8 @@ vi.mock("@xterm/addon-webgl", () => ({
     dispose = webglMocks.dispose;
     onContextLoss = webglMocks.onContextLoss;
     clearTextureAtlas = webglMocks.clearTextureAtlas;
-    constructor() {
-      webglMocks.ctor();
+    constructor(options?: { customGlyphs?: boolean }) {
+      webglMocks.ctor(options);
     }
   },
 }));
@@ -46,8 +46,11 @@ describe("rendererPipeline", () => {
       preferred: "webgl",
       autoFallback: true,
       watchDpi: false,
+      customGlyphs: true,
     });
     expect(webglMocks.ctor).toHaveBeenCalled();
+    // customGlyphs 应作为 WebglAddon 构造参数传入(xterm 6.1 起从 ITerminalOptions 迁出)
+    expect(webglMocks.ctor).toHaveBeenCalledWith({ customGlyphs: true });
     expect(pipeline.active()).toBe("webgl");
     pipeline.dispose();
   });
@@ -59,6 +62,7 @@ describe("rendererPipeline", () => {
       preferred: "dom",
       autoFallback: true,
       watchDpi: false,
+      customGlyphs: true,
     });
     expect(webglMocks.ctor).not.toHaveBeenCalled();
     expect(pipeline.active()).toBe("dom");
@@ -72,6 +76,7 @@ describe("rendererPipeline", () => {
       preferred: "webgl",
       autoFallback: true,
       watchDpi: false,
+      customGlyphs: true,
     });
     expect(pipeline.active()).toBe("webgl");
     pipeline.setPreferred("dom");
@@ -86,6 +91,7 @@ describe("rendererPipeline", () => {
       preferred: "webgl",
       autoFallback: true,
       watchDpi: false,
+      customGlyphs: true,
     });
     pipeline.dispose();
     expect(webglMocks.dispose).toHaveBeenCalled();
@@ -103,6 +109,7 @@ describe("rendererPipeline", () => {
       preferred: "webgl",
       autoFallback: true,
       watchDpi: false,
+      customGlyphs: true,
     });
     expect(lossCallback).not.toBeNull();
     expect(pipeline.active()).toBe("webgl");

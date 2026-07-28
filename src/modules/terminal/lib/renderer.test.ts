@@ -68,7 +68,9 @@ describe("renderer integration (smoke)", () => {
       },
       theme: { background: "#000", foreground: "#fff" },
     });
-    expect(options.customGlyphs).toBe(true);
+    // xterm 6.1 起 customGlyphs 从 ITerminalOptions 移除(改为 WebglAddon 选项),
+    // 因此 buildTerminalOptions 不应再输出 customGlyphs。
+    expect("customGlyphs" in options).toBe(false);
     expect(options.rescaleOverlappingGlyphs).toBe(true);
     expect(options.convertEol).toBe(false);
     expect(options.cursorBlink).toBe(true);

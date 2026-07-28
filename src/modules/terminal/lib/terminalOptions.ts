@@ -148,7 +148,8 @@ export function buildTerminalOptions(
       behavior.minimumContrastRatio,
     ),
     drawBoldTextInBrightColors: behavior.drawBoldTextInBrightColors,
-    customGlyphs: behavior.customGlyphs,
+    // NOTE: customGlyphs 在 xterm 6.1 起从 ITerminalOptions 移除,改为
+    // WebglAddon 构造参数,由 rendererPipeline 在 attach WebGL 时传入。
     rescaleOverlappingGlyphs: behavior.rescaleOverlappingGlyphs,
     theme,
     allowProposedApi: true,

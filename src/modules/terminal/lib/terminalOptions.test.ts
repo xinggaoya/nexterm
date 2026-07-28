@@ -58,7 +58,8 @@ describe("terminalOptions", () => {
     expect(options.cursorBlink).toBe(true);
     expect(options.cursorStyle).toBe("block");
     expect(options.scrollback).toBe(2000);
-    expect(options.customGlyphs).toBe(true);
+    // xterm 6.1 起 customGlyphs 从 ITerminalOptions 移除(改为 WebglAddon 选项)。
+    expect("customGlyphs" in options).toBe(false);
     expect(options.rescaleOverlappingGlyphs).toBe(true);
     expect(options.minimumContrastRatio).toBe(1);
     expect(options.macOptionIsMeta).toBe(true);

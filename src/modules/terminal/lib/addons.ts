@@ -16,7 +16,6 @@ import {
   ClipboardAddon,
   Base64,
   type IClipboardProvider,
-  ClipboardSelectionType,
 } from "@xterm/addon-clipboard";
 
 export interface StandardAddons {
@@ -60,9 +59,9 @@ export function loadStandardAddons(
   if (clipboard) {
     try {
       const provider: IClipboardProvider = {
-        readText: (_selection: ClipboardSelectionType) => clipboard.readText(),
+        readText: (_selection: string) => clipboard.readText(),
         writeText: (
-          _selection: ClipboardSelectionType,
+          _selection: string,
           text: string,
         ) => clipboard.writeText(text),
       };

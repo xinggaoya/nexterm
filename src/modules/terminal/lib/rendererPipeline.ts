@@ -32,6 +32,12 @@ export interface RendererPipelineOptions {
   autoFallback: boolean;
   /** HiDPI 监听开关,默认 true */
   watchDpi: boolean;
+  /**
+   * 是否用自定义字形绘制 box drawing / powerline / 进度条等字符。
+   * xterm 6.1 起 customGlyphs 从 ITerminalOptions 移到 WebglAddon 选项,
+   * 由 pipeline 在创建 WebGL addon 时传入。仅对 WebGL 渲染器生效。
+   */
+  customGlyphs: boolean;
 }
 
 export interface RendererPipeline {
@@ -110,7 +116,7 @@ export function attachRendererPipeline(
     if (webglBlocked) return;
     let addon: WebglAddon;
     try {
-      addon = new WebglAddon();
+      addon = new WebglAddon({ customGlyphs: opts.customGlyphs });
     } catch {
       // WebGL 初始化失败(无 GPU、驱动 bug、安全上下文)
       if (autoFallback) {
