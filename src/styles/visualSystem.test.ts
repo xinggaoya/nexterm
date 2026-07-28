@@ -62,7 +62,13 @@ describe("visual system contract", () => {
       "../modules/explorer/ExplorerContextMenu.vue",
       "../modules/commands/CommandPalette.vue",
     ]) {
-      expect(readSource(path)).toContain("nexterm-overlay");
+      // 重做后的右键菜单（TerminalContextMenu / ExplorerContextMenu）使用
+      // Naive UI 的 NDropdown 替代手写的 nexterm-overlay 容器；这里接受
+      // 任一形态以便菜单重构滚动进行。
+      const source = readSource(path);
+      expect(
+        source.includes("nexterm-overlay") || source.includes("NDropdown"),
+      ).toBe(true);
     }
 
     for (const path of [

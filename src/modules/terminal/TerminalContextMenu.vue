@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { NButton } from "naive-ui";
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, h } from "vue";
+import { NDropdown, type DropdownOption } from "naive-ui";
 
-defineProps<{
+const props = defineProps<{
   x: number;
   y: number;
   selection: string;
@@ -15,66 +15,74 @@ const emit = defineEmits<{
   selectAll: [];
 }>();
 
-const menuElement = ref<HTMLElement | null>(null);
-
-function handleOutsidePointerDown(event: Event) {
-  const node = event.target instanceof Node ? event.target : null;
-  if (node && menuElement.value?.contains(node)) return;
-  emit("close");
+// 给每个 DropdownOption 注入 data-menu-action 属性，让现有
+// `[data-menu-action="..."]` 选择器（visualSystem / TerminalContextMenu
+// 测试）继续命中；菜单行高、padding、键盘导航、关闭逻辑全部交给 NDropdown。
+function renderOption(action: string) {
+  return (option: DropdownOption) =>
+    h(
+      "div",
+      {
+        class: "nexterm-dropdown-option",
+        "data-menu-action": action,
+        style: "padding: 0;",
+      },
+      { default: () => option.label },
+    );
 }
 
-function handleGlobalKeydown(event: KeyboardEvent) {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    emit("close");
+const options = computed<DropdownOption[]>(() => [
+  {
+    key: "copy",
+    label: "Copy",
+    disabled: !props.selection,
+    render: renderOption("copy"),
+  },
+  {
+    key: "paste",
+    label: "Paste",
+    render: renderOption("paste"),
+  },
+  {
+    key: "selectAll",
+    label: "Select All",
+    render: renderOption("selectAll"),
+  },
+]);
+
+function handleSelect(key: string | number) {
+  switch (key) {
+    case "copy":
+      emit("copy");
+      break;
+    case "paste":
+      emit("paste");
+      break;
+    case "selectAll":
+      emit("selectAll");
+      break;
   }
 }
-
-onMounted(() => {
-  window.addEventListener("pointerdown", handleOutsidePointerDown, true);
-  window.addEventListener("keydown", handleGlobalKeydown);
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener("pointerdown", handleOutsidePointerDown, true);
-  window.removeEventListener("keydown", handleGlobalKeydown);
-});
 </script>
 
 <template>
-  <div
-    ref="menuElement"
-    class="nexterm-overlay fixed z-50 min-w-32 p-1 text-[12px]"
-    :style="{ top: `${y}px`, left: `${x}px` }"
-    @contextmenu.prevent
+  <NDropdown
+    trigger="manual"
+    placement="bottom-start"
+    :show="true"
+    :options="options"
+    @select="handleSelect"
+    @clickoutside="emit('close')"
   >
-    <NButton
-      text
-      block
-      size="tiny"
-      :disabled="!selection"
-     
-      @click="emit('copy')"
-    >
-      Copy
-    </NButton>
-    <NButton
-      text
-      block
-      size="tiny"
-     
-      @click="emit('paste')"
-    >
-      Paste
-    </NButton>
-    <NButton
-      text
-      block
-      size="tiny"
-     
-      @click="emit('selectAll')"
-    >
-      Select All
-    </NButton>
-  </div>
+    <div
+      :style="{
+        position: 'fixed',
+        left: x + 'px',
+        top: y + 'px',
+        width: '1px',
+        height: '1px',
+        pointerEvents: 'none',
+      }"
+    />
+  </NDropdown>
 </template>

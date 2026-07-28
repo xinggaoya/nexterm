@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
-import { nextTick } from "vue";
+import { nextTick, type VNode } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FileExplorer from "./FileExplorer.vue";
 import {
@@ -59,6 +59,93 @@ vi.mock("./lib/contextActions", () => ({
     path.startsWith(`${rootPath}/`) ? path.slice(rootPath.length + 1) : path,
   revealInFinder: vi.fn(),
 }));
+
+// jsdom 下 NDropdown 的 popper 面板不会渲染（floating-ui 缺真实布局），
+// 因此把 NDropdown mock 成简单渲染 trigger slot + 把 options 摊成可见的
+// div（带 data-menu-action）。同时模拟 NDropdown 的 clickoutside 行为：
+// 在 window 上监听 pointerdown，触发 emit('clickoutside')，让外部点击
+// 关闭菜单的旧测试继续通过。
+const naiveDropdownMock = vi.hoisted(() => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const vue = require("vue") as typeof import("vue");
+  const { defineComponent, h, onBeforeUnmount, onMounted } = vue;
+  return {
+    NDropdown: defineComponent({
+      props: ["options", "show"],
+      emits: ["select", "clickoutside"],
+      setup(
+        _props: {
+          options?: Array<{
+            key: string | number;
+            label?: unknown;
+            type?: string;
+            disabled?: boolean;
+          }>;
+          show?: boolean;
+        },
+        {
+          emit,
+          slots,
+        }: {
+          emit: (event: "select" | "clickoutside", ...args: unknown[]) => void;
+          slots: { default?: () => unknown };
+        },
+      ) {
+        let containerRef: HTMLElement | null = null;
+        function onWindowPointerDown(event: Event) {
+          // 真实 NDropdown 不会对来自自身内部的 pointerdown 触发 clickoutside。
+          const target = event.target;
+          if (target instanceof Node && containerRef?.contains(target)) return;
+          emit("clickoutside");
+        }
+        onMounted(() => {
+          window.addEventListener("pointerdown", onWindowPointerDown);
+        });
+        onBeforeUnmount(() => {
+          window.removeEventListener("pointerdown", onWindowPointerDown);
+        });
+        return () => {
+          const optionNodes = (_props.options ?? [])
+            .filter((opt) => opt.type !== "divider")
+            .map((opt) =>
+              h(
+                "div",
+                {
+                  class: "n-dropdown-option",
+                  "data-menu-action": String(opt.key),
+                  onClick: () => emit("select", opt.key),
+                },
+                { default: () => opt.label },
+              ),
+            );
+          return h(
+            "div",
+            {
+              "data-dropdown-mock": "",
+              ref: ((el: Element | null) => {
+                containerRef = el instanceof HTMLElement ? el : null;
+              }) as unknown as string,
+            },
+            [
+              (slots.default?.() ?? []) as VNode[][],
+              _props.show !== false
+                ? h("div", { class: "n-dropdown-options" }, optionNodes)
+                : null,
+            ],
+          );
+        };
+      },
+    }),
+  };
+});
+
+vi.mock("naive-ui", async () => {
+  const actual = await vi.importActual<typeof import("naive-ui")>("naive-ui");
+  return {
+    ...actual,
+    NDropdown: naiveDropdownMock.NDropdown,
+  };
+});
 
 import { buildGitDecorationMap } from "@/modules/source-control/gitDecorations";
 

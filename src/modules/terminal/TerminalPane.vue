@@ -328,18 +328,20 @@ defineExpose({
     @contextmenu="openContextMenu"
   >
     <div ref="container" class="terminal-pane-body" />
-    <Teleport to="body">
-      <TerminalContextMenu
-        v-if="menu"
-        :x="menu.x"
-        :y="menu.y"
-        :selection="menu.selection"
-        @close="closeContextMenu"
-        @copy="handleMenuCopy"
-        @paste="handleMenuPaste"
-        @select-all="handleMenuSelectAll"
-      />
-    </Teleport>
+    <!--
+      TerminalContextMenu 内部使用 NDropdown，NDropdown 默认 Teleport 到 body，
+      此处不必再额外包一层 Teleport，避免与 NDropdown 的 teleport 重复造成双重定位。
+    -->
+    <TerminalContextMenu
+      v-if="menu"
+      :x="menu.x"
+      :y="menu.y"
+      :selection="menu.selection"
+      @close="closeContextMenu"
+      @copy="handleMenuCopy"
+      @paste="handleMenuPaste"
+      @select-all="handleMenuSelectAll"
+    />
   </div>
 </template>
 

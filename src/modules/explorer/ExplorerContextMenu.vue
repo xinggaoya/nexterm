@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { NButton } from "naive-ui";
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, h, onBeforeUnmount, onMounted, ref } from "vue";
+import { NDropdown, type DropdownOption } from "naive-ui";
 import {
   copyToClipboard,
   relativePath,
@@ -34,251 +34,227 @@ const emit = defineEmits<{
   deletePath: [path: string];
 }>();
 
-const confirmDeletePath = ref<string | null>(null);
-const menuElement = ref<HTMLElement | null>(null);
-
-function isMarkdownPath(path: string): boolean {
-  return /\.(md|markdown|mdx)$/i.test(path);
-}
-
-function close() {
-  confirmDeletePath.value = null;
-  emit("close");
-}
-
-function handleOutsidePointerDown(event: Event) {
-  if (!props.target) return;
-  const node = event.target instanceof Node ? event.target : null;
-  if (node && menuElement.value?.contains(node)) return;
-  close();
-}
-
-function handleGlobalKeydown(event: KeyboardEvent) {
-  if (event.key === "Escape" && props.target) {
+// NDropdown 默认监听 Escape（在 trigger=manual 下由 VueUse onKeyStroke
+// 处理），但测试用的 mock 不会自动触发 @clickoutside；为保持真实行为一致，
+// 这里也自行监听 Escape 与 window blur，触发 close 即可让父组件卸载菜单。
+function handleEscape(event: KeyboardEvent) {
+  if (event.key === "Escape") {
     event.preventDefault();
     close();
   }
 }
 
 function handleWindowBlur() {
-  if (props.target) close();
+  close();
+}
+
+onMounted(() => {
+  window.addEventListener("keydown", handleEscape);
+  window.addEventListener("blur", handleWindowBlur);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleEscape);
+  window.removeEventListener("blur", handleWindowBlur);
+});
+
+// 渲染钩子：给每个 DropdownOption 注入 data-menu-action 属性，让现有
+// `[data-menu-action="..."]` 选择器（visualSystem.test / FileExplorer 测试）继续命中。
+function renderOption(action: string) {
+  return (option: DropdownOption) =>
+    h(
+      "div",
+      {
+        class: "nexterm-dropdown-option",
+        "data-menu-action": action,
+        style: "padding: 0;",
+      },
+      { default: () => option.label },
+    );
+}
+
+// 二次确认：第一次点击把 confirmPath 切到目标 path，菜单保持打开；第二次
+// 再点确认删除并关闭。
+const confirmPath = ref<string | null>(null);
+
+function isMarkdownPath(path: string): boolean {
+  return /\.(md|markdown|mdx)$/i.test(path);
+}
+
+function close() {
+  confirmPath.value = null;
+  emit("close");
 }
 
 function createTargetPath(target: ExplorerContextMenuTarget): string {
   return target.isDir ? target.path : dirname(target.path);
 }
 
-function openFile(pin: boolean) {
-  if (!props.target || props.target.isDir) return;
-  emit("openFile", props.target.path, pin);
-  close();
-}
+const menuOptions = computed<DropdownOption[]>(() => {
+  const target = props.target;
+  if (!target) return [];
+  const opts: DropdownOption[] = [];
 
-function openMarkdownPreview() {
-  if (!props.target || props.target.isDir) return;
-  emit("openMarkdownPreview", props.target.path);
-  close();
-}
-
-function revealTarget() {
-  if (!props.target) return;
-  void revealInFinder(props.target.path);
-  close();
-}
-
-function openInTerminal() {
-  if (!props.target || !props.target.isDir) return;
-  emit("openInTerminal", props.target.path);
-  close();
-}
-
-function duplicate() {
-  if (!props.target) return;
-  emit("duplicate", props.target.path);
-  close();
-}
-
-function copyPath(relative: boolean) {
-  if (!props.target || !props.rootPath) return;
-  const text = relative
-    ? relativePath(props.rootPath, props.target.path)
-    : props.target.path;
-  void copyToClipboard(text);
-  close();
-}
-
-function create(kind: "file" | "dir") {
-  if (!props.target) return;
-  emit("create", createTargetPath(props.target), kind);
-  close();
-}
-
-function beginRename() {
-  if (!props.target || props.target.source === "root") return;
-  emit("rename", props.target.path);
-  close();
-}
-
-function confirmDelete() {
-  if (!props.target || props.target.source === "root") return;
-  if (confirmDeletePath.value !== props.target.path) {
-    confirmDeletePath.value = props.target.path;
-    return;
+  if (!target.isDir) {
+    opts.push({
+      key: "open",
+      label: t("explorer.open"),
+      render: renderOption("open"),
+    });
+    if (isMarkdownPath(target.path)) {
+      opts.push({
+        key: "open-preview",
+        label: t("explorer.openPreview"),
+        render: renderOption("open-preview"),
+      });
+    }
   }
-  emit("deletePath", props.target.path);
-  close();
+
+  opts.push({
+    key: "reveal",
+    label: t("explorer.revealInFinder"),
+    render: renderOption("reveal"),
+  });
+
+  if (target.isDir) {
+    opts.push({
+      key: "open-in-terminal",
+      label: t("explorer.openInTerminal"),
+      render: renderOption("open-in-terminal"),
+    });
+  }
+
+  opts.push({
+    key: "duplicate",
+    label: t("explorer.duplicate"),
+    render: renderOption("duplicate"),
+  });
+
+  opts.push({ key: "divider-1", type: "divider" });
+
+  opts.push({
+    key: "new-file",
+    label: t("explorer.newFile"),
+    render: renderOption("new-file"),
+  });
+  opts.push({
+    key: "new-folder",
+    label: t("explorer.newFolder"),
+    render: renderOption("new-folder"),
+  });
+
+  opts.push({ key: "divider-2", type: "divider" });
+
+  opts.push({
+    key: "copy-path",
+    label: t("explorer.copyPath"),
+    render: renderOption("copy-path"),
+  });
+  opts.push({
+    key: "copy-relative-path",
+    label: t("explorer.copyRelativePath"),
+    render: renderOption("copy-relative-path"),
+  });
+
+  if (target.source !== "root") {
+    opts.push({ key: "divider-3", type: "divider" });
+    opts.push({
+      key: "rename",
+      label: t("explorer.rename"),
+      render: renderOption("rename"),
+    });
+    opts.push({
+      key: "delete",
+      label:
+        confirmPath.value === target.path
+          ? t("explorer.clickAgainToConfirm")
+          : t("explorer.delete"),
+      render: renderOption("delete"),
+    });
+  }
+
+  return opts;
+});
+
+function handleSelect(key: string | number) {
+  const target = props.target;
+  if (!target) return;
+
+  switch (key) {
+    case "open":
+      emit("openFile", target.path, true);
+      close();
+      break;
+    case "open-preview":
+      emit("openMarkdownPreview", target.path);
+      close();
+      break;
+    case "reveal":
+      void revealInFinder(target.path);
+      close();
+      break;
+    case "open-in-terminal":
+      emit("openInTerminal", target.path);
+      close();
+      break;
+    case "duplicate":
+      emit("duplicate", target.path);
+      close();
+      break;
+    case "new-file":
+      emit("create", createTargetPath(target), "file");
+      close();
+      break;
+    case "new-folder":
+      emit("create", createTargetPath(target), "dir");
+      close();
+      break;
+    case "copy-path":
+      void copyToClipboard(target.path);
+      close();
+      break;
+    case "copy-relative-path":
+      if (!props.rootPath) return;
+      void copyToClipboard(relativePath(props.rootPath, target.path));
+      close();
+      break;
+    case "rename":
+      emit("rename", target.path);
+      close();
+      break;
+    case "delete":
+      if (confirmPath.value !== target.path) {
+        confirmPath.value = target.path;
+        return;
+      }
+      emit("deletePath", target.path);
+      close();
+      break;
+    default:
+      break;
+  }
 }
-
-watch(
-  () => props.target?.path,
-  () => {
-    confirmDeletePath.value = null;
-  },
-);
-
-onMounted(() => {
-  window.addEventListener("pointerdown", handleOutsidePointerDown, true);
-  window.addEventListener("keydown", handleGlobalKeydown);
-  window.addEventListener("blur", handleWindowBlur);
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener("pointerdown", handleOutsidePointerDown, true);
-  window.removeEventListener("keydown", handleGlobalKeydown);
-  window.removeEventListener("blur", handleWindowBlur);
-});
 </script>
 
 <template>
-  <div
+  <NDropdown
     v-if="target"
-    ref="menuElement"
-    class="nexterm-overlay fixed z-50 min-w-44 p-1 text-[12px]"
-    :style="{ left: `${target.x}px`, top: `${target.y}px` }"
-    @contextmenu.prevent
+    trigger="manual"
+    placement="bottom-start"
+    :show="true"
+    :options="menuOptions"
+    @select="handleSelect"
+    @clickoutside="close"
   >
-    <NButton
-      v-if="!target.isDir"
-      text
-      block
-      size="tiny"
-      data-menu-action="open"
-     
-      @click="openFile(true)"
-    >
-      {{ t("explorer.open") }}
-    </NButton>
-    <NButton
-      v-if="!target.isDir && isMarkdownPath(target.path)"
-      text
-      block
-      size="tiny"
-      data-menu-action="open-preview"
-     
-      @click="openMarkdownPreview"
-    >
-      {{ t("explorer.openPreview") }}
-    </NButton>
-    <NButton
-      text
-      block
-      size="tiny"
-      data-menu-action="reveal"
-     
-      @click="revealTarget"
-    >
-      {{ t("explorer.revealInFinder") }}
-    </NButton>
-    <NButton
-      v-if="target.isDir"
-      text
-      block
-      size="tiny"
-      data-menu-action="open-in-terminal"
-     
-      @click="openInTerminal"
-    >
-      {{ t("explorer.openInTerminal") }}
-    </NButton>
-    <NButton
-      text
-      block
-      size="tiny"
-      data-menu-action="duplicate"
-     
-      @click="duplicate"
-    >
-      {{ t("explorer.duplicate") }}
-    </NButton>
-    <div class="my-1 h-px bg-border/70" />
-    <NButton
-      text
-      block
-      size="tiny"
-      data-menu-action="new-file"
-     
-      @click="create('file')"
-    >
-      {{ t("explorer.newFile") }}
-    </NButton>
-    <NButton
-      text
-      block
-      size="tiny"
-      data-menu-action="new-folder"
-     
-      @click="create('dir')"
-    >
-      {{ t("explorer.newFolder") }}
-    </NButton>
-    <div class="my-1 h-px bg-border/70" />
-    <NButton
-      text
-      block
-      size="tiny"
-      data-menu-action="copy-path"
-     
-      @click="copyPath(false)"
-    >
-      {{ t("explorer.copyPath") }}
-    </NButton>
-    <NButton
-      text
-      block
-      size="tiny"
-      data-menu-action="copy-relative-path"
-     
-      @click="copyPath(true)"
-    >
-      {{ t("explorer.copyRelativePath") }}
-    </NButton>
-    <template v-if="target.source !== 'root'">
-      <div class="my-1 h-px bg-border/70" />
-      <NButton
-        text
-        block
-        size="tiny"
-        data-menu-action="rename"
-       
-        @click="beginRename"
-      >
-        {{ t("explorer.rename") }}
-      </NButton>
-      <NButton
-        text
-        block
-        size="tiny"
-        data-menu-action="delete"
-        :type="confirmDeletePath === target.path ? 'error' : 'default'"
-       
-        @click="confirmDelete"
-      >
-        {{
-          confirmDeletePath === target.path
-            ? t("explorer.clickAgainToConfirm")
-            : t("explorer.delete")
-        }}
-      </NButton>
-    </template>
-  </div>
+    <div
+      :style="{
+        position: 'fixed',
+        left: target.x + 'px',
+        top: target.y + 'px',
+        width: '1px',
+        height: '1px',
+        pointerEvents: 'none',
+      }"
+    />
+  </NDropdown>
 </template>

@@ -465,29 +465,32 @@ html[data-chrome="borderless"][data-window-edge-to-edge="true"] #root {
   display: none !important;
 }
 
-/* xterm 6 renders a VS Code style overlay scrollbar inside
- * `.xterm-scrollable-element`. Its default track is chunky, so slim it to a
- * thin rounded thumb that fades with the terminal foreground color. */
-.xterm .xterm-scrollable-element > .scrollbar.vertical {
+/* xterm 6 beta renders a VS Code style overlay scrollbar inside
+ * `.xterm-scrollable-element`. The DOM was renamed in 6.x
+ * (`.xterm-scrollbar` / `.xterm-slider` / `.xterm-scra`) so older
+ * `.scrollbar.vertical > .slider` selectors no longer match. Slim the new
+ * track to 10px and the thumb to 6px with a rounded fade that responds to
+ * the terminal foreground color. */
+.xterm .xterm-scrollable-element > .xterm-scrollbar.vertical {
   width: 10px !important;
 }
-.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+.xterm .xterm-scrollable-element > .xterm-scrollbar.vertical > .xterm-slider {
   width: 6px !important;
   left: 2px !important;
   border-radius: 999px !important;
   background: color-mix(in oklch, var(--term-fg) 26%, transparent) !important;
   transition: background 120ms ease;
 }
-.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider:hover {
+.xterm .xterm-scrollable-element > .xterm-scrollbar.vertical > .xterm-slider:hover {
   background: color-mix(in oklch, var(--term-fg) 44%, transparent) !important;
 }
-.xterm .xterm-scrollable-element > .scrollbar.vertical > .slider.active {
+.xterm .xterm-scrollable-element > .xterm-scrollbar.vertical > .xterm-slider.xterm-active {
   background: color-mix(in oklch, var(--term-fg) 58%, transparent) !important;
 }
-.xterm .xterm-scrollable-element > .scrollbar.horizontal {
+.xterm .xterm-scrollable-element > .xterm-scrollbar.horizontal {
   display: none !important;
 }
-.xterm .xterm-scrollable-element > .scrollbar > .scra {
+.xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-scra {
   display: none !important;
 }
 
