@@ -50,6 +50,11 @@ export interface AttachImeAnchorOptions {
    * 应跳过。默认 true。
    */
   requireIsolatedCell?: boolean;
+  /**
+   * [诊断] 扫描时报告所有可见反相单元格(字符+坐标),用于定位启发式选错单元格。
+   * 验证后移除。
+   */
+  onInverseCells?: (cells: Array<{ col: number; row: number; char: string; isolated: boolean }>) => void;
 }
 
 export interface ImeAnchorHandle {
@@ -67,7 +72,7 @@ export function attachImeAnchor(
   terminal: Terminal,
   options: AttachImeAnchorOptions = {},
 ): ImeAnchorHandle {
-  const { onAnchor, requireIsolatedCell = true } = options;
+  const { onAnchor, requireIsolatedCell = true, onInverseCells } = options;
 
   const root = terminal.element;
   if (!root) return noopHandle();
@@ -115,7 +120,10 @@ export function attachImeAnchor(
     const buf = terminal.buffer.active;
     const startY = buf.baseY;
     const endY = startY + terminal.rows;
-    for (let y = endY - 1; y >= startY; y -= 1) {
+    // [诊断] 收集所有反相单元格(无论是否命中)
+    const allInverse: Array<{ col: number; row: number; char: string; isolated: boolean }> = [];
+    let hit: { col: number; row: number } | null = null;
+    for (let y = endY - 1; y >= startY && !hit; y -= 1) {
       const line = buf.getLine(y);
       if (!line) continue;
       for (let x = line.length - 1; x >= 0; x -= 1) {
@@ -124,19 +132,28 @@ export function attachImeAnchor(
         // isInverse() 返回 number(0/1),非 0 即反相
         if (!cell.isInverse()) continue;
 
-        if (requireIsolatedCell) {
-          const left = x > 0 ? line.getCell(x - 1) : null;
-          const right = x + 1 < line.length ? line.getCell(x + 1) : null;
-          const leftInv = !!left && !!left.isInverse();
-          const rightInv = !!right && !!right.isInverse();
-          // 左右邻居都反相 → 选中行高亮,跳过
-          if (leftInv && rightInv) continue;
+        const left = x > 0 ? line.getCell(x - 1) : null;
+        const right = x + 1 < line.length ? line.getCell(x + 1) : null;
+        const leftInv = !!left && !!left.isInverse();
+        const rightInv = !!right && !!right.isInverse();
+        const isolated = !(leftInv && rightInv);
+
+        if (onInverseCells) {
+          allInverse.push({
+            col: x,
+            row: y - startY,
+            char: cell.getChars() || "·",
+            isolated,
+          });
         }
 
-        return { col: x, row: y - startY };
+        if (requireIsolatedCell && !isolated) continue;
+        hit = { col: x, row: y - startY };
+        break;
       }
     }
-    return null;
+    if (onInverseCells) onInverseCells(allInverse);
+    return hit;
   }
 
   /** 把锚点像素坐标钉到两个 IME 元素上。 */
