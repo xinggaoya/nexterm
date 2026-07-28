@@ -18,7 +18,6 @@ import {
   type TerminalRenderer,
   type TerminalRendererPreferences,
 } from "./lib/renderer";
-import { attachImeAnchor, type ImeAnchorHandle } from "./lib/imeAnchor";
 import type { FontPreference } from "./lib/fontStack";
 import type { RendererKind } from "./lib/rendererPipeline";
 import TerminalContextMenu from "./TerminalContextMenu.vue";
@@ -63,8 +62,6 @@ let session: PtySessionHandle | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let detachThemeWatch: (() => void) | null = null;
 let detachClipboardShortcuts: (() => void) | null = null;
-/** IME 候选框锚点启发式句柄 —— 把候选框钉到 TUI 可见光标(反相单元格)。 */
-let imeAnchor: ImeAnchorHandle | null = null;
 let mountRevision = 0;
 
 /** 假死重建的最大重试次数（WD 上 WSL 冷启动典型 1~2 次即可成功）。 */
@@ -205,21 +202,6 @@ onMounted(async () => {
   detachClipboardShortcuts = attachClipboardShortcuts({
     term: nextRenderer.term,
   });
-  // IME 候选框锚点:修正 TUI(Ink/React 等)把硬件光标留在角落导致中文输入
-  // 候选框漂移的问题。对普通 shell 无害(找不到反相光标时自动回退默认行为)。
-  imeAnchor = attachImeAnchor(nextRenderer.term, {
-    onAnchor: (a) =>
-      console.log(
-        `%c[IME-ANCHOR] source=${a.source} col=${a.col} row=${a.row} bufType=${nextRenderer.term.buffer.active.type}`,
-        a.source === "heuristic" ? "color:orange" : "color:gray",
-      ),
-    // [诊断] 打印所有反相单元格,定位启发式为何选错。验证后移除。
-    onInverseCells: (cells) =>
-      console.log(
-        `[IME-CELLS] 共 ${cells.length} 个反相单元格:`,
-        cells.map((c) => `${c.char === "·" ? "空格" : c.char}@(${c.col},${c.row})${c.isolated ? "" : "连片"}`).join("  "),
-      ),
-  });
   // ensureSession 失败(如冷启动工作区授权竞态、shell 启动失败)以往是静默
   // unhandled rejection,导致 session 永远为 null、键盘输入无处可去、面板
   // 卡在空白。这里捕获并把状态标记为 exited;watch(isActive) 会在面板再次
@@ -254,8 +236,6 @@ onBeforeUnmount(() => {
   deadStartInFlight = false;
   detachThemeWatch?.();
   detachClipboardShortcuts?.();
-  imeAnchor?.detach();
-  imeAnchor = null;
   resizeObserver?.disconnect();
   renderer?.dispose();
   renderer = null;
