@@ -400,6 +400,7 @@ watch(
                 :key="ws.id"
                 :ref="(el) => setWorkspaceHostRef(ws.id, el as InstanceType<typeof WorkspaceHost> | null)"
                 v-show="ws.id === workspaces.activeWorkspaceId"
+                :data-workspace-active="ws.id === workspaces.activeWorkspaceId ? 'true' : 'false'"
                 :workspace="ws"
                 @add-workspace="(env) => startAddWorkspace(env)"
                 @open-in-new-window="() => openWorkspaceInNewWindow()"

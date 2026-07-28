@@ -43,13 +43,23 @@ const emit = defineEmits<{
 
 
 
+// tabKindLabel 调用的是静态翻译串，结果完全由 tab.kind 决定。把它做成
+// computed Map 只在 tabs 数组引用变化时重算，避免每次父组件重渲染都重新
+// 调用 t()（i18n key→字符串映射本身不重，但函数开销和模板求值仍然存在）。
+const kindLabelByTabKind = computed(() => {
+  const m = new Map<Tab["kind"], string>();
+  m.set("terminal", t("app.header.terminal"));
+  m.set("git-history", t("app.header.gitHistory"));
+  m.set("git-diff", t("app.header.gitDiff"));
+  m.set("git-commit-file", t("app.header.gitDiff"));
+  m.set("markdown", t("app.header.markdown"));
+  m.set("preview", t("app.header.preview"));
+  m.set("editor", t("settings.general.editor"));
+  return m;
+});
+
 function tabKindLabel(tab: Tab): string {
-  if (tab.kind === "terminal") return t("app.header.terminal");
-  if (tab.kind === "git-history") return t("app.header.gitHistory");
-  if (tab.kind === "git-diff" || tab.kind === "git-commit-file") return t("app.header.gitDiff");
-  if (tab.kind === "markdown") return t("app.header.markdown");
-  if (tab.kind === "preview") return t("app.header.preview");
-  return t("settings.general.editor");
+  return kindLabelByTabKind.value.get(tab.kind) ?? "";
 }
 // --- Drag-to-reorder ---
 
@@ -82,6 +92,8 @@ function clearDragState() {
   dropTarget.value = null;
   pointerDrag.value = null;
   dragGhost.value = null;
+  cachedDragTab = null;
+  cachedDragTabId = null;
 }
 
 function dropPlacementFromElement(clientX: number, el: HTMLElement): TabDropPlacement {
@@ -108,8 +120,18 @@ function updateDropTarget(e: PointerEvent) {
   dropTarget.value = { id, placement: dropPlacementFromElement(e.clientX, el) };
 }
 
+// 拖拽中每帧 pointermove 都会跑。原先 props.tabs.find 是 O(Tab 数)，
+// 大标签数时叠加 layout 抖动。这里在拖拽开始时把 sourceTab 缓存，
+// pointermove 期间直接读缓存，避免重复线性扫描。
+let cachedDragTab: Tab | null = null;
+let cachedDragTabId: number | null = null;
+
 function updateDragGhost(e: PointerEvent, drag: PointerDragState) {
-  const tab = props.tabs.find((t) => t.id === drag.sourceId);
+  if (cachedDragTabId !== drag.sourceId) {
+    cachedDragTab = props.tabs.find((t) => t.id === drag.sourceId) ?? null;
+    cachedDragTabId = drag.sourceId;
+  }
+  const tab = cachedDragTab;
   if (!tab) { dragGhost.value = null; return; }
   dragGhost.value = { tab, x: e.clientX, y: e.clientY, width: drag.sourceWidth };
 }
@@ -263,6 +285,7 @@ function handleSplitSelect(key: string | number) {
           <span class="flex min-w-0 flex-1 items-center gap-1.5 truncate">
             <img
               v-if="tab.kind === 'editor' || tab.kind === 'markdown'"
+              v-memo="[tab.kind, tab.title]"
               :src="fileIconUrl(tab.title)"
               alt=""
               class="size-3.5 shrink-0"
