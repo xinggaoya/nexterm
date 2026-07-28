@@ -82,6 +82,63 @@ let fsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 const pendingFsEventPaths = new Set<string>();
 const inFlightLoads = new Map<string, InFlightLoad>();
 
+// ── Virtual scroll window ──────────────────────────────────────────────
+// FileTreeRow 定高 24px（template h-6）。窗口化只对 entry / status 行生效；
+// pending / rename 含内联输入框，仍全量渲染以保留焦点。行数少于阈值时
+// 直接走 v-for，避免给小树引入无谓的 scroll 计算。
+const VIRTUAL_THRESHOLD = 200;
+const ROW_HEIGHT = 24;
+const VIRTUAL_OVERSCAN = 6;
+const treeScroll = ref<HTMLElement | null>(null);
+const scrollTop = ref(0);
+const viewportHeight = ref(0);
+let viewportRO: ResizeObserver | null = null;
+
+const virtualRange = computed(() => {
+  const total = rows.value.length;
+  if (total === 0) return { start: 0, end: 0 };
+  const visibleStart = Math.floor(scrollTop.value / ROW_HEIGHT) - VIRTUAL_OVERSCAN;
+  const visibleRows = Math.ceil(viewportHeight.value / ROW_HEIGHT) + VIRTUAL_OVERSCAN * 2;
+  const start = Math.max(0, visibleStart);
+  const end = Math.min(total, start + visibleRows);
+  return { start, end };
+});
+
+const virtualRows = computed(() => {
+  const { start, end } = virtualRange.value;
+  return rows.value.slice(start, end);
+});
+const virtualTopPadding = computed(() => virtualRange.value.start * ROW_HEIGHT);
+const virtualBottomPadding = computed(() => {
+  const total = rows.value.length;
+  const { end } = virtualRange.value;
+  return Math.max(0, (total - end) * ROW_HEIGHT);
+});
+
+function onTreeScroll(event: Event) {
+  scrollTop.value = (event.target as HTMLElement).scrollTop;
+  closeMenu();
+}
+
+watch(
+  treeScroll,
+  (el, prev) => {
+    if (prev) viewportRO?.unobserve(prev);
+    viewportRO?.disconnect();
+    viewportRO = null;
+    if (el && typeof ResizeObserver === "function") {
+      viewportRO = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          viewportHeight.value = entry.contentRect.height;
+        }
+      });
+      viewportRO.observe(el);
+      viewportHeight.value = el.clientHeight;
+    }
+  },
+  { flush: "post" },
+);
+
 const rootName = computed(() => {
   if (!props.rootPath) return "";
   return basename(props.rootPath);
@@ -636,6 +693,8 @@ watch(rows, () => {
 
 onBeforeUnmount(() => {
   clearScheduledTreeRefresh();
+  viewportRO?.disconnect();
+  viewportRO = null;
 });
 
 function setMode(next: "files" | "content") {
@@ -765,8 +824,9 @@ defineExpose({ setMode });
 
       <div
         v-show="!isSearchActive && mode === 'files'"
+        ref="treeScroll"
         class="min-h-0 flex-1 overflow-y-auto py-1"
-        @scroll.passive="closeMenu"
+        @scroll.passive="onTreeScroll"
         @contextmenu.prevent="openRootMenu"
       >
         <FileTreeRow
@@ -790,20 +850,54 @@ defineExpose({ setMode });
         >
           {{ rootState.message }}
         </div>
-        <div v-else-if="rootState?.status === 'loaded'" class="space-y-0.5 px-1">
-          <FileTreeRow
-            v-for="row in rows"
-            :key="row.key"
-            :row="row"
-            :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPath === row.path"
-            @entry-click="handleEntryClick"
-            @begin-rename="beginRename"
-            @commit-rename="commitRename"
-            @cancel-rename="cancelRename"
-            @commit-create="commitCreate"
-            @cancel-create="cancelCreate"
-            @row-context="handleRowContext"
-          />
+        <div v-else-if="rootState?.status === 'loaded'">
+          <!--
+            视口窗口化：大仓（5k+ 文件）一次性 v-for 所有行会让 mount + 滚动
+            都掉到个位数 FPS。这里对 entry / status 行按 24px 定高做切片渲染：
+            顶部 spacer + 可见行 + 底部 spacer。pending / rename 含内联输入框
+            单独渲染以保留焦点（行高可能略大于 24px）。
+          -->
+          <div
+            v-if="rows.length > VIRTUAL_THRESHOLD"
+            class="relative px-1"
+          >
+            <div
+              :style="{ height: `${virtualTopPadding}px` }"
+              aria-hidden="true"
+            />
+            <FileTreeRow
+              v-for="row in virtualRows"
+              :key="row.key"
+              :row="row"
+              :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPath === row.path"
+              @entry-click="handleEntryClick"
+              @begin-rename="beginRename"
+              @commit-rename="commitRename"
+              @cancel-rename="cancelRename"
+              @commit-create="commitCreate"
+              @cancel-create="cancelCreate"
+              @row-context="handleRowContext"
+            />
+            <div
+              :style="{ height: `${virtualBottomPadding}px` }"
+              aria-hidden="true"
+            />
+          </div>
+          <div v-else class="space-y-0.5 px-1">
+            <FileTreeRow
+              v-for="row in rows"
+              :key="row.key"
+              :row="row"
+              :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPath === row.path"
+              @entry-click="handleEntryClick"
+              @begin-rename="beginRename"
+              @commit-rename="commitRename"
+              @cancel-rename="cancelRename"
+              @commit-create="commitCreate"
+              @cancel-create="cancelCreate"
+              @row-context="handleRowContext"
+            />
+          </div>
         </div>
       </div>
     </template>
