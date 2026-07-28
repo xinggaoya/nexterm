@@ -173,14 +173,28 @@ export function attachImeAnchor(
 
   function onCompositionStart(): void {
     composing = true;
+    const buf = terminal.buffer.active;
+    // 启发式仅在 alternate buffer(TUI 模式)启用。普通 shell(normal buffer)
+    // 用硬件光标,xterm 默认锚点本就正确;若此时 buffer 里残留 TUI 的反相
+    // 元素(如输入框边框、状态条),启发式会误锁到残留位置。故 normal buffer
+    // 直接回退 xterm 默认行为。
+    if (buf.type !== "alternate") {
+      pinned = null;
+      onAnchor?.({
+        source: "hardware",
+        col: buf.cursorX,
+        row: buf.cursorY,
+      });
+      return;
+    }
     const hit = findInverseCell();
     if (!hit) {
       // 没有反相单元格 → 普通场景,让 xterm 默认硬件光标锚点生效。
       pinned = null;
       onAnchor?.({
         source: "hardware",
-        col: terminal.buffer.active.cursorX,
-        row: terminal.buffer.active.cursorY,
+        col: buf.cursorX,
+        row: buf.cursorY,
       });
       return;
     }
