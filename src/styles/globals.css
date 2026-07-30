@@ -293,6 +293,10 @@
     }
   html {
     @apply font-sans;
+    // Pre-paint fallback so a transparent Tauri window never flashes black
+    // before --background resolves. Overridden to transparent !important by
+    // html[data-chrome="borderless"] below (where #root holds the solid bg).
+    background-color: var(--background, #0a0a0a);
     }
 }
 

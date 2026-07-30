@@ -15,7 +15,6 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import MainApp from "./app/MainApp.vue";
 import { applyLanguagePreference, i18n } from "./modules/i18n";
-import { initLaunchDir } from "./lib/launchDir";
 import { onDeepLinkOpen, type DeepLinkOpenRequest } from "@/lib/native";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
@@ -26,23 +25,30 @@ import {
   type WorkspaceEnv,
 } from "@/modules/workspace";
 
+// Set the borderless chrome flag as the FIRST thing after CSS imports so the
+// `html[data-chrome="borderless"]` rules in globals.css (which make html/body
+// transparent and give #root its rounded solid background) apply from the very
+// first paint. index.html's inline script also pre-sets this for non-mac Tauri
+// targets, so this is a belt-and-suspenders match of platform.ts.
+// NOTE: `initLaunchDir()` was removed from the boot path — its cache has no
+// consumers (deep-link opens via the `nexterm://deep-link-open` event below,
+// and backend launch-dir authorization runs independently in Rust setup).
 if (USE_CUSTOM_WINDOW_CONTROLS) {
   document.documentElement.dataset.chrome = "borderless";
 }
-
-await initLaunchDir();
 
 const pinia = createPinia();
 const app = createApp(MainApp);
 app.use(pinia);
 app.use(i18n);
 
+// Hydrate preferences + bootstrap workspace stores BEFORE mount so the first
+// frame already reflects the persisted theme/accent/language and the open
+// workspace set (no welcome-screen flash for returning users). These read
+// fast (Tauri store only) and are awaited to keep first paint correct.
 const prefs = usePreferencesPiniaStore(pinia);
 if (hasTauriInternals()) await prefs.hydrate();
 await applyLanguagePreference(prefs.language);
-// Bootstrap both stores: workspaces (restores the open-workspace set) and
-// the root store (recent history). The launch-dir/deep-link path now adds a
-// workspace rather than replacing the single active one.
 await Promise.all([
   useWorkspacesPiniaStore(pinia).bootstrap(),
   useWorkspaceRootPiniaStore(pinia).bootstrap(),
@@ -50,13 +56,19 @@ await Promise.all([
 
 app.mount("#root");
 
+// Show the window only AFTER the first frame has been composited. Tauri 2
+// exposes no "first paint" event, so we use a double requestAnimationFrame:
+// the first rAF fires before the frame is committed, the second fires after
+// the browser has painted. This guarantees show() never precedes the rendered
+// UI, eliminating the transparent/black window flash on Windows & Linux. A
+// 1s fallback covers throttled/background rAF (e.g. webview not foreground).
 const showWindow = () => {
   getCurrentWindow()
     .show()
     .catch((e) => console.error("window.show failed:", e));
 };
-setTimeout(showWindow, 50);
-setTimeout(showWindow, 500);
+requestAnimationFrame(() => requestAnimationFrame(showWindow));
+setTimeout(showWindow, 1000);
 
 // Cold-start and runtime deep-link delivery (`nexterm://open?...`) flows
 // through the Rust plugin's setup hook into this `nexterm://deep-link-open`

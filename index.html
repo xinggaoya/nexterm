@@ -6,8 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nexterm</title>
     <script>
+      // Pre-paint theme + borderless chrome BEFORE any module loads so the very
+      // first composited frame already has the correct background and rounded
+      // #root, avoiding a black/white rectangular flash on the transparent
+      // Windows/Linux window. Mirrors platform.ts: borderless on non-mac when
+      // running inside Tauri. globals.css html[data-chrome="borderless"] then
+      // makes html/body transparent with #root as the solid rounded surface.
       (function () {
         try {
+          var docEl = document.documentElement;
           var t = localStorage.getItem("nexterm-ui-theme-shadow");
           var resolved =
             t === "light" || t === "dark"
@@ -15,9 +22,17 @@
               : window.matchMedia("(prefers-color-scheme: dark)").matches
                 ? "dark"
                 : "light";
-          document.documentElement.classList.add(resolved);
-          document.documentElement.style.backgroundColor =
-            resolved === "dark" ? "#0a0a0a" : "#ffffff";
+          docEl.classList.add(resolved);
+          var bg = resolved === "dark" ? "#0a0a0a" : "#ffffff";
+          docEl.style.backgroundColor = bg;
+          // Match platform.ts: USE_CUSTOM_WINDOW_CONTROLS = !IS_MAC && has
+          // platform. navigator.userAgent is the only signal available here.
+          var isMac =
+            navigator.userAgent.indexOf("Mac") !== -1 &&
+            navigator.userAgent.indexOf("Win") === -1;
+          if (!isMac && window.__TAURI_INTERNALS__) {
+            docEl.dataset.chrome = "borderless";
+          }
         } catch (e) {}
       })();
     </script>
