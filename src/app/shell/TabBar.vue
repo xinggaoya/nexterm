@@ -257,6 +257,7 @@ function handleSplitSelect(key: string | number) {
   <div class="flex h-[34px] shrink-0 items-center rounded-t-[6px] border-b border-border bg-surface-subtle/60">
     <div class="no-scrollbar min-w-0 flex-1 overflow-x-auto">
       <div class="flex min-w-full items-end gap-0.5 px-1.5 py-1.5">
+        <TransitionGroup tag="div" name="v2-tab-move" class="flex min-w-0 items-end gap-0.5">
         <button
           v-for="tab in tabs"
           :key="tab.id"
@@ -313,6 +314,7 @@ function handleSplitSelect(key: string | number) {
             </span>
           </TooltipTitle>
         </button>
+        </TransitionGroup>
 
         <div
           data-window-drag-region
