@@ -5,7 +5,7 @@ import {
   RefreshOutline,
   SearchOutline,
 } from "@vicons/ionicons5";
-import { NButton, NIcon, NSpin } from "naive-ui";
+import { NButton, NIcon } from "naive-ui";
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t } from "@/modules/i18n/translate";
@@ -839,10 +839,15 @@ defineExpose({ setMode });
 
         <div
           v-if="rootState?.status === 'loading'"
-          class="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground"
+          class="px-1.5 py-1"
+          aria-busy="true"
         >
-          <NSpin size="small" />
-          <span>{{ t("explorer.loading") }}</span>
+          <div
+            v-for="n in 10"
+            :key="n"
+            class="v2-skeleton m-0.5 h-6 w-full"
+            :style="{ opacity: 1 - n * 0.06 }"
+          />
         </div>
         <div
           v-else-if="rootState?.status === 'error'"
