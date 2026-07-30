@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, defineAsyncComponent } from "vue";
 import type { MarkdownTab, Tab } from "@/modules/tabs/tabsTypes";
-import MarkdownPreviewPane from "./MarkdownPreviewPane.vue";
+const MarkdownPreviewPane = defineAsyncComponent(() => import("./MarkdownPreviewPane.vue"));
 
 const props = defineProps<{
   tabs: Tab[];

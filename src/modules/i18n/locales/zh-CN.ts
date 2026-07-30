@@ -308,6 +308,7 @@ const zhCN = {
     noResults: "无匹配",
     prompt: "输入正则表达式以搜索工作区内容。",
     searchPlaceholder: "在工作区中查找（正则）",
+    scrollForMore: "滚动加载更多结果",
     summary: "在 {files} 个文件中命中 {count} 处（已扫描 {scanned}）",
     truncated: "结果被截断 — 请缩小模式或调整包含过滤。",
   },

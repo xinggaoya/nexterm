@@ -26,9 +26,6 @@ importers:
       '@fontsource/noto-sans-mono':
         specifier: ^5.2.5
         version: 5.3.0
-      '@formkit/auto-animate':
-        specifier: ^0.10.0
-        version: 0.10.0
       '@hugeicons/core-free-icons':
         specifier: ^4.1.1
         version: 4.1.1
@@ -116,9 +113,6 @@ importers:
       monaco-vim:
         specifier: ^0.4.4
         version: 0.4.4(monaco-editor@0.52.0)
-      motion-v:
-        specifier: ^2.3.0
-        version: 2.3.0(@vueuse/core@14.3.0(vue@3.5.34(typescript@5.8.3)))(vue@3.5.34(typescript@5.8.3))
       naive-ui:
         specifier: ^2.44.1
         version: 2.44.1(vue@3.5.34(typescript@5.8.3))
@@ -165,9 +159,6 @@ importers:
       tailwindcss:
         specifier: ^4.2.3
         version: 4.2.3
-      tw-animate-css:
-        specifier: ^1.4.0
-        version: 1.4.0
       typescript:
         specifier: ~5.8.3
         version: 5.8.3
@@ -747,9 +738,6 @@ packages:
 
   '@fontsource/noto-sans-mono@5.3.0':
     resolution: {integrity: sha512-DPZ+/Ng9HP5UKiALCKtoeGfA7zJzEjHFB/18OU/c3+4I9zZ3eMVAuFZb0SqzT89Yj7KNhJFYnYjyDaVKhdRuUg==}
-
-  '@formkit/auto-animate@0.10.0':
-    resolution: {integrity: sha512-KGomRttjUfORuPUaR/ZGQw+6xfMrTM+sxnILv7JAd9AmabU9rg9i6gF/iC0Ih+QpKCubJpCA/1DX9UHKE8cX+A==}
 
   '@hono/node-server@1.19.14':
     resolution: {integrity: sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw==}
@@ -1989,20 +1977,6 @@ packages:
     resolution: {integrity: sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==}
     engines: {node: '>= 0.6'}
 
-  framer-motion@12.42.2:
-    resolution: {integrity: sha512-5XY9luDiu0oHfHBjpDthFMh0ES+122w6p/papSJBweMkO8Sn+PW2QaEgRblQBpWFnuvZS5qvarpt/hO2pjGmnw==}
-    peerDependencies:
-      '@emotion/is-prop-valid': '*'
-      react: ^18.0.0 || ^19.0.0
-      react-dom: ^18.0.0 || ^19.0.0
-    peerDependenciesMeta:
-      '@emotion/is-prop-valid':
-        optional: true
-      react:
-        optional: true
-      react-dom:
-        optional: true
-
   fresh@2.0.0:
     resolution: {integrity: sha512-Rx/WycZ60HOaqLKAi6cHRKKI7zxWbJ31MhntmtwMoaTeF7XFH9hhBp8vITaMidfljRQ6eYWCKkaTK+ykVJHP2A==}
     engines: {node: '>= 0.8'}
@@ -2084,9 +2058,6 @@ packages:
 
   headers-polyfill@5.0.1:
     resolution: {integrity: sha512-1TJ6Fih/b8h5TIcv+1+Hw0PDQWJTKDKzFZzcKOiW1wJza3XoAQlkCuXLbymPYB8+ZQyw8mHvdw560e8zVFIWyA==}
-
-  hey-listen@1.0.8:
-    resolution: {integrity: sha512-COpmrF2NOg4TBWUJ5UVyaCU2A88wEMkUPK4hNqyCkqHbxT92BbvfjoSozkAIIm6XhicGlJHhFdullInrdhwU8Q==}
 
   highlight.js@11.11.1:
     resolution: {integrity: sha512-Xwwo44whKBVCYoliBQwaPvtd/2tYFkRQtXDWj1nackaV2JPXx3L0+Jvd8/qCJ2p+ML0/XVkJ2q+Mr+UVdpJK5w==}
@@ -2491,18 +2462,6 @@ packages:
     resolution: {integrity: sha512-LNChAb//WEm/W+eyeHG/0+pdVEHotk2hLTN+M3sQZx5E8cAlSWSgqcxpcRuQnxDybSln7pfHF9i63HmbIQvrWw==}
     peerDependencies:
       monaco-editor: '*'
-
-  motion-dom@12.42.2:
-    resolution: {integrity: sha512-5gIMWLp/PycBtJRJWRgjxke5n8dlvkSn2DrYW+tr3XcqAZY1xZh6BJyooJXCM8wdfM7wfMjkBJNLge1CKPUIRA==}
-
-  motion-utils@12.39.0:
-    resolution: {integrity: sha512-8nadJAJjTtqRkmRF36FoJTrywK9nnFmnPwnSMyxaOCU7GDjN9RTMJIxx9De8ErM+vpPhMccr/6fo5WciyQLnMQ==}
-
-  motion-v@2.3.0:
-    resolution: {integrity: sha512-J0CCfXtICCni9RjotDUBOs57xNpYI9yyBSohEOxaRHrmjwOtlw291fhRu/mdgEdSasys96R028YDDOAtWBbRaA==}
-    peerDependencies:
-      '@vueuse/core': '>=10.0.0'
-      vue: '>=3.0.0'
 
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
@@ -3028,9 +2987,6 @@ packages:
 
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
-
-  tw-animate-css@1.4.0:
-    resolution: {integrity: sha512-7bziOlRqH0hJx80h/3mbicLW7o8qLsH5+RaLR2t+OHM3D0JlWGODQKQ4cxbK7WlvmUxpcj6Kgu6EKqjrGFe3QQ==}
 
   type-fest@5.6.0:
     resolution: {integrity: sha512-8ZiHFm91orbSAe2PSAiSVBVko18pbhbiB3U9GglSzF/zCGkR+rxpHx6sEMCUm4kxY4LjDIUGgCfUMtwfZfjfUA==}
@@ -3840,8 +3796,6 @@ snapshots:
   '@fontsource/jetbrains-mono@5.3.0': {}
 
   '@fontsource/noto-sans-mono@5.3.0': {}
-
-  '@formkit/auto-animate@0.10.0': {}
 
   '@hono/node-server@1.19.14(hono@4.12.14)':
     dependencies:
@@ -5038,12 +4992,6 @@ snapshots:
 
   forwarded@0.2.0: {}
 
-  framer-motion@12.42.2:
-    dependencies:
-      motion-dom: 12.42.2
-      motion-utils: 12.39.0
-      tslib: 2.8.1
-
   fresh@2.0.0: {}
 
   fs-extra@11.3.4:
@@ -5121,8 +5069,6 @@ snapshots:
     dependencies:
       '@types/set-cookie-parser': 2.4.10
       set-cookie-parser: 3.1.0
-
-  hey-listen@1.0.8: {}
 
   highlight.js@11.11.1: {}
 
@@ -5441,25 +5387,6 @@ snapshots:
   monaco-vim@0.4.4(monaco-editor@0.52.0):
     dependencies:
       monaco-editor: 0.52.0
-
-  motion-dom@12.42.2:
-    dependencies:
-      motion-utils: 12.39.0
-
-  motion-utils@12.39.0: {}
-
-  motion-v@2.3.0(@vueuse/core@14.3.0(vue@3.5.34(typescript@5.8.3)))(vue@3.5.34(typescript@5.8.3)):
-    dependencies:
-      '@vueuse/core': 14.3.0(vue@3.5.34(typescript@5.8.3))
-      framer-motion: 12.42.2
-      hey-listen: 1.0.8
-      motion-dom: 12.42.2
-      motion-utils: 12.39.0
-      vue: 3.5.34(typescript@5.8.3)
-    transitivePeerDependencies:
-      - '@emotion/is-prop-valid'
-      - react
-      - react-dom
 
   ms@2.1.3: {}
 
@@ -6042,8 +5969,6 @@ snapshots:
       strip-bom: 3.0.0
 
   tslib@2.8.1: {}
-
-  tw-animate-css@1.4.0: {}
 
   type-fest@5.6.0:
     dependencies:

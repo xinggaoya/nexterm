@@ -238,6 +238,7 @@ onBeforeUnmount(clearSearchTimer);
 </script>
 
 <template>
+  <Transition name="v2-pop">
   <div
     v-if="show"
     data-command-palette
@@ -348,4 +349,5 @@ onBeforeUnmount(clearSearchTimer);
       </div>
     </section>
   </div>
+  </Transition>
 </template>

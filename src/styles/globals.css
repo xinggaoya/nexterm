@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "./fonts.css";
 @import "./code-highlight.css";
@@ -670,24 +669,61 @@ html *::-webkit-scrollbar {
 .v2-anim-slide-left { animation: v2-slide-in-left var(--dur-slow) var(--ease-spring) both; }
 .v2-anim-breathe { animation: v2-breathe 3.2s var(--ease-out) infinite; }
 
-/* Drawer slide transitions (used by SideDrawer via Vue <Transition>). */
-.v2-drawer-right-enter-active,
-.v2-drawer-right-leave-active {
-  transition: transform var(--dur-slow) var(--ease-spring), opacity var(--dur-base) var(--ease-out);
+/* 骨架屏：shimmer 闪烁，复用 token 被 reduced-motion 覆盖 */
+.v2-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 0%,
+    color-mix(in srgb, var(--muted) 60%, transparent) 50%,
+    var(--muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: v2-skeleton-shimmer 1.6s var(--ease-out) infinite;
+  border-radius: 4px;
 }
-.v2-drawer-right-enter-from,
-.v2-drawer-right-leave-to {
-  transform: translateX(100%);
+@keyframes v2-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Vue <Transition> / <TransitionGroup> 命名类 ──────────────────
+ * 全部引用 --dur-*/--ease-* token，prefers-reduced-motion 媒体查询会
+ * 自动把它们降为 1ms。 */
+/* 弹出层：scale + fade（命令面板、右键菜单） */
+.v2-pop-enter-active,
+.v2-pop-leave-active {
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.v2-pop-enter-from,
+.v2-pop-leave-to {
+  opacity: 0;
+  transform: scale(0.97);
+}
+/* 纯 fade（侧栏面板切换、分屏新增） */
+.v2-fade-enter-active,
+.v2-fade-leave-active {
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.v2-fade-enter-from,
+.v2-fade-leave-to {
   opacity: 0;
 }
-.v2-drawer-left-enter-active,
-.v2-drawer-left-leave-active {
-  transition: transform var(--dur-slow) var(--ease-spring), opacity var(--dur-base) var(--ease-out);
+/* 列表项水平 slide（标签栏），transform + opacity */
+.v2-tab-move-enter-active,
+.v2-tab-move-leave-active {
+  transition: transform var(--dur-base) var(--ease-spring), opacity var(--dur-fast) var(--ease-out);
 }
-.v2-drawer-left-enter-from,
-.v2-drawer-left-leave-to {
-  transform: translateX(-100%);
+.v2-tab-move-enter-from {
   opacity: 0;
+  transform: translateX(-8px);
+}
+.v2-tab-move-leave-to {
+  opacity: 0;
+  transform: translateX(8px);
+}
+/* TransitionGroup 的 .xxx-move 类由 Vue 自动注入，复用同一过渡 */
+.v2-tab-move-move {
+  transition: transform var(--dur-base) var(--ease-spring);
 }
 
 /* ---------------------------------------------------------------

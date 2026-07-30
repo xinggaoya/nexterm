@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { NSpin, NTag } from "naive-ui";
-import { computed, ref, watch } from "vue";
+import { computed, defineAsyncComponent, ref, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
 import { useWorkspaceContext } from "@/app/workspaceContext";
-import DiffEditor from "./DiffEditor.vue";
+const DiffEditor = defineAsyncComponent(() => import("./DiffEditor.vue"));
 import {
   commitDiffKey,
   fetchCommitDiff,

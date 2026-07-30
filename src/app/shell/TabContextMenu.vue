@@ -148,6 +148,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <Transition name="v2-pop" appear>
   <div
     v-if="target"
     ref="menuElement"
@@ -272,4 +273,5 @@ onBeforeUnmount(() => {
       </NButton>
     </template>
   </div>
+  </Transition>
 </template>

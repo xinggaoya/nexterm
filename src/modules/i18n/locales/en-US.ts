@@ -308,6 +308,7 @@ const enUS = {
     noResults: "No matches",
     prompt: "Type a pattern to search workspace content.",
     searchPlaceholder: "Find in files (regex)",
+    scrollForMore: "Scroll for more results",
     summary: "{count} results in {files} files (scanned {scanned})",
     truncated: "Results truncated — refine the pattern or include filters.",
   },

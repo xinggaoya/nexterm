@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
 import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -70,6 +70,11 @@ vi.mock("monaco-editor", () => ({
 
 async function flush() {
   await Promise.resolve();
+  await nextTick();
+  // DiffEditor 现在是 defineAsyncComponent，动态 import() 需要额外的
+  // promise 轮次才能解析并渲染出 [data-git-diff-host]。
+  await flushPromises();
+  await vi.dynamicImportSettled();
   await nextTick();
 }
 

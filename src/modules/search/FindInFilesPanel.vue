@@ -91,6 +91,24 @@ const groupedHits = computed(() => {
   return groups;
 });
 
+// 结果分页：命中行高度不一，定高窗口化不可靠，改用「先渲染 N 组 + 触底加载」。
+const INITIAL_GROUPS = 40;
+const LOAD_STEP = 40;
+const renderedGroups = ref(INITIAL_GROUPS);
+const visibleGroups = computed(() => groupedHits.value.slice(0, renderedGroups.value));
+const hasMoreGroups = computed(() => renderedGroups.value < groupedHits.value.length);
+
+function onResultsScroll(e: Event) {
+  const el = e.target as HTMLElement;
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 120 && hasMoreGroups.value) {
+    renderedGroups.value += LOAD_STEP;
+  }
+}
+// 结果变化时重置分页
+watch(groupedHits, () => {
+  renderedGroups.value = INITIAL_GROUPS;
+});
+
 function openResult(hit: FsGrepHit) {
   emit("open-result", hit.path, hit.line);
 }
@@ -146,9 +164,9 @@ function openResult(hit: FsGrepHit) {
         {{ errorMessage }}
       </div>
     </div>
-    <div class="min-h-0 flex-1 overflow-y-auto py-1">
+    <div class="min-h-0 flex-1 overflow-y-auto py-1" @scroll.passive="onResultsScroll">
       <div
-        v-for="group in groupedHits"
+        v-for="group in visibleGroups"
         :key="group.path"
         class="mb-1"
         data-find-group
@@ -167,6 +185,9 @@ function openResult(hit: FsGrepHit) {
           <span class="shrink-0 text-muted-foreground">L{{ hit.line }}</span>
           <span class="truncate font-mono">{{ hit.text }}</span>
         </button>
+      </div>
+      <div v-if="hasMoreGroups" class="px-3 py-2 text-[10px] text-muted-foreground">
+        {{ t("findInFiles.scrollForMore") }}
       </div>
     </div>
   </div>

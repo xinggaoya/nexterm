@@ -123,6 +123,10 @@ function onDoubleClick() {
 .resizer.dragging::before {
   background: var(--term-pane-divider-active);
 }
+/* 拖拽期间为把手伪元素的尺寸过渡提供合成层提示，减少 paint 抖动。 */
+.resizer.dragging::before {
+  will-change: width, height;
+}
 .resizer-col:hover::before,
 .resizer-col.dragging::before {
   width: 2px;
