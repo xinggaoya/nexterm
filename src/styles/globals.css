@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "./fonts.css";
 @import "./code-highlight.css";
@@ -669,26 +668,6 @@ html *::-webkit-scrollbar {
 .v2-anim-slide-right { animation: v2-slide-in-right var(--dur-slow) var(--ease-spring) both; }
 .v2-anim-slide-left { animation: v2-slide-in-left var(--dur-slow) var(--ease-spring) both; }
 .v2-anim-breathe { animation: v2-breathe 3.2s var(--ease-out) infinite; }
-
-/* Drawer slide transitions (used by SideDrawer via Vue <Transition>). */
-.v2-drawer-right-enter-active,
-.v2-drawer-right-leave-active {
-  transition: transform var(--dur-slow) var(--ease-spring), opacity var(--dur-base) var(--ease-out);
-}
-.v2-drawer-right-enter-from,
-.v2-drawer-right-leave-to {
-  transform: translateX(100%);
-  opacity: 0;
-}
-.v2-drawer-left-enter-active,
-.v2-drawer-left-leave-active {
-  transition: transform var(--dur-slow) var(--ease-spring), opacity var(--dur-base) var(--ease-out);
-}
-.v2-drawer-left-enter-from,
-.v2-drawer-left-leave-to {
-  transform: translateX(-100%);
-  opacity: 0;
-}
 
 /* ---------------------------------------------------------------
  * Accent palette presets
