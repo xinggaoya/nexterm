@@ -99,7 +99,6 @@ export async function openWorkspaceInNewWindow(
     titleBarStyle: "overlay",
     hiddenTitle: true,
     center: true,
-    visible: false,
     // Windows/Linux: hide system decorations, use custom title bar
     ...(IS_WINDOWS && { decorations: false, transparent: true, shadow: false }),
     ...(IS_LINUX && { decorations: false, transparent: true }),
