@@ -139,7 +139,17 @@ const graphRows = computed(() => {
   return { byCommit, maxLaneCount };
 });
 
-const activeSearch = computed(() => search.value.trim().toLowerCase());
+// 搜索输入 debounce：避免每次按键都全量重过滤大提交列表。
+const debouncedSearch = ref("");
+let searchDebounceHandle: ReturnType<typeof setTimeout> | null = null;
+watch(search, (value) => {
+  if (searchDebounceHandle) clearTimeout(searchDebounceHandle);
+  searchDebounceHandle = setTimeout(() => {
+    debouncedSearch.value = value;
+  }, 120);
+});
+
+const activeSearch = computed(() => debouncedSearch.value.trim().toLowerCase());
 const filteredCommits = computed(() => {
   const query = activeSearch.value;
   if (query.length < 2) return commits.value;
@@ -152,6 +162,57 @@ const filteredCommits = computed(() => {
     );
   });
 });
+
+// ── Virtual scroll window（定高 32px，复用 FileExplorer 模式）──
+// 大仓库历史可达数百上千条；超过阈值才窗口化，小列表直接全量渲染。
+const VIRTUAL_THRESHOLD = 200;
+const VIRTUAL_OVERSCAN = 6;
+const listScrollEl = ref<HTMLElement | null>(null);
+const listScrollTop = ref(0);
+const listViewportH = ref(0);
+let listRO: ResizeObserver | null = null;
+
+const virtualRange = computed(() => {
+  const total = filteredCommits.value.length;
+  if (total < VIRTUAL_THRESHOLD) return { start: 0, end: total, virtual: false };
+  const start = Math.max(0, Math.floor(listScrollTop.value / ROW_HEIGHT) - VIRTUAL_OVERSCAN);
+  const end = Math.min(
+    total,
+    start + Math.ceil(listViewportH.value / ROW_HEIGHT) + VIRTUAL_OVERSCAN * 2,
+  );
+  return { start, end, virtual: true };
+});
+const visibleCommits = computed(() => {
+  const { start, end } = virtualRange.value;
+  return filteredCommits.value.slice(start, end);
+});
+const topPad = computed(() =>
+  virtualRange.value.virtual ? virtualRange.value.start * ROW_HEIGHT : 0,
+);
+const bottomPad = computed(() =>
+  virtualRange.value.virtual
+    ? Math.max(0, (filteredCommits.value.length - virtualRange.value.end) * ROW_HEIGHT)
+    : 0,
+);
+function onListScroll(e: Event) {
+  listScrollTop.value = (e.target as HTMLElement).scrollTop;
+}
+watch(
+  listScrollEl,
+  (el, prev) => {
+    if (prev) listRO?.unobserve(prev);
+    listRO?.disconnect();
+    listRO = null;
+    if (el && typeof ResizeObserver === "function") {
+      listRO = new ResizeObserver((entries) => {
+        for (const entry of entries) listViewportH.value = entry.contentRect.height;
+      });
+      listRO.observe(el);
+      listViewportH.value = el.clientHeight;
+    }
+  },
+  { flush: "post" },
+);
 
 const selectedCommit = computed(() =>
   selectedSha.value
@@ -469,12 +530,15 @@ onMounted(() => {
 
     <div
       v-if="loadStatus === 'initial' && commits.length === 0"
-      class="grid min-h-0 flex-1 place-items-center"
+      class="min-h-0 flex-1 overflow-hidden px-3 py-2"
+      aria-busy="true"
     >
-      <div class="flex items-center gap-2 text-xs text-muted-foreground">
-        <NSpin size="small" />
-        <span>{{ t("gitHistory.loadingCommits") }}</span>
-      </div>
+      <div
+        v-for="n in 8"
+        :key="n"
+        class="v2-skeleton mb-1 h-8 w-full"
+        :style="{ opacity: 1 - n * 0.08 }"
+      />
     </div>
 
     <div
@@ -513,10 +577,16 @@ onMounted(() => {
           <div class="text-right">{{ t("gitHistory.changes") }}</div>
         </div>
 
-        <div class="min-h-0 min-w-0 flex-1 overflow-auto">
+        <div
+          ref="listScrollEl"
+          class="min-h-0 min-w-0 flex-1 overflow-auto"
+          @scroll.passive="onListScroll"
+        >
+          <div v-if="topPad" :style="{ height: `${topPad}px` }" aria-hidden="true" />
           <button
-            v-for="commit in filteredCommits"
+            v-for="commit in visibleCommits"
             :key="commit.sha"
+            v-memo="[commit.sha, selectedSha === commit.sha, graphRows.byCommit.get(commit.sha) !== undefined]"
             type="button"
             :data-commit-row="commit.sha"
             :class="[
@@ -580,6 +650,7 @@ onMounted(() => {
               </span>
             </span>
           </button>
+          <div v-if="bottomPad" :style="{ height: `${bottomPad}px` }" aria-hidden="true" />
         </div>
 
         <div

@@ -669,6 +669,23 @@ html *::-webkit-scrollbar {
 .v2-anim-slide-left { animation: v2-slide-in-left var(--dur-slow) var(--ease-spring) both; }
 .v2-anim-breathe { animation: v2-breathe 3.2s var(--ease-out) infinite; }
 
+/* 骨架屏：shimmer 闪烁，复用 token 被 reduced-motion 覆盖 */
+.v2-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 0%,
+    color-mix(in srgb, var(--muted) 60%, transparent) 50%,
+    var(--muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: v2-skeleton-shimmer 1.6s var(--ease-out) infinite;
+  border-radius: 4px;
+}
+@keyframes v2-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* ── Vue <Transition> / <TransitionGroup> 命名类 ──────────────────
  * 全部引用 --dur-*/--ease-* token，prefers-reduced-motion 媒体查询会
  * 自动把它们降为 1ms。 */
