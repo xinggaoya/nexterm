@@ -198,6 +198,11 @@ export async function createTerminalRenderer(
     } catch {
       return;
     }
+    // 拒绝把极端/无意义尺寸推给 PTY：容器尚未完成布局（如刚从隐藏切回）时
+    // FitAddon 可能算出 cols=2（其 MINIMUM_COLS），把这种 2x1 resize 透传到
+    // shell 会触发 SIGWINCH 风暴，WSL 下 zsh 插件（syntax-highlighting /
+    // autosuggestions）在极小列宽下重算会崩溃（free(): invalid size）。
+    if (term.cols < 4 || term.rows < 1) return;
     if (term.cols === lastCols && term.rows === lastRows) return;
     lastCols = term.cols;
     lastRows = term.rows;
