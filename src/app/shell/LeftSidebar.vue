@@ -105,6 +105,7 @@ onBeforeUnmount(() => {
     />
 
     <div class="relative min-w-0 flex-1">
+      <Transition name="v2-fade">
       <SourceControlPanel
         v-show="activity === 'sourceControl'"
         :root-path="workspace.rootPath"
@@ -118,6 +119,8 @@ onBeforeUnmount(() => {
         @decorations-change="(d) => emit('decoration-change', d)"
         @committed="(result) => emit('committed', result)"
       />
+      </Transition>
+      <Transition name="v2-fade">
       <WorkspaceBar
         v-show="activity === 'workspace'"
         embedded
@@ -126,6 +129,7 @@ onBeforeUnmount(() => {
         @add-workspace="(env) => emit('add-workspace', env)"
         @open-in-new-window="emit('open-in-new-window')"
       />
+      </Transition>
 
       <div
         data-left-sidebar-resizer
