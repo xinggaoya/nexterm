@@ -73,16 +73,7 @@ describe("terminal sessions", () => {
     );
 
     handlers?.onData("before\x1b]7;file:///tmp/pro");
-    // OSC 7 跨 chunk：第二个 chunk 把序列闭合后才会写出 OSC 7 之后的尾部。
-    // 等一个 microtask 让第一次 flush 落地（"before" + 残 OSC 缓冲尚未闭合）。
-    await Promise.resolve();
-    await Promise.resolve();
     handlers?.onData("ject\x07after");
-    // 两次 onData 在同一 tick 内会被合并成一次 write，但 OSC 7 解析后
-    // 的 cleaned 已经按 chunk 边界剥离，"after" 与 "before" + "after" 应
-    // 分别落在两次 write 调用里——前提是它们跨 microtask 边界。
-    await Promise.resolve();
-    await Promise.resolve();
     expect(term.write).toHaveBeenNthCalledWith(1, "before");
     expect(term.write).toHaveBeenNthCalledWith(2, "after");
     expect(callbacks.onCwd).toHaveBeenCalledWith("/tmp/project");

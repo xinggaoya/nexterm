@@ -96,27 +96,6 @@ export async function createSession(
     }
   };
 
-  // PTY 输出批处理：高吞吐命令（pnpm install / cargo build）会在一次
-  // event-loop tick 里推多个 chunk 到前端，每个 chunk 直接 term.write 会
-  // 触发一次 reflow + paint，导致帧时间被反复打满。这里把 cleaned 累积
-  // 到 microtask 边界一并写入：xterm 内部本就是 batched（其 write 也会
-  // 排队），所以行为对外仍等价——只是把 N 次 write 折叠成 1 次。
-  let pendingWrite: string | null = null;
-  let writeScheduled = false;
-  const flushPendingWrite = () => {
-    writeScheduled = false;
-    const data = pendingWrite;
-    pendingWrite = null;
-    if (data) opts.term.write(data);
-  };
-  const enqueueWrite = (data: string) => {
-    if (!data) return;
-    pendingWrite = (pendingWrite ?? "") + data;
-    if (writeScheduled) return;
-    writeScheduled = true;
-    queueMicrotask(flushPendingWrite);
-  };
-
   const pty = await opts.wsNative.ptyOpen(
     opts.term.cols,
     opts.term.rows,
@@ -132,7 +111,7 @@ export async function createSession(
         );
         pendingOsc = pendingBuffer;
         for (const ev of events) emitOsc(ev, callbacks);
-        enqueueWrite(cleaned);
+        if (cleaned) opts.term.write(cleaned);
       },
       onExit: (code) => {
         clearStartWatchdog();
@@ -174,10 +153,6 @@ export async function createSession(
     ptyId: id,
     dispose: () => {
       clearStartWatchdog();
-      // dispose 前必须把已 enqueue 但尚未 flush 的数据排干，否则最后一段
-      // 输出会随 xterm 一起被销毁。flushPendingWrite 走 microtask，这里
-      // 同步调用一次保证 term 还没 dispose 前已写入。
-      flushPendingWrite();
       void pty.close().catch((e) => {
         console.debug("[pty] close dropped", e);
       });
