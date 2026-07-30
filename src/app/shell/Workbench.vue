@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, type ComputedRef, type Ref } from "vue";
+import { ref, computed, defineAsyncComponent, onBeforeUnmount, type ComputedRef, type Ref } from "vue";
 import { NSplit } from "naive-ui";
 import { native, type WorkspaceFsChangedEvent } from "@/lib/native";
 import { getPtyIdForLeaf, TerminalWorkspace, disposeSession } from "@/modules/terminal";
 import { tryWorkspaceContext } from "@/app/workspaceContext";
-import EditorPane from "@/modules/editor/EditorPane.vue";
+const EditorPane = defineAsyncComponent(() => import("@/modules/editor/EditorPane.vue"));
 import GitDiffStack from "@/modules/editor/GitDiffStack.vue";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
 import GitHistoryStack from "@/modules/git-history/GitHistoryStack.vue";
