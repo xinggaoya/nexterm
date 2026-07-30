@@ -95,14 +95,6 @@ export interface TerminalRenderer {
   setRenderer: (kind: RendererKind) => void;
   /** 当前生效的渲染器 */
   activeRenderer: () => RendererKind;
-  /**
-   * 强制重绘整个 buffer（不重算 cols/rows，也不通知 PTY）。
-   * 用途：容器从 `display: none` 切回可见时,canvas 在隐藏期间被浏览器
-   * 跳过绘制,切回后 xterm 不会自动补画——此时调用 redraw 让 buffer
-   * 一次性刷到 canvas/WebGL 纹理上,避免出现"内容缺失,需输入字符才
-   * 触发重绘"的视觉故障。
-   */
-  redraw: () => void;
   dispose: () => void;
 }
 
@@ -255,18 +247,6 @@ export async function createTerminalRenderer(
     return pipeline?.active() ?? "dom";
   }
 
-  function redraw(): void {
-    if (disposed) return;
-    // clearTextureAtlas 先丢弃 WebGL 字符纹理,确保切回可见后字符
-    // 用最新 devicePixelRatio 重建(防止 DPI 变化时纹理尺寸不一致)。
-    try {
-      term.clearTextureAtlas();
-    } catch {
-      // ignore — DOM 渲染器无 atlas,clear 是 no-op
-    }
-    if (term.rows > 0) term.refresh(0, term.rows - 1);
-  }
-
   function dispose(): void {
     if (disposed) return;
     disposed = true;
@@ -297,7 +277,6 @@ export async function createTerminalRenderer(
     setScrollback,
     setRenderer,
     activeRenderer,
-    redraw,
     dispose,
   };
 }
