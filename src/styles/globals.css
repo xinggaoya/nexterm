@@ -307,6 +307,16 @@
     @apply flex shrink-0 items-center bg-surface-subtle border-b border-border;
     min-height: 32px;
   }
+  /*
+   * 非活动 WorkspaceHost 容器：v-show 切到 display:none 已经阻断布局/绘制，
+   * 但 Reactivity / watcher 仍在跑。再叠加 content-visibility:hidden 让浏览
+   * 器彻底跳过其子树渲染，并加 contain:layout style 隔离影响。
+   * 切回 active 时恢复 visible，浏览器立刻重新布局。
+   */
+  [data-workspace-active="false"] {
+    content-visibility: hidden;
+    contain: layout style;
+  }
   .nexterm-row {
     @apply rounded-md transition-colors;
     transition-duration: 120ms;
