@@ -353,7 +353,7 @@ function handleSplitSelect(key: string | number) {
     <!-- Drag ghost -->
     <div
       v-if="dragGhost"
-      class="v2-glass-float pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-[12px] opacity-95"
+      class="v2-glass-float will-change-transform pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-[12px] opacity-95"
       :style="{
         width: `${dragGhost.width}px`,
         transform: `translate3d(${dragGhost.x}px, ${dragGhost.y}px, 0) translate(-50%, -50%)`,
