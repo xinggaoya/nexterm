@@ -125,6 +125,10 @@ async function ensureSession(): Promise<void> {
   if (existing) {
     session = existing;
     existing.setCallbacks(sessionCallbacks);
+    // split / close-leaf 触发的 TerminalPane remount 会让旧 xterm 被 dispose。
+    // 这里把 session 重新挂到当前新 xterm:PTY 输出从下一帧开始落到新 xterm,
+    // 新 xterm 的用户键入也重新接回 PTY。PTY 进程本身不变。
+    existing.rebindTerm(term);
     state.value = existing.getState();
     existing.resize(term.cols, term.rows);
     return;

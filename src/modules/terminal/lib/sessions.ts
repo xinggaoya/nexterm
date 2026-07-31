@@ -40,6 +40,15 @@ export interface PtySessionHandle {
   getExitCode: () => number | undefined;
   /** Re-point the session's cwd/title/state callbacks at a new pane. */
   setCallbacks: (callbacks: SessionCallbacks) => void;
+  /**
+   * 重新把 PTY 桥接到一个新的 xterm 实例。
+   *
+   * 当 TerminalPane 因 split / close-leaf 触发的结构变化而 remount 时,
+   * 旧 xterm 已被 dispose,新 xterm 需要接管 PTY 的输出,并把新 xterm
+   * 的用户输入重新接回 PTY。PTY 进程本身保持不变,session 状态、cwd、
+   * title、scrollback、history 全部保留。dispose 之后调用是安全的(no-op)。
+   */
+  rebindTerm: (term: Terminal) => void;
 }
 
 interface CreateSessionOptions {
@@ -101,13 +110,19 @@ export async function createSession(
   // 触发一次 reflow + paint，导致帧时间被反复打满。这里把 cleaned 累积
   // 到 microtask 边界一并写入：xterm 内部本就是 batched（其 write 也会
   // 排队），所以行为对外仍等价——只是把 N 次 write 折叠成 1 次。
+  //
+  // currentTerm / inputDisposable 是可变的：split / close-leaf 会导致
+  // TerminalPane remount，xterm 被 dispose，新 xterm 通过 rebindTerm
+  // 接管。PTY 进程不变，只换 xterm 桥接。
+  let currentTerm: Terminal = opts.term;
+  let inputDisposable: { dispose: () => void } | null = null;
   let pendingWrite: string | null = null;
   let writeScheduled = false;
   const flushPendingWrite = () => {
     writeScheduled = false;
     const data = pendingWrite;
     pendingWrite = null;
-    if (data) opts.term.write(data);
+    if (data) currentTerm.write(data);
   };
   const enqueueWrite = (data: string) => {
     if (!data) return;
@@ -118,8 +133,8 @@ export async function createSession(
   };
 
   const pty = await opts.wsNative.ptyOpen(
-    opts.term.cols,
-    opts.term.rows,
+    currentTerm.cols,
+    currentTerm.rows,
     {
       onData: (chunk) => {
         if (!receivedData) {
@@ -206,9 +221,23 @@ export async function createSession(
     setCallbacks: (next) => {
       callbacks = next;
     },
+    rebindTerm: (next) => {
+      if (next === currentTerm) return;
+      // 先把旧 xterm 的输入订阅解绑，避免双订阅导致用户键入被 PTY
+      // 收到双份（在测试里就能直接看到 pty.write 被调用两次）。
+      inputDisposable?.dispose();
+      inputDisposable = null;
+      // 把 pendingWrite 排干到旧 xterm，再切换 currentTerm。这样切换前
+      // 的最后一段 PTY 输出仍然完整落到旧 xterm 上，新 xterm 从下一批
+      // PTY 数据开始接收，不会丢中间这段。
+      flushPendingWrite();
+      currentTerm = next;
+      inputDisposable = next.onData((data) => handle.write(data));
+    },
   };
 
-  opts.term.onData((data) => handle.write(data));
+  // 初次绑定：xterm 的 onData 返回 IDisposable，留作后续 rebind 解绑用。
+  inputDisposable = opts.term.onData((data) => handle.write(data));
 
   return handle;
 }
