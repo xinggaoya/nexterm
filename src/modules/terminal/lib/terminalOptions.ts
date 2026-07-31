@@ -154,10 +154,17 @@ export function buildTerminalOptions(
     theme,
     allowProposedApi: true,
     convertEol: false,
-    // 细滚动条：xterm 6 原生配置，收窄轨道到 10px（默认较粗）。滑块颜色由
-    // theme.scrollbarSlider* 控制（在 theme.ts 里随 --term-fg 淡入），不依赖
-    // 具体 DOM 类名，也不会被 xterm 内联 <style> 干扰——比 CSS 覆盖更抗改动。
-    scrollbar: { width: 10 },
+    // 细滚动条：verticalScrollbarSize/verticalSliderSize 是 xterm 内部 options
+    // (继承自 VS Code AbstractScrollbar，公开 IScrollbarOptions 类型未声明但实现
+    // 会读取 typeof n.verticalScrollbarSize<"u"?n.verticalScrollbarSize:10)。
+    // 用 option 而非 CSS：xterm 用 (scrollbarSize-sliderSize)/2 算滑块 left 居中，
+    // 只靠 CSS 强改 width 会让 left 计算错位(滑块贴左)，用 option 内部状态才一致。
+    // 切勿用 scrollbar.width —— 它是 overview ruler 宽度，设置会启用
+    // OverviewRulerRenderer 在右侧画 overviewRulerBorder 竖线(=白线)。
+    scrollbar: {
+      verticalScrollbarSize: 8,
+      verticalSliderSize: 6,
+    } as ITerminalOptions["scrollbar"],
     // renderer 在外部 pipeline 里挂载,此处不参与 ITerminalOptions
   };
 }

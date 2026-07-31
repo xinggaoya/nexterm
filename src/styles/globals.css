@@ -467,12 +467,33 @@ html[data-chrome="borderless"][data-window-edge-to-edge="true"] #root {
   height: 0 !important;
   display: none !important;
 }
-/* xterm 6 overlay 滚动条（.xterm-scrollable-element 内）的宽度与颜色通过
- * 原生 options.scrollbar.width + ITheme.scrollbarSlider* 配置（见
- * terminalOptions.ts / theme.ts），不再用 CSS 覆盖：之前这段 CSS 的选择器
- * (.xterm-scrollbar.vertical) 写错了——实际是两个独立类 xterm-scrollbar 与
- * xterm-vertical——所以从未生效，滚动条一直是默认较粗尺寸。改用原生配置
- * 还能避免与 xterm 注入的内联 <style> 用 !important 对抗。 */
+/*
+ * xterm 6 overlay 滚动条细化（圆角 + 主题色淡入）。
+ *
+ * 滚动条宽窄（轨道/滑块）由 terminalOptions.ts 的 verticalScrollbarSize /
+ * verticalSliderSize 控制（xterm 内部 options，用它才能让滑块 left 居中计算
+ * 正确）。这里只覆盖滑块的圆角与颜色——xterm 会注入内联 <style>
+ * (.xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider) 设
+ * background，用更具体的 .xterm-scrollbar.xterm-vertical 选择器 + !important
+ * 胜出。颜色随 --term-fg 用 color-mix 淡入，主题切换自动跟随。
+ *
+ * DOM 实际类名是 "xterm-scrollbar xterm-vertical"（两个独立类）；历史上这段
+ * 写成 .xterm-scrollbar.vertical（.vertical 指代 class="vertical"）从未匹配。
+ */
+.xterm .xterm-scrollable-element > .xterm-scrollbar.xterm-vertical > .xterm-slider {
+  border-radius: 999px !important;
+  background: color-mix(in oklch, var(--term-fg) 26%, transparent) !important;
+  transition: background 120ms ease;
+}
+.xterm .xterm-scrollable-element > .xterm-scrollbar.xterm-vertical > .xterm-slider:hover {
+  background: color-mix(in oklch, var(--term-fg) 44%, transparent) !important;
+}
+.xterm .xterm-scrollable-element > .xterm-scrollbar.xterm-vertical > .xterm-slider.xterm-active {
+  background: color-mix(in oklch, var(--term-fg) 58%, transparent) !important;
+}
+.xterm .xterm-scrollable-element > .xterm-scrollbar.xterm-horizontal {
+  display: none !important;
+}
 
 .no-scrollbar {
   scrollbar-width: none !important;
