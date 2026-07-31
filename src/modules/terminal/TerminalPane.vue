@@ -245,6 +245,7 @@ onMounted(async () => {
     const w = rect ? rect.width : 0;
     const h = rect ? rect.height : 0;
     const becameVisible = lastObservedW === 0 && lastObservedH === 0 && w > 0 && h > 0;
+    console.log("[diag] ResizeObserver w", w, "h", h, "prev", lastObservedW, lastObservedH, "becameVisible", becameVisible, "isActive", props.isActive);
     lastObservedW = w;
     lastObservedH = h;
 

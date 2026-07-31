@@ -201,11 +201,15 @@ export async function createTerminalRenderer(
 
   function fit(): void {
     if (disposed || !addons) return;
+    const beforeCols = term.cols;
+    const beforeRows = term.rows;
     try {
       addons.fit.fit();
-    } catch {
+    } catch (e) {
+      console.warn("[diag] renderer.fit() threw:", e);
       return;
     }
+    console.log("[diag] renderer.fit() cols", beforeCols, "→", term.cols, "rows", beforeRows, "→", term.rows);
     // 拒绝把极端/无意义尺寸推给 PTY：容器尚未完成布局（如刚从隐藏切回）时
     // FitAddon 可能算出 cols=2（其 MINIMUM_COLS），把这种 2x1 resize 透传到
     // shell 会触发 SIGWINCH 风暴，WSL 下 zsh 插件（syntax-highlighting /
@@ -261,7 +265,21 @@ export async function createTerminalRenderer(
   }
 
   function redraw(): void {
-    if (disposed) return;
+    if (disposed) {
+      console.log("[diag] renderer.redraw() SKIPPED: disposed");
+      return;
+    }
+    // dump 前 3 行 buffer 文本,区分「buffer 数据丢失」vs「数据在但没画」
+    try {
+      const b = term.buffer.active;
+      const lines: string[] = [];
+      for (let i = 0; i < Math.min(3, b.length); i++) {
+        lines.push(JSON.stringify(b.getLine(i)?.translateToString(true) ?? ""));
+      }
+      console.log("[diag] renderer.redraw() cols", term.cols, "rows", term.rows, "lines", lines);
+    } catch {
+      console.log("[diag] renderer.redraw() cols", term.cols, "rows", term.rows);
+    }
     // clearTextureAtlas 先丢弃 WebGL 字符纹理,确保切回可见后字符
     // 用最新 devicePixelRatio 重建(防止 DPI 变化时纹理尺寸不一致)。
     try {
