@@ -154,17 +154,14 @@ export function buildTerminalOptions(
     theme,
     allowProposedApi: true,
     convertEol: false,
-    // 细滚动条：verticalScrollbarSize/verticalSliderSize 是 xterm 内部 options
-    // (继承自 VS Code AbstractScrollbar，公开 IScrollbarOptions 类型未声明但实现
-    // 会读取 typeof n.verticalScrollbarSize<"u"?n.verticalScrollbarSize:10)。
-    // 用 option 而非 CSS：xterm 用 (scrollbarSize-sliderSize)/2 算滑块 left 居中，
-    // 只靠 CSS 强改 width 会让 left 计算错位(滑块贴左)，用 option 内部状态才一致。
-    // 切勿用 scrollbar.width —— 它是 overview ruler 宽度，设置会启用
-    // OverviewRulerRenderer 在右侧画 overviewRulerBorder 竖线(=白线)。
-    scrollbar: {
-      verticalScrollbarSize: 6,
-      verticalSliderSize: 4,
-    } as ITerminalOptions["scrollbar"],
+    // 细滚动条：xterm 源码 _getChangeOptions 里 verticalScrollbarSize 被赋值为
+    // scrollbar?.width ?? 14 —— 即真正控制滚动条宽度的是 scrollbar.width
+    // (默认 14px，轨道与滑块同宽)。verticalScrollbarSize/verticalSliderSize 这两个
+    // 继承自 VS Code 的内部字段会被 width 覆盖，传了也不生效。
+    // width 非 0 会顺带启用 OverviewRulerRenderer（在滑块左侧画一条
+    // overviewRulerBorder 竖线=白线），用 theme.overviewRulerBorder=transparent
+    // 抹掉它（见 theme.ts）。
+    scrollbar: { width: 6 },
     // renderer 在外部 pipeline 里挂载,此处不参与 ITerminalOptions
   };
 }

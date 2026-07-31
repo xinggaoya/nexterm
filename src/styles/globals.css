@@ -470,9 +470,9 @@ html[data-chrome="borderless"][data-window-edge-to-edge="true"] #root {
 /*
  * xterm 6 overlay 滚动条细化（圆角 + 主题色淡入）。
  *
- * 滚动条宽窄（轨道/滑块）由 terminalOptions.ts 的 verticalScrollbarSize /
- * verticalSliderSize 控制（xterm 内部 options，用它才能让滑块 left 居中计算
- * 正确）。这里只覆盖滑块的圆角与颜色——xterm 会注入内联 <style>
+ * 滚动条宽度由 terminalOptions.ts 的 scrollbar.width 控制（xterm 源码
+ * _getChangeOptions 把 width 赋给 verticalScrollbarSize，轨道与滑块同宽）。
+ * 这里只覆盖滑块的圆角与颜色——xterm 注入内联 <style>
  * (.xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider) 设
  * background，用更具体的 .xterm-scrollbar.xterm-vertical 选择器 + !important
  * 胜出。颜色随 --term-fg 用 color-mix 淡入，主题切换自动跟随。

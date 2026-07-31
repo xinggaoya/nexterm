@@ -76,6 +76,10 @@ export function buildTerminalTheme(): ITheme {
     brightMagenta: v["--term-bright-magenta"],
     brightCyan: v["--term-bright-cyan"],
     brightWhite: v["--term-bright-white"],
+    // scrollbar.width 非 0 会启用 OverviewRulerRenderer，它默认用
+    // overviewRulerBorder（默认前景色）在滑块左侧画一条 1px 竖线（=白线）。
+    // 透明掉它即可既享受 width 控制的细滚动条，又不出现多余竖线。
+    overviewRulerBorder: "#00000000",
   };
   // OSC 8 链接色(可选,变量未声明时为空串,xterm 会忽略)
   if (v["--term-link"]) {
