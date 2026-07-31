@@ -154,6 +154,10 @@ export function buildTerminalOptions(
     theme,
     allowProposedApi: true,
     convertEol: false,
+    // 细滚动条：xterm 6 原生配置，收窄轨道到 10px（默认较粗）。滑块颜色由
+    // theme.scrollbarSlider* 控制（在 theme.ts 里随 --term-fg 淡入），不依赖
+    // 具体 DOM 类名，也不会被 xterm 内联 <style> 干扰——比 CSS 覆盖更抗改动。
+    scrollbar: { width: 10 },
     // renderer 在外部 pipeline 里挂载,此处不参与 ITerminalOptions
   };
 }

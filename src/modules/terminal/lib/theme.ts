@@ -52,6 +52,20 @@ function readCssVars(): Record<ThemeVariable, string> {
   return result;
 }
 
+/**
+ * 把前景色与透明度合成成 scrollbar 滑块颜色。
+ *
+ * `--term-fg` 已被浏览器从 oklch 解析成 `rgb(...)` / `#rrggbb`（见文件头
+ * 注释），`color-mix(in srgb, <fg> X%, transparent)` 在所有现代浏览器都
+ * 可用且等价于 alpha=X%。fallback：变量缺失时返回 undefined，xterm 会退
+ * 回它自己的默认（foreground 20/40/50%）。
+ */
+function fgMix(fg: string, opacity: number): string | undefined {
+  if (!fg) return undefined;
+  const pct = Math.round(opacity * 100);
+  return `color-mix(in srgb, ${fg} ${pct}%, transparent)`;
+}
+
 export function buildTerminalTheme(): ITheme {
   const v = readCssVars();
   const theme: ITheme = {
@@ -76,6 +90,15 @@ export function buildTerminalTheme(): ITheme {
     brightMagenta: v["--term-bright-magenta"],
     brightCyan: v["--term-bright-cyan"],
     brightWhite: v["--term-bright-white"],
+    // 滚动条滑块颜色：基于终端前景色用 color-mix 淡化，随主题切换自动跟随
+    // （本函数由 watchTerminalTheme 的 MutationObserver 在 .dark / token 变化时
+    // 重新调用）。透明度取 xterm 默认同档（20/40/50%），视觉上若隐若现、
+    // hover/active 递进加深。用原生 ITheme 字段而非 CSS 覆盖：xterm 6 会把这些
+    // 颜色注入内联 <style>（.xterm-scrollbar > .xterm-slider），不会被应用 CSS
+    // 的 !important 对抗，也不会因 xterm 改 DOM 类名而失效。
+    scrollbarSliderBackground: fgMix(v["--term-fg"], 0.2),
+    scrollbarSliderHoverBackground: fgMix(v["--term-fg"], 0.4),
+    scrollbarSliderActiveBackground: fgMix(v["--term-fg"], 0.5),
   };
   // OSC 8 链接色(可选,变量未声明时为空串,xterm 会忽略)
   if (v["--term-link"]) {
