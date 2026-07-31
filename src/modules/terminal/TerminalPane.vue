@@ -245,11 +245,17 @@ onMounted(async () => {
     const w = rect ? rect.width : 0;
     const h = rect ? rect.height : 0;
     const becameVisible = lastObservedW === 0 && lastObservedH === 0 && w > 0 && h > 0;
-    console.log("[diag] ResizeObserver w", w, "h", h, "prev", lastObservedW, lastObservedH, "becameVisible", becameVisible, "isActive", props.isActive);
     lastObservedW = w;
     lastObservedH = h;
 
-    if (props.isActive) refreshLayout();
+    // 容器不可见(0 尺寸,即工作区被 v-show 隐藏)时绝不调 fit:FitAddon 在
+    // display:none 下会读 getComputedStyle().height='auto' → 算出 cols=2
+    // (其 MINIMUM_COLS) → term.resize(2,1) → xterm buffer reflow 把每行
+    // 文字按 2 列折行,提示符被不可逆切碎。必须从源头拦住 fit 调用。
+    // (renderer.fit() 内部还有第二层 getBoundingClientRect 守卫做纵深防御。)
+    if (w === 0 || h === 0) return;
+
+    refreshLayout();
     // 容器从隐藏切回可见:display:none 期间 canvas 被浏览器跳过绘制,xterm
     // (WebGL 状态化)切回后不会自动补画 buffer。这里在 rAF 里(等布局落定)
     // 强制 redraw,把 buffer 刷到 canvas/WebGL 纹理上,避免"切回后内容缺失、

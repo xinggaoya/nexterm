@@ -238,11 +238,13 @@ describe("TerminalPane.vue", () => {
     expect(fakeRenderer.redraw).not.toHaveBeenCalled();
   });
 
-  it("calls redraw when the container goes from 0 size back to non-zero (workspace switch back)", async () => {
-    // 工作区切换靠 v-show(display:none)实现,isActive prop 不随工作区切换变化
-    // (它依赖的 tabs.activeIdByWorkspace 在切换工作区时不变),所以
-    // watch(isActive) 永远不触发。可靠信号是 ResizeObserver:display:none 时
-    // 容器尺寸归 0,切回时恢复非 0,这个 0→非0 跳变触发补画。
+  it("does not call fit when container is hidden and redraws on switch back (workspace switch)", async () => {
+    // 根因(经实测日志确认): 工作区切换靠 v-show(display:none)实现,隐藏期间
+    // ResizeObserver 仍会触发并报告 0 尺寸。若此时调 fit(),FitAddon 会读
+    // getComputedStyle().height='auto' → 算出 cols=2(其 MINIMUM_COLS) →
+    // term.resize(2,1) → xterm buffer reflow 把提示符「➜  repo git:(master)」
+    // 按 2 列折行不可逆切碎。切回后 resize 回原尺寸,但 reflow 损坏的 buffer
+    // 已无法恢复。所以必须在 0 尺寸时从源头拦住 fit 调用。
     wrapper = mount(TerminalPane, {
       attachTo: host!,
       props: { leafId: "1", isActive: true, isFocused: false, flex: 1 },
@@ -250,21 +252,25 @@ describe("TerminalPane.vue", () => {
     await flush();
     const ro = capturedResizeObservers[0];
     expect(ro).toBeTruthy();
-    // 先喂一个正常尺寸,模拟首次可见(此时 lastObservedW/H 还是 0,首次也会
-    // 触发一次 redraw,这是无害的初始补画)。
+    // 先喂正常尺寸,模拟首次可见。lastObservedW/H 初始为 0,首次非0也触发 redraw
+    // (无害的初始补画)。
     ro!.trigger(800, 600);
     await flush();
+    const fitAfterFirstShow = (fakeRenderer.fit as ReturnType<typeof vi.fn>).mock.calls.length;
     const redrawsAfterFirstShow = (fakeRenderer.redraw as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(fitAfterFirstShow).toBeGreaterThanOrEqual(1);
     expect(redrawsAfterFirstShow).toBeGreaterThanOrEqual(1);
 
-    // 切走工作区:display:none → 容器尺寸归 0,不应再 redraw。
+    // 切走工作区:display:none → 容器尺寸归 0。此时绝不能调 fit(会损坏 buffer)。
     ro!.trigger(0, 0);
     await flush();
+    expect((fakeRenderer.fit as ReturnType<typeof vi.fn>).mock.calls.length).toBe(fitAfterFirstShow);
     expect((fakeRenderer.redraw as ReturnType<typeof vi.fn>).mock.calls.length).toBe(redrawsAfterFirstShow);
 
-    // 切回工作区:尺寸从 0 恢复到非 0 → 必须触发一次 redraw 补画。
+    // 切回工作区:尺寸从 0 恢复到非 0 → 必须 fit(恢复正常尺寸)+ redraw(补画)。
     ro!.trigger(800, 600);
     await flush();
+    expect((fakeRenderer.fit as ReturnType<typeof vi.fn>).mock.calls.length).toBe(fitAfterFirstShow + 1);
     expect((fakeRenderer.redraw as ReturnType<typeof vi.fn>).mock.calls.length).toBe(redrawsAfterFirstShow + 1);
   });
 

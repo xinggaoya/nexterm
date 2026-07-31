@@ -201,15 +201,22 @@ export async function createTerminalRenderer(
 
   function fit(): void {
     if (disposed || !addons) return;
-    const beforeCols = term.cols;
-    const beforeRows = term.rows;
+    // 容器不可见时绝不能调 FitAddon.fit()：工作区切换用 v-show(display:none)
+    // 实现，隐藏期间 FitAddon 读到 getComputedStyle().height='auto'(parseInt→NaN→0)，
+    // 会算出 cols=2(其 MINIMUM_COLS) 并 term.resize(2,1)。xterm 的 resize 会触发
+    // buffer reflow——把每行文字按 2 列重排折行，提示符「➜  repo git:(master)」被
+    // 不可逆地切碎。切回后即便 resize 回原尺寸，reflow 损坏的 buffer 也无法恢复
+    // (redraw 画不出已丢失的数据)。必须在 FitAddon 执行前就拦住。
+    const el = term.element;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+    }
     try {
       addons.fit.fit();
-    } catch (e) {
-      console.warn("[diag] renderer.fit() threw:", e);
+    } catch {
       return;
     }
-    console.log("[diag] renderer.fit() cols", beforeCols, "→", term.cols, "rows", beforeRows, "→", term.rows);
     // 拒绝把极端/无意义尺寸推给 PTY：容器尚未完成布局（如刚从隐藏切回）时
     // FitAddon 可能算出 cols=2（其 MINIMUM_COLS），把这种 2x1 resize 透传到
     // shell 会触发 SIGWINCH 风暴，WSL 下 zsh 插件（syntax-highlighting /
@@ -265,21 +272,7 @@ export async function createTerminalRenderer(
   }
 
   function redraw(): void {
-    if (disposed) {
-      console.log("[diag] renderer.redraw() SKIPPED: disposed");
-      return;
-    }
-    // dump 前 3 行 buffer 文本,区分「buffer 数据丢失」vs「数据在但没画」
-    try {
-      const b = term.buffer.active;
-      const lines: string[] = [];
-      for (let i = 0; i < Math.min(3, b.length); i++) {
-        lines.push(JSON.stringify(b.getLine(i)?.translateToString(true) ?? ""));
-      }
-      console.log("[diag] renderer.redraw() cols", term.cols, "rows", term.rows, "lines", lines);
-    } catch {
-      console.log("[diag] renderer.redraw() cols", term.cols, "rows", term.rows);
-    }
+    if (disposed) return;
     // clearTextureAtlas 先丢弃 WebGL 字符纹理,确保切回可见后字符
     // 用最新 devicePixelRatio 重建(防止 DPI 变化时纹理尺寸不一致)。
     try {
