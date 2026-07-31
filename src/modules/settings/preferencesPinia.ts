@@ -19,6 +19,8 @@ import {
   setRestoreWindowState,
   setShowHidden,
   setSourceControlPanelWidth,
+  setTabFixedWidth,
+  setTabWidthMode,
   setTerminalContextMenuEnabled,
   setTerminalCjkFontEnabled,
   setTerminalCursorBlink,
@@ -49,6 +51,7 @@ import {
   setTheme,
   setTouchOptimizations,
   setVimMode,
+  clampTabFixedWidth,
   clampTerminalCursorInactiveStyle,
   clampTerminalCursorStyle,
   clampTerminalFastScrollModifier,
@@ -58,6 +61,7 @@ import {
   clampTerminalRenderer,
   type AccentPref,
   type EditorLspTypescriptMode,
+  type TabWidthMode,
   type EditorThemeId,
   type FileOpenMode,
   type LanguagePref,
@@ -208,6 +212,10 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const panelVisibility = ref<Preferences["panelVisibility"]>(
     DEFAULT_PREFERENCES.panelVisibility,
   );
+  const tabWidthMode = ref<TabWidthMode>(DEFAULT_PREFERENCES.tabWidthMode);
+  const tabFixedWidth = ref<number>(
+    clampTabFixedWidth(DEFAULT_PREFERENCES.tabFixedWidth),
+  );
 
   const hydrated = ref(false);
   const listening = ref(false);
@@ -269,6 +277,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     editorWordWrap.value = snapshot.editorWordWrap;
     leftSidebar.value = snapshot.leftSidebar;
     panelVisibility.value = snapshot.panelVisibility;
+    tabWidthMode.value = snapshot.tabWidthMode;
+    tabFixedWidth.value = clampTabFixedWidth(snapshot.tabFixedWidth);
   }
 
   async function hydrate(): Promise<void> {
@@ -340,6 +350,19 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     fileOpenMode.value = value;
     patchPreferencesSnapshot("fileOpenMode", value);
     await setFileOpenMode(value);
+  }
+
+  async function updateTabWidthMode(value: TabWidthMode): Promise<void> {
+    tabWidthMode.value = value;
+    patchPreferencesSnapshot("tabWidthMode", value);
+    await setTabWidthMode(value);
+  }
+
+  async function updateTabFixedWidth(value: number): Promise<void> {
+    const clamped = clampTabFixedWidth(value);
+    tabFixedWidth.value = clamped;
+    patchPreferencesSnapshot("tabFixedWidth", clamped);
+    await setTabFixedWidth(value);
   }
 
   async function updateShowHidden(value: boolean): Promise<void> {
@@ -664,6 +687,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
       editorWordWrap: editorWordWrap.value,
       leftSidebar: leftSidebar.value,
       panelVisibility: panelVisibility.value,
+      tabWidthMode: tabWidthMode.value,
+      tabFixedWidth: tabFixedWidth.value,
     };
   }
 
@@ -721,7 +746,11 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     editorWordWrap,
     leftSidebar,
     panelVisibility,
+    tabWidthMode,
+    tabFixedWidth,
     updateEditorLspTypescriptMode,
+    updateTabWidthMode,
+    updateTabFixedWidth,
     hydrated,
     listening,
     hydrate,

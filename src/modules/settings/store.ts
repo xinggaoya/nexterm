@@ -9,6 +9,7 @@ export type { LanguagePref } from "@/modules/i18n/types";
 export type ThemePref = "system" | "light" | "dark";
 export type FileOpenMode = "preview" | "pinned";
 export type TouchMode = "auto" | "on" | "off";
+export type TabWidthMode = "auto" | "fixed";
 
 // ── accent palette presets ──────────────────────────────────────────────
 // 与 theme 三档正交;每个预设都自带 light + dark 两套色,在 globals.css
@@ -188,6 +189,8 @@ export type Preferences = {
   editorWordWrap: boolean;
   leftSidebar: LeftSidebarPref;
   panelVisibility: PanelVisibilityPref;
+  tabWidthMode: TabWidthMode;
+  tabFixedWidth: number;
 };
 
 const STORE_PATH = "nexterm-settings.json";
@@ -248,6 +251,8 @@ const KEY_TOUCH_OPTIMIZATIONS = "touchOptimizations";
 const KEY_EDITOR_LSP_TYPESCRIPT_MODE = "editorLspTypescriptMode";
 const KEY_LAYOUT_LEFT_SIDEBAR = "layout.leftSidebar";
 const KEY_LAYOUT_PANELS = "layout.panels";
+const KEY_TAB_WIDTH_MODE = "tabWidthMode";
+const KEY_TAB_FIXED_WIDTH = "tabFixedWidth";
 
 export type LeftSidebarPref = {
   activity: "workspace" | "sourceControl";
@@ -265,6 +270,29 @@ export type PanelVisibilityPref = {
 export const LEFT_SIDEBAR_WIDTH_DEFAULT = 320;
 export const LEFT_SIDEBAR_WIDTH_MIN = 240;
 export const LEFT_SIDEBAR_WIDTH_MAX = 520;
+
+export const TAB_FIXED_WIDTH_DEFAULT = 160;
+export const TAB_FIXED_WIDTH_MIN = 80;
+export const TAB_FIXED_WIDTH_MAX = 240;
+const TAB_FIXED_WIDTH_STEP = 4;
+
+const TAB_WIDTH_MODE_VALUES: readonly TabWidthMode[] = ["auto", "fixed"];
+
+function normalizeTabWidthMode(value: unknown): TabWidthMode {
+  return TAB_WIDTH_MODE_VALUES.includes(value as TabWidthMode)
+    ? (value as TabWidthMode)
+    : "auto";
+}
+
+/** 暴露给 Pinia store 做乐观更新时的同步 clamp */
+export function clampTabFixedWidth(value: number): number {
+  if (!Number.isFinite(value)) return TAB_FIXED_WIDTH_DEFAULT;
+  const rounded = Math.round(value / TAB_FIXED_WIDTH_STEP) * TAB_FIXED_WIDTH_STEP;
+  return Math.min(
+    TAB_FIXED_WIDTH_MAX,
+    Math.max(TAB_FIXED_WIDTH_MIN, rounded),
+  );
+}
 
 const ACTIVITY_VALUES: readonly LeftSidebarPref["activity"][] = [
   "workspace",
@@ -486,6 +514,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
     explorer: true,
     taskConsole: false,
   },
+  tabWidthMode: "auto",
+  tabFixedWidth: TAB_FIXED_WIDTH_DEFAULT,
 };
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
@@ -653,6 +683,10 @@ export async function loadPreferences(): Promise<Preferences> {
       get<boolean>(KEY_EDITOR_WORD_WRAP) ?? DEFAULT_PREFERENCES.editorWordWrap,
     leftSidebar: normalizeLeftSidebarPref(get(KEY_LAYOUT_LEFT_SIDEBAR)),
     panelVisibility: normalizePanelVisibilityPref(get(KEY_LAYOUT_PANELS)),
+    tabWidthMode: normalizeTabWidthMode(get(KEY_TAB_WIDTH_MODE)),
+    tabFixedWidth: clampTabFixedWidth(
+      get<number>(KEY_TAB_FIXED_WIDTH) ?? DEFAULT_PREFERENCES.tabFixedWidth,
+    ),
   };
 }
 
@@ -1005,6 +1039,14 @@ export async function setSourceControlPanelWidth(value: number): Promise<void> {
 
 export async function setExplorerPanelWidth(value: number): Promise<void> {
   await writePref(KEY_EXPLORER_PANEL_WIDTH, clampSidePanelWidth(value));
+}
+
+export async function setTabWidthMode(value: TabWidthMode): Promise<void> {
+  await writePref(KEY_TAB_WIDTH_MODE, normalizeTabWidthMode(value));
+}
+
+export async function setTabFixedWidth(value: number): Promise<void> {
+  await writePref(KEY_TAB_FIXED_WIDTH, clampTabFixedWidth(value));
 }
 
 export async function setTouchOptimizations(value: TouchMode): Promise<void> {

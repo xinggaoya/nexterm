@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { NCard, NForm, NFormItem, NSelect } from "naive-ui";
+import {
+  NCard,
+  NForm,
+  NFormItem,
+  NRadioButton,
+  NRadioGroup,
+  NSelect,
+  NSlider,
+  NSpace,
+} from "naive-ui";
 import { computed } from "vue";
 import { t } from "@/modules/i18n/translate";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
@@ -9,9 +18,12 @@ import {
   ACCENT_PRESET_SWATCHES,
   EDITOR_THEME_LABELS,
   EDITOR_THEMES,
+  TAB_FIXED_WIDTH_MAX,
+  TAB_FIXED_WIDTH_MIN,
   type AccentPref,
   type EditorThemeId,
   type LanguagePref,
+  type TabWidthMode,
   type ThemePref,
 } from "@/modules/settings/store";
 
@@ -120,6 +132,46 @@ const accentOptions = computed<
             :options="editorThemeOptions"
             @update:value="(value) => prefs.updateEditorTheme(value as EditorThemeId)"
           />
+        </NFormItem>
+      </NForm>
+    </NCard>
+
+    <NCard class="nexterm-settings-group" size="small" :title="t('settings.general.tabs')" embedded>
+      <p class="mb-3 text-xs text-muted-foreground">
+        {{ t('settings.general.tabsDescription') }}
+      </p>
+      <NForm label-placement="left" label-width="150" size="small">
+        <NFormItem :label="t('settings.general.tabWidthMode')">
+          <NRadioGroup
+            :value="prefs.tabWidthMode"
+            @update:value="(value) => prefs.updateTabWidthMode(value as TabWidthMode)"
+          >
+            <NRadioButton value="auto">
+              {{ t('settings.options.auto') }}
+            </NRadioButton>
+            <NRadioButton value="fixed">
+              {{ t('settings.options.fixed') }}
+            </NRadioButton>
+          </NRadioGroup>
+        </NFormItem>
+        <NFormItem :label="t('settings.general.tabWidth')">
+          <NSpace vertical class="w-full">
+            <NSlider
+              :value="prefs.tabFixedWidth"
+              :min="TAB_FIXED_WIDTH_MIN"
+              :max="TAB_FIXED_WIDTH_MAX"
+              :step="4"
+              :disabled="prefs.tabWidthMode !== 'fixed'"
+              @update:value="(value) => prefs.updateTabFixedWidth(Number(value))"
+            />
+            <div class="flex justify-between text-[11px] text-muted-foreground">
+              <span>{{ TAB_FIXED_WIDTH_MIN }} px</span>
+              <span class="font-medium text-foreground">
+                {{ prefs.tabFixedWidth }} px
+              </span>
+              <span>{{ TAB_FIXED_WIDTH_MAX }} px</span>
+            </div>
+          </NSpace>
         </NFormItem>
       </NForm>
     </NCard>

@@ -15,6 +15,7 @@ import { t } from "@/modules/i18n/translate";
 import type { TabDropPlacement } from "@/modules/tabs/tabsReorder";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import type { SplitDir } from "@/modules/terminal/lib/layout";
+import type { TabWidthMode } from "@/modules/settings/store";
 import TabContextMenu, {
   type TabContextMenuTarget,
 } from "./TabContextMenu.vue";
@@ -24,7 +25,20 @@ const props = defineProps<{
   activeId: number;
   canSplit: boolean;
   showActions: boolean;
+  widthMode: TabWidthMode;
+  fixedWidth: number;
 }>();
+
+function tabWidthStyle(): Record<string, string> | undefined {
+  if (props.widthMode !== "fixed") return undefined;
+  return { width: `${Math.round(props.fixedWidth)}px` };
+}
+
+function tabWidthClass(): string {
+  return props.widthMode === "fixed"
+    ? "flex-none"
+    : "max-w-48 flex-[1_1_8rem]";
+}
 
 const emit = defineEmits<{
   selectTab: [id: number];
@@ -191,12 +205,22 @@ function handleTabPointerDown(e: PointerEvent, tab: Tab) {
   if (props.tabs.length <= 1 || e.button !== 0) return;
   e.stopPropagation();
   removePointerListeners();
+  const actualWidth =
+    (e.currentTarget as HTMLElement)?.getBoundingClientRect().width ?? 160;
+  // 在 fixed 模式下，ghost 跟随用户配置的固定宽度，看起来更连贯；
+  // auto 模式沿用历史 clamp（104–224）保持原有视觉。
+  const ghostCap = props.widthMode === "fixed"
+    ? Math.max(104, props.fixedWidth)
+    : 224;
+  const ghostFloor = props.widthMode === "fixed"
+    ? Math.min(104, props.fixedWidth)
+    : 104;
   pointerDrag.value = {
     sourceId: tab.id,
     pointerId: e.pointerId,
     startX: e.clientX,
     startY: e.clientY,
-    sourceWidth: Math.min(224, Math.max(104, (e.currentTarget as HTMLElement)?.getBoundingClientRect().width ?? 160)),
+    sourceWidth: Math.min(ghostCap, Math.max(ghostFloor, actualWidth)),
     dragging: false,
   };
   addPointerListeners();
@@ -265,8 +289,10 @@ function handleSplitSelect(key: string | number) {
           :data-tab-id="tab.id"
           :aria-grabbed="draggingTabId === tab.id"
           :title="`${tabKindLabel(tab)}: ${tabLabel(tab)}`"
+          :style="tabWidthStyle()"
           :class="[
-            'group relative flex h-7 min-w-[5rem] max-w-48 flex-[1_1_8rem] items-center justify-between gap-1.5 rounded-[6px] px-2.5 text-left text-[12px] transition-[background-color,color,opacity] duration-[var(--dur-fast)]',
+            'group relative flex h-7 min-w-[5rem] items-center justify-between gap-1.5 rounded-[6px] px-2.5 text-left text-[12px] transition-[background-color,color,opacity] duration-[var(--dur-fast)]',
+            tabWidthClass(),
             draggingTabId === tab.id ? 'opacity-60' : '',
             dropTarget?.id === tab.id && dropTarget.placement === 'before'
               ? 'before:absolute before:inset-y-1.5 before:left-[-2px] before:w-0.5 before:rounded-full before:bg-primary'

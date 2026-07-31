@@ -401,6 +401,8 @@ defineExpose({
               :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
               :can-split="canSplitActiveTab"
               :show-actions="true"
+              :width-mode="prefs.tabWidthMode"
+              :fixed-width="prefs.tabFixedWidth"
               @select-tab="(id) => tabs.setActiveId(id, workspace.id)"
               @close-tab="(id) => tabs.closeTab(id, workspace.id)"
               @close-others="(id) => tabs.closeOthers(id, workspace.id)"
