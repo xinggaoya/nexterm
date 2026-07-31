@@ -63,6 +63,16 @@ let resizeObserver: ResizeObserver | null = null;
 let detachThemeWatch: (() => void) | null = null;
 let detachClipboardShortcuts: (() => void) | null = null;
 let mountRevision = 0;
+/**
+ * 上一次 ResizeObserver 回调观察到的容器尺寸。用于检测「容器从隐藏
+ * (display:none,0 尺寸) 切回可见」的状态跳变 —— 切换工作区靠 v-show
+ * 实现,而 isActive prop 依赖的 tabs.activeIdByWorkspace 在工作区切换时
+ * 不变,watch(isActive) 不会触发;但 ResizeObserver 会因 0→非0 尺寸跳变
+ * 而触发(见 https://github.com/w3c/csswg-drafts/issues/7808),这是检测
+ * 工作区切回的可靠信号。
+ */
+let lastObservedW = 0;
+let lastObservedH = 0;
 
 /** 假死重建的最大重试次数（WD 上 WSL 冷启动典型 1~2 次即可成功）。 */
 const MAX_DEAD_START_RETRIES = 3;
@@ -224,8 +234,30 @@ onMounted(async () => {
     if (renderer) applyTerminalTheme(renderer.term);
   });
 
-  resizeObserver = new ResizeObserver(() => {
+  resizeObserver = new ResizeObserver((entries) => {
+    // 切换工作区靠 MainApp.vue 的 v-show 实现,display:none 时容器尺寸归 0,
+    // 切回时尺寸恢复。但 TerminalPane 的 isActive prop 依赖的
+    // tabs.activeIdByWorkspace 在工作区切换时不变 —— 所以 watch(isActive)
+    // 不会因工作区切换而触发,无法作为补画信号。ResizeObserver 会因
+    // 0→非0 尺寸跳变触发(往返两次:隐藏报 0,切回报原尺寸),这是检测工作区
+    // 切回的可靠信号。见 https://github.com/w3c/csswg-drafts/issues/7808。
+    const rect = entries[0]?.contentRect;
+    const w = rect ? rect.width : 0;
+    const h = rect ? rect.height : 0;
+    const becameVisible = lastObservedW === 0 && lastObservedH === 0 && w > 0 && h > 0;
+    lastObservedW = w;
+    lastObservedH = h;
+
     if (props.isActive) refreshLayout();
+    // 容器从隐藏切回可见:display:none 期间 canvas 被浏览器跳过绘制,xterm
+    // (WebGL 状态化)切回后不会自动补画 buffer。这里在 rAF 里(等布局落定)
+    // 强制 redraw,把 buffer 刷到 canvas/WebGL 纹理上,避免"切回后内容缺失、
+    // 需输入字符才补出"。分屏里所有 pane 都可能受影响,故不看 isActive。
+    if (becameVisible) {
+      requestAnimationFrame(() => {
+        renderer?.redraw();
+      });
+    }
   });
   resizeObserver.observe(host);
 });

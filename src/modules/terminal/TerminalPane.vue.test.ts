@@ -5,13 +5,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Terminal } from "@xterm/xterm";
 import type { TerminalRenderer } from "./lib/renderer";
 
-// jsdom 默认没有 ResizeObserver；TerminalPane.onMounted 内部会 new 它，
-// 这里提供一个最小 noop 实现，仅满足构造调用即可。
+// jsdom 默认没有 ResizeObserver；TerminalPane.onMounted 内部会 new 它并
+// observe(host)。这里提供一个可控制的实现：捕获 observe 的回调,测试可
+// 通过 triggerResize 手动模拟「容器尺寸变化」(尤其 0→非0,模拟工作区从
+// v-show 隐藏切回可见),验证 redraw 补画逻辑。
+type ResizeCb = (entries: { contentRect: { width: number; height: number } }[]) => void;
 class ResizeObserverStub {
+  private cb: ResizeCb | null = null;
   observe(): void {}
   unobserve(): void {}
-  disconnect(): void {}
+  disconnect(): void {
+    this.cb = null;
+  }
+  constructor(cb: ResizeCb) {
+    capturedResizeObservers.push(this);
+    this.cb = cb;
+  }
+  trigger(w: number, h: number): void {
+    this.cb?.([{ contentRect: { width: w, height: h } }]);
+  }
 }
+const capturedResizeObservers: ResizeObserverStub[] = [];
 (globalThis as unknown as { ResizeObserver: typeof ResizeObserverStub }).ResizeObserver =
   ResizeObserverStub;
 
@@ -169,6 +183,7 @@ describe("TerminalPane.vue", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    capturedResizeObservers.length = 0;
     host = document.createElement("div");
     document.body.appendChild(host);
   });
@@ -221,5 +236,55 @@ describe("TerminalPane.vue", () => {
     await wrapper.setProps({ isActive: false });
     await flush();
     expect(fakeRenderer.redraw).not.toHaveBeenCalled();
+  });
+
+  it("calls redraw when the container goes from 0 size back to non-zero (workspace switch back)", async () => {
+    // 工作区切换靠 v-show(display:none)实现,isActive prop 不随工作区切换变化
+    // (它依赖的 tabs.activeIdByWorkspace 在切换工作区时不变),所以
+    // watch(isActive) 永远不触发。可靠信号是 ResizeObserver:display:none 时
+    // 容器尺寸归 0,切回时恢复非 0,这个 0→非0 跳变触发补画。
+    wrapper = mount(TerminalPane, {
+      attachTo: host!,
+      props: { leafId: "1", isActive: true, isFocused: false, flex: 1 },
+    });
+    await flush();
+    const ro = capturedResizeObservers[0];
+    expect(ro).toBeTruthy();
+    // 先喂一个正常尺寸,模拟首次可见(此时 lastObservedW/H 还是 0,首次也会
+    // 触发一次 redraw,这是无害的初始补画)。
+    ro!.trigger(800, 600);
+    await flush();
+    const redrawsAfterFirstShow = (fakeRenderer.redraw as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(redrawsAfterFirstShow).toBeGreaterThanOrEqual(1);
+
+    // 切走工作区:display:none → 容器尺寸归 0,不应再 redraw。
+    ro!.trigger(0, 0);
+    await flush();
+    expect((fakeRenderer.redraw as ReturnType<typeof vi.fn>).mock.calls.length).toBe(redrawsAfterFirstShow);
+
+    // 切回工作区:尺寸从 0 恢复到非 0 → 必须触发一次 redraw 补画。
+    ro!.trigger(800, 600);
+    await flush();
+    expect((fakeRenderer.redraw as ReturnType<typeof vi.fn>).mock.calls.length).toBe(redrawsAfterFirstShow + 1);
+  });
+
+  it("does not call redraw on size changes between two non-zero sizes", async () => {
+    // 分屏拖动等导致的同向尺寸变化(始终非 0)不应触发补画 —— 那只是普通 fit,
+    // canvas 仍在绘制,不需要 redraw。redraw 只针对"从隐藏切回"这一跳变。
+    wrapper = mount(TerminalPane, {
+      attachTo: host!,
+      props: { leafId: "1", isActive: true, isFocused: false, flex: 1 },
+    });
+    await flush();
+    const ro = capturedResizeObservers[0];
+    // 初始化为非 0
+    ro!.trigger(800, 600);
+    await flush();
+    const redrawsBefore = (fakeRenderer.redraw as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    // 同向变化(仍是非 0 尺寸)不应触发 redraw。
+    ro!.trigger(600, 400);
+    await flush();
+    expect((fakeRenderer.redraw as ReturnType<typeof vi.fn>).mock.calls.length).toBe(redrawsBefore);
   });
 });
