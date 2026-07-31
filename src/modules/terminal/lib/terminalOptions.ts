@@ -162,8 +162,8 @@ export function buildTerminalOptions(
     // 切勿用 scrollbar.width —— 它是 overview ruler 宽度，设置会启用
     // OverviewRulerRenderer 在右侧画 overviewRulerBorder 竖线(=白线)。
     scrollbar: {
-      verticalScrollbarSize: 8,
-      verticalSliderSize: 6,
+      verticalScrollbarSize: 6,
+      verticalSliderSize: 4,
     } as ITerminalOptions["scrollbar"],
     // renderer 在外部 pipeline 里挂载,此处不参与 ITerminalOptions
   };
