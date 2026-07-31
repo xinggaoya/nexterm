@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   AddOutline,
+  ChevronBackOutline,
   GitBranchOutline,
   OpenOutline,
   ServerOutline,
@@ -23,6 +24,7 @@ const emit = defineEmits<{
   "select-activity": [key: ActivityKey];
   "add-workspace": [env: WorkspaceEnv];
   "open-in-new-window": [];
+  "toggle-left-sidebar": [];
 }>();
 
 const activities = computed(() => [
@@ -79,5 +81,16 @@ const activities = computed(() => [
     >
       <NIcon :component="item.icon" :size="16" />
     </button>
+
+    <div class="v2-hairline my-1 h-px w-6 border-t" />
+
+    <NextermIconButton
+      data-toggle-left-sidebar
+      :title="t('app.leftSidebar.toggle')"
+      data-testid="toggle-left-sidebar"
+      @click="emit('toggle-left-sidebar')"
+    >
+      <NIcon :component="ChevronBackOutline" :size="15" />
+    </NextermIconButton>
   </nav>
 </template>

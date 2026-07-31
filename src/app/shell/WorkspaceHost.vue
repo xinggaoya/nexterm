@@ -355,6 +355,7 @@ defineExpose({
       :fs-event="workspaceFsEvent"
       :show-branches-modal="showBranchesModalProp"
       @select-activity="(k) => workbenchLayout.setLeftSidebarActivity(k)"
+      @toggle-left-sidebar="() => workbenchLayout.toggleLeftSidebar()"
       @add-workspace="(env) => emit('add-workspace', env)"
       @open-in-new-window="emit('open-in-new-window')"
       @select-workspace="(id) => workspaces.setActive(id)"

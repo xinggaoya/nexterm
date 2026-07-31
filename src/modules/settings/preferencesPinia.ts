@@ -15,6 +15,8 @@ import {
   setFileOpenMode,
   setKeybindings,
   setLanguage,
+  setLayoutLeftSidebar,
+  setLayoutPanels,
   setRecentFiles,
   setRestoreWindowState,
   setShowHidden,
@@ -65,6 +67,8 @@ import {
   type EditorThemeId,
   type FileOpenMode,
   type LanguagePref,
+  type LeftSidebarPref,
+  type PanelVisibilityPref,
   type Preferences,
   type TerminalCursorInactiveStyle,
   type TerminalCursorStyle,
@@ -631,6 +635,20 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     void setRecentFiles([]);
   }
 
+  async function updateLeftSidebar(value: LeftSidebarPref): Promise<void> {
+    leftSidebar.value = value;
+    patchPreferencesSnapshot("leftSidebar", value);
+    await setLayoutLeftSidebar(value);
+  }
+
+  async function updatePanelVisibility(
+    next: PanelVisibilityPref,
+  ): Promise<void> {
+    panelVisibility.value = next;
+    patchPreferencesSnapshot("panelVisibility", next);
+    await setLayoutPanels(next);
+  }
+
   function readPreferencesSnapshot(): Preferences {
     return {
       theme: theme.value,
@@ -799,5 +817,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateEditorWordWrap,
     recordOpenedFile,
     clearRecentFiles,
+    updateLeftSidebar,
+    updatePanelVisibility,
   };
 });

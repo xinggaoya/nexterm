@@ -6,8 +6,6 @@ import {
   LEFT_SIDEBAR_WIDTH_MIN,
   SIDE_PANEL_WIDTH_MAX,
   SIDE_PANEL_WIDTH_MIN,
-  setLayoutLeftSidebar,
-  setLayoutPanels,
 } from "@/modules/settings/store";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 
@@ -16,6 +14,24 @@ export type WorkbenchLayoutPreferences = {
   explorerPanelWidth: number;
   updateSourceControlPanelWidth: (value: number) => Promise<void>;
   updateExplorerPanelWidth: (value: number) => Promise<void>;
+  leftSidebar: { activity: ActivityKey; open: boolean; width: number };
+  panelVisibility: {
+    workspace: boolean;
+    sourceControl: boolean;
+    explorer: boolean;
+    taskConsole: boolean;
+  };
+  updateLeftSidebar: (value: {
+    activity: ActivityKey;
+    open: boolean;
+    width: number;
+  }) => Promise<void>;
+  updatePanelVisibility: (value: {
+    workspace: boolean;
+    sourceControl: boolean;
+    explorer: boolean;
+    taskConsole: boolean;
+  }) => Promise<void>;
 };
 
 export type ActivityKey = "workspace" | "sourceControl";
@@ -75,6 +91,9 @@ const DEFAULT_PANELS: PanelVisibilityState = {
 const usePanelVisibilityStore = defineStore("workbench-panel-visibility", () => {
   const leftPanelOpen = ref(false);
   const rightPanelOpen = ref(true);
+  // 初始值保持默认；MainApp 在 prefs.hydrate() 之后再用
+  // `useWorkbenchLayout` 时会把 prefs.leftSidebar / panelVisibility 通过
+  // bootstrapFromPrefs() 注入覆盖。
   const leftSidebar = ref<LeftSidebarState>({ ...DEFAULT_LEFT_SIDEBAR });
   const panelVisibility = ref<PanelVisibilityState>({ ...DEFAULT_PANELS });
   return {
@@ -137,14 +156,41 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   function toggleRightPanel(): void {
     visibility.rightPanelOpen = !visibility.rightPanelOpen;
   }
+  // 把左侧栏的当前状态投影到 panelVisibility.workspace / sourceControl。
+  // 这两个字段保留下来是为了不破坏 StatusBar 老代码把它们当 "isOn" 读，
+  // 但它们的真实值完全由 leftSidebar.open × activity 派生。
+  function syncPanelVisibilityFromLeftSidebar(): void {
+    const ls = visibility.leftSidebar;
+    const nextWorkspace = ls.open && ls.activity === "workspace";
+    const nextSourceControl = ls.open && ls.activity === "sourceControl";
+    const cur = visibility.panelVisibility;
+    if (
+      cur.workspace === nextWorkspace &&
+      cur.sourceControl === nextSourceControl
+    ) {
+      return;
+    }
+    visibility.panelVisibility = {
+      ...cur,
+      workspace: nextWorkspace,
+      sourceControl: nextSourceControl,
+    };
+  }
   function setLeftSidebarActivity(key: ActivityKey): void {
-    visibility.leftSidebar = { ...visibility.leftSidebar, activity: key };
+    if (visibility.leftSidebar.activity === key) return;
+    visibility.leftSidebar = {
+      ...visibility.leftSidebar,
+      activity: key,
+      open: true,
+    };
+    syncPanelVisibilityFromLeftSidebar();
   }
   function toggleLeftSidebar(): void {
     visibility.leftSidebar = {
       ...visibility.leftSidebar,
       open: !visibility.leftSidebar.open,
     };
+    syncPanelVisibilityFromLeftSidebar();
   }
   function setLeftSidebarWidth(width: number): void {
     visibility.leftSidebar = {
@@ -152,28 +198,66 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
       width: clampLeftSidebarWidth(width),
     };
   }
+
   function togglePanel(key: PanelKey): void {
-    visibility.panelVisibility = {
-      ...visibility.panelVisibility,
-      [key]: !visibility.panelVisibility[key],
-    };
-    if (key === "sourceControl") {
-      visibility.leftPanelOpen = visibility.panelVisibility.sourceControl;
-    }
     if (key === "explorer") {
-      visibility.rightPanelOpen = visibility.panelVisibility.explorer;
+      const next = !visibility.panelVisibility.explorer;
+      visibility.panelVisibility = {
+        ...visibility.panelVisibility,
+        explorer: next,
+      };
+      visibility.rightPanelOpen = next;
+      return;
+    }
+    if (key === "sourceControl") {
+      const cur = visibility.leftSidebar;
+      const showingSourceControl =
+        cur.open && cur.activity === "sourceControl";
+      visibility.leftSidebar = showingSourceControl
+        ? { ...cur, open: false }
+        : { ...cur, activity: "sourceControl", open: true };
+      syncPanelVisibilityFromLeftSidebar();
+      return;
     }
     if (key === "workspace") {
-      // workspace 与 sourceControl 共用左侧栏（靠 activity 切换视图），
-      // 所以这里切到 workspace 视图并确保左侧栏展开。panelVisibility.workspace
-      // 作为"左侧栏正停在 workspace 视图"的指示标志。
+      const cur = visibility.leftSidebar;
+      const showingWorkspace = cur.open && cur.activity === "workspace";
+      visibility.leftSidebar = showingWorkspace
+        ? { ...cur, open: false }
+        : { ...cur, activity: "workspace", open: true };
+      syncPanelVisibilityFromLeftSidebar();
+      return;
+    }
+    // taskConsole 不在这里处理；由 MainApp 走 per-workspace 控制器。
+  }
+
+  // 用 prefs 覆盖默认初始值。在 MainApp.setup 期间 prefs.hydrate() 通常是
+  // await 的，所以这里拿到的 prefs 不一定是已 hydrate 的；保险起见，下面的
+  // watch 会用 immediate=true 监听 prefs 字段变化，确保 hydrate 完成后再次
+  // 同步进来。
+  function bootstrapFromPrefs(): void {
+    const persistedLeftSidebar = prefs.leftSidebar;
+    if (persistedLeftSidebar) {
       visibility.leftSidebar = {
-        ...visibility.leftSidebar,
-        activity: "workspace",
-        open: true,
+        activity: persistedLeftSidebar.activity,
+        open: persistedLeftSidebar.open,
+        width: clampLeftSidebarWidth(persistedLeftSidebar.width),
       };
     }
+    const persistedPanels = prefs.panelVisibility;
+    if (persistedPanels) {
+      visibility.panelVisibility = {
+        workspace: persistedPanels.workspace,
+        sourceControl: persistedPanels.sourceControl,
+        explorer: persistedPanels.explorer,
+        taskConsole: persistedPanels.taskConsole,
+      };
+    }
+    syncPanelVisibilityFromLeftSidebar();
   }
+
+  bootstrapFromPrefs();
+
   const sourceControlPanelWidth = ref(
     clampPanelWidth(prefs.sourceControlPanelWidth),
   );
@@ -184,6 +268,8 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   let stopRightSplitHostWatch: (() => void) | null = null;
   let sourceControlWidthSaveTimer: ReturnType<typeof setTimeout> | null = null;
   let explorerWidthSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let leftSidebarSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let panelVisibilitySaveTimer: ReturnType<typeof setTimeout> | null = null;
 
   const sourceControlSplitSize = computed(() =>
     leftPanelOpen.value ? `${sourceControlPanelWidth.value}px` : "0px",
@@ -272,6 +358,69 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     }
   }
 
+  function scheduleLeftSidebarSave(next: LeftSidebarState): void {
+    if (!hasTauriInternals()) return;
+    if (leftSidebarSaveTimer) clearTimeout(leftSidebarSaveTimer);
+    leftSidebarSaveTimer = setTimeout(() => {
+      leftSidebarSaveTimer = null;
+      void prefs.updateLeftSidebar({
+        activity: next.activity,
+        open: next.open,
+        width: next.width,
+      });
+    }, saveDelayMs);
+  }
+
+  function flushLeftSidebarSave(): void {
+    if (leftSidebarSaveTimer) {
+      clearTimeout(leftSidebarSaveTimer);
+      leftSidebarSaveTimer = null;
+    }
+    if (!hasTauriInternals()) return;
+    const ls = visibility.leftSidebar;
+    const persisted = prefs.leftSidebar;
+    if (
+      !persisted ||
+      persisted.activity !== ls.activity ||
+      persisted.open !== ls.open ||
+      persisted.width !== ls.width
+    ) {
+      void prefs.updateLeftSidebar({
+        activity: ls.activity,
+        open: ls.open,
+        width: ls.width,
+      });
+    }
+  }
+
+  function schedulePanelVisibilitySave(next: PanelVisibilityState): void {
+    if (!hasTauriInternals()) return;
+    if (panelVisibilitySaveTimer) clearTimeout(panelVisibilitySaveTimer);
+    panelVisibilitySaveTimer = setTimeout(() => {
+      panelVisibilitySaveTimer = null;
+      void prefs.updatePanelVisibility({ ...next });
+    }, saveDelayMs);
+  }
+
+  function flushPanelVisibilitySave(): void {
+    if (panelVisibilitySaveTimer) {
+      clearTimeout(panelVisibilitySaveTimer);
+      panelVisibilitySaveTimer = null;
+    }
+    if (!hasTauriInternals()) return;
+    const cur = visibility.panelVisibility;
+    const persisted = prefs.panelVisibility;
+    if (
+      !persisted ||
+      persisted.workspace !== cur.workspace ||
+      persisted.sourceControl !== cur.sourceControl ||
+      persisted.explorer !== cur.explorer ||
+      persisted.taskConsole !== cur.taskConsole
+    ) {
+      void prefs.updatePanelVisibility({ ...cur });
+    }
+  }
+
   function updateSourceControlSplitSize(size: string | number) {
     const width = parsePxSize(size);
     if (width !== null) scheduleSourceControlWidthSave(width);
@@ -321,13 +470,8 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     window.removeEventListener("resize", measureRightSplitWidth);
     flushSourceControlWidthSave();
     flushExplorerWidthSave();
-    if (!hasTauriInternals()) return;
-    void setLayoutLeftSidebar({
-      activity: visibility.leftSidebar.activity,
-      open: visibility.leftSidebar.open,
-      width: visibility.leftSidebar.width,
-    });
-    void setLayoutPanels({ ...visibility.panelVisibility });
+    flushLeftSidebarSave();
+    flushPanelVisibilitySave();
   }
 
   watch(
@@ -350,6 +494,20 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     { immediate: true },
   );
 
+  // 把 leftSidebar / panelVisibility 状态变化 debounced 写回 prefs。
+  // flush:"post" 保证在 microtask 之后再读 visibility 的最新值，避免被同一
+  // tick 内的多次 toggle 反复触发。
+  watch(
+    () => ({ ...visibility.leftSidebar }),
+    (next) => scheduleLeftSidebarSave(next),
+    { deep: false, flush: "post", immediate: false },
+  );
+  watch(
+    () => ({ ...visibility.panelVisibility }),
+    (next) => schedulePanelVisibilitySave(next),
+    { deep: false, flush: "post", immediate: false },
+  );
+
   watch([leftPanelOpen, rightPanelOpen], () => {
     void nextTick(measureRightSplitWidth);
   });
@@ -362,6 +520,9 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
     explorerSplitSize,
     flushExplorerWidthSave,
     flushSourceControlWidthSave,
+    flushLeftSidebarSave,
+    flushPanelVisibilitySave,
+    bootstrapFromPrefs,
     // Live width setter used by the custom card-edge resizer (mirrors the
     // left sidebar's setLeftSidebarWidth). Clamps + schedules a debounced
     // persist; call flushExplorerWidthSave() on drag end to persist immediately.

@@ -31,6 +31,7 @@ const emit = defineEmits<{
   "select-workspace": [id: string];
   "close-workspace": [id: string];
   "resize-width": [width: number];
+  "toggle-left-sidebar": [];
   "toggle-panel": [key: PanelKey];
   "open-diff": [
     input: {
@@ -102,6 +103,7 @@ onBeforeUnmount(() => {
       @select-activity="(k) => emit('select-activity', k)"
       @add-workspace="(env) => emit('add-workspace', env)"
       @open-in-new-window="emit('open-in-new-window')"
+      @toggle-left-sidebar="emit('toggle-left-sidebar')"
     />
 
     <div class="relative min-w-0 flex-1">

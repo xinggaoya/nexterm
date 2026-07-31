@@ -422,8 +422,13 @@ watch(
               :workspace-name="activeWorkspace?.name ?? null"
               :git-branch="gitBranch"
               :panel-states="{
-                workspace: workbenchLayout.leftSidebar.value.activity === 'workspace',
-                sourceControl: workbenchLayout.panelVisibility.value.sourceControl,
+                workspace:
+                  workbenchLayout.leftSidebar.value.open &&
+                  workbenchLayout.leftSidebar.value.activity === 'workspace',
+                sourceControl:
+                  workbenchLayout.leftSidebar.value.open &&
+                  workbenchLayout.leftSidebar.value.activity ===
+                    'sourceControl',
                 explorer: workbenchLayout.panelVisibility.value.explorer,
                 taskConsole: activeTaskConsoleOpen,
               }"
