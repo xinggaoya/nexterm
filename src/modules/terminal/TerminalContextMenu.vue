@@ -70,19 +70,12 @@ function handleSelect(key: string | number) {
     trigger="manual"
     placement="bottom-start"
     :show="true"
+    :x="x"
+    :y="y"
     :options="options"
     @select="handleSelect"
     @clickoutside="emit('close')"
   >
-    <div
-      :style="{
-        position: 'fixed',
-        left: x + 'px',
-        top: y + 'px',
-        width: '1px',
-        height: '1px',
-        pointerEvents: 'none',
-      }"
-    />
+    <span aria-hidden="true" />
   </NDropdown>
 </template>

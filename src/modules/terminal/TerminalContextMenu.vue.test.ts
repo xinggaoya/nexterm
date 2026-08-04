@@ -13,7 +13,7 @@ vi.mock("naive-ui", async () => {
   return {
     ...actual,
     NDropdown: defineComponent({
-      props: ["options", "show"],
+      props: ["options", "show", "x", "y"],
       emits: ["select", "clickoutside"],
       setup(
         _props: {
@@ -24,6 +24,8 @@ vi.mock("naive-ui", async () => {
             type?: string;
           }>;
           show?: boolean;
+          x?: number | string;
+          y?: number | string;
         },
         {
           emit,
@@ -56,10 +58,15 @@ vi.mock("naive-ui", async () => {
                 { default: () => opt.label },
               ),
             );
-          return h("div", { "data-dropdown-mock": "" }, [
-            (slots.default?.() ?? []) as VNode[],
-            ...nodes,
-          ]);
+          return h(
+            "div",
+            {
+              "data-dropdown-mock": "",
+              "data-dropdown-x": String(_props.x),
+              "data-dropdown-y": String(_props.y),
+            },
+            [(slots.default?.() ?? []) as VNode[], ...nodes],
+          );
         };
       },
     }),
@@ -142,5 +149,16 @@ describe("TerminalContextMenu.vue", () => {
     expect(wrapper.emitted("paste")).toHaveLength(1);
     // select 路径不会发出 close。
     expect(wrapper.emitted("close")).toBeUndefined();
+  });
+
+  it("passes the pointer coordinates directly to the dropdown", async () => {
+    const wrapper = mount(TerminalContextMenu, {
+      props: { x: 123, y: 234, selection: "" },
+    });
+    await flush();
+
+    const dropdown = wrapper.get("[data-dropdown-mock]");
+    expect(dropdown.attributes("data-dropdown-x")).toBe("123");
+    expect(dropdown.attributes("data-dropdown-y")).toBe("234");
   });
 });

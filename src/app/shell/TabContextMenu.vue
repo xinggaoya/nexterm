@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { NButton } from "naive-ui";
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, h, inject } from "vue";
+import { NDropdown, type DropdownOption } from "naive-ui";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import { t } from "@/modules/i18n/translate";
 import { WORKSPACE_CONTEXT_KEY } from "@/app/workspaceContext";
@@ -13,10 +13,7 @@ export type TabContextMenuTarget = {
   total: number;
 };
 
-const props = defineProps<{
-  target: TabContextMenuTarget | null;
-}>();
-
+const props = defineProps<{ target: TabContextMenuTarget | null }>();
 const emit = defineEmits<{
   close: [];
   closeTab: [id: number];
@@ -33,245 +30,157 @@ const emit = defineEmits<{
 }>();
 
 const workspaceCtx = inject(WORKSPACE_CONTEXT_KEY, null);
-const rootPath = computed<string | null>(
-  () => workspaceCtx?.workspace.rootPath ?? null,
-);
-
-const menuElement = ref<HTMLElement | null>(null);
+const rootPath = computed(() => workspaceCtx?.workspace.rootPath ?? null);
 
 function isPathTab(tab: Tab): tab is Extract<Tab, { path: string }> {
   return "path" in tab && typeof (tab as { path?: unknown }).path === "string";
 }
-
 function pathFor(tab: Tab): string | null {
   if (tab.kind === "terminal") return tab.cwd ?? null;
   if (isPathTab(tab)) return tab.path;
   return null;
 }
 
-function close() {
-  emit("close");
+function renderOption(action: string) {
+  return (option: DropdownOption) =>
+    h(
+      "div",
+      {
+        class: "nexterm-dropdown-option",
+        "data-menu-action": action,
+        style: "padding: 0;",
+      },
+      { default: () => option.label },
+    );
 }
 
-function handleOutsidePointerDown(event: Event) {
-  if (!props.target) return;
-  const node = event.target instanceof Node ? event.target : null;
-  if (node && menuElement.value?.contains(node)) return;
-  close();
+function menuOption(key: string, label: string): DropdownOption {
+  return { key, label, render: renderOption(key) };
 }
 
-function handleGlobalKeydown(event: KeyboardEvent) {
-  if (event.key === "Escape" && props.target) {
-    event.preventDefault();
-    close();
+function divider(key: string): DropdownOption {
+  return { key, type: "divider" };
+}
+
+const options = computed<DropdownOption[]>(() => {
+  const target = props.target;
+  if (!target) return [];
+
+  const items: DropdownOption[] = [
+    menuOption("close", t("tabMenu.close")),
+  ];
+  if (target.total > 1) {
+    items.push(menuOption("close-others", t("tabMenu.closeOthers")));
   }
-}
+  if (target.index < target.total - 1) {
+    items.push(menuOption("close-right", t("tabMenu.closeRight")));
+  }
+  if (target.total > 1) {
+    items.push(menuOption("close-all", t("tabMenu.closeAll")));
+  }
 
-function handleWindowBlur() {
-  if (props.target) close();
-}
+  const typeItems: DropdownOption[] = [];
+  if (target.tab.kind === "terminal") {
+    typeItems.push(
+      menuOption("duplicate", t("tabMenu.duplicate")),
+      menuOption("rename", t("tabMenu.rename")),
+    );
+  } else if (
+    target.tab.kind === "editor" ||
+    target.tab.kind === "markdown" ||
+    target.tab.kind === "preview"
+  ) {
+    if (target.tab.kind === "editor") {
+      typeItems.push(
+        menuOption(
+          "pin",
+          target.tab.preview ? t("tabMenu.pin") : t("tabMenu.unpin"),
+        ),
+      );
+    }
+    typeItems.push(
+      menuOption("move-to-new-window", t("tabMenu.moveToNewWindow")),
+    );
+  }
+  if (typeItems.length > 0) {
+    items.push(divider("type-divider"), ...typeItems);
+  }
 
-function emitClose(action: "close" | "others" | "right" | "all") {
-  if (!props.target) return;
-  switch (action) {
+  const path = pathFor(target.tab);
+  if (path) {
+    const pathItems: DropdownOption[] = [
+      menuOption("copy-path", t("tabMenu.copyPath")),
+    ];
+    if (rootPath.value && path.startsWith(`${rootPath.value}/`)) {
+      pathItems.push(
+        menuOption("copy-relative-path", t("tabMenu.copyRelativePath")),
+      );
+    }
+    items.push(divider("path-divider"), ...pathItems);
+  }
+
+  return items;
+});
+
+function handleSelect(key: string | number) {
+  const target = props.target;
+  if (!target || typeof key !== "string") return;
+
+  switch (key) {
     case "close":
-      emit("closeTab", props.target.tab.id);
+      emit("closeTab", target.tab.id);
       break;
-    case "others":
-      emit("closeOthers", props.target.tab.id);
+    case "close-others":
+      emit("closeOthers", target.tab.id);
       break;
-    case "right":
-      emit("closeToRight", props.target.tab.id);
+    case "close-right":
+      emit("closeToRight", target.tab.id);
       break;
-    case "all":
+    case "close-all":
       emit("closeAll");
       break;
+    case "duplicate":
+      emit("duplicateTerminal", target.tab.id);
+      break;
+    case "rename":
+      emit("requestRename", target.tab.id);
+      break;
+    case "pin":
+      emit("pinEditor", target.tab.id);
+      break;
+    case "move-to-new-window":
+      emit("moveToNewWindow", target.tab.id);
+      break;
+    case "copy-path": {
+      const path = pathFor(target.tab);
+      if (path) emit("copyPath", path);
+      break;
+    }
+    case "copy-relative-path": {
+      const path = pathFor(target.tab);
+      if (path && rootPath.value) {
+        emit("copyRelativePath", rootPath.value, path);
+      }
+      break;
+    }
   }
-  close();
+
+  emit("close");
 }
-
-function emitDuplicate() {
-  if (!props.target || props.target.tab.kind !== "terminal") return;
-  emit("duplicateTerminal", props.target.tab.id);
-  close();
-}
-
-function emitRename() {
-  if (!props.target) return;
-  emit("requestRename", props.target.tab.id);
-  close();
-}
-
-function emitPin() {
-  if (!props.target || props.target.tab.kind !== "editor") return;
-  emit("pinEditor", props.target.tab.id);
-  close();
-}
-
-function emitCopyPath(relative: boolean) {
-  if (!props.target) return;
-  const path = pathFor(props.target.tab);
-  if (!path) return;
-  if (relative) {
-    if (!rootPath.value) return;
-    emit("copyRelativePath", rootPath.value, path);
-  } else {
-    emit("copyPath", path);
-  }
-  close();
-}
-
-function emitMoveToNewWindow() {
-  if (!props.target) return;
-  emit("moveToNewWindow", props.target.tab.id);
-  close();
-}
-
-watch(
-  () => props.target?.tab.id,
-  () => {
-    /* reset not needed; target is replaced */
-  },
-);
-
-onMounted(() => {
-  window.addEventListener("pointerdown", handleOutsidePointerDown, true);
-  window.addEventListener("keydown", handleGlobalKeydown);
-  window.addEventListener("blur", handleWindowBlur);
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener("pointerdown", handleOutsidePointerDown, true);
-  window.removeEventListener("keydown", handleGlobalKeydown);
-  window.removeEventListener("blur", handleWindowBlur);
-});
 </script>
 
 <template>
-  <Transition name="v2-pop" appear>
-  <div
+  <NDropdown
     v-if="target"
-    ref="menuElement"
-    class="nexterm-overlay fixed z-50 min-w-44 p-1 text-[12px]"
-    :style="{ left: `${target.x}px`, top: `${target.y}px` }"
-    @contextmenu.prevent
+    trigger="manual"
+    placement="bottom-start"
+    :show="true"
+    :x="target.x"
+    :y="target.y"
+    :options="options"
+    @select="handleSelect"
+    @clickoutside="emit('close')"
   >
-    <NButton
-      text
-      block
-      size="tiny"
-      data-menu-action="close"
-     
-      @click="emitClose('close')"
-    >
-      {{ t("tabMenu.close") }}
-    </NButton>
-    <NButton
-      v-if="target.total > 1"
-      text
-      block
-      size="tiny"
-      data-menu-action="close-others"
-     
-      @click="emitClose('others')"
-    >
-      {{ t("tabMenu.closeOthers") }}
-    </NButton>
-    <NButton
-      v-if="target.index < target.total - 1"
-      text
-      block
-      size="tiny"
-      data-menu-action="close-right"
-     
-      @click="emitClose('right')"
-    >
-      {{ t("tabMenu.closeRight") }}
-    </NButton>
-    <NButton
-      v-if="target.total > 1"
-      text
-      block
-      size="tiny"
-      data-menu-action="close-all"
-     
-      @click="emitClose('all')"
-    >
-      {{ t("tabMenu.closeAll") }}
-    </NButton>
-    <template v-if="target.tab.kind === 'terminal'">
-      <div class="my-1 h-px bg-border/70" />
-      <NButton
-        text
-        block
-        size="tiny"
-        data-menu-action="duplicate"
-       
-        @click="emitDuplicate"
-      >
-        {{ t("tabMenu.duplicate") }}
-      </NButton>
-      <NButton
-        text
-        block
-        size="tiny"
-        data-menu-action="rename"
-       
-        @click="emitRename"
-      >
-        {{ t("tabMenu.rename") }}
-      </NButton>
-    </template>
-    <template
-      v-else-if="target.tab.kind === 'editor' || target.tab.kind === 'markdown' || target.tab.kind === 'preview'"
-    >
-      <div class="my-1 h-px bg-border/70" />
-      <NButton
-        v-if="target.tab.kind === 'editor'"
-        text
-        block
-        size="tiny"
-        data-menu-action="pin"
-       
-        @click="emitPin"
-      >
-        {{ target.tab.preview ? t("tabMenu.pin") : t("tabMenu.unpin") }}
-      </NButton>
-      <NButton
-        text
-        block
-        size="tiny"
-        data-menu-action="move-to-new-window"
-       
-        @click="emitMoveToNewWindow"
-      >
-        {{ t("tabMenu.moveToNewWindow") }}
-      </NButton>
-    </template>
-    <template v-if="pathFor(target.tab)">
-      <div class="my-1 h-px bg-border/70" />
-      <NButton
-        text
-        block
-        size="tiny"
-        data-menu-action="copy-path"
-       
-        @click="emitCopyPath(false)"
-      >
-        {{ t("tabMenu.copyPath") }}
-      </NButton>
-      <NButton
-        v-if="rootPath && pathFor(target.tab)?.startsWith(`${rootPath}/`)"
-        text
-        block
-        size="tiny"
-        data-menu-action="copy-relative-path"
-       
-        @click="emitCopyPath(true)"
-      >
-        {{ t("tabMenu.copyRelativePath") }}
-      </NButton>
-    </template>
-  </div>
-  </Transition>
+    <span aria-hidden="true" />
+  </NDropdown>
 </template>
