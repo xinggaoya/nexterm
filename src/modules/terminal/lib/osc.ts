@@ -34,6 +34,29 @@ export interface OscResult {
 const OSC_TERMINATORS = ["\x07", "\x1b\\"];
 
 export function handleOscData(data: string, prevPending: string): OscResult {
+  // 快速路径:既无前序未完成序列、本块也无 ESC ],直接透传零拷贝。
+  // 99% 的 PTY 输出（编译日志、AI CLI 响应、普通 cat/ls 文本）都走这条。
+  if (!prevPending && data.indexOf("\x1b]") === -1) {
+    return { cleaned: data, events: [], pendingBuffer: "" };
+  }
+  // 另一条快速路径:本块以 ESC 字符结尾(可能是 CSI `\x1b[...X`、
+  // OSC `\x1b]...X`、DCS / SS3 / 其他 ESC 序列),但主体不含 OSC
+  // 起始符。整段切到 OSC 慢路径会让全文 indexOf 跑两遍;
+  // 这里直接把"最后一个 ESC 字符到末尾"留作 pending,前面部分零
+  // 拷贝透传,下次 chunk 合并后再让 xterm 正常解析。这样 CSI 跨
+  // chunk 边界(常见:用户键入清屏 `\x1b[2J` 跨 PTY 读)也能省掉
+  // 一次慢路径的全文扫描。
+  if (!prevPending) {
+    const lastEsc = data.lastIndexOf("\x1b");
+    if (lastEsc !== -1 && data.indexOf("\x1b]", 0) === -1) {
+      return {
+        cleaned: data.slice(0, lastEsc),
+        events: [],
+        pendingBuffer: data.slice(lastEsc),
+      };
+    }
+  }
+
   const combined = prevPending + data;
   const events: OscEvent[] = [];
   const out: string[] = [];
@@ -44,7 +67,7 @@ export function handleOscData(data: string, prevPending: string): OscResult {
   while (searchFrom < combined.length) {
     const escIdx = combined.indexOf("\x1b]", searchFrom);
     if (escIdx === -1) {
-      out.push(combined.slice(cursor));
+      if (cursor < combined.length) out.push(combined.slice(cursor));
       cursor = combined.length;
       break;
     }

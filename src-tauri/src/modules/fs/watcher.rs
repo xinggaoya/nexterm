@@ -5,7 +5,8 @@ mod wsl;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{mpsc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 
 use tauri::{AppHandle, State};
 
@@ -40,6 +41,10 @@ struct ActiveWatcher {
     root_path: String,
     source: Option<ActiveRefreshSource>,
     event_tx: Option<mpsc::Sender<WorkspaceFsChangedEvent>>,
+    /// Frontend 在切回 / 卸载时设 true,batcher 循环检测到后立即把
+    /// 当前累积 batch 同步 emit,避免"切回时画面卡住等 200ms 窗口"
+    /// 的视觉故障。
+    flush_request: Arc<AtomicBool>,
     batch_thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -88,10 +93,12 @@ pub fn fs_watch_workspace(
     }
 
     let (event_tx, event_rx) = mpsc::channel();
+    let flush_request = Arc::new(AtomicBool::new(false));
     let batch_app = app.clone();
+    let batch_flush_request = flush_request.clone();
     let batch_thread = std::thread::Builder::new()
         .name("nexterm-fs-event-batcher".into())
-        .spawn(move || run_event_batcher(batch_app, event_rx))
+        .spawn(move || run_event_batcher(batch_app, event_rx, batch_flush_request))
         .map_err(|e| format!("spawn workspace event batcher: {e}"))?;
     let source = start_refresh_source(&app, &context, event_tx.clone());
 
@@ -102,6 +109,7 @@ pub fn fs_watch_workspace(
             root_path: context.root_path.clone(),
             source: Some(source),
             event_tx: Some(event_tx),
+            flush_request,
             batch_thread: Some(batch_thread),
         },
     );
@@ -125,6 +133,34 @@ pub fn fs_unwatch_workspace(
     Ok(())
 }
 
+/// 强制让 batcher 立即把当前累积 batch emit 到 webview。
+///
+/// 调用场景：
+/// - workspace 从 v-show 隐藏切回可见:切走期间 batcher 200ms 窗口
+///   内的累积事件,切回时不能继续等 200ms,否则 explorer / 源码控制
+///   看起来"切回来画面不动,等几十 ms 才补出"——这是用户报告的
+///   "切回字段内容清空,只有新内容出现才会有内容"类问题的根源。
+/// - workspace 即将被卸载:最后一段 FS 变更不能丢。
+///
+/// 实现是 `AtomicBool` 翻转,batcher 主循环每轮检查并 flush 一次。
+/// 即使 batcher 当时正在 `recv_timeout` 阻塞,最长 200ms 后也会自然
+/// flush(原窗口过期),所以这是 best-effort 加速,不是唯一兜底。
+#[tauri::command]
+pub fn fs_force_flush_workspace(
+    root_path: String,
+    workspace: Option<WorkspaceEnv>,
+    state: State<'_, FsWatcherState>,
+) -> Result<(), String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    let root_path = normalize_frontend_path(&root_path);
+    let key = workspace_watch_key(&root_path, &workspace);
+    let watchers = mutex_lock(&state.watchers, "fs watcher state")?;
+    if let Some(watcher) = watchers.get(&key) {
+        watcher.flush_request.store(true, Ordering::Release);
+    }
+    Ok(())
+}
+
 /// Emit a workspace-fs-changed event through the active watcher's batcher
 /// channel. Used by app-internal fs commands (`fs_write_file`,
 /// `fs_create_file`, `fs_rename`, `fs_delete`, etc.) so the file explorer
@@ -134,7 +170,7 @@ pub fn fs_unwatch_workspace(
 ///
 /// `kinds` is a parallel vector to `paths`; when omitted, callers that
 /// don't care about per-path kind default every entry to `Modify`.
-pub fn emit_workspace_fs_changed(
+pub(crate) fn emit_workspace_fs_changed(
     state: &FsWatcherState,
     root_path: &str,
     paths: Vec<String>,
@@ -147,7 +183,7 @@ pub fn emit_workspace_fs_changed(
 /// per-path `FsChangeKind`. Internal `fs_create_*`/`fs_rename`/`fs_delete`
 /// commands use this to advertise Create/Delete to the file explorer so
 /// its silent refresh can decide to rebuild instead of patch.
-pub fn emit_workspace_fs_changed_with_kinds(
+pub(crate) fn emit_workspace_fs_changed_with_kinds(
     state: &FsWatcherState,
     root_path: &str,
     paths: Vec<String>,
@@ -454,7 +490,7 @@ mod tests {
 
     #[test]
     fn notify_events_without_paths_become_root_refreshes() {
-        let broken_down = workspace_fs_event_from_notify(
+        let event = workspace_fs_event_from_notify(
             "/tmp/repo",
             Path::new("/tmp/repo"),
             false,
@@ -462,14 +498,14 @@ mod tests {
         )
         .expect("notify event should become a workspace event");
 
-        assert_eq!(broken_down.batch.root_path, "/tmp/repo");
-        assert!(broken_down.batch.paths.is_empty());
-        assert!(broken_down.file_changes.is_empty());
+        assert_eq!(event.root_path, "/tmp/repo");
+        assert!(event.paths.is_empty());
+        assert!(event.kinds.is_empty());
     }
 
     #[test]
     fn non_git_paths_marked_git_related_when_workspace_is_a_repo() {
-        let broken_down = workspace_fs_event_from_notify(
+        let event = workspace_fs_event_from_notify(
             "/tmp/repo",
             Path::new("/tmp/repo"),
             true,
@@ -478,15 +514,14 @@ mod tests {
         )
         .expect("notify event should become a workspace event");
 
-        assert!(broken_down.batch.git_related, "source changes inside a git repo must trigger git status refresh");
-        assert_eq!(broken_down.file_changes.len(), 1);
-        assert_eq!(broken_down.file_changes[0].path, "/tmp/repo/src/main.rs");
-        assert_eq!(broken_down.file_changes[0].kind, FsChangeKind::Modify);
+        assert!(event.git_related, "source changes inside a git repo must trigger git status refresh");
+        assert_eq!(event.paths, vec!["/tmp/repo/src/main.rs".to_string()]);
+        assert_eq!(event.kinds, vec![FsChangeKind::Modify]);
     }
 
     #[test]
-    fn notify_create_event_emits_file_changed_with_create_kind() {
-        let broken_down = workspace_fs_event_from_notify(
+    fn notify_create_event_emits_create_kind_in_aggregated_event() {
+        let event = workspace_fs_event_from_notify(
             "/tmp/repo",
             Path::new("/tmp/repo"),
             false,
@@ -495,10 +530,8 @@ mod tests {
         )
         .expect("notify event should become a workspace event");
 
-        assert_eq!(broken_down.batch.paths, vec!["/tmp/repo/new.ts".to_string()]);
-        assert_eq!(broken_down.batch.kinds, vec![FsChangeKind::Create]);
-        assert_eq!(broken_down.file_changes.len(), 1);
-        assert_eq!(broken_down.file_changes[0].kind, FsChangeKind::Create);
+        assert_eq!(event.paths, vec!["/tmp/repo/new.ts".to_string()]);
+        assert_eq!(event.kinds, vec![FsChangeKind::Create]);
     }
 
     #[test]

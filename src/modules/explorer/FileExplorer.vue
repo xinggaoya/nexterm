@@ -398,6 +398,56 @@ function clearScheduledTreeRefresh() {
   pendingFsEventPaths.clear();
 }
 
+/**
+ * 立即 flush 待执行的 tree refresh（取消 180ms 防抖,同步执行）。
+ *
+ * 调用场景:workspace 切回可见时。如果不立即 flush,切走期间 watcher
+ * 已经发出但仍在防抖窗口内的变更,要等 180ms 后才真正 loadChildren,
+ * 用户看到 explorer 切回时"树状结构暂时是切走时的旧状态,几百毫秒
+ * 后才更新到最新"——这是用户报告的"切回字段内容缺失,新内容出现才
+ * 有内容"的根因之一。
+ *
+ * 由 WorkspaceHost 在 watch activeWorkspace 变化时通过 ref 调用。
+ */
+function flushPendingTreeRefresh(): void {
+  if (fsRefreshTimer === null && pendingFsEventPaths.size === 0) return;
+  if (fsRefreshTimer !== null) {
+    clearTimeout(fsRefreshTimer);
+    fsRefreshTimer = null;
+  }
+  if (!props.rootPath) return;
+  const paths = Array.from(pendingFsEventPaths);
+  pendingFsEventPaths.clear();
+  if (paths.length === 0) return;
+  for (const path of refreshTargetsForPaths(paths)) {
+    void loadChildren(path, { silent: true });
+  }
+}
+
+/**
+ * 切回激活钩子:在 workspace 切回时由父组件调。不等 forceFlush/fsEvent,
+ * 直接同步重读根目录和所有展开节点——这些是用户切换 tab 时实际可见的
+ * 状态,必须立即更新,否则 explorer 会停留在切走时的旧树直到 180ms
+ * 防抖窗口结束。forceFlush 触发的 fsEvent 后续会被 watch(fsEvent) 接
+ * 住,180ms 防抖自然合并再次重读,重复的 loadChildren 由 inFlightLoads
+ * 配合 scheduled dedup 吃掉。
+ */
+function activate(): void {
+  // 清掉 pending 防抖 timer,flush 现有 pending 队列
+  flushPendingTreeRefresh();
+  if (!props.rootPath) return;
+  // 主动重读根+展开节点(inFlightLoads 自身 dedup 同 path 同 tick 的
+  // 重复 invoke,展开节点遍历是 O(展开数),正常用户 < 20 个)
+  void loadChildren(props.rootPath, { silent: true });
+  for (const dir of expanded) {
+    if (dir === props.rootPath) continue;
+    const state = nodes[dir];
+    if (state?.status === "loaded") {
+      void loadChildren(dir, { silent: true });
+    }
+  }
+}
+
 function scheduleTreeRefresh(event: WorkspaceFsChangedEvent) {
   if (!props.rootPath) return;
   for (const path of event.paths.length > 0 ? event.paths : [props.rootPath]) {
@@ -706,7 +756,21 @@ function setMode(next: "files" | "content") {
   }
 }
 
-defineExpose({ setMode });
+defineExpose({
+  setMode,
+  /**
+   * 同步 flush 待执行的 tree refresh(取消 180ms 防抖)。
+   * 父组件在 workspace 切回时调,保证切回 explorer 立即是最新状态。
+   * 切走 / 卸载时无需调 — clearScheduledTreeRefresh 已在 onBeforeUnmount
+   * 路径上跑。
+   */
+  flushPendingTreeRefresh,
+  /**
+   * 切回激活:主动重读根+展开节点,不依赖 fsEvent 是否到达。
+   * 父组件(WorkspaceHost)切回时调,保证切回 explorer 立刻是最新状态。
+   */
+  activate,
+});
 </script>
 
 <template>

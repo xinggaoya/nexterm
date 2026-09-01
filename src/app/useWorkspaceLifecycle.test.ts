@@ -13,6 +13,7 @@ function createMockWsNative() {
   return {
     fsWatchWorkspace: vi.fn(async (_rootPath: string) => undefined),
     fsUnwatchWorkspace: vi.fn(async (_rootPath: string) => undefined),
+    fsForceFlushWorkspace: vi.fn(async (_rootPath: string) => undefined),
   };
 }
 

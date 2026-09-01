@@ -71,7 +71,7 @@ describe("useSourceControlState", () => {
     await flush();
 
     expect(wsNative.workspaceAuthorize).toHaveBeenCalledWith("/repo");
-    expect(wsNative.gitPanelSnapshot).toHaveBeenCalledWith("/repo");
+    expect(wsNative.gitPanelSnapshot).toHaveBeenCalledWith("/repo", undefined);
     expect(state.panelState.value).toBe("ready");
     expect(state.repoRoot.value).toBe("/repo");
     expect(state.branchLabel.value).toBe("main");
@@ -109,7 +109,7 @@ describe("useSourceControlState", () => {
     await vi.advanceTimersByTimeAsync(80);
     await flush();
 
-    expect(wsNative.gitStatus).toHaveBeenCalledWith("/repo");
+    expect(wsNative.gitStatus).toHaveBeenCalledWith("/repo", undefined);
   });
 
   it("coalesces overlapping status refreshes and keeps the latest result", async () => {
@@ -181,11 +181,11 @@ describe("useSourceControlState", () => {
       t: (key) => key,
     });
     await flush();
-    expect(wsNative.gitPanelSnapshot).toHaveBeenCalledWith("/workspace");
+    expect(wsNative.gitPanelSnapshot).toHaveBeenCalledWith("/workspace", undefined);
 
     repoRoot.value = "/workspace/apps/web";
     await flush();
-    expect(wsNative.gitPanelSnapshot).toHaveBeenCalledWith("/workspace/apps/web");
+    expect(wsNative.gitPanelSnapshot).toHaveBeenCalledWith("/workspace/apps/web", undefined);
 
     const selectedStatus = {
       ...readyStatus,
@@ -291,7 +291,7 @@ describe("useSourceControlState", () => {
 
     state.scheduleAutoRefresh(20);
     const refreshA = state.refreshStatus();
-    expect(wsNative.gitStatus).toHaveBeenCalledWith("/repo-a");
+    expect(wsNative.gitStatus).toHaveBeenCalledWith("/repo-a", undefined);
 
     selectedRepoRoot.value = "/repo-b";
 

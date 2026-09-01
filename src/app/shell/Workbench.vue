@@ -149,6 +149,37 @@ function openFindInFiles() {
   fileExplorerRef.value?.setMode("content");
 }
 
+function flushPendingExplorerRefresh(): void {
+  // workspace 切回时调:取消 FileExplorer 内部的 180ms 防抖,
+  // 立即执行 pending 的 loadChildren 队列。否则切回时 explorer
+  // 要等 ~180ms 才看到切走期间的 FS 变更,看起来"画面卡住等几百毫秒"。
+  fileExplorerRef.value?.flushPendingTreeRefresh();
+}
+
+function activateExplorer(): void {
+  // 切回时立即主动重读根+展开节点(不等 fsEvent 到达,因为 forceFlush
+  // 是异步 IPC,batcher emit 可能有 1-5ms 延迟,这期间 explorer 仍显示
+  // 切走时的旧树)。用户可见状态必须即时更新。
+  fileExplorerRef.value?.activate();
+}
+
+function refreshSourceControlOnActivate(): void {
+  // 切回时让 source-control 立即重跑一次 git status(切走期间其他
+  // workspace 的 watcher 事件没让本 workspace 看到,且本地写入
+  // 也可能让 index 陈旧)。具体实现在 useSourceControlState 内部
+  // 走 scheduleAutoRefresh(0) 即可。
+  // 这里通过一个约定的 custom event 通知 SourceControlPanel,避免
+  // 在 Workbench 里直接持有它的 ref(它藏在 panel stack 里)。
+  // detail.workspaceId 让每个 SourceControlPanel 实例只响应匹配
+  // 自己 workspaceId 的事件,避免多 workspace 场景下所有 panel
+  // 都跑一次 isActive() 检查 + pinia 读。
+  const wsId = tryWorkspaceContext()?.workspace.id;
+  if (!wsId) return;
+  window.dispatchEvent(
+    new CustomEvent("nexterm:workspace-activated", { detail: { workspaceId: wsId } }),
+  );
+}
+
 async function killTerminal(leafId: number) {
   const wsId = tryWorkspaceContext()?.workspace.id ?? "";
   const ptyId = getPtyIdForLeaf(wsId, leafId);
@@ -208,7 +239,15 @@ onBeforeUnmount(() => {
   detachUp?.();
 });
 
-defineExpose({ saveActiveEditor, openGotoLine, openFindInFiles, killTerminal });
+defineExpose({
+  saveActiveEditor,
+  openGotoLine,
+  openFindInFiles,
+  killTerminal,
+  flushPendingExplorerRefresh,
+  activateExplorer,
+  refreshSourceControlOnActivate,
+});
 </script>
 
 <template>

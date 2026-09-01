@@ -2,6 +2,7 @@
 import { mount } from "@vue/test-utils";
 import { h, nextTick, ref, type VNodeChild } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
 import SourceControlPanel from "./SourceControlPanel.vue";
 import SourceControlToolbar from "./SourceControlToolbar.vue";
 import type { GitChangedFile } from "@/lib/native";
@@ -37,6 +38,18 @@ if (
     observe() {}
     unobserve() {}
     disconnect() {}
+  };
+}
+// jsdom 没有原生 requestAnimationFrame。flush() 等 NVirtualList 的
+// 视口测量时需要 rAF 触发,缺它会 await 永远不 resolve 导致 5s 超时。
+// 注入一个 microtask 兜底,行为与生产 rAF 类似(异步但立即调度)。
+if (typeof globalThis.requestAnimationFrame !== "function") {
+  globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number => {
+    queueMicrotask(() => cb(performance.now()));
+    return 0;
+  };
+  globalThis.cancelAnimationFrame = (): void => {
+    /* no-op */
   };
 }
 
@@ -296,6 +309,17 @@ describe("SourceControlPanel.vue", () => {
     vi.clearAllMocks();
     dialogConfirmMock.mockReset();
     dropdownSelectMock.mockReset();
+    // SourceControlPanel 内部用 useWorkspacesPiniaStore 派生 isActive。
+    // 测试环境原本未装 pinia;给每个测试一个新的 active pinia,
+    // 让 `useWorkspacesPiniaStore` 不会因 "no active Pinia" 抛错。
+    //
+    // 注:本测试的多数场景 mount 时不传 `workspaceId` prop,默认 `""`,
+    // 走 `if (!id) return true` 的兜底分支,所以 isActive() 实际
+    // 返回 true。换言之,本测试只覆盖了 `untrackedMode`、busyAction
+    // 等"无论是否 active 都成立"的逻辑;切走时不跑 git status
+    // 这条新行为需要专门写一个"传 workspaceId + 设 activeWorkspaceId
+    // 为其他 workspace"的用例才能覆盖,目前没补。
+    setActivePinia(createPinia());
     vi.mocked(mockWsNative.workspaceAuthorize).mockResolvedValue("/repo");
     vi.mocked(mockWsNative.gitDiscoverRepositories).mockResolvedValue({
       repositories: [
@@ -382,7 +406,7 @@ describe("SourceControlPanel.vue", () => {
     await flush();
 
     expect(mockWsNative.workspaceAuthorize).toHaveBeenCalledWith("/repo");
-    expect(mockWsNative.gitPanelSnapshot).toHaveBeenCalledWith("/repo");
+    expect(mockWsNative.gitPanelSnapshot).toHaveBeenCalledWith("/repo", "normal");
     expect(wrapper.text()).toContain("main");
     expect(wrapper.text()).toContain("src/main.ts");
 
@@ -715,7 +739,7 @@ describe("SourceControlPanel.vue", () => {
     document.body.querySelector<HTMLButtonElement>("[data-git-stash-drop='stash@{0}']")?.click();
     await flush();
     expect(mockWsNative.gitStashDrop).toHaveBeenCalledWith("/repo", "stash@{0}", fullSha);
-  });
+  }, 15_000);
 
   it("keeps the externally controlled modal open when checkout fails", async () => {
     const showBranchesModal = ref(false);
@@ -780,7 +804,7 @@ describe("SourceControlPanel.vue", () => {
     await flush();
 
     expect(mockWsNative.gitStatus).toHaveBeenCalledTimes(1);
-    expect(mockWsNative.gitStatus).toHaveBeenCalledWith("/repo");
+    expect(mockWsNative.gitStatus).toHaveBeenCalledWith("/repo", "normal");
     vi.useRealTimers();
   });
 
@@ -803,7 +827,7 @@ describe("SourceControlPanel.vue", () => {
     await flush();
 
     expect(mockWsNative.gitStatus).toHaveBeenCalledTimes(1);
-    expect(mockWsNative.gitStatus).toHaveBeenCalledWith("/repo");
+    expect(mockWsNative.gitStatus).toHaveBeenCalledWith("/repo", "normal");
     vi.useRealTimers();
   });
 

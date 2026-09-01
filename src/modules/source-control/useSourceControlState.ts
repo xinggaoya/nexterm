@@ -15,6 +15,7 @@ import type {
   WorkspaceFsChangedEvent,
   WorkspaceNative,
 } from "@/lib/native";
+import { recordFsEvent, recordGitStatus } from "@/lib/perf";
 import type { ReadonlyRef } from "@/lib/refs";
 import {
   buildSourceControlEntries,
@@ -69,6 +70,23 @@ type SourceControlStateOptions = {
   /** 绑定到目标 workspace 环境的 native 调用面（git/fs/workspaceAuthorize）。 */
   wsNative: WorkspaceNative;
   t: SourceControlTranslate;
+  /**
+   * 当前 workspace 是否对用户可见（v-show active）。
+   *
+   * - true: 监听 fsEvent 自动 refresh,fsEvent watch 80/500ms 节流
+   * - false: 关闭 fsEvent 自动 refresh,完全不跑 git status;
+   *          切回时由 WorkspaceHost 主动调 `reloadCurrent()` 一次
+   *
+   * 不传 = 永远 active（保持向后兼容）。
+   */
+  isActive?: () => boolean;
+  /**
+   * `git status --untracked-files=` 的当前模式。每次 refresh 会把当前
+   * 值传给后端,用户在 UI 切换会通过修改这个 ref + reloadCurrent 触发
+   * 重新拉取。不传 = 后端用默认 `normal`(只查直接未跟踪目录,
+   * 不递归展开),monorepo 默认不再被 `--untracked-files=all` 拖慢。
+   */
+  untrackedMode?: () => "all" | "normal" | "none";
 };
 
 export function useSourceControlState(options: SourceControlStateOptions) {
@@ -177,7 +195,10 @@ export function useSourceControlState(options: SourceControlStateOptions) {
     try {
       await options.wsNative.workspaceAuthorize(rootPath);
       if (!requestMatchesRoot(currentId, rootPath)) return;
-      const snapshot = await options.wsNative.gitPanelSnapshot(rootPath);
+      const snapshot = await options.wsNative.gitPanelSnapshot(
+        rootPath,
+        options.untrackedMode?.(),
+      );
       if (!requestMatchesRoot(currentId, rootPath)) return;
       repo.value = snapshot.repo;
       status.value = snapshot.status;
@@ -211,8 +232,13 @@ export function useSourceControlState(options: SourceControlStateOptions) {
 
     const currentId = ++requestId.value;
     const refresh = (async () => {
+      const startedAt = performance.now();
       try {
-        const next = await options.wsNative.gitStatus(statusRoot);
+        const next = await options.wsNative.gitStatus(
+          statusRoot,
+          options.untrackedMode?.(),
+        );
+        recordGitStatus(performance.now() - startedAt);
         if (!requestMatchesRoot(currentId, triggerRoot)) return;
 
         // Only rebuild git decorations if changed files actually differ.
@@ -312,6 +338,11 @@ export function useSourceControlState(options: SourceControlStateOptions) {
 
   watch(options.fsEvent, (event) => {
     if (!event || !isSameRoot(event.rootPath, options.rootPath.value)) return;
+    recordFsEvent(event.paths.length);
+    // 不活跃 workspace 直接丢弃:不跑 git status,不进 80/500ms 节流。
+    // 切回时由 WorkspaceHost 调 `reloadCurrent()` 一次,把切走期间的
+    // 状态补齐,而不是持续在后台白烧 CPU。
+    if (options.isActive && !options.isActive()) return;
     // Git-related events get fast refresh; non-git events still refresh,
     // just with a slightly longer debounce so we don't hammer `git status`
     // during unrelated churn (e.g. `node_modules` rebuilds in a non-git

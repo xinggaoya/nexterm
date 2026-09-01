@@ -40,11 +40,13 @@ pub async fn git_resolve_repo(
 pub async fn git_panel_snapshot(
     cwd: String,
     workspace: Option<WorkspaceEnv>,
+    untracked_files: Option<String>,
     app: AppHandle,
 ) -> Result<GitPanelSnapshot, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     blocking(app, move |r| {
-        operations::panel_snapshot(r, &cwd, &workspace).map_err(Into::into)
+        operations::panel_snapshot(r, &cwd, &workspace, untracked_files.as_deref())
+            .map_err(Into::into)
     })
     .await
 }
@@ -53,11 +55,13 @@ pub async fn git_panel_snapshot(
 pub async fn git_status(
     repo_root: String,
     workspace: Option<WorkspaceEnv>,
+    untracked_files: Option<String>,
     app: AppHandle,
 ) -> Result<GitStatusSnapshot, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     blocking(app, move |r| {
-        operations::status(r, &repo_root, &workspace).map_err(Into::into)
+        operations::status(r, &repo_root, &workspace, untracked_files.as_deref())
+            .map_err(Into::into)
     })
     .await
 }

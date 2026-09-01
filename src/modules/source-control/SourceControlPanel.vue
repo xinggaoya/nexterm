@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { NSelect, NSpin, useDialog, type SelectOption } from "naive-ui";
-import { computed, h, shallowRef, toRef, watch, type Ref } from "vue";
+import { computed, h, onBeforeUnmount, onMounted, ref, shallowRef, toRef, watch, type Ref } from "vue";
 import {
   type GitBranchInfo,
   type GitCommitResult,
@@ -25,6 +25,7 @@ import { useGitRepositoryRegistry } from "./useGitRepositoryRegistry";
 import { useSourceControlActions } from "./useSourceControlActions";
 import { useSourceControlGitMetadata } from "./useSourceControlGitMetadata";
 import { useSourceControlState } from "./useSourceControlState";
+import { useWorkspacesPiniaStore } from "@/modules/workspace/workspacesPinia";
 
 const props = withDefaults(
   defineProps<{
@@ -33,8 +34,9 @@ const props = withDefaults(
     workspaceScope?: string;
     fsEvent?: WorkspaceFsChangedEvent | null;
     showBranchesModal?: Ref<boolean>;
+    workspaceId?: string;
   }>(),
-  { activeRepoRoot: null, workspaceScope: "local" },
+  { activeRepoRoot: null, workspaceScope: "local", workspaceId: "" },
 );
 
 const emit = defineEmits<{
@@ -64,10 +66,31 @@ const emit = defineEmits<{
 const dialog = useDialog();
 // 获取当前 workspace 上下文，4 个 composable 都改用 wsNative 调用面。
 const wsCtx = useWorkspaceContext();
+const workspaces = useWorkspacesPiniaStore();
 const rootPath = toRef(props, "rootPath");
 const workspaceScope = toRef(props, "workspaceScope");
 const fsEvent = toRef(props, "fsEvent");
 const selectedRepoRoot = toRef(props, "activeRepoRoot");
+const workspaceId = toRef(props, "workspaceId");
+// 不活跃 workspace 关闭自动 git status 刷新(由 workspacesPinia 派生)。
+// 切回时由 WorkspaceHost 派发的 `nexterm:workspace-activated` 事件
+// 触发 `reloadCurrent()` 立即补一次。
+const isActive = (): boolean => {
+  const id = workspaceId.value;
+  if (!id) return true;
+  return workspaces.activeWorkspaceId === id;
+};
+// `git status --untracked-files=` 模式:默认 `normal` 不递归展开未跟踪
+// 目录(避免 monorepo 首次开目录被拖慢),用户在面板里点击 "show untracked
+// all" 切到 `all` 才会递归到 node_modules / dist 之类深层未跟踪内容。
+const untrackedMode = ref<"normal" | "all">("normal");
+const untrackedModeGetter = (): "all" | "normal" | "none" => untrackedMode.value;
+async function setUntrackedMode(next: "normal" | "all"): Promise<void> {
+  if (untrackedMode.value === next) return;
+  untrackedMode.value = next;
+  // 立刻重跑一次拿对应模式的 untracked 内容
+  await state.reloadCurrent();
+}
 const repositoryRegistry = useGitRepositoryRegistry({
   rootPath,
   workspaceScope,
@@ -80,10 +103,43 @@ const state = useSourceControlState({
   fsEvent,
   wsNative: wsCtx.wsNative,
   t,
+  isActive,
+  untrackedMode: untrackedModeGetter,
 });
 const gitMetadata = useSourceControlGitMetadata({
   repoRoot: state.repoRoot,
   wsNative: wsCtx.wsNative,
+});
+
+// workspace 切回时立即 reloadCurrent:切走期间其他 workspace 的 FS
+// 事件没让本 workspace 看到,本地写入也可能让 index 陈旧,需要
+// 补一次 git status。这条路径独立于 `useSourceControlState` 内部的
+// fsEvent watch(后者在不活跃时被 isActive 拦截),保证切回时一定
+// 立即刷一次。
+//
+// detail.workspaceId 过滤:多 workspace 场景下每个 SourceControlPanel
+// 都向 window 注册监听,Workbench 单次 dispatch 会广播所有 panel。
+// 用 detail.workspaceId 让每个 panel 只响应匹配自身的事件,避免无
+// 关 panel 也跑一次 isActive() + pinia 读。
+//
+// 缺省 detail 或 detail.workspaceId 时(向后兼容:未传 workspaceId
+// 的复用场景、test 场景)不早返,落到 isActive() 二次校验;isActive
+// 在 workspaceId 缺省时也返回 true,所以缺省场景下走 reloadCurrent,
+// 与 isActive 的"缺省视为 active"语义一致。
+function onWorkspaceActivated(event: Event): void {
+  const detail = (event as CustomEvent<{ workspaceId?: string }>).detail;
+  if (detail?.workspaceId && detail.workspaceId !== workspaceId.value) return;
+  if (!isActive()) return;
+  void state.reloadCurrent();
+}
+onMounted(() => {
+  window.addEventListener("nexterm:workspace-activated", onWorkspaceActivated);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener(
+    "nexterm:workspace-activated",
+    onWorkspaceActivated,
+  );
 });
 const actions = useSourceControlActions({
   state,
@@ -441,6 +497,28 @@ async function handleCheckoutBranch(branch: GitBranchInfo) {
         class="border-b border-warning/25 bg-warning/8 px-2 py-1.5 text-[11px] text-warning"
       >
         {{ t("sourceControl.truncatedStatusHint") }}
+      </div>
+      <div
+        class="flex items-center justify-end gap-1 border-b border-border/40 bg-shell-bg/40 px-2 py-1 text-[11px] text-foreground/70"
+      >
+        <button
+          v-if="untrackedMode === 'normal'"
+          type="button"
+          class="rounded px-1.5 py-0.5 text-primary hover:bg-primary/10"
+          data-show-untracked-all
+          @click="setUntrackedMode('all')"
+        >
+          {{ t("sourceControl.showUntrackedAll") }}
+        </button>
+        <button
+          v-else
+          type="button"
+          class="rounded px-1.5 py-0.5 text-primary hover:bg-primary/10"
+          data-show-untracked-direct
+          @click="setUntrackedMode('normal')"
+        >
+          {{ t("sourceControl.showUntrackedOnlyDirect") }}
+        </button>
       </div>
       <SourceControlChangeList
         :entries="entries"

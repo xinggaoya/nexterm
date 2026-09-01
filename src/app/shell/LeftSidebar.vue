@@ -115,6 +115,7 @@ onBeforeUnmount(() => {
         :active-repo-root="activeRepoRoot"
         :fs-event="fsEvent"
         :show-branches-modal="showBranchesModal"
+        :workspace-id="workspace.id"
         @open-diff="(input) => emit('open-diff', input)"
         @open-history="(input) => emit('open-history', input)"
         @repo-selected="(repoRoot) => emit('repo-selected', repoRoot)"

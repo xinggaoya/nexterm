@@ -22,6 +22,20 @@ describe("terminal sessions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     disposeAllSessions();
+    // sessions.ts 在 rAF 不可用时回退到 setTimeout(0)。jsdom 没
+    // 有原生 rAF,所以这里注入一个把 cb 排到下个 microtask 的 polyfill,
+    // 让测试用 `await Promise.resolve()` 就能等 flush 落地。
+    // 这与生产 rAF 行为略有差异(rAF 会等一帧),但对单测"调用 → 写入"
+    // 的断言足够。
+    if (typeof globalThis.requestAnimationFrame !== "function") {
+      globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number => {
+        queueMicrotask(() => cb(performance.now()));
+        return 0;
+      };
+      globalThis.cancelAnimationFrame = (): void => {
+        /* no-op: queueMicrotask cannot be cancelled */
+      };
+    }
   });
 
   it("uses the wsNative PTY adapter and preserves split OSC sequences", async () => {

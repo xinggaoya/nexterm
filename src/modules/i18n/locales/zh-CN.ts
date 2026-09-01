@@ -421,6 +421,8 @@ const zhCN = {
     stashes: "储藏",
     newBranch: "新建分支",
     noStashes: "无储藏",
+    showUntrackedAll: "显示全部未跟踪文件",
+    showUntrackedOnlyDirect: "只显示直接未跟踪文件",
     truncatedStatusHint:
       "状态结果被截断。请使用终端查看完整的 Git 状态。",
     unknownError: "未知源代码管理错误",

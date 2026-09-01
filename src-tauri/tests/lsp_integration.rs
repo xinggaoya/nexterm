@@ -32,7 +32,7 @@ fn mock_lsp_responds_to_initialize() {
         if n == 0 {
             panic!("EOF before body");
         }
-        let trimmed = line.trim_end_matches(|c| c == '\r' || c == '\n');
+        let trimmed = line.trim_end_matches(['\r', '\n']);
         if trimmed.is_empty() {
             break;
         }

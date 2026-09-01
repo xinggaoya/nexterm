@@ -11,7 +11,12 @@ pub(crate) const MIN_GIT_VERSION: &str = "2.23";
 /// the snapshot is flagged as `truncated` so the panel can prompt the user
 /// to fall back to the terminal. This keeps the IPC payload, the reactive
 /// store, and the git decorations map bounded for huge monorepos.
-pub(crate) const MAX_CHANGED_FILES: usize = 5000;
+///
+/// 1000 是为 monorepo 调过的安全上限(原 5000 在 AI CLI 写大批文件时
+/// 会让前端 `useSourceControlState` 的 5 个 computed 各遍历 5000 次,
+/// 50-200ms 卡顿)。截断时通过 `truncated: true` 告知前端显示
+/// "还有 N 个文件,点此查看全部",避免静默丢文件。
+pub(crate) const MAX_CHANGED_FILES: usize = 1000;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -84,6 +84,7 @@ vi.mock("./lib/sessions", () => ({
     getState: () => "running",
     getExitCode: () => undefined,
     setCallbacks: vi.fn(),
+    flushPendingData: vi.fn(() => false),
   })),
   trackSession: vi.fn(),
   getSessionForLeaf: vi.fn(() => undefined),

@@ -24,6 +24,7 @@ pub(crate) fn rwlock_write<'a, T>(
     lock.write().map_err(|_| format!("{context} lock poisoned"))
 }
 
+#[allow(dead_code)]
 pub(crate) fn condvar_wait_timeout<'a, T>(
     condvar: &Condvar,
     guard: MutexGuard<'a, T>,

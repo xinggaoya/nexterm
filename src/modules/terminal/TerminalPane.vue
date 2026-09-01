@@ -290,10 +290,15 @@ watch(
   (active) => {
     if (!active) return;
     // 容器从 display:none 切回可见时,canvas 在隐藏期间被浏览器跳过绘制,
-    // xterm 不会自动补画。顺序：先 fit（让 cols/rows 落定,rAF 一次让浏览器
-    // 完成布局,沿用 8a6605e 的 fit 下界守卫避免 2x1 透传到 shell）,
-    // 再 redraw 强制把 buffer 一次性刷到 canvas/WebGL 纹理上,避免
-    // "切回后内容缺失、需输入字符才补出"的视觉故障。
+    // xterm 不会自动补画。顺序非常关键:
+    // 1) 先 flush session 待写入的 PTY 数据(rAF 批次可能还没触发)。
+    //    不 flush 的话,redraw 只能画到 flush 时刻的 buffer,看起来"画面
+    //    缺一段直到下一波 PTY 输出"。这一步必须同步执行,不能放进 rAF。
+    // 2) 下一帧 rAF 一次性 fit + redraw,让浏览器先把布局落定(fit 下界
+    //    守卫沿用 8a6605e,避免 2x1 透传到 shell),再把 buffer 刷到
+    //    canvas/WebGL 纹理上,避免"切回后内容缺失、需输入字符才补出"
+    //    的视觉故障。
+    session?.flushPendingData();
     requestAnimationFrame(() => {
       refreshLayout();
       renderer?.redraw();

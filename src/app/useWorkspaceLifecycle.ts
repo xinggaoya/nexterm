@@ -22,7 +22,10 @@ export type WorkspaceLifecycleOptions = {
   /** Reactive root path for this workspace. */
   rootPath: ComputedRef<string | null>;
   /** Env-bound native surface for watcher start/stop. */
-  wsNative: Pick<WorkspaceNative, "fsWatchWorkspace" | "fsUnwatchWorkspace">;
+  wsNative: Pick<
+    WorkspaceNative,
+    "fsWatchWorkspace" | "fsUnwatchWorkspace" | "fsForceFlushWorkspace"
+  >;
   hasRuntime?: () => boolean;
   listen?: ListenFn;
 };
@@ -149,6 +152,19 @@ export function useWorkspaceLifecycle(options: WorkspaceLifecycleOptions) {
     startWorkspaceLifecycle,
     stopWorkspaceLifecycle,
     workspaceFsEvent,
+    /**
+     * 手动触发 batcher flush。在 workspace 切回时 WorkspaceHost 调,
+     * 配合各组件的 flush 钩子,保证切回时 explorer / 终端 / 源码
+     * 控制都显示最新状态(非切走时快照等下一波数据)。
+     */
+    forceFlushNow: () => {
+      if (!runtimeAvailable()) return;
+      const root = options.rootPath.value;
+      if (!root) return;
+      void options.wsNative.fsForceFlushWorkspace(root).catch((error) => {
+        console.debug("force flush failed", error);
+      });
+    },
   };
 }
 

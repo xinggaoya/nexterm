@@ -212,6 +212,7 @@ pub fn run() {
             fs::grep::fs_glob,
             fs::watcher::fs_watch_workspace,
             fs::watcher::fs_unwatch_workspace,
+            fs::watcher::fs_force_flush_workspace,
             toggle_devtools,
             is_devtools_open,
             git::commands::git_resolve_repo,

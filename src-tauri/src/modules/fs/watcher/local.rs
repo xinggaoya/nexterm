@@ -4,9 +4,7 @@ use std::sync::mpsc;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::AppHandle;
 
-use super::events::{
-    emit_workspace_file_changes, workspace_fs_event_from_notify, WorkspaceFsChangedEvent,
-};
+use super::events::{workspace_fs_event_from_notify, WorkspaceFsChangedEvent};
 
 pub(super) struct LocalRefreshSource {
     _watcher: RecommendedWatcher,
@@ -19,21 +17,25 @@ pub(super) fn start_local_watcher(
     has_git_repo: bool,
     event_tx: mpsc::Sender<WorkspaceFsChangedEvent>,
 ) -> Result<LocalRefreshSource, String> {
+    let _ = app; // 显式不需要 — per-path 直接 emit 已废弃,所有事件进 batcher。
     let callback_root = root_path;
     let callback_local_root = local_root.clone();
-    let callback_app = app;
     let mut watcher = notify::recommended_watcher(move |result| match result {
         Ok(event) => {
-            let Some(broken_down) =
-                workspace_fs_event_from_notify(&callback_root, &callback_local_root, has_git_repo, event)
-            else {
+            let Some(batch_event) = workspace_fs_event_from_notify(
+                &callback_root,
+                &callback_local_root,
+                has_git_repo,
+                event,
+            ) else {
                 return;
             };
-            // Per-path `fs:file-changed` events bypass the batcher so the
-            // file explorer can react to membership changes immediately.
-            // Failure here is logged inside `emit_workspace_file_changes`.
-            emit_workspace_file_changes(&callback_app, &broken_down.file_changes);
-            if event_tx.send(broken_down.batch).is_err() {
+            // 全部进 batcher,不再 per-path 直接 emit(原逻辑会导致
+            // pnpm install 等大批量写时每文件一个 IPC,叠加 200ms
+            // 聚合 batch 等于双倍事件 + 双倍 FileExplorer refresh)。
+            // 切回时由前端调 fs_force_flush_workspace 强制 batcher
+            // 立即 emit 累积 batch,避免"切回画面卡住等 200ms"。
+            if event_tx.send(batch_event).is_err() {
                 log::debug!("workspace refresh batch receiver closed");
             }
         }

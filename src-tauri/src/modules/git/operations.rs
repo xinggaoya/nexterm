@@ -82,6 +82,7 @@ pub fn panel_snapshot(
     registry: &WorkspaceRegistry,
     cwd: &str,
     workspace: &WorkspaceEnv,
+    untracked_files: Option<&str>,
 ) -> Result<GitPanelSnapshot> {
     let cwd = canonical_dir(registry, cwd, workspace)?;
     if !registry.is_authorized(&cwd.local_path) {
@@ -102,7 +103,7 @@ pub fn panel_snapshot(
     let canonical_root = canonical_dir(registry, &root_line, &cwd.workspace)?;
     let _ = registry.authorize(&canonical_root.local_path);
 
-    let status = status_inner(&canonical_root)?;
+    let status = status_inner(&canonical_root, untracked_files)?;
     let repo = GitRepoInfo {
         repo_root: canonical_root.git_path.clone(),
         branch: status.branch.clone(),
@@ -119,13 +120,26 @@ pub fn status(
     registry: &WorkspaceRegistry,
     repo_root: &str,
     workspace: &WorkspaceEnv,
+    untracked_files: Option<&str>,
 ) -> Result<GitStatusSnapshot> {
     let repo_root = authorized_repo_root(registry, repo_root, workspace)?;
     ensure_git_available(&repo_root.workspace)?;
-    status_inner(&repo_root)
+    status_inner(&repo_root, untracked_files)
 }
 
-fn status_inner(repo_root: &ResolvedGitDirectory) -> Result<GitStatusSnapshot> {
+fn status_inner(
+    repo_root: &ResolvedGitDirectory,
+    untracked_files: Option<&str>,
+) -> Result<GitStatusSnapshot> {
+    // 默认 `normal`:只查直接未跟踪文件(目录本身),不再递归
+    // 展开 untracked 内容。`all` 在 monorepo 首次开目录时会
+    // 把整个 node_modules / dist 树扫一遍,单次 50-200ms 起步。
+    // 用户主动点 "show untracked all" 时(由前端传 `untracked_files`
+    // 进来)再切到 `all`。
+    let untracked_arg = match untracked_files {
+        Some(v) if v == "all" || v == "normal" || v == "none" => v,
+        _ => "normal",
+    };
     let output = run_git(
         &repo_root.workspace,
         Some(&repo_root.git_path),
@@ -134,7 +148,7 @@ fn status_inner(repo_root: &ResolvedGitDirectory) -> Result<GitStatusSnapshot> {
             "--porcelain=v2",
             "--branch",
             "-z",
-            "--untracked-files=all",
+            &format!("--untracked-files={untracked_arg}"),
         ],
         DEFAULT_TIMEOUT_SECS,
     )?;
@@ -2330,6 +2344,7 @@ mod tests {
         assert!(result.truncated);
     }
 
+    #[cfg(unix)]
     #[test]
     fn discover_repositories_skips_symlink_outside_authorized_root() {
         let authorized = make_root("sym-authorized");

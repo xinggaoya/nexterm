@@ -17,6 +17,7 @@
 
 import type { Terminal } from "@xterm/xterm";
 import type { WorkspaceNative } from "@/lib/native";
+import { recordPtyChunk } from "@/lib/perf";
 import { handleOscData } from "./osc";
 import type { OscEvent } from "./osc";
 
@@ -49,6 +50,28 @@ export interface PtySessionHandle {
    * title、scrollback、history 全部保留。dispose 之后调用是安全的(no-op)。
    */
   rebindTerm: (term: Terminal) => void;
+  /**
+   * 同步 flush 待写入的 PTY 数据到 xterm。返回是否实际 flush 了数据。
+   *
+   * 在以下场景必须调用,否则用户会看到"内容缺失,等下一波数据才补出":
+   * - workspace 从 v-show 隐藏切回可见:canvas 在隐藏期间被跳过绘制,
+   *   但 xterm.buffer 一直在累积 PTY 输出;切回时必须先 flush 再 redraw,
+   *   这样 redraw 看到的就是最新 buffer。
+   * - pane 容器从 display:none 切回可见(同上一条)
+   * - 切到目标 pane 准备 redraw 之前
+   *
+   * 并发语义:实现是"检查 `pendingChunks` 长度,非空则调
+   * `flushPendingWrite` 同步写"。与 enqueueWrite 排到 rAF 的 flush
+   * 是竞态友好的 —— `flushPendingWrite` 内部会把 `writeScheduled` 复位,
+   * 之后 rAF 回调里的 flush 是空操作(pendingChunks 已空)。
+   * 但调用方**不应**假设"flush 后下一帧之前不会再来新数据":
+   * flush 之后 PTY 仍可能继续到,enqueueWrite 会再排 rAF,这是预期
+   * 行为,不是 bug。简言之:flushPendingData 是"把当前累计的 batch
+   * 立即落盘",不是"独占 flush 通道"。
+   *
+   * dispose / rebindTerm 内部已经调用过 flush,无需重复。
+   */
+  flushPendingData: () => boolean;
 }
 
 interface CreateSessionOptions {
@@ -108,28 +131,52 @@ export async function createSession(
   // PTY 输出批处理：高吞吐命令（pnpm install / cargo build）会在一次
   // event-loop tick 里推多个 chunk 到前端，每个 chunk 直接 term.write 会
   // 触发一次 reflow + paint，导致帧时间被反复打满。这里把 cleaned 累积
-  // 到 microtask 边界一并写入：xterm 内部本就是 batched（其 write 也会
-  // 排队），所以行为对外仍等价——只是把 N 次 write 折叠成 1 次。
+  // 到一帧边界（rAF）一并写入：xterm 内部本就是 batched（其 write 也会
+  // 排队），所以行为对外仍等价——只是把 N 次 write 折叠成 1 次/帧。
+  //
+  // 重要：必须用 Array.join 而非字符串拼接。后者在快速多 chunk 到达时
+  // 是 O(n) 复制；Array.join 只在最后一次性 join 一次。
+  //
+  // 重要：必须在生命周期事件（rebindTerm / dispose / workspace 切回）
+  // 显式调用 flushPendingWrite 同步刷出。否则：
+  // - 切走 workspace：rAF 在隐藏 tab 仍会触发，但 webview 不可见期间
+  //   xterm.buffer 持续累积；切回时 redraw 即可，无需 flush
+  // - rebindTerm：旧 xterm 即将被 dispose，未 flush 的数据丢失
+  // - 切回 workspace 时如果 PendingData 存在，renderer.fit + redraw 之前
+  //   也应该 flush（redraw 画 canvas 不会更新 buffer，必须先 write）
   //
   // currentTerm / inputDisposable 是可变的：split / close-leaf 会导致
   // TerminalPane remount，xterm 被 dispose，新 xterm 通过 rebindTerm
   // 接管。PTY 进程不变，只换 xterm 桥接。
   let currentTerm: Terminal = opts.term;
   let inputDisposable: { dispose: () => void } | null = null;
-  let pendingWrite: string | null = null;
+  const pendingChunks: string[] = [];
   let writeScheduled = false;
   const flushPendingWrite = () => {
     writeScheduled = false;
-    const data = pendingWrite;
-    pendingWrite = null;
-    if (data) currentTerm.write(data);
+    if (pendingChunks.length === 0) return;
+    // 一次性合并所有 chunk 并写入。Array.join 比循环 += 少 N-1 次分配。
+    const merged = pendingChunks.join("");
+    pendingChunks.length = 0;
+    currentTerm.write(merged);
   };
   const enqueueWrite = (data: string) => {
     if (!data) return;
-    pendingWrite = (pendingWrite ?? "") + data;
+    pendingChunks.push(data);
     if (writeScheduled) return;
     writeScheduled = true;
-    queueMicrotask(flushPendingWrite);
+    // 优先 rAF(让 xterm.write 与一帧对齐),测试环境(jsdom)无 rAF
+    // 时回退到 setTimeout 0,保持语义"异步 flush"。setTimeout 在
+    // 浏览器返回 number、在 Node 返回 Timeout,统一 cast 成 number
+    // 满足 rAF 签名。
+    const raf =
+      typeof globalThis.requestAnimationFrame === "function"
+        ? globalThis.requestAnimationFrame.bind(globalThis)
+        : (cb: FrameRequestCallback): number => {
+            const id = setTimeout(() => cb(performance.now()), 0);
+            return id as unknown as number;
+          };
+    raf(flushPendingWrite);
   };
 
   const pty = await opts.wsNative.ptyOpen(
@@ -137,6 +184,7 @@ export async function createSession(
     currentTerm.rows,
     {
       onData: (chunk) => {
+        recordPtyChunk(chunk.length);
         if (!receivedData) {
           receivedData = true;
           clearStartWatchdog();
@@ -190,8 +238,8 @@ export async function createSession(
     dispose: () => {
       clearStartWatchdog();
       // dispose 前必须把已 enqueue 但尚未 flush 的数据排干，否则最后一段
-      // 输出会随 xterm 一起被销毁。flushPendingWrite 走 microtask，这里
-      // 同步调用一次保证 term 还没 dispose 前已写入。
+      // 输出会随 xterm 一起被销毁。flushPendingWrite 是同步的，这里直接
+      // 调用一次保证 term 还没 dispose 前已写入。
       flushPendingWrite();
       void pty.close().catch((e) => {
         console.debug("[pty] close dropped", e);
@@ -221,13 +269,18 @@ export async function createSession(
     setCallbacks: (next) => {
       callbacks = next;
     },
+    flushPendingData: (): boolean => {
+      if (pendingChunks.length === 0) return false;
+      flushPendingWrite();
+      return true;
+    },
     rebindTerm: (next) => {
       if (next === currentTerm) return;
       // 先把旧 xterm 的输入订阅解绑，避免双订阅导致用户键入被 PTY
       // 收到双份（在测试里就能直接看到 pty.write 被调用两次）。
       inputDisposable?.dispose();
       inputDisposable = null;
-      // 把 pendingWrite 排干到旧 xterm，再切换 currentTerm。这样切换前
+      // 把 pending chunks 排干到旧 xterm，再切换 currentTerm。这样切换前
       // 的最后一段 PTY 输出仍然完整落到旧 xterm 上，新 xterm 从下一批
       // PTY 数据开始接收，不会丢中间这段。
       flushPendingWrite();

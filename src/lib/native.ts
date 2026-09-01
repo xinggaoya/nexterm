@@ -301,13 +301,11 @@ export type PtySession = {
 export const FS_SEARCH_DEFAULT_LIMIT = 200;
 export const WORKSPACE_FS_CHANGED_EVENT = "nexterm://workspace-fs-changed";
 /**
- * Per-path file-change event. Emitted by the watcher *before* the
- * aggregated `WORKSPACE_FS_CHANGED_EVENT` so subscribers that only care
- * about tree refresh (e.g. the file explorer) can react without waiting
- * for the 200ms batch window. The frontend may subscribe to either or
- * both; `useWorkspaceLifecycle` only forwards the aggregated event.
+ * 旧的 per-path 事件已删除,所有 FS 变更都通过
+ * `WORKSPACE_FS_CHANGED_EVENT` 在 200ms 批窗口后聚合 emit。切回时
+ * 由前端调 `fs_force_flush_workspace` 强制立即 emit,避免切回时
+ * explorer / 源码控制要等满 200ms 窗口。
  */
-export const WORKSPACE_FILE_CHANGED_EVENT = "nexterm://workspace-file-changed";
 
 /**
  * Event name emitted by the Tauri backend (`src-tauri/src/lib.rs`) when a
@@ -369,10 +367,21 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
       invoke<string>("workspace_authorize", { path, workspace }),
     gitResolveRepo: (cwd: string) =>
       invoke<GitRepoInfo | null>("git_resolve_repo", { cwd, workspace }),
-    gitPanelSnapshot: (cwd: string) =>
-      invoke<GitPanelSnapshot>("git_panel_snapshot", { cwd, workspace }),
-    gitStatus: (repoRoot: string) =>
-      invoke<GitStatusSnapshot>("git_status", { repoRoot, workspace }),
+    gitPanelSnapshot: (cwd: string, untrackedFiles?: "all" | "normal" | "none") =>
+      invoke<GitPanelSnapshot>("git_panel_snapshot", {
+        cwd,
+        untrackedFiles: untrackedFiles ?? null,
+        workspace,
+      }),
+    gitStatus: (
+      repoRoot: string,
+      untrackedFiles?: "all" | "normal" | "none",
+    ) =>
+      invoke<GitStatusSnapshot>("git_status", {
+        repoRoot,
+        untrackedFiles: untrackedFiles ?? null,
+        workspace,
+      }),
     gitDiffContent: (
       repoRoot: string,
       path: string,
@@ -567,6 +576,13 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
       invoke<void>("fs_watch_workspace", { rootPath, workspace }),
     fsUnwatchWorkspace: (rootPath: string) =>
       invoke<void>("fs_unwatch_workspace", { rootPath, workspace }),
+    /**
+     * 强制让 batcher 立即 emit 当前累积 batch(不等 200ms 窗口)。
+     * workspace 切回时调,避免切回后 explorer / 源码控制要等满
+     * 窗口才看到切走期间的变更。
+     */
+    fsForceFlushWorkspace: (rootPath: string) =>
+      invoke<void>("fs_force_flush_workspace", { rootPath, workspace }),
     ptyOpen: async (
       cols: number,
       rows: number,

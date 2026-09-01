@@ -79,6 +79,7 @@ const {
   startWorkspaceLifecycle,
   stopWorkspaceLifecycle,
   workspaceFsEvent,
+  forceFlushNow,
 } = useWorkspaceLifecycle({
   workspaceId: props.workspace.id,
   env: props.workspace.env,
@@ -218,6 +219,44 @@ watch(activeTab, () => {
   // source-control panel which writes decorations. Branch display in the
   // status bar reads from the active workspace's source-control state.
 });
+
+/**
+ * Workspace 切回可见时的"立即激活"编排。
+ *
+ * 用户报告:切换终端或项目后切换回去,发现字段内容清空、只有新内容
+ * 出现才会有内容。这是三类延迟叠加导致的:
+ *   1. Rust 端 FS watcher 200ms 批窗口 — 切走期间的累积事件要等窗口
+ *      满才 emit 到 webview
+ *   2. 前端 FileExplorer 180ms 防抖 — fsEvent 触发后还要等 180ms 才
+ *      调 loadChildren
+ *   3. 终端 xterm rAF 批 — PTY 数据在 rAF 边界才写入 buffer
+ *
+ * 关键:flush 链路是 fire-and-forget IPC,await forceFlushNow 也不能保
+ * 证 batcher 已经 emit + watch(fsEvent) 已经触发 + FileExplorer 已经
+ * 把 path 加入 pendingFsEventPaths。这里不等 forceFlush 完成,而是**直
+ * 接主动重读根+展开节点**(用户可见状态),保证切回时立即是最新;同
+ * 时把 forceFlushNow 抛到后台,180ms 防抖后续自然再补一次,重复读由
+ * inFlightLoads + 防抖合并吃掉。
+ */
+function onWorkspaceActivated(): void {
+  // 1) FileExplorer 立即激活:同步重读根+展开节点,不依赖 fsEvent
+  workbench.value?.activateExplorer?.();
+  // 2) 后端 batcher 立即 emit 累积 batch(fire-and-forget)
+  forceFlushNow();
+  // 3) source-control 立即补一次(切走期间状态可能陈旧)
+  void workbench.value?.refreshSourceControlOnActivate?.();
+}
+
+watch(
+  () => workspaces.activeWorkspaceId,
+  (activeId, prevId) => {
+    // 只在 active 切到本 workspace 时触发(且不是初次 mount —— mount
+    // 时的初始化路径已各自做完了加载)
+    if (activeId === props.workspace.id && prevId !== undefined && activeId !== prevId) {
+      onWorkspaceActivated();
+    }
+  },
+);
 
 onMounted(() => {
   void startWorkspaceLifecycle();

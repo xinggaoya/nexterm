@@ -234,6 +234,7 @@ enum HelperRunResult {
 }
 
 #[cfg(windows)]
+#[allow(clippy::too_many_arguments)]
 fn run_helper_once(
     distro: &str,
     helper_path: &str,

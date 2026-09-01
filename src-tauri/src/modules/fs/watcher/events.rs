@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use notify::{Event, EventKind};
@@ -8,13 +10,6 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 const WORKSPACE_FS_CHANGED_EVENT: &str = "nexterm://workspace-fs-changed";
-/// Channel name for granular, per-path file change events. Pairs each path
-/// with a `FsChangeKind` (`create` / `modify` / `delete`) so the file
-/// explorer can decide whether a silent refresh needs to rebuild (a
-/// create/delete membership change) or just patch (a content-only
-/// modify). Emitted alongside the aggregated `workspace-fs-changed`
-/// event; the frontend may subscribe to either or both.
-const WORKSPACE_FILE_CHANGED_EVENT: &str = "nexterm://workspace-file-changed";
 const FS_EVENT_BATCH_DELAY_MS: u64 = 200;
 const FS_EVENT_MAX_BATCH_AGE_MS: u64 = 1_000;
 // Tuned down from 1s. The file explorer now drops any silent refresh into
@@ -54,17 +49,11 @@ pub(crate) struct WorkspaceFsChangedEvent {
 
 /// Per-path granular file-change notification. Always emitted *before* the
 /// batched `WorkspaceFsChangedEvent` for the same notify event, so the
-/// frontend can react to create/delete immediately without waiting for the
-/// 200ms batch window. Frontend subscribers that only need the tree to
-/// refresh will subscribe here; the source-control panel keeps using the
-/// aggregated event for its `gitRelated` semantics.
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct WorkspaceFileChangedEvent {
-    pub(super) root_path: String,
-    pub(super) path: String,
-    pub(super) kind: FsChangeKind,
-}
+/// per-path 事件类型已废弃:所有 FS 变更都进 batcher 通道(200ms 聚合),
+/// 切回时由前端调 `fs_force_flush_workspace` 强制立即 emit。原先用来
+/// 绕开 batcher 立刻发到前端的 `WorkspaceFileChangedEvent` 已删除,
+/// 引用方迁到聚合 `WorkspaceFsChangedEvent`(自带 `kinds` 字段,粒度
+/// 足够 explorer 区分 create/delete/modify)。
 
 #[derive(Default)]
 pub(super) struct WorkspaceFsEventBatch {
@@ -207,11 +196,24 @@ impl Default for WorkspaceFsEmissionThrottle {
     }
 }
 
-pub(super) fn run_event_batcher(app: AppHandle, event_rx: Receiver<WorkspaceFsChangedEvent>) {
+pub(super) fn run_event_batcher(
+    app: AppHandle,
+    event_rx: Receiver<WorkspaceFsChangedEvent>,
+    flush_request: Arc<AtomicBool>,
+) {
     let mut batch = WorkspaceFsEventBatch::default();
     let mut batch_started_at: Option<Instant> = None;
     let mut throttle = WorkspaceFsEmissionThrottle::default();
     loop {
+        // 检查外部 force_flush 请求:workspace 切回/卸载时调用,要求
+        // batcher 立即把当前累积 batch 同步 emit。否则用户切回可见
+        // workspace 时 explorer / 源码控制要等满 200ms 窗口才看到
+        // 切走期间的变更,看起来"切回画面卡住"。
+        if flush_request.swap(false, Ordering::AcqRel) && !batch.is_empty() {
+            flush_workspace_batch(&app, &mut batch, &mut throttle);
+            batch_started_at = None;
+        }
+
         if batch.is_empty() {
             match event_rx.recv() {
                 Ok(event) => {
@@ -256,6 +258,11 @@ pub(super) fn run_event_batcher(app: AppHandle, event_rx: Receiver<WorkspaceFsCh
             }
         }
     }
+    // 退出前最后一次 flush(可能还有未到窗口的累积)——channel 关闭时
+    // 也就是 workspace 被卸载,需要把最后一段变更 emit 出去避免丢失。
+    if !batch.is_empty() {
+        flush_workspace_batch(&app, &mut batch, &mut throttle);
+    }
 }
 
 fn batch_age_elapsed(batch_started_at: Option<Instant>) -> bool {
@@ -286,16 +293,11 @@ fn flush_workspace_batch(
 }
 
 fn emit_workspace_fs_event(app: &AppHandle, event: WorkspaceFsChangedEvent) {
-    let _ = app.emit(WORKSPACE_FS_CHANGED_EVENT, event);
-}
-
-fn emit_workspace_file_changed(app: &AppHandle, event: WorkspaceFileChangedEvent) {
-    let _ = app.emit(WORKSPACE_FILE_CHANGED_EVENT, event);
-}
-
-pub(super) fn emit_workspace_file_changes(app: &AppHandle, events: &[WorkspaceFileChangedEvent]) {
-    for event in events {
-        emit_workspace_file_changed(app, event.clone());
+    if let Err(error) = app.emit(WORKSPACE_FS_CHANGED_EVENT, event) {
+        // webview 端 dispose / 卸载后 emit 失败,这里 log 出来便于排障
+        // (原本 let _ = 静默吞掉,曾掩盖过 AppHandle 在卸载流程中被
+        // 释放前 batcher 仍持有引用 emit 的情况)。
+        log::debug!("workspace-fs-changed emit failed: {error}");
     }
 }
 
@@ -315,13 +317,12 @@ pub(super) fn workspace_fs_event_from_notify(
     local_root: &Path,
     has_git_repo: bool,
     event: Event,
-) -> Option<NotifyToFsEvent> {
+) -> Option<WorkspaceFsChangedEvent> {
     if matches!(event.kind, EventKind::Access(_)) {
         return None;
     }
     let mut paths = Vec::new();
     let mut kinds = Vec::new();
-    let mut file_changes = Vec::new();
     let mut git_related = has_git_repo;
     let kind = notify_event_kind(&event);
     for path in event.paths {
@@ -330,11 +331,6 @@ pub(super) fn workspace_fs_event_from_notify(
             git_related = true;
         }
         let frontend_path = frontend_path_for_event(root_path, local_root, &normalized);
-        file_changes.push(WorkspaceFileChangedEvent {
-            root_path: root_path.to_string(),
-            path: frontend_path.clone(),
-            kind,
-        });
         paths.push(frontend_path);
         kinds.push(kind);
     }
@@ -345,26 +341,12 @@ pub(super) fn workspace_fs_event_from_notify(
     zipped.sort_by(|a, b| a.0.cmp(&b.0));
     let (sorted_paths, sorted_kinds): (Vec<String>, Vec<FsChangeKind>) =
         zipped.into_iter().unzip();
-    Some(NotifyToFsEvent {
-        batch: WorkspaceFsChangedEvent {
-            root_path: root_path.to_string(),
-            paths: sorted_paths,
-            git_related,
-            kinds: sorted_kinds,
-        },
-        file_changes,
+    Some(WorkspaceFsChangedEvent {
+        root_path: root_path.to_string(),
+        paths: sorted_paths,
+        git_related,
+        kinds: sorted_kinds,
     })
-}
-
-/// A notify event broken down into the two streams the rest of the
-/// watcher layer wants to emit: the aggregated `WorkspaceFsChangedEvent`
-/// that flows into the batcher (and eventually to the source-control
-/// panel), and the granular `WorkspaceFileChangedEvent`s that bypass the
-/// batcher so the file explorer can react to membership changes
-/// immediately.
-pub(super) struct NotifyToFsEvent {
-    pub(super) batch: WorkspaceFsChangedEvent,
-    pub(super) file_changes: Vec<WorkspaceFileChangedEvent>,
 }
 
 pub(super) fn normalize_frontend_path(path: &str) -> String {

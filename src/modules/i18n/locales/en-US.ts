@@ -422,6 +422,8 @@ const enUS = {
     stashes: "Stashes",
     newBranch: "New branch",
     noStashes: "No stashes",
+    showUntrackedAll: "Show untracked files (all)",
+    showUntrackedOnlyDirect: "Show only directly-untracked files",
     truncatedStatusHint:
       "Status results were truncated. Use the terminal for the full Git status.",
     unknownError: "Unknown source control error",
