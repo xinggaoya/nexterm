@@ -39,6 +39,7 @@ import { useTaskConsoleController } from "@/app/useTaskConsoleController";
 import { useWorkbenchCommands } from "@/app/useWorkbenchCommands";
 import { useDialog } from "naive-ui";
 import { readEditorDocument } from "@/modules/editor/lib/documentService";
+import { isBinaryImagePath } from "@/modules/file-preview/lib/imageFiles";
 import { t } from "@/modules/i18n/translate";
 import LeftSidebar from "./LeftSidebar.vue";
 import TabBar from "./TabBar.vue";
@@ -142,6 +143,12 @@ const taskConsole = useTaskConsoleController({
 });
 
 function openFileTab(path: string, pin: boolean): void {
+  // 二进制图片在文本编辑器里没有意义,双击直接进图片预览 tab。
+  if (isBinaryImagePath(path)) {
+    tabs.newFilePreviewTab(path, props.workspace.id);
+    void prefs.recordOpenedFile(path);
+    return;
+  }
   const shouldPin = pin || prefs.fileOpenMode === "pinned";
   tabs.openFileTab(path, props.workspace.id, shouldPin);
   void prefs.recordOpenedFile(path);
@@ -149,6 +156,10 @@ function openFileTab(path: string, pin: boolean): void {
 
 function openMarkdownPreview(path: string): void {
   tabs.newMarkdownTab(path, props.workspace.id);
+}
+
+function openFilePreview(path: string): void {
+  tabs.newFilePreviewTab(path, props.workspace.id);
 }
 
 function openSearchResult(path: string, _line: number): void {
@@ -428,6 +439,7 @@ defineExpose({
           :workspace-scope="workspaceScope"
           @open-file="openFileTab"
           @open-markdown-preview="openMarkdownPreview"
+          @open-file-preview="openFilePreview"
           @open-in-terminal="openTerminalInDir"
           @open-search-result="openSearchResult"
           @open-source-diff="openSourceDiff"

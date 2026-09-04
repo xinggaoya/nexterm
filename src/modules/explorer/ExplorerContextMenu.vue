@@ -7,6 +7,7 @@ import {
   revealInFinder,
 } from "./lib/contextActions";
 import { dirname } from "./lib/fileTreeService";
+import { isPreviewableImagePath } from "@/modules/file-preview/lib/imageFiles";
 import { t } from "@/modules/i18n/translate";
 
 export type ExplorerContextMenuTarget = {
@@ -27,6 +28,7 @@ const emit = defineEmits<{
   close: [];
   openFile: [path: string, pin: boolean];
   openMarkdownPreview: [path: string];
+  openFilePreview: [path: string];
   openInTerminal: [path: string];
   duplicate: [path: string];
   create: [parentPath: string, kind: "file" | "dir"];
@@ -101,7 +103,7 @@ const menuOptions = computed<DropdownOption[]>(() => {
       label: t("explorer.open"),
       render: renderOption("open"),
     });
-    if (isMarkdownPath(target.path)) {
+    if (isMarkdownPath(target.path) || isPreviewableImagePath(target.path)) {
       opts.push({
         key: "open-preview",
         label: t("explorer.openPreview"),
@@ -186,7 +188,11 @@ function handleSelect(key: string | number) {
       close();
       break;
     case "open-preview":
-      emit("openMarkdownPreview", target.path);
+      if (isPreviewableImagePath(target.path)) {
+        emit("openFilePreview", target.path);
+      } else {
+        emit("openMarkdownPreview", target.path);
+      }
       close();
       break;
     case "reveal":

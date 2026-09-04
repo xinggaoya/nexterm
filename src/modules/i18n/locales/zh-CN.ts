@@ -96,6 +96,7 @@ const zhCN = {
       closeTab: "关闭标签",
       gitDiff: "Git 差异",
       gitHistory: "Git 历史",
+      filePreview: "图片预览",
       markdown: "Markdown",
       newTerminal: "新建终端",
       openCommandCenter: "打开命令中心",
@@ -485,6 +486,13 @@ const zhCN = {
     fileTooLarge: "文件过大",
     limit: "文件大小 {size}；限制 {limit}。",
     loading: "加载中...",
+  },
+  filePreview: {
+    failedRead: "读取文件失败：{message}",
+    fileTooLarge: "文件过大",
+    limit: "文件大小 {size}；限制 {limit}。",
+    loading: "加载中...",
+    unsupported: "此文件类型不支持预览",
   },
   preview: {
     checking: "检查中...",

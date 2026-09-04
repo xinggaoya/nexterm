@@ -1,6 +1,8 @@
 use std::io::Write;
 use std::path::Path;
 
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine as _;
 use serde::Serialize;
 use tauri::State;
 use tempfile::NamedTempFile;
@@ -32,40 +34,58 @@ pub enum ReadResult {
 #[tauri::command]
 pub fn fs_read_file(path: String, workspace: Option<WorkspaceEnv>) -> Result<ReadResult, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
-    if let WorkspaceEnv::Wsl { distro } = &workspace {
-        if wsl_ops::should_use_wsl_ops(&path, &workspace) {
-            let stat = wsl_ops::stat_path(distro, &path)?;
+    match read_file_bytes(&path, &workspace)? {
+        FileBytes::Read { bytes, size } => Ok(bytes_to_read_result(bytes, size)),
+        FileBytes::TooLarge { size, limit } => Ok(ReadResult::TooLarge { size, limit }),
+    }
+}
+
+/// 字节读取的共享内部表示:两条命令对"超限"都需要结构化返回而非错误。
+enum FileBytes {
+    Read { bytes: Vec<u8>, size: u64 },
+    TooLarge { size: u64, limit: u64 },
+}
+
+/// 本地与 WSL 统一的字节读取路径。超限不是错误:调用方按各自 serde
+/// 形状把 TooLarge 映射回前端,由 UI 决定是否提示。
+fn read_file_bytes(path: &str, workspace: &WorkspaceEnv) -> Result<FileBytes, String> {
+    if let WorkspaceEnv::Wsl { distro } = workspace {
+        if wsl_ops::should_use_wsl_ops(path, workspace) {
+            let stat = wsl_ops::stat_path(distro, path)?;
             if stat.size > MAX_READ_BYTES {
-                return Ok(ReadResult::TooLarge {
+                return Ok(FileBytes::TooLarge {
                     size: stat.size,
                     limit: MAX_READ_BYTES,
                 });
             }
-            let bytes = wsl_ops::read_file(distro, &path)?;
-            return Ok(bytes_to_read_result(bytes, stat.size));
+            let bytes = wsl_ops::read_file(distro, path)?;
+            return Ok(FileBytes::Read {
+                bytes,
+                size: stat.size,
+            });
         }
     }
 
-    let p = resolve_path(&path, &workspace);
+    let p = resolve_path(path, workspace);
     let meta = std::fs::metadata(&p).map_err(|e| {
-        log::debug!("fs_read_file stat({}) failed: {e}", p.display());
+        log::debug!("read_file_bytes stat({}) failed: {e}", p.display());
         e.to_string()
     })?;
 
     let size = meta.len();
     if size > MAX_READ_BYTES {
-        return Ok(ReadResult::TooLarge {
+        return Ok(FileBytes::TooLarge {
             size,
             limit: MAX_READ_BYTES,
         });
     }
 
     let bytes = std::fs::read(&p).map_err(|e| {
-        log::debug!("fs_read_file read({}) failed: {e}", p.display());
+        log::debug!("read_file_bytes read({}) failed: {e}", p.display());
         e.to_string()
     })?;
 
-    Ok(bytes_to_read_result(bytes, size))
+    Ok(FileBytes::Read { bytes, size })
 }
 
 fn bytes_to_read_result(bytes: Vec<u8>, size: u64) -> ReadResult {
@@ -79,6 +99,34 @@ fn bytes_to_read_result(bytes: Vec<u8>, size: u64) -> ReadResult {
     match String::from_utf8(bytes) {
         Ok(content) => ReadResult::Text { content, size },
         Err(_) => ReadResult::Binary { size },
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Base64ReadResult {
+    /// `content` 是原始文件字节的 standard base64。图片预览是预期消费方:
+    /// webview 把它拼成 `data:` URL 交给 `<img>`。svg 等文本图片也走这里,
+    /// `<img>` 渲染不会执行内嵌脚本。
+    Content { content: String, size: u64 },
+    TooLarge { size: u64, limit: u64 },
+}
+
+/// 与 `fs_read_file` 同源的字节读取,但原样返回内容(base64)而不是做
+/// 二进制嗅探丢弃。文件类型过滤由前端扩展名白名单负责;此处与
+/// `fs_read_file` 一样只受 10MB 上限约束。
+#[tauri::command]
+pub fn fs_read_file_base64(
+    path: String,
+    workspace: Option<WorkspaceEnv>,
+) -> Result<Base64ReadResult, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    match read_file_bytes(&path, &workspace)? {
+        FileBytes::Read { bytes, size } => Ok(Base64ReadResult::Content {
+            content: BASE64_STANDARD.encode(bytes),
+            size,
+        }),
+        FileBytes::TooLarge { size, limit } => Ok(Base64ReadResult::TooLarge { size, limit }),
     }
 }
 
@@ -178,5 +226,28 @@ mod read_result_tests {
             ReadResult::Binary { size } => assert_eq!(size, 3),
             _ => panic!("expected binary result"),
         }
+    }
+
+    #[test]
+    fn base64_round_trips_binary_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("logo.png");
+        let png_header: &[u8] = b"\x89PNG\r\n\x1a\n";
+        std::fs::write(&p, png_header).unwrap();
+
+        match fs_read_file_base64(p.to_string_lossy().to_string(), None).unwrap() {
+            Base64ReadResult::Content { content, size } => {
+                assert_eq!(BASE64_STANDARD.decode(&content).unwrap(), png_header);
+                assert_eq!(size, png_header.len() as u64);
+            }
+            _ => panic!("expected content result"),
+        }
+    }
+
+    #[test]
+    fn base64_read_missing_file_is_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("nope.png");
+        assert!(fs_read_file_base64(p.to_string_lossy().to_string(), None).is_err());
     }
 }

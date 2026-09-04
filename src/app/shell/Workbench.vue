@@ -10,6 +10,7 @@ import FileExplorer from "@/modules/explorer/FileExplorer.vue";
 import GitHistoryStack from "@/modules/git-history/GitHistoryStack.vue";
 import MarkdownStack from "@/modules/markdown/MarkdownStack.vue";
 import PreviewStack from "@/modules/preview/PreviewStack.vue";
+import FilePreviewStack from "@/modules/file-preview/FilePreviewStack.vue";
 import type { GitDecorationMap } from "@/modules/source-control";
 import type { TaskRun, TaskRunGroup } from "@/modules/tasks";
 import TaskConsole from "@/modules/tasks/TaskConsole.vue";
@@ -315,6 +316,16 @@ defineExpose({
               :aria-hidden="!isActiveKind('markdown')"
             >
               <MarkdownStack :tabs="tabs" :active-id="activeId" />
+            </div>
+
+            <div
+              :class="[
+                'absolute inset-0',
+                isActiveKind('file-preview') ? '' : 'pointer-events-none invisible',
+              ]"
+              :aria-hidden="!isActiveKind('file-preview')"
+            >
+              <FilePreviewStack :tabs="tabs" :active-id="activeId" />
             </div>
 
             <div

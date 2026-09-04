@@ -249,6 +249,10 @@ export type FsReadResult =
   | { kind: "binary"; size: number }
   | { kind: "toolarge"; size: number; limit: number };
 
+export type FsReadBase64Result =
+  | { kind: "content"; content: string; size: number }
+  | { kind: "toolarge"; size: number; limit: number };
+
 export type FsDirEntry = {
   name: string;
   kind: "file" | "dir" | "symlink";
@@ -531,6 +535,8 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
       }),
     fsReadFile: (path: string) =>
       invoke<FsReadResult>("fs_read_file", { path, workspace }),
+    fsReadFileBase64: (path: string) =>
+      invoke<FsReadBase64Result>("fs_read_file_base64", { path, workspace }),
     fsWriteFile: (path: string, content: string) =>
       invoke<void>("fs_write_file", { path, content, workspace }),
     fsReadDir: (path: string, showHidden: boolean) =>

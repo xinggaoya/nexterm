@@ -43,6 +43,7 @@
 | 国际化 i18n | [i18n/README.md](./i18n/README.md) | [i18n/detailed-design.md](./i18n/detailed-design.md) |
 | 预览 preview | [preview/README.md](./preview/README.md) | [preview/detailed-design.md](./preview/detailed-design.md) |
 | Markdown 渲染 markdown | [markdown/README.md](./markdown/README.md) | [markdown/detailed-design.md](./markdown/detailed-design.md) |
+| 图片预览 file-preview | [file-preview/README.md](./file-preview/README.md) | — |
 | Pinia 状态管理 pinia | [pinia/README.md](./pinia/README.md) | [pinia/detailed-design.md](./pinia/detailed-design.md) |
 
 ## 文档维护约定

@@ -67,6 +67,7 @@ const kindLabelByTabKind = computed(() => {
   m.set("git-diff", t("app.header.gitDiff"));
   m.set("git-commit-file", t("app.header.gitDiff"));
   m.set("markdown", t("app.header.markdown"));
+  m.set("file-preview", t("app.header.filePreview"));
   m.set("preview", t("app.header.preview"));
   m.set("editor", t("settings.general.editor"));
   return m;

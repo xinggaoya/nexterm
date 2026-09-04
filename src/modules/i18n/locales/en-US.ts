@@ -94,6 +94,7 @@ const enUS = {
       closeTab: "Close tab",
       gitDiff: "Git diff",
       gitHistory: "Git history",
+      filePreview: "Image preview",
       markdown: "Markdown",
       newTerminal: "New terminal",
       openCommandCenter: "Open command center",
@@ -488,6 +489,13 @@ const enUS = {
     fileTooLarge: "File too large",
     limit: "File is {size}; limit {limit}.",
     loading: "Loading...",
+  },
+  filePreview: {
+    failedRead: "Failed to read file: {message}",
+    fileTooLarge: "File too large",
+    limit: "File is {size}; limit {limit}.",
+    loading: "Loading...",
+    unsupported: "Preview is not supported for this file type",
   },
   preview: {
     checking: "checking...",

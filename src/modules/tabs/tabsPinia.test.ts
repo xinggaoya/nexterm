@@ -70,6 +70,27 @@ describe("tabs pinia store (workspace-scoped)", () => {
     });
   });
 
+  it("coalesces file preview tabs by path", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+
+    const first = tabs.newFilePreviewTab("/repo/assets/logo.png", WORKSPACE_ID);
+    const second = tabs.newFilePreviewTab("/repo/assets/logo.png", WORKSPACE_ID);
+    const other = tabs.newFilePreviewTab("/repo/assets/icon.svg", WORKSPACE_ID);
+
+    expect(first).toBe(second);
+    expect(other).not.toBe(first);
+    const previewTabs = tabs
+      .workspaceTabs(WORKSPACE_ID)
+      .filter((tab) => tab.kind === "file-preview");
+    expect(previewTabs).toHaveLength(2);
+    expect(previewTabs[0]).toMatchObject({
+      kind: "file-preview",
+      title: "logo.png",
+      path: "/repo/assets/logo.png",
+    });
+  });
+
   it("creates task terminal tabs with queued startup input", () => {
     const tabs = useTabsPiniaStore();
     tabs.initWorkspace(WORKSPACE_ID, "/repo");

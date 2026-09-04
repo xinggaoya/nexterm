@@ -22,6 +22,7 @@ import { reorderTabs, type TabDropPlacement } from "./tabsReorder";
 import {
   MAX_PANES_PER_TAB,
   type EditorTab,
+  type FilePreviewTab,
   type GitDiffTab,
   type GitCommitFileDiffTab,
   type GitHistoryTab,
@@ -387,6 +388,30 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
       id,
       workspaceId: wsId,
       kind: "markdown" as const,
+      title: basename(path),
+      path,
+    };
+    setWorkspaceTabs(wsId, [...list, tab]);
+    setActiveIdRaw(wsId, id);
+    return id;
+  }
+
+  function newFilePreviewTab(path: string, workspaceId?: string): number {
+    const wsId = resolveWorkspaceId(workspaceId);
+    initWorkspace(wsId);
+    const list = workspaceTabs(wsId);
+    const existing = list.find(
+      (tab) => tab.kind === "file-preview" && tab.path === path,
+    );
+    if (existing) {
+      setActiveIdRaw(wsId, existing.id);
+      return existing.id;
+    }
+    const id = nextId.value++;
+    const tab: FilePreviewTab = {
+      id,
+      workspaceId: wsId,
+      kind: "file-preview" as const,
       title: basename(path),
       path,
     };
@@ -1010,6 +1035,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     moveTab,
     newPreviewTab,
     newMarkdownTab,
+    newFilePreviewTab,
     openGitDiffTab,
     openCommitHistoryTab,
     updateGitHistoryTabRef,

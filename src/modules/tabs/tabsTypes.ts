@@ -39,6 +39,11 @@ export type MarkdownTab = TabBase & {
   path: string;
 };
 
+export type FilePreviewTab = TabBase & {
+  kind: "file-preview";
+  path: string;
+};
+
 export type GitDiffTab = TabBase & {
   kind: "git-diff";
   path: string;
@@ -80,6 +85,7 @@ export type Tab =
   | EditorTab
   | PreviewTab
   | MarkdownTab
+  | FilePreviewTab
   | GitDiffTab
   | GitHistoryTab
   | GitCommitFileDiffTab;

@@ -88,6 +88,7 @@ const options = computed<DropdownOption[]>(() => {
   } else if (
     target.tab.kind === "editor" ||
     target.tab.kind === "markdown" ||
+    target.tab.kind === "file-preview" ||
     target.tab.kind === "preview"
   ) {
     if (target.tab.kind === "editor") {

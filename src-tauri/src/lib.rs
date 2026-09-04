@@ -200,6 +200,7 @@ pub fn run() {
             pty::pty_kill,
             fs::tree::fs_read_dir,
             fs::file::fs_read_file,
+            fs::file::fs_read_file_base64,
             fs::file::fs_write_file,
             fs::mutate::fs_create_file,
             fs::mutate::fs_create_dir,

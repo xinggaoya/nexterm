@@ -63,6 +63,7 @@ const emit = defineEmits<{
   pathDeleted: [path: string];
   pathDuplicated: [from: string, to: string];
   openMarkdownPreview: [path: string];
+  openFilePreview: [path: string];
   openInTerminal: [path: string];
   openSearchResult: [path: string, line: number];
 }>();
@@ -977,6 +978,7 @@ defineExpose({
       @close="closeMenu"
       @open-file="(path, pin) => emit('openFile', path, pin)"
       @open-markdown-preview="(path) => emit('openMarkdownPreview', path)"
+      @open-file-preview="(path) => emit('openFilePreview', path)"
       @open-in-terminal="openTerminalInDir"
       @duplicate="duplicatePath"
       @create="beginCreate"

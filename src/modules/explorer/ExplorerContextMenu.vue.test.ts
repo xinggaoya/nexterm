@@ -183,6 +183,39 @@ describe("ExplorerContextMenu.vue", () => {
     ).toBe(false);
   });
 
+  it("emits openFilePreview for image files", async () => {
+    const pngWrapper = mountMenu({
+      ...fileTarget,
+      path: "/repo/assets/logo.png",
+      name: "logo.png",
+    });
+    await flush();
+    expect(
+      pngWrapper.find("[data-menu-action='open-preview']").exists(),
+    ).toBe(true);
+    await pngWrapper.find("[data-menu-action='open-preview']").trigger("click");
+    await flush();
+    expect(pngWrapper.emitted("openFilePreview")).toEqual([
+      ["/repo/assets/logo.png"],
+    ]);
+    expect(pngWrapper.emitted("openMarkdownPreview")).toBeFalsy();
+
+    const svgWrapper = mountMenu({
+      ...fileTarget,
+      path: "/repo/assets/icon.svg",
+      name: "icon.svg",
+    });
+    await flush();
+    expect(
+      svgWrapper.find("[data-menu-action='open-preview']").exists(),
+    ).toBe(true);
+    await svgWrapper.find("[data-menu-action='open-preview']").trigger("click");
+    await flush();
+    expect(svgWrapper.emitted("openFilePreview")).toEqual([
+      ["/repo/assets/icon.svg"],
+    ]);
+  });
+
   it("calls revealInFinder when reveal is selected", async () => {
     const wrapper = mountMenu(fileTarget);
     await flush();
