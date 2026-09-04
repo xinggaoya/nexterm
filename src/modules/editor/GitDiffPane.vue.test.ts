@@ -31,47 +31,36 @@ vi.mock("./lib/diffCache", async (importOriginal) => {
   };
 });
 
+// 语言解析走独立测试，这里 mock 成空扩展以隔离真实语言包的加载。
+vi.mock("./lib/languageResolver", () => ({
+  isMarkdownPath: (path: string) => /\.(md|markdown|mdx)$/i.test(path),
+  languageLabelForPath: () => "TypeScript",
+  resolveLanguage: async () => null,
+  resolveLanguageSync: () => null,
+}));
+
+// CodeMirror 6 在 jsdom 中不做真实实例化，统一替换为 tests/ 下的桩模块。
+vi.mock("@codemirror/view", async () => await import("../../../tests/codemirror-stubs"));
+vi.mock("@codemirror/state", async () => await import("../../../tests/codemirror-stubs"));
+vi.mock("@codemirror/commands", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@codemirror/autocomplete", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@codemirror/language", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@codemirror/search", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@codemirror/lint", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@codemirror/merge", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@replit/codemirror-vim", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@lezer/highlight", () => ({
+  tags: new Proxy({}, { get: () => Symbol("tag") }),
+}));
+
 // diffCache 函数现在以 wsNative + env 为前两个参数；断言时用匹配器忽略它们。
 const WS_NATIVE_MATCHER = expect.anything();
 const ENV_MATCHER = expect.anything();
 
-vi.mock("monaco-editor", () => ({
-  editor: {
-    create: () => ({
-      getValue: () => "",
-      setValue: () => undefined,
-      getModel: () => ({ dispose: () => undefined, getLineCount: () => 1 }),
-      getSelection: () => ({ isEmpty: () => true }),
-      onDidChangeModelContent: () => ({ dispose: () => undefined }),
-      onDidChangeCursorPosition: () => ({ dispose: () => undefined }),
-      trigger: () => undefined,
-      focus: () => undefined,
-      layout: () => undefined,
-      setPosition: () => undefined,
-      revealLine: () => undefined,
-      executeEdits: () => undefined,
-    }),
-    createDiffEditor: () => ({
-      setModel: () => undefined,
-      dispose: () => undefined,
-      onDidUpdateDiff: () => ({ dispose: () => undefined }),
-      getLineChanges: () => null,
-      getModel: () => ({
-        original: { dispose: () => undefined },
-        modified: { dispose: () => undefined },
-      }),
-    }),
-    createModel: () => ({ dispose: () => undefined }),
-    setTheme: () => undefined,
-    defineTheme: () => undefined,
-  },
-  languages: { register: () => undefined },
-}));
-
 async function flush() {
   await Promise.resolve();
   await nextTick();
-  // DiffEditor 现在是 defineAsyncComponent，动态 import() 需要额外的
+  // DiffCodeMirror 是 defineAsyncComponent，动态 import() 需要额外的
   // promise 轮次才能解析并渲染出 [data-git-diff-host]。
   await flushPromises();
   await vi.dynamicImportSettled();

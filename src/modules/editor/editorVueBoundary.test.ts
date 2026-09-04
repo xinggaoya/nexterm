@@ -38,43 +38,61 @@ describe("standard editor Vue boundary", () => {
   });
 });
 
-describe("monaco boundary guard", () => {
-  it("does not keep CodeMirror artifacts in src/modules/editor/", () => {
+describe("CodeMirror 6 boundary guard", () => {
+  it("does not keep Monaco artifacts in src/modules/editor/", () => {
+    const files = [
+      "DiffEditor.vue",
+      "lib/editorConfig.ts",
+      "lib/languageMap.ts",
+      "lib/languageMap.test.ts",
+    ];
+    const offenders = files.filter((f) => existsSync(new URL(f, editorRoot)));
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps the CodeMirror runtime layer files in place", () => {
     const files = [
       "DiffCodeMirror.vue",
       "lib/extensions.ts",
       "lib/languageResolver.ts",
-      "lib/languageResolver.test.ts",
+      "lib/themes.ts",
+      "lib/vim.ts",
+      "lib/editorRuntime.ts",
     ];
-    const offenders = files.filter((f) =>
-      existsSync(new URL(f, editorRoot)),
-    );
-    expect(offenders).toEqual([]);
+    const missing = files.filter((f) => !existsSync(new URL(f, editorRoot)));
+    expect(missing).toEqual([]);
   });
 
-  it("uses DiffEditor (monaco) instead of DiffCodeMirror in GitDiffPane", () => {
+  it("uses DiffCodeMirror instead of the Monaco DiffEditor in GitDiffPane", () => {
     const source = readFileSync(
       new URL("./GitDiffPane.vue", editorRoot),
       "utf8",
     );
-    expect(source).toContain("DiffEditor");
-    expect(source).not.toContain("DiffCodeMirror");
+    expect(source).toContain("DiffCodeMirror");
+    expect(source).not.toContain("DiffEditor");
   });
 
-  it("uses languageMap for monaco language resolution, not ad-hoc loaders", () => {
+  it("resolves languages through languageResolver, not a static id map", () => {
     const libFiles = readdirSync(new URL("./lib/", editorRoot));
-    expect(libFiles).toContain("languageMap.ts");
-    expect(libFiles).not.toContain("languageResolver.ts");
+    expect(libFiles).toContain("languageResolver.ts");
+    expect(libFiles).not.toContain("languageMap.ts");
   });
 
-  it("resolves monaco-vim through its ESM entry in the browser", () => {
-    const viteConfig = readFileSync(
-      new URL("../../../vite.config.ts", editorRoot),
-      "utf8",
-    );
-
-    expect(viteConfig).toContain(
-      'path.resolve(__dirname, "./node_modules/monaco-vim/dist/index.mjs")',
-    );
+  it("does not import monaco anywhere in the editor module or vite config", () => {
+    const sources = [
+      "EditorPane.vue",
+      "DiffCodeMirror.vue",
+      "GitDiffPane.vue",
+      "lib/editorRuntime.ts",
+      "lib/extensions.ts",
+      "lib/themes.ts",
+      "lib/vim.ts",
+      "lib/editorPaneLsp.ts",
+      "../../../vite.config.ts",
+    ];
+    const offenders = sources
+      .map((f) => readFileSync(new URL(f, editorRoot), "utf8"))
+      .filter((source) => /monaco/i.test(source));
+    expect(offenders).toEqual([]);
   });
 });

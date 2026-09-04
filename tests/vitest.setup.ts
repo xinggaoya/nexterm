@@ -1,4 +1,3 @@
-import { vi } from "vitest";
-
-// vite.config.ts 的 alias 已在测试模式下将 monaco-editor / monaco-vim / monaco-themes
-// 替换为本地 stub。这里不再额外 vi.mock，避免重复拦截。
+// 全局测试设置。CodeMirror 6 相关的测试桩由各组件测试通过 vi.mock 注入
+// (tests/codemirror-stubs.ts / tests/codemirror-noop-stubs.ts),这里不做事。
+export {};

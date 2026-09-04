@@ -7,9 +7,9 @@ const globalsCss = readFileSync(
 );
 
 describe("editor scrollbar styles", () => {
-  it("opts Monaco editor panes into compact native scrollbars", () => {
+  it("opts CodeMirror editor panes into compact native scrollbars", () => {
     expect(globalsCss).toContain(
-      ".nexterm-editor-scrollbar .monaco-scrollable-element",
+      ".nexterm-editor-scrollbar .cm-scroller",
     );
     expect(globalsCss).toContain("scrollbar-width: thin !important;");
     expect(globalsCss).toContain(
@@ -17,7 +17,7 @@ describe("editor scrollbar styles", () => {
     );
   });
 
-  it("overrides the app-wide hidden scrollbar policy for Monaco panes", () => {
+  it("overrides the app-wide hidden scrollbar policy for editor panes", () => {
     expect(globalsCss).toContain("::-webkit-scrollbar");
     expect(globalsCss).toContain(
       "background: var(--nexterm-editor-scrollbar-thumb) !important;",

@@ -1,5 +1,26 @@
 <script setup lang="ts">
-import * as monaco from "monaco-editor";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+  redo,
+  undo,
+} from "@codemirror/commands";
+import { autocompletion, closeBrackets } from "@codemirror/autocomplete";
+import { bracketMatching, foldGutter } from "@codemirror/language";
+import { searchKeymap } from "@codemirror/search";
+import {
+  EditorState,
+  type Extension,
+} from "@codemirror/state";
+import {
+  EditorView,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  keymap,
+  lineNumbers,
+} from "@codemirror/view";
 import { NSpin, useDialog } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
@@ -15,19 +36,24 @@ import {
   writeEditorDocument,
   type EditorDocumentState,
 } from "./lib/documentService";
-import { buildMonacoEditorOptions } from "./lib/editorConfig";
 import {
-  disposeEditor,
-  mountMonacoEditor,
-  safeReplaceValue,
-  type EditorMount,
-} from "./lib/editorRuntime";
-import { isMarkdownPath, resolveMonacoLanguageId } from "./lib/languageMap";
-import { registerMonacoThemes } from "./lib/themes";
-import { attachVim, type VimAttachment } from "./lib/vim";
+  buildPrefExtensions,
+  buildSharedExtensions,
+  languageCompartment,
+  optionsCompartment,
+  themeCompartment,
+  vimCompartment,
+} from "./lib/extensions";
+import { disposeEditor, mountCodeMirrorEditor, safeReplaceValue } from "./lib/editorRuntime";
+import {
+  isMarkdownPath,
+  languageLabelForPath,
+  resolveLanguage,
+  resolveLanguageSync,
+} from "./lib/languageResolver";
+import { themeExtensionFor } from "./lib/themes";
+import { vimHandlersExtension, vimModeExtension } from "./lib/vim";
 import { attachOrDetachLsp } from "./lib/editorPaneLsp";
-
-registerMonacoThemes(monaco);
 
 const props = defineProps<{
   path: string;
@@ -44,8 +70,7 @@ const prefs = usePreferencesPiniaStore();
 // 获取当前 workspace 上下文（wsNative + workspace），所有 native 调用都走它。
 const wsCtx = useWorkspaceContext();
 const host = ref<HTMLDivElement | null>(null);
-const mount = shallowRef<EditorMount | null>(null);
-const vimAttachment = shallowRef<VimAttachment | null>(null);
+const view = shallowRef<EditorView | null>(null);
 const doc = ref<EditorDocumentState>({ status: "loading" });
 const savedContent = ref("");
 const buffer = ref("");
@@ -68,9 +93,7 @@ const fileName = computed(() => {
 });
 
 const markdown = computed(() => isMarkdownPath(props.path));
-const languageLabel = computed(
-  () => resolveMonacoLanguageId(props.path) ?? "Plain Text",
-);
+const languageLabel = computed(() => languageLabelForPath(props.path));
 
 const sourcePaneClass = computed(() => {
   if (!markdown.value || mode.value === "source") return "h-full w-full";
@@ -102,39 +125,102 @@ function setDirty(next: boolean) {
 function setMode(next: EditorViewMode) {
   if (!markdown.value && next !== "source") return;
   mode.value = next;
-  void nextTick(() => mount.value?.editor.layout());
+  // 分屏切换改变宿主尺寸，通知 CodeMirror 重新测量。
+  void nextTick(() => view.value?.requestMeasure());
 }
 
-async function createEditor(content: string) {
+function destroyEditor() {
+  disposeEditor(view.value);
+  view.value = null;
+  if (host.value) host.value.innerHTML = "";
+}
+
+function replaceEditorContent(content: string) {
+  const current = view.value;
+  if (!current) return false;
+  safeReplaceValue(current, content);
+  return true;
+}
+
+function updateCursorInfo(state: EditorState) {
+  const selection = state.selection.main;
+  const lineInfo = state.doc.lineAt(selection.head);
+  line.value = lineInfo.number;
+  column.value = selection.head - lineInfo.from + 1;
+  selectionLength.value = Math.abs(selection.to - selection.from);
+}
+
+function editorBaseExtensions(): Extension[] {
+  return [
+    lineNumbers(),
+    foldGutter(),
+    highlightActiveLineGutter(),
+    history(),
+    bracketMatching(),
+    closeBrackets(),
+    autocompletion(),
+    highlightActiveLine(),
+    ...buildSharedExtensions(),
+    optionsCompartment.of(buildPrefExtensions(prefs)),
+    themeCompartment.of(themeExtensionFor(prefs.editorTheme)),
+    languageCompartment.of(resolveLanguageSync(props.path) ?? []),
+    vimCompartment.of(prefs.vimMode ? [vimModeExtension()] : []),
+    vimHandlersExtension(() => ({
+      save: () => void save(),
+      close: () => {
+        emit("dirtyChange", false);
+      },
+    })),
+    EditorView.updateListener.of((update) => {
+      if (update.docChanged) {
+        const next = update.state.doc.toString();
+        buffer.value = next;
+        setDirty(next !== savedContent.value);
+      }
+      if (update.docChanged || update.selectionSet) {
+        updateCursorInfo(update.state);
+      }
+    }),
+    keymap.of([
+      {
+        key: "Mod-s",
+        preventDefault: true,
+        run: () => {
+          void save();
+          return true;
+        },
+      },
+      indentWithTab,
+      ...searchKeymap,
+      ...historyKeymap,
+      ...defaultKeymap,
+    ]),
+  ];
+}
+
+async function mountEditor(content: string) {
   await nextTick();
   if (!host.value) return;
-  disposeEditor(mount.value);
-  mount.value = null;
-  const opts = buildMonacoEditorOptions(
-    prefs,
-    resolveMonacoLanguageId(props.path),
-  );
-  const fresh = mountMonacoEditor(host.value, opts, content);
-  fresh.disposables.push(
-    fresh.editor.onDidChangeModelContent(() => {
-      const next = fresh.editor.getValue();
-      buffer.value = next;
-      setDirty(next !== savedContent.value);
-    }),
-    fresh.editor.onDidChangeCursorPosition((e) => {
-      line.value = e.position.lineNumber;
-      column.value = e.position.column;
-      const sel = fresh.editor.getSelection();
-      const model = fresh.editor.getModel();
-      if (sel && model) selectionLength.value = model.getValueLengthInRange(sel);
-    }),
-  );
-  mount.value = fresh;
+  destroyEditor();
+  const initialLanguage = resolveLanguageSync(props.path);
+  const state = EditorState.create({
+    doc: content,
+    extensions: editorBaseExtensions(),
+  });
+  view.value = mountCodeMirrorEditor(host.value, state);
+  updateCursorInfo(view.value.state);
+
+  if (initialLanguage) return;
+  const currentPath = props.path;
+  const language = await resolveLanguage(currentPath);
+  if (props.path !== currentPath || !view.value) return;
+  view.value.dispatch({
+    effects: languageCompartment.reconfigure(language ?? []),
+  });
 }
 
 async function load() {
-  disposeEditor(mount.value);
-  mount.value = null;
+  destroyEditor();
   doc.value = { status: "loading" };
   externalChangePending.value = false;
   mode.value = isMarkdownPath(props.path) ? "split" : "source";
@@ -148,7 +234,7 @@ async function load() {
   if (result.status === "ready") {
     savedContent.value = result.content;
     buffer.value = result.content;
-    await createEditor(result.content);
+    await mountEditor(result.content);
   }
 }
 
@@ -185,8 +271,8 @@ async function reloadExternalChange(force = false) {
   doc.value = result;
   externalChangePending.value = false;
   if (result.status === "ready") {
-    // 内容相等短路：磁盘内容和当前 buffer 一致时只刷新 size，不做全量替换，
-    // 避免无意义的 executeEdits 打断光标/撤销栈。
+    // 内容相等短路：磁盘内容和当前 buffer 一致时只刷新 savedContent，不做全量
+    // 替换，避免无意义的 dispatch 打断光标/撤销栈。
     if (result.content === buffer.value) {
       savedContent.value = result.content;
       setDirty(false);
@@ -195,13 +281,13 @@ async function reloadExternalChange(force = false) {
     buffer.value = result.content;
     savedContent.value = result.content;
     setDirty(false);
-    if (mount.value) safeReplaceValue(mount.value.editor, result.content);
-    else await createEditor(result.content);
+    if (!replaceEditorContent(result.content)) {
+      await mountEditor(result.content);
+    }
   } else {
     savedContent.value = "";
     buffer.value = "";
-    disposeEditor(mount.value);
-    mount.value = null;
+    destroyEditor();
   }
 }
 
@@ -233,41 +319,43 @@ async function save() {
 }
 
 function focus() {
-  mount.value?.editor.focus();
+  view.value?.focus();
 }
 
 function getSelection(): string | null {
-  const editor = mount.value?.editor;
-  if (!editor) return null;
-  const sel = editor.getSelection();
-  if (!sel || sel.isEmpty()) return null;
-  return editor.getModel()?.getValueInRange(sel) ?? null;
+  const current = view.value;
+  if (!current) return null;
+  const { from, to } = current.state.selection.main;
+  if (from === to) return null;
+  return current.state.sliceDoc(from, to);
 }
 
 function openGotoLine(): void {
-  const editor = mount.value?.editor;
-  if (!editor) return;
-  editor.focus();
+  const current = view.value;
+  if (!current) return;
+  current.focus();
   const raw = window.prompt(t("editor.gotoLinePrompt"), String(line.value));
   if (!raw) return;
   const target = Number.parseInt(raw, 10);
   if (!Number.isFinite(target) || target < 1) return;
-  const model = editor.getModel();
-  if (!model) return;
-  const clamped = Math.min(target, model.getLineCount());
-  editor.setPosition({ lineNumber: clamped, column: 1 });
-  editor.revealLine(clamped);
+  const lineCount = current.state.doc.lines;
+  const clamped = Math.min(target, lineCount);
+  const lineInfo = current.state.doc.line(clamped);
+  current.dispatch({
+    selection: { anchor: lineInfo.from },
+    scrollIntoView: true,
+  });
   line.value = clamped;
 }
 
 function setContentForTest(content: string) {
-  const editor = mount.value?.editor;
-  if (!editor) {
+  const current = view.value;
+  if (!current) {
     buffer.value = content;
     setDirty(content !== savedContent.value);
     return;
   }
-  safeReplaceValue(editor, content);
+  safeReplaceValue(current, content);
 }
 
 watch(() => props.path, () => void load(), { immediate: true });
@@ -282,23 +370,20 @@ watch(
 
 watch(
   () => prefs.editorTheme,
-  () => {
-    if (!mount.value) return;
-    monaco.editor.setTheme(prefs.editorTheme);
+  (themeId) => {
+    view.value?.dispatch({
+      effects: themeCompartment.reconfigure(themeExtensionFor(themeId)),
+    });
   },
 );
 
 watch(
   () => [prefs.editorFontSize, prefs.editorTabSize, prefs.editorWordWrap],
   () => {
-    // 字体/缩进/换行只更新 options，不重建编辑器实例——重建会丢失光标位置和
-    // 撤销栈，且会打断正在进行的编辑。
-    const editor = mount.value?.editor;
-    if (!editor) return;
-    editor.updateOptions({
-      fontSize: prefs.editorFontSize,
-      tabSize: prefs.editorTabSize,
-      wordWrap: prefs.editorWordWrap ? "on" : "off",
+    // 字体/缩进/换行只重配置 optionsCompartment，不重建编辑器实例——重建会
+    // 丢失光标位置和撤销栈，且会打断正在进行的编辑。
+    view.value?.dispatch({
+      effects: optionsCompartment.reconfigure(buildPrefExtensions(prefs)),
     });
   },
 );
@@ -306,26 +391,18 @@ watch(
 watch(
   () => prefs.vimMode,
   (enabled) => {
-    vimAttachment.value?.dispose();
-    vimAttachment.value = null;
-    if (enabled && mount.value) {
-      vimAttachment.value = attachVim(mount.value.editor, {
-        save: () => void save(),
-        close: () => {
-          emit("dirtyChange", false);
-        },
-      });
-    }
+    view.value?.dispatch({
+      effects: vimCompartment.reconfigure(enabled ? [vimModeExtension()] : []),
+    });
   },
-  { immediate: true },
 );
 
 watch(
   () => [prefs.editorLspTypescriptMode, props.path],
   () => {
-    if (!mount.value || doc.value.status !== "ready") return;
+    if (!view.value || doc.value.status !== "ready") return;
     void attachOrDetachLsp(
-      mount.value.editor,
+      view.value,
       props.path,
       prefs.editorLspTypescriptMode,
     );
@@ -333,13 +410,12 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  vimAttachment.value?.dispose();
-  vimAttachment.value = null;
-  if (mount.value) {
-    void attachOrDetachLsp(mount.value.editor, props.path, "builtin").catch(() => undefined);
+  if (view.value) {
+    void attachOrDetachLsp(view.value, props.path, "builtin").catch(
+      () => undefined,
+    );
   }
-  disposeEditor(mount.value);
-  mount.value = null;
+  destroyEditor();
 });
 
 defineExpose({
@@ -349,8 +425,14 @@ defineExpose({
   setContentForTest,
   openGotoLine,
   reload: () => reloadExternalChange(true),
-  undo: () => mount.value?.editor.trigger("keyboard", "undo", null),
-  redo: () => mount.value?.editor.trigger("keyboard", "redo", null),
+  undo: () => {
+    const current = view.value;
+    if (current) void undo(current);
+  },
+  redo: () => {
+    const current = view.value;
+    if (current) void redo(current);
+  },
 });
 </script>
 
@@ -421,7 +503,7 @@ defineExpose({
         <div
           v-show="!markdown || mode !== 'preview'"
           data-editor-source-panel
-          class="min-h-0 overflow-hidden"
+          class="relative min-h-0 overflow-hidden"
           :class="sourcePaneClass"
         >
           <div

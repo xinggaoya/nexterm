@@ -1,10 +1,10 @@
 # LSP 模块架构
 
-> 状态：草案（与 Monaco 迁移设计 spec 同步推进）
+> 状态：草案（设计见 `docs/superpowers/specs/2026-07-16-monaco-lsp-migration-design.md`;编辑器内核现基于 CodeMirror 6）
 
 ## 1. 概述
 
-LSP 模块在 Tauri Rust 后端启动并守护语言服务器进程（LSP server），前端通过 Tauri Channel + invoke 与其通信。WebView 仅负责 UI 与 `monaco-languageclient` JSON-RPC 客户端，不直接接触 LSP 子进程。
+LSP 模块在 Tauri Rust 后端启动并守护语言服务器进程（LSP server），前端通过 Tauri Channel + invoke 与其通信。WebView 仅负责 UI 与 `vscode-jsonrpc` JSON-RPC 客户端，不直接接触 LSP 子进程。
 
 ## 2. 目录与文件
 
@@ -49,7 +49,6 @@ src/modules/lsp/
 ### 3.3 前端
 
 - `vscode-jsonrpc` -- JSON-RPC 客户端
-- `monaco-languageclient` -- Monaco ↔ JSON-RPC 桥接
 - `@tauri-apps/api/core` -- invoke / Channel
 
 ## 4. IPC 契约

@@ -38,81 +38,29 @@ vi.mock("./lib/documentService", () => ({
   writeEditorDocument: vi.fn(),
 }));
 
+// 语言解析走独立测试，这里 mock 成空扩展以隔离真实语言包的加载。
+vi.mock("./lib/languageResolver", () => ({
+  isMarkdownPath: (path: string) => /\.(md|markdown|mdx)$/i.test(path),
+  languageLabelForPath: () => "TypeScript",
+  resolveLanguage: async () => null,
+  resolveLanguageSync: () => null,
+}));
+
+// CodeMirror 6 在 jsdom 中不做真实实例化，统一替换为 tests/ 下的桩模块。
+vi.mock("@codemirror/view", async () => await import("../../../tests/codemirror-stubs"));
+vi.mock("@codemirror/state", async () => await import("../../../tests/codemirror-stubs"));
+vi.mock("@codemirror/commands", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@codemirror/autocomplete", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@codemirror/language", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@codemirror/search", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@codemirror/lint", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@replit/codemirror-vim", async () => await import("../../../tests/codemirror-noop-stubs"));
+vi.mock("@lezer/highlight", () => ({
+  tags: new Proxy({}, { get: () => Symbol("tag") }),
+}));
+
 // documentService 函数现在以 wsNative 为首参；断言时忽略该参数。
 const WS_NATIVE_MATCHER = expect.anything();
-
-const noopDisposable = { dispose: () => undefined };
-const fakeEditor: any = {
-  _value: "const value = 1;",
-  _onDidChangeContent: null as null | (() => void),
-  getValue() {
-    return this._value;
-  },
-  setValue(v: string) {
-    this._value = v;
-    this._onDidChangeContent?.();
-  },
-  getModel() {
-    return {
-      getValue: () => this._value,
-      getValueLengthInRange: () => 0,
-      getLineCount: () => 1,
-      getFullModelRange: () => ({
-        startLineNumber: 1,
-        endLineNumber: 1,
-        startColumn: 1,
-        endColumn: 1,
-      }),
-      getLineMaxColumn: () => 1,
-      dispose: () => undefined,
-    };
-  },
-  getSelection: () => ({ isEmpty: () => true }),
-  setSelection: () => undefined,
-  getScrollTop: () => 0,
-  setScrollTop: () => undefined,
-  getScrollLeft: () => 0,
-  setScrollLeft: () => undefined,
-  onDidChangeModelContent(cb: () => void) {
-    this._onDidChangeContent = cb;
-    return noopDisposable;
-  },
-  onDidChangeCursorPosition: () => noopDisposable,
-  trigger: () => undefined,
-  focus: () => undefined,
-  layout: () => undefined,
-  setPosition: () => undefined,
-  revealLine: () => undefined,
-  updateOptions: () => undefined,
-  executeEdits(_source: string, edits: Array<{ text: string }>) {
-    const next = edits.map((e) => e.text).join("");
-    this._value = next;
-    this._onDidChangeContent?.();
-  },
-};
-
-const fakeModel: any = { dispose: () => undefined };
-
-const fakeDiffEditor: any = {
-  setModel: () => undefined,
-  dispose: () => undefined,
-  onDidUpdateDiff: () => noopDisposable,
-  getLineChanges: () => null,
-  getModel: () => ({ original: fakeModel, modified: fakeModel }),
-};
-
-vi.mock("monaco-editor", () => ({
-  editor: {
-    create: () => fakeEditor,
-    createDiffEditor: () => fakeDiffEditor,
-    createModel: () => fakeModel,
-    setTheme: () => undefined,
-    defineTheme: () => undefined,
-  },
-  languages: {
-    register: () => undefined,
-  },
-}));
 
 async function flush() {
   await Promise.resolve();
@@ -123,7 +71,6 @@ describe("EditorPane.vue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dialogWarningMock.mockReset();
-    fakeEditor._value = "const value = 1;";
     vi.mocked(readEditorDocument).mockResolvedValue({
       status: "ready",
       content: "const value = 1;",
@@ -131,7 +78,7 @@ describe("EditorPane.vue", () => {
     });
   });
 
-  it("loads text documents into a Monaco host", async () => {
+  it("loads text documents into a CodeMirror host", async () => {
     const wrapper = mount(EditorPane, {
       global: { plugins: [createPinia()] },
       props: { path: "/repo/src/main.ts" },

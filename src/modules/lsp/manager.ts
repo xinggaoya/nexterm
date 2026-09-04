@@ -1,4 +1,4 @@
-import type * as monaco from "monaco-editor";
+import type { EditorView } from "@codemirror/view";
 import { invoke, Channel } from "@tauri-apps/api/core";
 
 import { createLspConnection } from "./lspTransport";
@@ -9,14 +9,14 @@ type Client = {
   dispose: () => void;
 };
 
-const clients = new WeakMap<monaco.editor.IStandaloneCodeEditor, Client>();
+const clients = new WeakMap<EditorView, Client>();
 
 export type LspAttachOutcome =
   | { attached: true; language: SupportedLanguage }
   | { attached: false; reason: string };
 
 export async function attachLspToEditor(
-  editor: monaco.editor.IStandaloneCodeEditor,
+  editor: EditorView,
   filename: string,
 ): Promise<LspAttachOutcome> {
   const language = detectLspLanguage(filename);
@@ -64,7 +64,7 @@ export async function attachLspToEditor(
 }
 
 export async function detachLspFromEditor(
-  editor: monaco.editor.IStandaloneCodeEditor,
+  editor: EditorView,
 ): Promise<void> {
   const client = clients.get(editor);
   if (!client) return;
@@ -73,7 +73,7 @@ export async function detachLspFromEditor(
 }
 
 export function isLspAttached(
-  editor: monaco.editor.IStandaloneCodeEditor,
+  editor: EditorView,
 ): boolean {
   return clients.has(editor);
 }

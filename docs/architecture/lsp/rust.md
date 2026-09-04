@@ -18,7 +18,7 @@ cargo install rust-analyzer
 ## 配置
 
 - `editor.lsp.typescript.mode`（与本语言无关，TS 专属设置）
-- 当前 T-1 默认（Monaco 内置 worker），无需 LSP。
+- 当前 T-1 默认（无内置语言服务），启用 LSP 后获得 rust-analyzer 智能。
 
 ## 已知限制
 

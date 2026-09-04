@@ -414,7 +414,7 @@ export async function ensureFontStackLoaded(
 /**
  * 当字体栈中的某个字体加载完成后,主动通知 xterm 重画。
  * 监听 document.fonts.loadingdone 事件,过滤到关心的字体族,避免
- * UI / 编辑器 / monaco 的字体加载触发不必要的终端重画。
+ * UI / 编辑器(CodeMirror)的字体加载触发不必要的终端重画。
  *
  * 返回 disconnect 函数。
  */

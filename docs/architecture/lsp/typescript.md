@@ -19,13 +19,11 @@ npm install -g typescript-language-server
 `editorLspTypescriptMode = "builtin" | "lsp"`
 
 - **builtin**（默认）
-  - 保留 Monaco 自带 TS worker + HTML/CSS/JSON 内置服务
-  - 首屏启动快、IntelliSense 已可用
-  - 不需要额外 binary
+  - 仅 CodeMirror 基础语法高亮 + 文档内单词补全
+  - 首屏启动快、不需要额外 binary
 - **lsp**
-  - 禁用 Monaco TS worker，所有 TS/JS 智能改走
-    `typescript-language-server`
-  - 提供更完整的 rename / references / workspace symbols
+  - 所有 TS/JS 智能走 `typescript-language-server`
+  - 提供补全 / hover / rename / references / workspace symbols
 
 切换生效：watch `editorLspTypescriptMode` 触发 `attachOrDetachLsp`
 （`src/modules/editor/lib/editorPaneLsp.ts`）。

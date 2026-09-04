@@ -70,7 +70,9 @@ type EditorLanguage = "typescript" | "rust" | "python" | "json" | ...;
 - `languageResolver` 根据文件后缀选择 CodeMirror 语言包。
 - `extensions.ts` 组合基础扩展 + 语言 + 主题 + vim 模式。
 - `documentService` 包装 `native.fsReadFile/Write`，做 dirty 跟踪、自动保存标记。
-- `DiffCodeMirror` 用 `@codemirror/merge` 的 `MergeView` 渲染 diff。
+- `DiffCodeMirror` 用 `@codemirror/merge` 的 `unifiedMergeView` 渲染只读统一 diff。
+- `lib/editorRuntime.ts` 提供 `mountCodeMirrorEditor` / `disposeEditor` / `safeReplaceValue`(外部重载时保留光标与滚动)。
+- 主题 / 字号 / 缩进 / 换行 / Vim / 语言各走独立 `Compartment`,设置变更不重建编辑器实例。
 
 ## 7. 配置项
 
@@ -78,6 +80,7 @@ type EditorLanguage = "typescript" | "rust" | "python" | "json" | ...;
 
 - `editorFontSize` / `editorTabSize` / `editorWordWrap` / `vimMode`
 - `editorTheme`（影响 `themes.ts` 的选择）
+- `editorLspTypescriptMode`（`"builtin" | "lsp"`,经 `lib/editorPaneLsp.ts` 接通 `@/modules/lsp/manager`)
 
 ## 8. 测试
 
