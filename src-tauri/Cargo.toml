@@ -6,7 +6,7 @@ authors = ["xinggaoya"]
 edition = "2021"
 
 [workspace]
-members = [".", "wsl-watcher-helper"]
+members = [".", "agent"]
 resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -38,6 +38,7 @@ grep-matcher = "0.1"
 globset = "0.4"
 shared_child = "1"
 notify = "8.2"
+tokio = { version = "1", features = ["time"] }
 which = "6"
 tauri-plugin-log = "2"
 tauri-plugin-os = "2"
@@ -46,6 +47,7 @@ tempfile = "3"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-notification = "2"
+russh = { version = "0.63.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -64,6 +66,9 @@ tauri-plugin-window-state = "2"
 tauri-plugin-process = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-positioner = { version = "2", default-features = false, features = [] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 
 [profile.dev]
 incremental = true

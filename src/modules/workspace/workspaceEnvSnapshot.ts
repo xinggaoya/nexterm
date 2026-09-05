@@ -14,7 +14,8 @@
 
 export type WorkspaceEnv =
   | { kind: "local" }
-  | { kind: "wsl"; distro: string };
+  | { kind: "wsl"; distro: string }
+  | { kind: "ssh"; profileId: string };
 
 export type WslDistro = {
   name: string;
@@ -26,11 +27,20 @@ export const LOCAL_WORKSPACE: WorkspaceEnv = { kind: "local" };
 
 /** Stable scope key for a workspace env — used for cache isolation and ids. */
 export function workspaceScopeKey(env: WorkspaceEnv): string {
-  return env.kind === "wsl" ? `wsl:${env.distro}` : "local";
+  switch (env.kind) {
+    case "wsl":
+      return `wsl:${env.distro}`;
+    case "ssh":
+      return `ssh:${env.profileId}`;
+    default:
+      return "local";
+  }
 }
 
 /** Structural equality check for two workspace envs. */
 export function sameWorkspaceEnv(a: WorkspaceEnv, b: WorkspaceEnv): boolean {
   if (a.kind !== b.kind) return false;
-  return a.kind === "local" || (b.kind === "wsl" && a.distro === b.distro);
+  if (a.kind === "local") return true;
+  if (a.kind === "wsl") return b.kind === "wsl" && a.distro === b.distro;
+  return b.kind === "ssh" && a.profileId === b.profileId;
 }

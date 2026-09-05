@@ -40,6 +40,9 @@ function envBadge(ws: WorkspaceInstance): string {
     const name = ws.env.distro;
     return name.length > 6 ? name.slice(0, 4) : name;
   }
+  if (ws.env.kind === "ssh") {
+    return "SSH";
+  }
   return "";
 }
 

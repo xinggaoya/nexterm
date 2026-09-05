@@ -49,6 +49,26 @@ enum FileBytes {
 /// 本地与 WSL 统一的字节读取路径。超限不是错误:调用方按各自 serde
 /// 形状把 TooLarge 映射回前端,由 UI 决定是否提示。
 fn read_file_bytes(path: &str, workspace: &WorkspaceEnv) -> Result<FileBytes, String> {
+    if let WorkspaceEnv::Ssh { profile_id } = workspace {
+        // Phase 2:远端文件经 SSH 通道上的 agent 读取。
+        let stat = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_stat(
+            crate::modules::ssh::remote::global_pool(),
+            profile_id,
+            path,
+        ))?;
+        if stat.size > MAX_READ_BYTES {
+            return Ok(FileBytes::TooLarge {
+                size: stat.size,
+                limit: MAX_READ_BYTES,
+            });
+        }
+        let bytes = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_read_file(
+            crate::modules::ssh::remote::global_pool(),
+            profile_id,
+            path,
+        ))?;
+        return Ok(FileBytes::Read { bytes, size: stat.size });
+    }
     if let WorkspaceEnv::Wsl { distro } = workspace {
         if wsl_ops::should_use_wsl_ops(path, workspace) {
             let stat = wsl_ops::stat_path(distro, path)?;
@@ -152,8 +172,28 @@ pub fn fs_write_file(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    if let WorkspaceEnv::Ssh { profile_id } = &workspace {
+        let content_b64 = BASE64_STANDARD.encode(content.as_bytes());
+        return tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_write_file(
+            crate::modules::ssh::remote::global_pool(),
+            profile_id,
+            &path,
+            &content_b64,
+        ));
+    }
     let target = resolve_path(&path, &workspace);
-
+    // Phase 0b:WSL 非 drvfs 路径经常驻 agent 原子写;失败回退 UNC 原子写。
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&path, &workspace) {
+            let content_b64 = BASE64_STANDARD.encode(content.as_bytes());
+            if crate::modules::agent::write_file(distro, &path, &content_b64).is_ok() {
+                if let Some(root) = registry.longest_authorized_root(&target) {
+                    emit_workspace_fs_changed(&watcher, &root, vec![path.clone()], true);
+                }
+                return Ok(());
+            }
+        }
+    }
     write_atomic(&target, content.as_bytes()).map_err(|e| {
         log::warn!("fs_write_file({}) failed: {e}", target.display());
         e.to_string()

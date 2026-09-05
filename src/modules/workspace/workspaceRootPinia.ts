@@ -38,9 +38,10 @@ function normalizeError(error: unknown): string {
 
 function isWorkspaceEnv(value: unknown): value is WorkspaceEnv {
   if (!value || typeof value !== "object") return false;
-  const env = value as { kind?: unknown; distro?: unknown };
+  const env = value as { kind?: unknown; distro?: unknown; profileId?: unknown };
   if (env.kind === "local") return true;
   if (env.kind === "wsl" && typeof env.distro === "string") return true;
+  if (env.kind === "ssh" && typeof env.profileId === "string") return true;
   return false;
 }
 
@@ -155,6 +156,17 @@ export const useWorkspaceRootPiniaStore = defineStore("workspace-root", () => {
   async function pickWorkspaceDirectory(
     env: WorkspaceEnv,
   ): Promise<WorkspaceSelection | null> {
+    // SSH:不走目录选择对话框,而是连接对话框 —— 凭据校验 + 远端 HOME 探针
+    // 一步完成,HOME 作为工作区根。口令进内存缓存供 pty_open 复用。
+    if (env.kind === "ssh") {
+      const { openSshConnectDialog } = await import("@/modules/ssh/sshConnectDialog");
+      const { rememberSshSecret } = await import("@/modules/ssh/sshSecrets");
+      const result = await openSshConnectDialog();
+      if (!result) return null;
+      const sshEnv: WorkspaceEnv = { kind: "ssh", profileId: result.profile.id };
+      rememberSshSecret(sshEnv, result.secret);
+      return { path: normalizeWorkspacePath(result.home), env: sshEnv };
+    }
     const defaultPath = await resolveDialogDefaultPath(env);
     const selected = await selectWorkspaceDirectory(defaultPath);
     if (!selected) return null;
@@ -189,6 +201,8 @@ export const useWorkspaceRootPiniaStore = defineStore("workspace-root", () => {
   async function resolveDialogDefaultPath(
     env: WorkspaceEnv,
   ): Promise<string | undefined> {
+    // SSH 的根由连接对话框(远端 HOME 探针)决定,不走目录对话框。
+    if (env.kind === "ssh") return undefined;
     if (env.kind === "local") {
       return dialogDefaultPath(rootPath.value, env);
     }

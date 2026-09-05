@@ -9,6 +9,7 @@ use ignore::{WalkBuilder, WalkState};
 use serde::Serialize;
 
 use super::to_canon;
+use crate::modules::fs::wsl_ops;
 use crate::modules::lock::mutex_lock;
 use crate::modules::workspace::{resolve_path, WorkspaceEnv};
 
@@ -64,6 +65,65 @@ pub fn fs_grep(
     let cap = max_results
         .unwrap_or(DEFAULT_MAX_RESULTS)
         .clamp(1, HARD_MAX_RESULTS);
+
+    // Phase 0b/2:WSL 非 drvfs 与 SSH 根经 agent 内容查找;失败回退宿主 UNC。
+    let workspace_for_route = workspace.clone();
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&root, &workspace) {
+            if let Ok(parsed) = crate::modules::agent::grep(
+                distro,
+                &pattern,
+                &root,
+                glob.as_deref(),
+                case_insensitive.unwrap_or(false),
+                Some(cap),
+                &root,
+            ) {
+                let hits = parsed
+                    .hits
+                    .into_iter()
+                    .map(|hit| GrepHit {
+                        path: hit.path,
+                        rel: hit.rel,
+                        line: hit.line,
+                        text: hit.text,
+                    })
+                    .collect();
+                return Ok(GrepResponse {
+                    hits,
+                    truncated: parsed.truncated,
+                    files_scanned: parsed.files_scanned,
+                });
+            }
+        }
+    }
+    if let WorkspaceEnv::Ssh { profile_id } = &workspace_for_route {
+        let parsed = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_grep(
+            crate::modules::ssh::remote::global_pool(),
+            profile_id,
+            &pattern,
+            &root,
+            glob.clone(),
+            case_insensitive.unwrap_or(false),
+            Some(cap),
+            &root,
+        ))?;
+        let hits = parsed
+            .hits
+            .into_iter()
+            .map(|hit| GrepHit {
+                path: hit.path,
+                rel: hit.rel,
+                line: hit.line,
+                text: hit.text,
+            })
+            .collect();
+        return Ok(GrepResponse {
+            hits,
+            truncated: parsed.truncated,
+            files_scanned: parsed.files_scanned,
+        });
+    }
 
     let matcher = RegexMatcherBuilder::new()
         .case_insensitive(case_insensitive.unwrap_or(false))
@@ -224,6 +284,46 @@ pub fn fs_glob(
         return Err(format!("not a directory: {root}"));
     }
     let cap = max_results.unwrap_or(500).clamp(1, HARD_MAX_RESULTS);
+
+    // Phase 0b/2:agent 路由优先,语义同 fs_grep。
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&root, &workspace) {
+            if let Ok((hits, truncated)) = crate::modules::agent::glob(
+                distro,
+                &pattern,
+                &root,
+                Some(cap),
+                &root,
+            ) {
+                let hits = hits
+                    .into_iter()
+                    .map(|hit| GlobHit {
+                        path: hit.path,
+                        rel: hit.rel,
+                    })
+                    .collect();
+                return Ok(GlobResponse { hits, truncated });
+            }
+        }
+    }
+    if let WorkspaceEnv::Ssh { profile_id } = &workspace {
+        let (hits, truncated) = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_glob(
+            crate::modules::ssh::remote::global_pool(),
+            profile_id,
+            &pattern,
+            &root,
+            Some(cap),
+            &root,
+        ))?;
+        let hits = hits
+            .into_iter()
+            .map(|hit| GlobHit {
+                path: hit.path,
+                rel: hit.rel,
+            })
+            .collect();
+        return Ok(GlobResponse { hits, truncated });
+    }
 
     let glob = Glob::new(&pattern).map_err(|e| format!("bad glob: {e}"))?;
     let mut gb = GlobSetBuilder::new();

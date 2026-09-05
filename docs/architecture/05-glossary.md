@@ -63,7 +63,7 @@
 | Lock 毒化 | `Mutex` 持有者 panic 后锁被标记"poisoned"；本项目用 `lock.rs` 包装，panic 后携带上下文 |
 | Blocking helper | `tauri::async_runtime::spawn_blocking`，把同步 IO 卸载到线程池 |
 | HMR | Vite Hot Module Replacement，TAURI dev 时通过 `1421` 走 WebSocket |
-| wsl-watcher-helper | 独立二进制，监控 WSL 工作区，stdout 输出 JSON 行 |
+| nexterm-agent | WSL/远端常驻代理，承载 fs/git/watch（watch 子命令 stdout 输出 JSON 行） |
 
 ## 事件 / 协议
 

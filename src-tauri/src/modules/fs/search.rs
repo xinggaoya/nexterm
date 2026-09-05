@@ -2,6 +2,7 @@ use ignore::WalkBuilder;
 use serde::Serialize;
 
 use super::to_canon;
+use crate::modules::fs::wsl_ops;
 use crate::modules::workspace::{resolve_path, WorkspaceEnv};
 
 #[derive(Serialize)]
@@ -60,6 +61,55 @@ pub fn fs_search(
     let cap = limit.unwrap_or(200).min(1000);
     let show_hidden = show_hidden.unwrap_or(false);
     let workspace = WorkspaceEnv::from_option(workspace);
+    // Phase 0b/2:WSL 非 drvfs 与 SSH 根经 agent 搜索(原生路径语义),
+    // agent 不可用时回退宿主 UNC 遍历。
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&root, &workspace) {
+            if let Ok(parsed) =
+                crate::modules::agent::search(distro, &root, &q, Some(cap), show_hidden, &root)
+            {
+                let hits = parsed
+                    .hits
+                    .into_iter()
+                    .map(|hit| SearchHit {
+                        path: hit.path,
+                        rel: hit.rel,
+                        name: hit.name,
+                        is_dir: hit.is_dir,
+                    })
+                    .collect();
+                return Ok(SearchResult {
+                    hits,
+                    truncated: parsed.truncated,
+                });
+            }
+        }
+    }
+    if let WorkspaceEnv::Ssh { profile_id } = &workspace {
+        let parsed = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_search(
+            crate::modules::ssh::remote::global_pool(),
+            profile_id,
+            &root,
+            &q,
+            Some(cap),
+            show_hidden,
+            &root,
+        ))?;
+        let hits = parsed
+            .hits
+            .into_iter()
+            .map(|hit| SearchHit {
+                path: hit.path,
+                rel: hit.rel,
+                name: hit.name,
+                is_dir: hit.is_dir,
+            })
+            .collect();
+        return Ok(SearchResult {
+            hits,
+            truncated: parsed.truncated,
+        });
+    }
     let root_path = resolve_path(&root, &workspace);
     if !root_path.is_dir() {
         return Err(format!("not a directory: {root}"));
@@ -160,6 +210,28 @@ pub fn fs_list_files(
     let depth = max_depth.unwrap_or(DEFAULT_DEPTH).clamp(1, HARD_DEPTH);
     let show_hidden = show_hidden.unwrap_or(false);
     let workspace = WorkspaceEnv::from_option(workspace);
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&root, &workspace) {
+            if let Ok((files, truncated)) =
+                crate::modules::agent::list_files(distro, &root, Some(cap), Some(depth), show_hidden)
+            {
+                return Ok(ListFilesResult { files, truncated });
+            }
+        }
+    }
+    if let WorkspaceEnv::Ssh { profile_id } = &workspace {
+        let (files, truncated) = tauri::async_runtime::block_on(
+            crate::modules::ssh::remote::remote_list_files(
+                crate::modules::ssh::remote::global_pool(),
+                profile_id,
+                &root,
+                Some(cap),
+                Some(depth),
+                show_hidden,
+            ),
+        )?;
+        return Ok(ListFilesResult { files, truncated });
+    }
     let root_path = resolve_path(&root, &workspace);
     if !root_path.is_dir() {
         return Err(format!("not a directory: {root}"));

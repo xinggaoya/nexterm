@@ -51,6 +51,7 @@ pub async fn shell_run_command(
     }
 
     let workspace = WorkspaceEnv::from_option(workspace);
+    crate::modules::workspace::reject_ssh_unsupported(&workspace, "shell command")?;
     authorize_spawn_cwd(&registry, cwd.as_deref(), &workspace)?;
     let cwd_path = cwd
         .as_deref()
@@ -162,6 +163,7 @@ pub fn shell_bg_spawn(
     workspace: Option<WorkspaceEnv>,
 ) -> Result<u32, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    crate::modules::workspace::reject_ssh_unsupported(&workspace, "shell command")?;
     authorize_spawn_cwd(&registry, cwd.as_deref(), &workspace)?;
     let proc = background::spawn(command, cwd, workspace)?;
     let id = state.next_bg_id.fetch_add(1, Ordering::Relaxed);

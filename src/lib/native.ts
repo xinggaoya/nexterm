@@ -5,6 +5,26 @@ import {
   type WorkspaceEnv,
 } from "@/modules/workspace/workspaceEnvSnapshot";
 import type { WslDistro } from "@/modules/workspace/workspaceEnvSnapshot";
+import { getSshSecret } from "@/modules/ssh/sshSecrets";
+
+/** SSH 连接档案(与 Rust `SshProfile` 逐字段对齐)。 */
+export type SshProfile = {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  authMethod: { kind: "password" } | { kind: "key"; keyPath: string };
+  createdAt: number;
+};
+
+export type SshProbeResult = { home: string; shell: string };
+
+export type SshKnownHostEntry = {
+  host: string;
+  keyType: string;
+  publicKey: string;
+};
 export type GitRepoInfo = {
   repoRoot: string;
   branch: string;
@@ -614,6 +634,8 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
         cols,
         rows,
         cwd: cwd ?? null,
+        // SSH 工作区:从内存缓存取本次口令(如有)。本地/WSL 为 null。
+        authSecret: workspace.kind === "ssh" ? getSshSecret(workspace) : null,
         workspace,
         onData,
         onExit,
@@ -675,4 +697,26 @@ export const native = {
   // right-click (which the app disables for custom context menus).
   toggleDevtools: () => invoke<boolean>("toggle_devtools"),
   isDevtoolsOpen: () => invoke<boolean>("is_devtools_open"),
+};
+/**
+ * SSH 连接档案与探针(全局资源,不绑定单个 workspace env)。
+ * 机密只经参数单次传递,Rust 侧不落盘。
+ */
+export const ssh = {
+  profileList: () => invoke<SshProfile[]>("ssh_profile_list"),
+  profileSave: (profile: SshProfile) =>
+    invoke<SshProfile>("ssh_profile_save", { profile }),
+  profileDelete: (id: string) => invoke<void>("ssh_profile_delete", { id }),
+  knownHostsList: () => invoke<SshKnownHostEntry[]>("ssh_known_hosts_list"),
+  knownHostsRemove: (host: string) =>
+    invoke<boolean>("ssh_known_hosts_remove", { host }),
+  /**
+   * 连接探针:校验凭据并解析远端 HOME / 登录 shell。连接过程中远端主机
+   * 密钥按 TOFU 处理;指纹变化会抛 `SshHostKeyChanged: ` 前缀错误。
+   */
+  connectTest: (profile: SshProfile, secret: string | null) =>
+    invoke<SshProbeResult>("ssh_connect_test", {
+      profile,
+      secret: secret ?? null,
+    }),
 };

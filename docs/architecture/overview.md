@@ -132,7 +132,7 @@ graph LR
     C --> H
     D --> F
     E --> F
-    F -.->|spawn| I[wsl-watcher-helper]
+    F -.->|spawn| I[nexterm-agent watch]
 ```
 
 `lock.rs` 是所有 `Mutex` / `RwLock` 的统一入口；`process.rs` 在 Windows 下隐藏子进程控制台窗口；`workspace.rs` 是 fs/pty/shell/git 的授权与路径中枢。
@@ -163,7 +163,7 @@ graph LR
 5. **统一路径处理**：边界处归一化 `\\` 与 `/`，WSL 转换集中在 `workspace.rs`。
 6. **ConPTY 序列化保护**：Windows 上 `pty_open` 通过互斥避免首屏输出管道卡住。
 7. **Job Object**：所有 Windows shell 子进程必须挂 Job Object，不允许在无替代方案时移除。
-8. **WSL 独立 watcher**：`nexterm-wsl-watcher-helper` 独立二进制，避免 webview 进程阻塞。
+8. **WSL agent**：`nexterm-agent` 独立二进制（fs/git/watch），避免 webview 进程阻塞。
 
 ## 文档地图
 

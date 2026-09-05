@@ -1,3 +1,10 @@
+//! WSL/远端文件监听模式:`nexterm-agent watch --root <path>`。
+//!
+//! 由 wsl-watcher-helper 并入而来,协议向后兼容(每行
+//! `{"paths":[...],"gitRelated":bool}`),并新增逐路径 `kinds`
+//! (create/modify/remove)—— 这是旧 helper 做不到的。
+//! stdin 不使用;宿主杀掉 wsl.exe 时 stdout 断开,进程随之退场。
+
 use std::collections::BTreeSet;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -8,19 +15,13 @@ use serde::Serialize;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct HelperEvent {
+struct WatchEvent {
     paths: Vec<String>,
     git_related: bool,
+    kinds: Vec<&'static str>,
 }
 
-fn main() {
-    if let Err(error) = run() {
-        eprintln!("{error}");
-        std::process::exit(1);
-    }
-}
-
-fn run() -> Result<(), String> {
+pub fn run_watch() -> Result<(), String> {
     let root = parse_root_arg()?;
     if !root.is_dir() {
         return Err(format!("watch root is not a directory: {}", root.display()));
@@ -39,7 +40,7 @@ fn run() -> Result<(), String> {
     let mut stdout = stdout.lock();
     for result in rx {
         let event = result.map_err(|error| error.to_string())?;
-        if let Some(event) = helper_event_from_notify(&root, event) {
+        if let Some(event) = watch_event_from_notify(&root, event) {
             serde_json::to_writer(&mut stdout, &event).map_err(|error| error.to_string())?;
             stdout.write_all(b"\n").map_err(|error| error.to_string())?;
             stdout.flush().map_err(|error| error.to_string())?;
@@ -58,27 +59,39 @@ fn parse_root_arg() -> Result<PathBuf, String> {
             return Ok(PathBuf::from(root));
         }
     }
-    Err("usage: nexterm-wsl-watcher --root <path>".into())
+    Err("usage: nexterm-agent watch --root <path>".into())
 }
 
-fn helper_event_from_notify(root: &Path, event: Event) -> Option<HelperEvent> {
+fn kind_name(kind: &EventKind) -> &'static str {
+    match kind {
+        EventKind::Create(_) => "create",
+        EventKind::Remove(_) => "remove",
+        EventKind::Modify(_) | EventKind::Other | EventKind::Access(_) => "modify",
+        EventKind::Any => "modify",
+    }
+}
+
+fn watch_event_from_notify(root: &Path, event: Event) -> Option<WatchEvent> {
     if matches!(event.kind, EventKind::Access(_)) {
         return None;
     }
 
-    let mut paths = BTreeSet::new();
+    let kind = kind_name(&event.kind);
+    let mut paths: BTreeSet<String> = BTreeSet::new();
     let mut git_related = false;
     for path in event.paths {
-        let path = normalize_path(&path);
-        if is_git_related_path(root, Path::new(&path)) {
+        let normalized = normalize_path(&path);
+        if is_git_related_path(root, Path::new(&normalized)) {
             git_related = true;
         }
-        paths.insert(path);
+        paths.insert(normalized);
     }
 
-    Some(HelperEvent {
+    let count = paths.len();
+    Some(WatchEvent {
         paths: paths.into_iter().collect(),
         git_related,
+        kinds: vec![kind; count],
     })
 }
 
@@ -99,13 +112,13 @@ mod tests {
     use notify::event::ModifyKind;
 
     #[test]
-    fn helper_event_sorts_paths_and_marks_git_changes() {
+    fn event_sorts_paths_marks_git_and_kinds() {
         let root = PathBuf::from("/home/dev/repo");
         let event = Event::new(EventKind::Modify(ModifyKind::Any))
             .add_path(root.join("src/main.rs"))
             .add_path(root.join(".git/index"));
 
-        let event = helper_event_from_notify(&root, event).expect("helper event");
+        let event = watch_event_from_notify(&root, event).expect("event");
 
         assert_eq!(
             event.paths,
@@ -115,5 +128,16 @@ mod tests {
             ]
         );
         assert!(event.git_related);
+        assert_eq!(event.kinds, vec!["modify", "modify"]);
+    }
+
+    #[test]
+    fn access_events_are_filtered() {
+        let root = PathBuf::from("/home/dev/repo");
+        let event = Event::new(EventKind::Access(notify::event::AccessKind::Close(
+            notify::event::AccessMode::Write,
+        )))
+        .add_path(root.join("x"));
+        assert!(watch_event_from_notify(&root, event).is_none());
     }
 }

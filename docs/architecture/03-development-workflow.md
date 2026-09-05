@@ -29,7 +29,7 @@ pnpm i
 | `pnpm build` | 类型检查 + 生产构建（产出 `dist/`） |
 | `pnpm test` | Vitest 单次运行 |
 | `pnpm test:watch` | Vitest 监听模式 |
-| `cd src-tauri && cargo check --all-targets --locked` | Rust 类型检查（含 wsl-watcher-helper） |
+| `cd src-tauri && cargo check --all-targets --locked` | Rust 类型检查（含 nexterm-agent） |
 | `cd src-tauri && cargo clippy --all-targets --locked -- -D warnings` | Rust lint（PR 前必跑） |
 
 ## 3. 调试
@@ -49,7 +49,7 @@ pnpm i
 ### 3.3 常见问题
 
 - **PTY 没输出 / 卡住**：检查 ConPTY 序列化保护（`pty_open` 互斥），不要并发启动两个 PTY。
-- **WSL 文件变化漏掉**：`wsl-watcher-helper` 是独立二进制，确认其 stdout JSON 行格式没改。
+- **WSL 文件变化漏掉**：watcher 由 `nexterm-agent watch` 提供，确认其 stdout JSON 行格式没改。
 - **偏好不持久化**：`store.ts` 走 `LazyStore`，所有写入都是 200ms 防抖；等待 `prefs.hydrate()` 完成后再读。
 - **Terminal 输出乱码**：检查 `da_filter`（`src-tauri/src/modules/pty/da_filter.rs`）和 `shell_init` 是否对当前 shell 注入正确。
 
@@ -120,22 +120,30 @@ merge: 合并 / sync
 
 ## 7. WSL 构建
 
-`wsl-watcher-helper` 是独立 crate：
+`nexterm-agent` 是独立 crate(经 musl 静态编译后由 `build.rs` 自动内嵌
+主程序;watcher 能力已并入 agent 的 `watch` 子命令):
 
 ```bash
 cd src-tauri
-cargo build -p nexterm-wsl-watcher --release
+# 纯 Rust 依赖,Windows 宿主可在 WSL 内用 rust-lld 链接
+RUSTFLAGS="-C linker=rust-lld" cargo build -p nexterm-agent --release --target x86_64-unknown-linux-musl
 ```
 
-发布到 Windows 包时由 Tauri 打包流程带上。其 stdout 输出约定：
+产物位于 `target/x86_64-unknown-linux-musl/release/` 时会被 `build.rs`
+自动探测并 `include_bytes!` 内嵌;缺失时对应功能自动降级(agent → legacy
+`wsl.exe` 路径,watcher → 轮询),不影响发布。agent 端到端冒烟：
+
+```bash
+cargo run --example agent_smoke -- Ubuntu /tmp
+```
+
+agent `watch` 子命令的 stdout 输出约定(每 notify 事件一行):
 
 ```json
-{"type": "create", "path": "/mnt/c/..."}
-{"type": "modify", "path": "/mnt/c/..."}
-{"type": "remove", "path": "/mnt/c/..."}
+{"paths":["/home/..."],"gitRelated":false,"kinds":["create"]}
 ```
 
-主进程通过 spawn + readline 消费，转换成 `WorkspaceFsChangedEvent` 发给前端。
+主进程通过 spawn + readline 消费,转换成 `WorkspaceFsChangedEvent` 发给前端。
 
 ## 8. 发布前检查
 

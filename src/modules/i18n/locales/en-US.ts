@@ -10,6 +10,7 @@ const enUS = {
     explorer: "Explorer",
     history: "History",
     local: "Local",
+    ssh: "SSH",
     noCurrentDirectory: "No current directory",
     paste: "Paste",
     refresh: "Refresh",
@@ -134,6 +135,7 @@ const enUS = {
       add: "Add workspace",
       addLocal: "Add local workspace",
       addWsl: "Add WSL workspace",
+      addSsh: "Connect via SSH",
       close: "Close workspace",
       local: "Local",
     },
@@ -146,6 +148,7 @@ const enUS = {
       openFolder: "Open Folder",
       openInLocal: "Open local home",
       openInWsl: "Open WSL · {distro}",
+      openInSsh: "Connect via SSH",
       opening: "Opening...",
       recentWorkspaces: "Recent Workspaces",
       subtitle: "A terminal-first development environment",
@@ -565,6 +568,32 @@ const enUS = {
     gitStatus: "Git: status",
     runSnippetTitle: "Run Snippet",
   },
+
+  ssh: {
+    auth: {
+      password: "Password",
+      key: "Private key",
+    },
+    selector: {
+      newConnection: "SSH connection (new)…"
+    },
+    dialog: {
+      title: "Connect to SSH server",
+      connect: "Connect",
+      passwordPlaceholder: "Enter password",
+      passphrasePlaceholder: "Key passphrase (optional)",
+      profileName: "Profile name",
+      host: "Host",
+      username: "Username",
+      keyPath: "Key path (e.g. ~/.ssh/id_ed25519)",
+      newProfile: "+ New connection",
+      useExisting: "Use existing connection",
+      selectProfile: "Select a connection",
+      formIncomplete: "Name, host and username are required",
+      loadingProfiles: "Loading connections…",
+    },
+  },
+
 } as const;
 
 export default enUS;

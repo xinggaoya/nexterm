@@ -133,6 +133,10 @@ pub fn authorize_spawn_cwd(
     let Some(cwd) = cwd.map(str::trim).filter(|s| !s.is_empty()) else {
         return Ok(None);
     };
+    if workspace.is_ssh() {
+        // SSH cwd 是远端路径,宿主注册表无意义;实际授权发生在远端。
+        return Ok(Some(PathBuf::from(cwd)));
+    }
     let resolved = resolve_path(cwd, workspace);
     let canonical = registry
         .canonicalize_cached(&resolved)
@@ -220,6 +224,10 @@ pub enum WorkspaceEnv {
     Wsl {
         distro: String,
     },
+    Ssh {
+        #[serde(rename = "profileId")]
+        profile_id: String,
+    },
 }
 
 impl WorkspaceEnv {
@@ -230,6 +238,21 @@ impl WorkspaceEnv {
     pub fn is_wsl(&self) -> bool {
         matches!(self, Self::Wsl { .. })
     }
+
+    pub fn is_ssh(&self) -> bool {
+        matches!(self, Self::Ssh { .. })
+    }
+}
+
+/// Phase 1 边界:SSH 工作区仅支持终端。fs/git/shell 侧的命令入口统一
+/// 调用此守卫,给出可预期的错误而不是误走本地路径。
+pub fn reject_ssh_unsupported(workspace: &WorkspaceEnv, op: &str) -> Result<(), String> {
+    if workspace.is_ssh() {
+        return Err(format!(
+            "SSH workspaces support terminals only; '{op}' is not available yet"
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -267,6 +290,8 @@ pub fn resolve_path(path: &str, workspace: &WorkspaceEnv) -> PathBuf {
     match workspace {
         WorkspaceEnv::Local => PathBuf::from(path),
         WorkspaceEnv::Wsl { distro } => wsl_path_to_host(distro, path),
+        // SSH 路径不经宿主文件系统;调用方应先过 reject_ssh_unsupported。
+        WorkspaceEnv::Ssh { .. } => PathBuf::from(path),
     }
 }
 
@@ -281,6 +306,11 @@ fn authorize_workspace_path(
     workspace: &WorkspaceEnv,
 ) -> Result<String, String> {
     let client_path = normalize_workspace_request_path(path, workspace)?;
+    // SSH 工作区:路径语义在远端,宿主注册表不参与;终端 cwd 授权靠
+    // 前端从探针/用户输入取得的远端路径。fs 类操作由守卫提前拒绝。
+    if workspace.is_ssh() {
+        return Ok(client_path);
+    }
     let resolved = resolve_path(&client_path, workspace);
     let canonical = registry.authorize(&resolved).map_err(|e| e.to_string())?;
     if workspace.is_wsl() {
@@ -296,7 +326,7 @@ fn normalize_workspace_request_path(
     workspace: &WorkspaceEnv,
 ) -> Result<String, String> {
     match workspace {
-        WorkspaceEnv::Local => Ok(path.to_string()),
+        WorkspaceEnv::Local | WorkspaceEnv::Ssh { .. } => Ok(path.to_string()),
         WorkspaceEnv::Wsl { distro } => normalize_wsl_workspace_request_path(distro, path),
     }
 }

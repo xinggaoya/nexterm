@@ -41,7 +41,9 @@ function basename(path: string): string {
 }
 
 function envLabel(env: WorkspaceEnv): string {
-  return env.kind === "wsl" ? env.distro : t("common.local");
+  if (env.kind === "wsl") return env.distro;
+  if (env.kind === "ssh") return t("common.ssh");
+  return t("common.local");
 }
 
 function openEnv(env: WorkspaceEnv) {
@@ -117,6 +119,15 @@ onMounted(() => {
           >
             <template #icon><NIcon :component="ServerOutline" /></template>
             {{ t("app.welcome.openInWsl", { distro: distro.name }) }}
+          </NButton>
+          <NButton
+            size="medium"
+            secondary
+            data-open-workspace-ssh
+            @click="openEnv({ kind: 'ssh', profileId: 'new' })"
+          >
+            <template #icon><NIcon :component="ServerOutline" /></template>
+            {{ t("app.welcome.openInSsh") }}
           </NButton>
         </div>
 

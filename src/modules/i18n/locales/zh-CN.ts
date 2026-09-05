@@ -12,6 +12,7 @@ const zhCN = {
     explorer: "资源管理器",
     history: "历史",
     local: "本机",
+    ssh: "SSH",
     noCurrentDirectory: "没有当前目录",
     paste: "粘贴",
     refresh: "刷新",
@@ -136,6 +137,7 @@ const zhCN = {
       add: "添加工作区",
       addLocal: "添加本机工作区",
       addWsl: "添加 WSL 工作区",
+      addSsh: "连接 SSH 服务器",
       close: "关闭工作区",
       local: "本机",
     },
@@ -148,6 +150,7 @@ const zhCN = {
       openFolder: "打开文件夹",
       openInLocal: "打开本机 home",
       openInWsl: "打开 WSL · {distro}",
+      openInSsh: "通过 SSH 连接",
       opening: "正在打开...",
       recentWorkspaces: "最近工作区",
       subtitle: "终端优先的现代化开发环境",
@@ -560,6 +563,32 @@ const zhCN = {
     gitStatus: "Git：状态",
     runSnippetTitle: "运行片段",
   },
+
+  ssh: {
+    auth: {
+      password: "密码",
+      key: "私钥",
+    },
+    selector: {
+      newConnection: "SSH 连接(新建)…"
+    },
+    dialog: {
+      title: "连接 SSH 服务器",
+      connect: "连接",
+      passwordPlaceholder: "输入密码",
+      passphrasePlaceholder: "输入私钥 passphrase(可选)",
+      profileName: "连接名称",
+      host: "主机",
+      username: "用户名",
+      keyPath: "私钥路径(如 ~/.ssh/id_ed25519)",
+      newProfile: "+ 新建连接",
+      useExisting: "使用已有连接",
+      selectProfile: "请选择一个连接",
+      formIncomplete: "名称、主机、用户名不能为空",
+      loadingProfiles: "正在加载连接…",
+    },
+  },
+
 } satisfies MessageSchema;
 
 export default zhCN;

@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod fs;
 pub mod git;
 pub mod lsp;
@@ -5,4 +6,5 @@ pub(crate) mod lock;
 pub(crate) mod process;
 pub mod pty;
 pub mod shell;
+pub mod ssh;
 pub mod workspace;

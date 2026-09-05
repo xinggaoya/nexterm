@@ -1,9 +1,5 @@
-use std::io::Write;
-
-use portable_pty::PtySize;
-
 use super::PtyState;
-use crate::modules::lock::{mutex_lock, rwlock_read};
+use crate::modules::lock::rwlock_read;
 
 /// PTY resize 允许的最小列数。低于此值会拒绝 resize：FitAddon 在容器尚未
 /// 完成布局（如非活动 workspace 刚切回）时可能算出 cols=2（其 MINIMUM_COLS），
@@ -33,10 +29,7 @@ impl PtyState {
             .get(&id)
             .cloned()
             .ok_or_else(|| format!("unknown pty session: {id}"))?;
-        let result = mutex_lock(&session.writer, "pty writer")?
-            .write_all(data.as_bytes())
-            .map_err(|e| e.to_string());
-        result
+        session.write(data)
     }
 
     pub fn resize_session(&self, id: u32, cols: u16, rows: u16) -> Result<(), String> {
@@ -47,15 +40,7 @@ impl PtyState {
             .get(&id)
             .cloned()
             .ok_or_else(|| format!("unknown pty session: {id}"))?;
-        let result = mutex_lock(&session.master, "pty master")?
-            .resize(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| e.to_string());
-        result
+        session.resize(cols, rows)
     }
 }
 

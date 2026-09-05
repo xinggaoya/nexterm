@@ -83,6 +83,7 @@ pub fn fs_watch_workspace(
     state: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    crate::modules::workspace::reject_ssh_unsupported(&workspace, "fs watcher")?;
     let context = build_refresh_context(&root_path, workspace, &registry)?;
 
     {
@@ -126,6 +127,7 @@ pub fn fs_unwatch_workspace(
     state: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    crate::modules::workspace::reject_ssh_unsupported(&workspace, "fs watcher")?;
     let root_path = normalize_frontend_path(&root_path);
     let key = workspace_watch_key(&root_path, &workspace);
     let mut watchers = mutex_lock(&state.watchers, "fs watcher state")?;
@@ -152,6 +154,7 @@ pub fn fs_force_flush_workspace(
     state: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    crate::modules::workspace::reject_ssh_unsupported(&workspace, "fs watcher")?;
     let root_path = normalize_frontend_path(&root_path);
     let key = workspace_watch_key(&root_path, &workspace);
     let watchers = mutex_lock(&state.watchers, "fs watcher state")?;
@@ -289,6 +292,15 @@ fn start_refresh_source(
 ) -> ActiveRefreshSource {
     let has_git_repo = context.has_git_repo;
     match &context.workspace {
+        // SSH 工作区不支持 watcher(命令入口已拒绝);防御性降级轮询。
+        WorkspaceEnv::Ssh { .. } => {
+            log::warn!("watcher on ssh workspace is unsupported; using polling");
+            ActiveRefreshSource::Polling(polling::start_polling_refresh(
+                context.root_path.clone(),
+                event_tx,
+                has_git_repo,
+            ))
+        }
         WorkspaceEnv::Local => {
             let Some(local_root) = context.local_root.clone() else {
                 log::warn!("local workspace has no canonical host root; using polling");
@@ -395,6 +407,7 @@ fn workspace_watch_key(root_path: &str, workspace: &WorkspaceEnv) -> String {
     match workspace {
         WorkspaceEnv::Local => format!("local:{root}"),
         WorkspaceEnv::Wsl { distro } => format!("wsl:{distro}:{root}"),
+        WorkspaceEnv::Ssh { profile_id } => format!("ssh:{profile_id}:{root}"),
     }
 }
 

@@ -98,7 +98,9 @@ function isPersistedWorkspace(value: unknown): value is PersistedWorkspace {
       typeof v.env === "object" &&
       (((v.env as { kind?: unknown }).kind === "local") ||
         ((v.env as { kind?: unknown }).kind === "wsl" &&
-          typeof (v.env as { distro?: unknown }).distro === "string")))
+          typeof (v.env as { distro?: unknown }).distro === "string") ||
+        ((v.env as { kind?: unknown }).kind === "ssh" &&
+          typeof (v.env as { profileId?: unknown }).profileId === "string")))
   );
 }
 

@@ -1,7 +1,7 @@
 pub mod modules;
 mod panic_report;
 
-use modules::{fs, git, lsp, pty, shell, workspace};
+use modules::{fs, git, lsp, pty, shell, ssh, workspace};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -254,6 +254,12 @@ pub fn run() {
             workspace::wsl_list_distros,
             workspace::wsl_home,
             workspace::workspace_authorize,
+            ssh::ssh_profile_list,
+            ssh::ssh_profile_save,
+            ssh::ssh_profile_delete,
+            ssh::ssh_known_hosts_list,
+            ssh::ssh_known_hosts_remove,
+            ssh::ssh_connect_test,
             lsp::commands::lsp_start,
             lsp::commands::lsp_write,
             lsp::commands::lsp_stop,

@@ -1651,6 +1651,8 @@ pub fn discover_repositories(
     let (raw_candidates, depth_more) = match workspace {
         WorkspaceEnv::Local => collect_local(registry, &root, max_depth, limit),
         WorkspaceEnv::Wsl { .. } => collect_wsl(registry, &root, max_depth, limit)?,
+        // 命令入口已被 SSH 守卫拒绝;此处只为穷尽 match。
+        WorkspaceEnv::Ssh { .. } => (Vec::new(), false),
     };
 
     let mut repositories: Vec<GitWorkspaceRepo> = Vec::new();
@@ -1835,10 +1837,10 @@ fn collect_wsl(
     use crate::modules::workspace::wsl_exec_capture;
     let distro = match &root.workspace {
         WorkspaceEnv::Wsl { distro } => distro.clone(),
-        WorkspaceEnv::Local => {
+        WorkspaceEnv::Local | WorkspaceEnv::Ssh { .. } => {
             return Err(GitError::command(
                 "git_discover_repositories",
-                "internal: wsl collector called for local workspace",
+                "internal: wsl collector called for non-wsl workspace",
             ));
         }
     };

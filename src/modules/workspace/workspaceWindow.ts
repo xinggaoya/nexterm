@@ -32,13 +32,21 @@ function workspaceWindowUrl(selection: WorkspaceSelection): string {
   if (selection.env.kind === "wsl") {
     params.set("wslDistro", selection.env.distro);
   }
+  if (selection.env.kind === "ssh") {
+    params.set("sshProfileId", selection.env.profileId);
+  }
   return `index.html?${params.toString()}`;
 }
 
 function workspaceEnvKey(selection: WorkspaceSelection): string {
-  return selection.env.kind === "wsl"
-    ? `wsl:${selection.env.distro}`
-    : "local";
+  switch (selection.env.kind) {
+    case "wsl":
+      return `wsl:${selection.env.distro}`;
+    case "ssh":
+      return `ssh:${selection.env.profileId}`;
+    default:
+      return "local";
+  }
 }
 
 function workspaceWindowLabel(selection: WorkspaceSelection): string {

@@ -1,0 +1,25 @@
+[package]
+name = "nexterm-agent"
+version = "0.1.2"
+edition = "2021"
+publish = false
+description = "Nexterm 常驻代理:在 WSL/远端执行 fs 读操作与 exec,经 stdio JSON-lines 与宿主通信"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+notify = "8.2"
+tempfile = "3"
+ignore = "0.4"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+globset = "0.4"
+
+[lib]
+name = "nexterm_agent"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nexterm-agent"
+path = "src/main.rs"

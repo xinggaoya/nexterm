@@ -104,7 +104,7 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 - **入口**：`src-tauri/src/lib.rs` 注册所有 Tauri 命令、装配插件、管理全局 state。
 - **模块**：`src-tauri/src/modules/<domain>/`。
 - **lock**：`lock.rs` 是所有 `Mutex` / `RwLock` 的统一入口。
-- **WSL 辅助**：`wsl-watcher-helper/` 独立二进制。
+- **WSL 辅助**：`agent/` 独立二进制（watch/fs/exec 一体）。
 - **Panic hook**：`panic_report.rs`。
 
 ## 4. 关键数据流

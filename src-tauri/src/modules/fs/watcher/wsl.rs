@@ -21,8 +21,6 @@ const HELPER_FAILURE_LIMIT: usize = 3;
 const HELPER_RESTART_DELAY: Duration = Duration::from_millis(500);
 #[cfg(windows)]
 const HELPER_POLLING_INTERVAL: Duration = Duration::from_secs(5);
-#[cfg(any(test, windows))]
-const HELPER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub(super) struct WslRefreshSource {
     stop_tx: Option<mpsc::Sender<()>>,
@@ -66,7 +64,8 @@ pub(super) fn start_wsl_helper(
     #[cfg(windows)]
     {
         crate::modules::workspace::validate_wsl_distro_name(distro)?;
-        let helper_path = install_wsl_helper(distro)?;
+        // watcher 已并入 nexterm-agent(watch 子命令),安装/拉起复用 agent 通道。
+        let helper_path = crate::modules::agent::install::ensure_agent_installed(distro)?;
         let (stop_tx, stop_rx) = mpsc::channel();
         let current_child = Arc::new(Mutex::new(None));
         let supervisor_child = Arc::clone(&current_child);
@@ -97,6 +96,19 @@ struct WslHelperJsonEvent {
     paths: Vec<String>,
     #[serde(default, alias = "git_related")]
     git_related: bool,
+    /// agent watch 模式提供逐路径类型;缺省(旧 helper 协议)保守按 Modify。
+    #[serde(default)]
+    kinds: Vec<String>,
+}
+
+#[cfg(any(test, windows))]
+fn parse_kind(raw: &str) -> Option<super::events::FsChangeKind> {
+    match raw {
+        "create" => Some(super::events::FsChangeKind::Create),
+        "remove" | "delete" => Some(super::events::FsChangeKind::Delete),
+        "modify" => Some(super::events::FsChangeKind::Modify),
+        _ => None,
+    }
 }
 
 #[cfg(any(test, windows))]
@@ -124,7 +136,16 @@ pub(super) fn workspace_fs_event_from_wsl_json_line(
     // we conservatively emit `Modify`. The file explorer already upgrades
     // silent refreshes to a full rebuild when the directory's membership
     // actually changes, so this default can't mask a real create/delete.
-    let kinds = vec![super::events::FsChangeKind::Modify; paths.len()];
+    let fallback_kind = super::events::FsChangeKind::Modify;
+    let kinds: Vec<super::events::FsChangeKind> = if helper_event.kinds.len() == paths.len() {
+        helper_event
+            .kinds
+            .iter()
+            .map(|raw| parse_kind(raw).unwrap_or(fallback_kind))
+            .collect()
+    } else {
+        vec![fallback_kind; paths.len()]
+    };
     Ok(Some(WorkspaceFsChangedEvent {
         root_path: normalize_frontend_path(root_path),
         paths,
@@ -253,6 +274,7 @@ fn run_helper_once(
         .arg(distro)
         .arg("--exec")
         .arg(helper_path)
+        .arg("watch")
         .arg("--root")
         .arg(root_path)
         .stdin(Stdio::null())
@@ -370,110 +392,10 @@ fn clear_current_child(current_child: &Arc<Mutex<Option<std::process::Child>>>) 
     }
 }
 
-#[cfg(windows)]
-fn install_wsl_helper(distro: &str) -> Result<String, String> {
-    let arch = supported_helper_arch()?;
-    let bytes = helper_asset_bytes()?;
-    let home = crate::modules::workspace::wsl_home(distro.to_string())?;
-    let path = helper_install_path(&home, arch);
-    write_helper_bytes(distro, &path, &bytes)?;
-    Ok(path)
-}
-
-#[cfg(windows)]
-fn supported_helper_arch() -> Result<&'static str, String> {
-    match std::env::consts::ARCH {
-        "x86_64" => Ok("x86_64"),
-        other => Err(format!(
-            "WSL watcher helper is not bundled for host architecture {other}"
-        )),
-    }
-}
-
-#[cfg(windows)]
-fn helper_asset_bytes() -> Result<Vec<u8>, String> {
-    #[cfg(nexterm_wsl_watcher_helper_asset)]
-    {
-        return Ok(include_bytes!(env!("NEXTERM_WSL_WATCHER_HELPER_ASSET")).to_vec());
-    }
-
-    #[cfg(not(nexterm_wsl_watcher_helper_asset))]
-    {
-        runtime_helper_asset_bytes()
-    }
-}
-
-#[cfg(all(windows, not(nexterm_wsl_watcher_helper_asset)))]
-fn runtime_helper_asset_bytes() -> Result<Vec<u8>, String> {
-    let path = std::env::var("NEXTERM_WSL_WATCHER_HELPER")
-        .map_err(|_| "bundled WSL watcher helper asset is not configured".to_string())?;
-    std::fs::read(&path)
-        .map_err(|error| format!("failed to read WSL watcher helper asset {}: {error}", path))
-}
-
-#[cfg(windows)]
-fn write_helper_bytes(distro: &str, target_path: &str, bytes: &[u8]) -> Result<(), String> {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-
-    let mut command = Command::new("wsl.exe");
-    command
-        .arg("-d")
-        .arg(distro)
-        .arg("--exec")
-        .arg("sh")
-        .arg("-c")
-        .arg("mkdir -p \"$(dirname \"$1\")\" && cat > \"$1\" && chmod 755 \"$1\"")
-        .arg("sh")
-        .arg(target_path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped());
-    crate::modules::process::suppress_command_window(&mut command);
-    let mut child = command.spawn().map_err(|e| e.to_string())?;
-    {
-        let stdin = child
-            .stdin
-            .as_mut()
-            .ok_or_else(|| "failed to open WSL helper installer stdin".to_string())?;
-        stdin.write_all(bytes).map_err(|e| e.to_string())?;
-    }
-    let output = child.wait_with_output().map_err(|e| e.to_string())?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(
-            crate::modules::workspace::decode_command_output(&output.stderr)
-                .trim()
-                .to_string(),
-        )
-    }
-}
-
-#[cfg(any(test, windows))]
-fn helper_install_path(home: &str, arch: &str) -> String {
-    format!(
-        "{}/.cache/nexterm/watcher/nexterm-wsl-watcher-{}-{}",
-        home.trim_end_matches('/'),
-        HELPER_VERSION,
-        arch
-    )
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn helper_install_path_uses_wsl_user_cache() {
-        assert_eq!(
-            helper_install_path("/home/dev/", "x86_64"),
-            format!(
-                "/home/dev/.cache/nexterm/watcher/nexterm-wsl-watcher-{}-x86_64",
-                HELPER_VERSION
-            )
-        );
-    }
 
     #[test]
     fn parser_marks_git_paths_even_without_explicit_flag() {
@@ -486,6 +408,32 @@ mod tests {
         .expect("event");
 
         assert!(event.git_related);
+    }
+
+    #[test]
+    fn parser_maps_agent_kinds_per_path() {
+        let event = workspace_fs_event_from_wsl_json_line(
+            "/home/dev/repo",
+            false,
+            r#"{"paths":["/home/dev/repo/a","/home/dev/repo/b"],"kinds":["create","remove"]}"#,
+        )
+        .expect("valid json")
+        .expect("event");
+        assert_eq!(event.kinds.len(), 2);
+        assert!(matches!(event.kinds[0], super::super::events::FsChangeKind::Create));
+        assert!(matches!(event.kinds[1], super::super::events::FsChangeKind::Delete));
+    }
+
+    #[test]
+    fn parser_defaults_to_modify_without_kinds() {
+        let event = workspace_fs_event_from_wsl_json_line(
+            "/home/dev/repo",
+            false,
+            r#"{"paths":["/x"]}"#,
+        )
+        .expect("valid json")
+        .expect("event");
+        assert!(matches!(event.kinds[0], super::super::events::FsChangeKind::Modify));
     }
 
     #[test]

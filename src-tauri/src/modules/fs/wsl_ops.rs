@@ -69,12 +69,20 @@ fn run_wsl_bytes(distro: &str, program: &str, args: &[&str]) -> Result<Vec<u8>, 
     Err("WSL is only available on Windows".into())
 }
 
+/// agent 优先、legacy 兜底:资产缺失/熔断/任何 agent 错误都会落到
+/// 原 `wsl.exe` 路径,错误信息保持不变(测试与前端依赖这些消息)。
 pub fn read_file(distro: &str, path: &str) -> Result<Vec<u8>, String> {
+    if let Ok(bytes) = crate::modules::agent::read_file(distro, path) {
+        return Ok(bytes);
+    }
     run_wsl_bytes(distro, "cat", &[path])
         .map_err(|error| format!("fs_read_file WSL({path}) failed: {error}"))
 }
 
 pub fn stat_path(distro: &str, path: &str) -> Result<WslFileStat, String> {
+    if let Ok(stat) = crate::modules::agent::stat(distro, path) {
+        return Ok(stat);
+    }
     let output = run_wsl_bytes(distro, "sh", &["-c", STAT_SCRIPT, "sh", path])
         .map_err(|error| format!("fs_stat WSL({path}) failed: {error}"))?;
     parse_stat_line(&String::from_utf8_lossy(&output))
@@ -82,6 +90,9 @@ pub fn stat_path(distro: &str, path: &str) -> Result<WslFileStat, String> {
 }
 
 pub fn read_dir(distro: &str, path: &str) -> Result<Vec<WslDirEntry>, String> {
+    if let Ok(entries) = crate::modules::agent::read_dir(distro, path) {
+        return Ok(entries);
+    }
     let output = run_wsl_bytes(distro, "sh", &["-c", READ_DIR_SCRIPT, "sh", path])
         .map_err(|error| format!("fs_read_dir WSL({path}) failed: {error}"))?;
     parse_dir_output(&String::from_utf8_lossy(&output))

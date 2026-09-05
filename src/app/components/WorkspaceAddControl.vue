@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AddOutline, ServerOutline } from "@vicons/ionicons5";
+import { AddOutline, ServerOutline, TerminalOutline } from "@vicons/ionicons5";
 import { NDropdown, NIcon, type DropdownOption } from "naive-ui";
 import { computed, ref } from "vue";
 import NextermIconButton from "@/components/NextermIconButton.vue";
@@ -52,6 +52,11 @@ const showWslDirect = computed(
 
 function addLocalWorkspace(): void {
   emit("addWorkspace", LOCAL_WORKSPACE);
+}
+
+// SSH:发起连接对话框(内含档案列表/新建 + 凭据校验),与欢迎页同一条链路。
+function addSshWorkspace(): void {
+  emit("addWorkspace", { kind: "ssh", profileId: "new" });
 }
 
 function addWslWorkspace(key: string | number): void {
@@ -113,6 +118,18 @@ function addSingleWslWorkspace(): void {
       <NIcon :component="ServerOutline" :size="13" />
       <span class="truncate">{{ t("app.workspaceBar.addWsl") }}</span>
     </button>
+
+    <button
+      type="button"
+      class="nexterm-row flex h-7 items-center gap-2 px-2 text-[12px] text-muted-foreground hover:text-foreground"
+      :title="t('app.workspaceBar.addSsh')"
+      :aria-label="t('app.workspaceBar.addSsh')"
+      data-add-workspace-ssh
+      @click="addSshWorkspace"
+    >
+      <NIcon :component="TerminalOutline" :size="13" />
+      <span class="truncate">{{ t("app.workspaceBar.addSsh") }}</span>
+    </button>
   </template>
 
   <template v-else>
@@ -152,6 +169,15 @@ function addSingleWslWorkspace(): void {
       @click="addSingleWslWorkspace"
     >
       <NIcon :component="ServerOutline" :size="14" />
+    </NextermIconButton>
+
+    <NextermIconButton
+      :title="t('app.workspaceBar.addSsh')"
+      :aria-label="t('app.workspaceBar.addSsh')"
+      data-add-workspace-ssh
+      @click="addSshWorkspace"
+    >
+      <NIcon :component="TerminalOutline" :size="14" />
     </NextermIconButton>
   </template>
 </template>

@@ -177,5 +177,9 @@ export async function resolveHomeForEnv(env: WorkspaceEnv): Promise<string> {
     const { getWslHome } = await import("@/modules/workspace/workspaceNative");
     return getWslHome(env.distro);
   }
+  if (env.kind === "ssh") {
+    // SSH 的工作区根在连接对话框里由远端 HOME 探针确定,不走此函数。
+    throw new Error("ssh workspace root is resolved by the connect dialog");
+  }
   return (await homeDir()).replace(/\\/g, "/");
 }

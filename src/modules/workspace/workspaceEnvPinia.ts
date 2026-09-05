@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { native } from "@/lib/native";
-import type { WslDistro } from "./workspaceEnvSnapshot";
+import type { WslDistro, WorkspaceEnv } from "./workspaceEnvSnapshot";
 
 /**
  * WSL distro catalog + selection state for the "add workspace" flow.
@@ -20,13 +20,11 @@ export const useWorkspaceEnvPiniaStore = defineStore("workspace-env", () => {
   // Transient: which env the add-workspace dialog currently shows. Defaults
   // to local; the dialog may flip it to a wsl distro. Not persisted — purely
   // UI state for the picker.
-  const pendingEnv = ref<{ kind: "local" } | { kind: "wsl"; distro: string }>({
+  const pendingEnv = ref<WorkspaceEnv>({
     kind: "local",
   });
 
-  function setPendingEnv(
-    next: { kind: "local" } | { kind: "wsl"; distro: string },
-  ): void {
+  function setPendingEnv(next: WorkspaceEnv): void {
     pendingEnv.value = next;
   }
 

@@ -48,6 +48,7 @@ fn workspace_cache_key(workspace: &WorkspaceEnv) -> String {
     match workspace {
         WorkspaceEnv::Local => "local".into(),
         WorkspaceEnv::Wsl { distro } => format!("wsl:{distro}"),
+        WorkspaceEnv::Ssh { profile_id } => format!("ssh:{profile_id}"),
     }
 }
 
@@ -256,6 +257,22 @@ where
         .into_iter()
         .map(|arg| arg.as_ref().to_os_string())
         .collect();
+
+    // agent 优先:WSL 下所有 git 命令经常驻 agent 执行,省掉每次
+    // `wsl.exe` 进程 spawn;agent 不可用或失败时落回 legacy 路径。
+    #[cfg(windows)]
+    if let WorkspaceEnv::Wsl { distro } = workspace {
+        match run_git_via_agent(distro, cwd, &args, dur) {
+            Some(output) => return Ok(output),
+            None => log::debug!("agent git exec unavailable; falling back to wsl.exe"),
+        }
+    }
+
+    // SSH 工作区:git 经 SSH 通道上的远端 agent 执行(Phase 2)。
+    if let WorkspaceEnv::Ssh { profile_id } = workspace {
+        return run_git_via_remote_agent(profile_id, cwd, &args, dur);
+    }
+
     let mut cmd = build_git_command(workspace, cwd, &args)?;
     cmd.env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_ASKPASS", "")
@@ -310,6 +327,51 @@ where
     })
 }
 
+/// SSH 工作区的 git 执行。同步上下文内等待异步远端操作:经
+/// async_runtime::spawn + mpsc 桥接,超时上限 = git 业务超时 + 传输余量。
+fn run_git_via_remote_agent(
+    profile_id: &str,
+    cwd: Option<&str>,
+    args: &[OsString],
+    timeout: Duration,
+) -> Result<GitOutput> {
+    // JSON 协议只收 UTF-8 参数;非 UTF-8 参数在远端 shell 场景同样危险。
+    let mut argv = Vec::with_capacity(args.len() + 1);
+    argv.push("git".to_string());
+    for arg in args {
+        argv.push(arg.to_str().map(str::to_string).ok_or_else(|| {
+            GitError::command("git over ssh", "non-utf8 argument".to_string())
+        })?);
+    }
+    let profile_id = profile_id.to_string();
+    let cwd = cwd.map(str::to_string);
+    let (tx, rx) = mpsc::channel();
+    tauri::async_runtime::spawn(async move {
+        let result = crate::modules::ssh::remote::remote_git_exec(
+            crate::modules::ssh::remote::global_pool(),
+            &profile_id,
+            cwd.as_deref(),
+            &argv,
+            GIT_AGENT_ENV,
+            timeout,
+            MAX_OUTPUT_BYTES,
+        )
+        .await;
+        let _ = tx.send(result);
+    });
+    match rx.recv_timeout(timeout + AGENT_TRANSPORT_GRACE + Duration::from_secs(5)) {
+        Ok(Ok(outcome)) => Ok(GitOutput {
+            stdout: outcome.stdout,
+            stderr: outcome.stderr,
+            exit_code: outcome.exit_code,
+            timed_out: outcome.timed_out,
+            truncated: outcome.truncated,
+        }),
+        Ok(Err(error)) => Err(GitError::command("git over ssh", error)),
+        Err(_) => Err(GitError::TimedOut("git over ssh")),
+    }
+}
+
 fn build_git_command(
     _workspace: &WorkspaceEnv,
     cwd: Option<&str>,
@@ -337,6 +399,57 @@ fn build_git_command(
     }
     suppress_command_window(&mut cmd);
     Ok(cmd)
+}
+
+/// agent 传输的 env 覆盖集:与 `run_git_uncached` 给 legacy 命令设的
+/// 环境完全一致(wsl.exe 会把它们透传进 Linux 侧 git)。
+#[cfg(windows)]
+const GIT_AGENT_ENV: &[(&str, &str)] = &[
+    ("GIT_TERMINAL_PROMPT", "0"),
+    ("GIT_ASKPASS", ""),
+    ("SSH_ASKPASS", ""),
+    ("GIT_OPTIONAL_LOCKS", "0"),
+    ("GCM_INTERACTIVE", "Never"),
+    ("GCM_PROVIDER", ""),
+    ("LC_ALL", "C"),
+];
+
+/// 传输层在业务超时之上再多等的余量,覆盖 agent 往返与 JSON 编解码。
+#[cfg(windows)]
+const AGENT_TRANSPORT_GRACE: Duration = Duration::from_secs(5);
+
+/// 经常驻 agent 执行 git。返回 `None` 表示 agent 不可用(资产缺失、
+/// 熔断、非 UTF-8 参数、agent 报错),调用方应走 legacy 路径。
+#[cfg(windows)]
+fn run_git_via_agent(
+    distro: &str,
+    cwd: Option<&str>,
+    args: &[OsString],
+    timeout: Duration,
+) -> Option<GitOutput> {
+    let mut argv = Vec::with_capacity(args.len() + 1);
+    argv.push("git".to_string());
+    for arg in args {
+        // JSON 协议只收 UTF-8;含非 UTF-8 参数时交给 legacy 路径处理。
+        argv.push(arg.to_str()?.to_string());
+    }
+    let outcome = crate::modules::agent::exec_simple(
+        distro,
+        argv,
+        cwd.map(str::to_string),
+        GIT_AGENT_ENV,
+        None,
+        timeout + AGENT_TRANSPORT_GRACE,
+        MAX_OUTPUT_BYTES,
+    )
+    .ok()?;
+    Some(GitOutput {
+        stdout: outcome.stdout,
+        stderr: outcome.stderr,
+        exit_code: outcome.exit_code,
+        timed_out: outcome.timed_out,
+        truncated: outcome.truncated,
+    })
 }
 
 pub fn ensure_success(output: &GitOutput, context: &'static str) -> Result<()> {
@@ -526,5 +639,67 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("unsafe WSL distro name"));
+    }
+}
+
+#[cfg(all(test, windows))]
+mod wsl_agent_e2e {
+    use super::*;
+    use crate::modules::workspace::WorkspaceEnv;
+
+    /// 端到端(需真实 WSL 发行版 `Ubuntu` 与已构建内嵌 musl 资产):
+    ///   NEXTERM_AGENT_E2E=1 cargo test --lib wsl_git_via_agent -- --ignored
+    /// 覆盖 `run_git_uncached` 的 WSL agent 路由:探针 → agent 安装 →
+    /// git init/status 全部经 agent 通道执行。
+    #[test]
+    #[ignore = "requires real WSL distro; run with NEXTERM_AGENT_E2E=1 --ignored"]
+    fn wsl_git_via_agent_roundtrip() {
+        assert!(
+            crate::modules::agent::install::asset_available(),
+            "agent unavailable: build the musl asset and set NEXTERM_AGENT_E2E=1"
+        );
+        let workspace = WorkspaceEnv::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        crate::modules::git::process::ensure_git_available(&workspace)
+            .expect("git availability via agent");
+
+        let repo = format!("/tmp/nexterm-git-e2e-{}", std::process::id());
+        // 准备:agent exec 建 repo + 提交一个文件
+        for cmd in [
+            format!("rm -rf {repo} && mkdir -p {repo} && cd {repo} && git init -q"),
+            format!("cd {repo} && printf x > tracked.txt && git add tracked.txt && git -c user.email=t@t -c user.name=t commit -qm init && printf y > untracked.txt"),
+        ] {
+            let out = std::process::Command::new("wsl.exe")
+                .args(["-d", "Ubuntu", "--exec", "sh", "-c", &cmd])
+                .output()
+                .expect("wsl sh");
+            assert!(
+                out.status.success(),
+                "prep failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+
+        // 关键验证:status 经 agent 路由,应看到 untracked 文件
+        let output = run_git(
+            &workspace,
+            Some(&repo),
+            ["status", "--short"],
+            30,
+        )
+        .expect("git status via agent");
+        assert!(!output.timed_out);
+        assert_eq!(output.exit_code, Some(0));
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("?? untracked.txt"),
+            "unexpected status output: {stdout}"
+        );
+
+        // 清理
+        let _ = std::process::Command::new("wsl.exe")
+            .args(["-d", "Ubuntu", "--exec", "rm", "-rf", &repo])
+            .output();
     }
 }

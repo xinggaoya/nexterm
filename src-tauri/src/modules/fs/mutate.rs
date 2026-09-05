@@ -5,6 +5,7 @@ use tauri::State;
 use crate::modules::fs::watcher::{
     emit_workspace_fs_changed_with_kinds, events::FsChangeKind, FsWatcherState,
 };
+use crate::modules::fs::wsl_ops;
 use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
 
 /// Creates a new empty file. Fails if the file already exists.
@@ -16,7 +17,30 @@ pub fn fs_create_file(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    // SSH:写操作经远端 agent 执行(Phase 2)。
+    if let WorkspaceEnv::Ssh { profile_id } = &workspace {
+        return tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_create_file(
+            crate::modules::ssh::remote::global_pool(),
+            profile_id,
+            &path,
+        ));
+    }
     let p = resolve_path(&path, &workspace);
+    // Phase 0b:WSL 非 drvfs 路径经常驻 agent 写,消除 UNC 双轨;失败回退 UNC。
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&path, &workspace)
+            && crate::modules::agent::create_file(distro, &path).is_ok()
+        {
+            notify_workspace_fs_changed(
+                &registry,
+                &watcher,
+                &p,
+                vec![path.clone()],
+                vec![FsChangeKind::Create],
+            );
+            return Ok(());
+        }
+    }
     if p.exists() {
         return Err(format!("already exists: {}", p.display()));
     }
@@ -45,7 +69,28 @@ pub fn fs_create_dir(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    if let WorkspaceEnv::Ssh { profile_id } = &workspace {
+        return tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_create_dir(
+            crate::modules::ssh::remote::global_pool(),
+            profile_id,
+            &path,
+        ));
+    }
     let p = resolve_path(&path, &workspace);
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&path, &workspace)
+            && crate::modules::agent::create_dir(distro, &path).is_ok()
+        {
+            notify_workspace_fs_changed(
+                &registry,
+                &watcher,
+                &p,
+                vec![path.clone()],
+                vec![FsChangeKind::Create],
+            );
+            return Ok(());
+        }
+    }
     if p.exists() {
         return Err(format!("already exists: {}", p.display()));
     }
@@ -73,8 +118,30 @@ pub fn fs_rename(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    if let WorkspaceEnv::Ssh { profile_id } = &workspace {
+        return tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_rename(
+            crate::modules::ssh::remote::global_pool(),
+            profile_id,
+            &from,
+            &to,
+        ));
+    }
     let from_p = resolve_path(&from, &workspace);
     let to_p = resolve_path(&to, &workspace);
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&from, &workspace)
+            && crate::modules::agent::rename(distro, &from, &to).is_ok()
+        {
+            notify_workspace_fs_changed(
+                &registry,
+                &watcher,
+                &from_p,
+                vec![from.clone(), to.clone()],
+                vec![FsChangeKind::Delete, FsChangeKind::Create],
+            );
+            return Ok(());
+        }
+    }
     if !from_p.exists() {
         return Err(format!("not found: {}", from_p.display()));
     }
@@ -113,7 +180,29 @@ pub fn fs_delete(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    if let WorkspaceEnv::Ssh { profile_id } = &workspace {
+        return tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_delete(
+            crate::modules::ssh::remote::global_pool(),
+            profile_id,
+            &path,
+        ));
+    }
     let p = resolve_path(&path, &workspace);
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&path, &workspace)
+            && crate::modules::agent::delete(distro, &path).is_ok()
+        {
+            let parent = p.parent().unwrap_or(&p);
+            notify_workspace_fs_changed(
+                &registry,
+                &watcher,
+                parent,
+                vec![path],
+                vec![FsChangeKind::Delete],
+            );
+            return Ok(());
+        }
+    }
     let meta = std::fs::symlink_metadata(&p).map_err(|e| {
         log::debug!("fs_delete stat({}) failed: {e}", p.display());
         e.to_string()
@@ -153,8 +242,31 @@ pub fn fs_copy(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    if let WorkspaceEnv::Ssh { profile_id } = &workspace {
+        return tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_copy(
+            crate::modules::ssh::remote::global_pool(),
+            profile_id,
+            &from,
+            &to,
+        ));
+    }
     let from_p = resolve_path(&from, &workspace);
     let to_p = resolve_path(&to, &workspace);
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if wsl_ops::should_use_wsl_ops(&from, &workspace)
+            && crate::modules::agent::copy(distro, &from, &to).is_ok()
+        {
+            let dst_parent = to_p.parent().unwrap_or(&to_p);
+            notify_workspace_fs_changed(
+                &registry,
+                &watcher,
+                dst_parent,
+                vec![to.clone()],
+                vec![FsChangeKind::Create],
+            );
+            return Ok(());
+        }
+    }
     if !from_p.exists() {
         return Err(format!("not found: {}", from_p.display()));
     }

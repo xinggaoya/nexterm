@@ -32,6 +32,23 @@ pub fn fs_read_dir(
     workspace: Option<WorkspaceEnv>,
 ) -> Result<Vec<DirEntry>, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    if let WorkspaceEnv::Ssh { profile_id } = &workspace {
+        // Phase 2:远端条目经 SSH 通道上的 agent 读取。
+        let entries = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_read_dir(
+            crate::modules::ssh::remote::global_pool(),
+            profile_id,
+            &path,
+        ))?
+        .into_iter()
+        .map(|entry| DirEntry {
+            name: entry.name,
+            kind: entry_kind_from_wsl(entry.kind),
+            size: entry.size,
+            mtime: entry.mtime,
+        })
+        .collect();
+        return Ok(filter_and_sort_entries(entries, show_hidden));
+    }
     if let WorkspaceEnv::Wsl { distro } = &workspace {
         if wsl_ops::should_use_wsl_ops(&path, &workspace) {
             let entries = wsl_ops::read_dir(distro, &path)?

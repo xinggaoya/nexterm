@@ -28,6 +28,41 @@ pub struct Session {
     done: Arc<AtomicBool>,
 }
 
+impl super::TerminalSession for Session {
+    fn write(&self, data: &str) -> Result<(), String> {
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|error| format!("pty writer poisoned: {error}"))?;
+        writer
+            .write_all(data.as_bytes())
+            .map_err(|error| error.to_string())
+    }
+
+    fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
+        let master = self
+            .master
+            .lock()
+            .map_err(|error| format!("pty master poisoned: {error}"))?;
+        master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|error| error.to_string())
+    }
+
+    fn kill(&self) -> Result<(), String> {
+        let mut killer = self
+            .killer
+            .lock()
+            .map_err(|error| format!("pty killer poisoned: {error}"))?;
+        killer.kill().map_err(|error| error.to_string())
+    }
+}
+
 impl Drop for Session {
     fn drop(&mut self) {
         self.done.store(true, Ordering::Release);
