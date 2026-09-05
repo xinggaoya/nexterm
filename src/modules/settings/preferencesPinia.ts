@@ -6,6 +6,7 @@ import {
   onPreferencesChange,
   setAccent,
   setAutostart,
+  setAutoCheckUpdates,
   setEditorTheme,
   setExplorerPanelWidth,
   setEditorFontSize,
@@ -90,6 +91,9 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const accent = ref<AccentPref>(DEFAULT_PREFERENCES.accent);
   const editorTheme = ref<EditorThemeId>(DEFAULT_PREFERENCES.editorTheme);
   const autostart = ref<boolean>(DEFAULT_PREFERENCES.autostart);
+  const autoCheckUpdates = ref<boolean>(
+    DEFAULT_PREFERENCES.autoCheckUpdates,
+  );
   const restoreWindowState = ref<boolean>(
     DEFAULT_PREFERENCES.restoreWindowState,
   );
@@ -230,6 +234,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     accent.value = snapshot.accent;
     editorTheme.value = snapshot.editorTheme;
     autostart.value = snapshot.autostart;
+    autoCheckUpdates.value = snapshot.autoCheckUpdates;
     restoreWindowState.value = snapshot.restoreWindowState;
     vimMode.value = snapshot.vimMode;
     editorLspTypescriptMode.value = snapshot.editorLspTypescriptMode;
@@ -328,6 +333,12 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     autostart.value = value;
     patchPreferencesSnapshot("autostart", value);
     await setAutostart(value);
+  }
+
+  async function updateAutoCheckUpdates(value: boolean): Promise<void> {
+    autoCheckUpdates.value = value;
+    patchPreferencesSnapshot("autoCheckUpdates", value);
+    await setAutoCheckUpdates(value);
   }
 
   async function updateRestoreWindowState(value: boolean): Promise<void> {
@@ -656,6 +667,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
       accent: accent.value,
       editorTheme: editorTheme.value,
       autostart: autostart.value,
+      autoCheckUpdates: autoCheckUpdates.value,
       restoreWindowState: restoreWindowState.value,
       vimMode: vimMode.value,
       editorLspTypescriptMode: editorLspTypescriptMode.value,
@@ -716,6 +728,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     accent,
     editorTheme,
     autostart,
+    autoCheckUpdates,
     restoreWindowState,
     vimMode,
     editorLspTypescriptMode,
@@ -777,6 +790,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateAccent,
     updateEditorTheme,
     updateAutostart,
+    updateAutoCheckUpdates,
     updateRestoreWindowState,
     updateVimMode,
     updateFileOpenMode,

@@ -153,6 +153,7 @@ pub fn run() {
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // Register the deep-link handler early so cold-start URLs (delivered
             // by the OS as CLI args on Windows/Linux) are emitted to the

@@ -49,6 +49,10 @@ import { FALLBACK_APP_TOKENS, readAppTokens } from "@/styles/tokens";
 import SettingsPanel from "@/settings/SettingsPanel.vue";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
 import { useWindowChromeState } from "./useWindowChromeState";
+import {
+  disposeAppUpdaterSingleton,
+  useAppUpdater,
+} from "./useAppUpdater";
 import { LOCAL_WORKSPACE } from "@/modules/workspace";
 
 const prefs = usePreferencesPiniaStore();
@@ -315,6 +319,9 @@ onMounted(() => {
   if (hasTauriInternals()) void prefs.hydrate();
   startLayoutObservers();
   window.addEventListener("keydown", handleGlobalCommandKeydown, true);
+  // 自动更新检查（启动延迟 30s + 每 8 小时复查）；每次触发时实时读
+  // "自动检查更新"偏好，关闭开关后后续轮次自动跳过。
+  useAppUpdater().startAutoUpdateChecks(() => prefs.autoCheckUpdates);
   // Best-effort PTY teardown on window close (see windowCloseUnlisten comment).
   if (hasTauriInternals()) {
     getCurrentWindow()
@@ -341,6 +348,7 @@ onUnmounted(() => {
   window.removeEventListener("keydown", handleGlobalCommandKeydown, true);
   windowCloseUnlisten?.();
   windowCloseUnlisten = null;
+  disposeAppUpdaterSingleton();
 });
 
 watch(

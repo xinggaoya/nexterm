@@ -2,6 +2,10 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { exit as pluginExit, relaunch as pluginRelaunch } from "@tauri-apps/plugin-process";
 import {
+  check as pluginUpdaterCheck,
+  type DownloadEvent as pluginUpdaterDownloadEvent,
+} from "@tauri-apps/plugin-updater";
+import {
   type WorkspaceEnv,
 } from "@/modules/workspace/workspaceEnvSnapshot";
 import type { WslDistro } from "@/modules/workspace/workspaceEnvSnapshot";
@@ -370,6 +374,42 @@ export function relaunchApp(): Promise<void> {
  */
 export function exitApp(code = 0): Promise<void> {
   return pluginExit(code);
+}
+
+/** Progress event streamed by the updater plugin while downloading. */
+export type AppUpdateProgressEvent = pluginUpdaterDownloadEvent;
+
+/**
+ * An available application update. Wraps the updater plugin's `Update` so
+ * callers depend only on this module, mirroring the `process` plugin pattern.
+ */
+export type AppUpdate = {
+  /** The new version advertised by the update endpoint. */
+  version: string;
+  /** The version of the running app. */
+  currentVersion: string;
+  /** Release notes attached to the release, if any. */
+  body: string | null;
+  /** Download and install the update; resolves once the app is ready to relaunch. */
+  downloadAndInstall(
+    onProgress?: (event: AppUpdateProgressEvent) => void,
+  ): Promise<void>;
+};
+
+/**
+ * Check the configured update endpoint for a newer release. Returns `null`
+ * when the running version is already the latest.
+ */
+export async function checkForAppUpdate(): Promise<AppUpdate | null> {
+  const update = await pluginUpdaterCheck();
+  if (!update) return null;
+  return {
+    version: update.version,
+    currentVersion: update.currentVersion,
+    body: update.body ?? null,
+    downloadAndInstall: (onProgress) =>
+      update.downloadAndInstall((event) => onProgress?.(event)),
+  };
 }
 
 /**

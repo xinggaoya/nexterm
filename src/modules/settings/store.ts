@@ -133,6 +133,7 @@ export type Preferences = {
   accent: AccentPref;
   editorTheme: EditorThemeId;
   autostart: boolean;
+  autoCheckUpdates: boolean;
   restoreWindowState: boolean;
   vimMode: boolean;
   fileOpenMode: FileOpenMode;
@@ -199,6 +200,7 @@ const KEY_LANGUAGE = "language";
 const KEY_ACCENT = "accent";
 const KEY_EDITOR_THEME = "editorTheme";
 const KEY_AUTOSTART = "autostart";
+const KEY_AUTO_CHECK_UPDATES = "autoCheckUpdates";
 const KEY_RESTORE_WINDOW = "restoreWindowState";
 const KEY_VIM_MODE = "vimMode";
 const KEY_FILE_OPEN_MODE = "fileOpenMode";
@@ -451,6 +453,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   accent: "cyan",
   editorTheme: "atomone",
   autostart: false,
+  autoCheckUpdates: true,
   restoreWindowState: true,
   vimMode: false,
   fileOpenMode: "preview",
@@ -550,6 +553,9 @@ export async function loadPreferences(): Promise<Preferences> {
     editorTheme:
       get<EditorThemeId>(KEY_EDITOR_THEME) ?? DEFAULT_PREFERENCES.editorTheme,
     autostart: get<boolean>(KEY_AUTOSTART) ?? DEFAULT_PREFERENCES.autostart,
+    autoCheckUpdates:
+      get<boolean>(KEY_AUTO_CHECK_UPDATES) ??
+      DEFAULT_PREFERENCES.autoCheckUpdates,
     restoreWindowState:
       get<boolean>(KEY_RESTORE_WINDOW) ??
       DEFAULT_PREFERENCES.restoreWindowState,
@@ -708,6 +714,10 @@ export async function setEditorTheme(value: EditorThemeId): Promise<void> {
 
 export async function setAutostart(value: boolean): Promise<void> {
   await writePref(KEY_AUTOSTART, value);
+}
+
+export async function setAutoCheckUpdates(value: boolean): Promise<void> {
+  await writePref(KEY_AUTO_CHECK_UPDATES, value);
 }
 
 export async function setRestoreWindowState(value: boolean): Promise<void> {
@@ -1094,6 +1104,7 @@ export async function onPreferencesChange(
     [KEY_ACCENT]: "accent",
     [KEY_EDITOR_THEME]: "editorTheme",
     [KEY_AUTOSTART]: "autostart",
+    [KEY_AUTO_CHECK_UPDATES]: "autoCheckUpdates",
     [KEY_RESTORE_WINDOW]: "restoreWindowState",
     [KEY_VIM_MODE]: "vimMode",
     [KEY_FILE_OPEN_MODE]: "fileOpenMode",
