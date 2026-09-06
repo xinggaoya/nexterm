@@ -56,6 +56,7 @@ function createHarness(activeRepoRoot: string | null) {
     openFindInFiles: vi.fn(),
     openCommandPalette: vi.fn(),
     openRenameDialog: vi.fn(),
+    openUrlPreview: vi.fn(),
     killActiveTerminal: vi.fn(),
     resolveGitRepo,
     gitStatus: vi.fn(),
@@ -91,7 +92,7 @@ describe("useWorkbenchCommands repository resolution", () => {
     expect(harness.resolveGitRepo).toHaveBeenCalledWith("/workspace/apps/web");
     expect(harness.openCommitHistoryTab).toHaveBeenCalledWith({
       repoRoot: "/workspace/apps/web",
-      branch: "main",
+      refName: "main",
     });
   });
 
@@ -109,7 +110,7 @@ describe("useWorkbenchCommands repository resolution", () => {
     ]);
     expect(harness.openCommitHistoryTab).toHaveBeenCalledWith({
       repoRoot: "/workspace",
-      branch: "main",
+      refName: "main",
     });
   });
 
@@ -127,7 +128,7 @@ describe("useWorkbenchCommands repository resolution", () => {
     ]);
     expect(harness.openCommitHistoryTab).toHaveBeenCalledWith({
       repoRoot: "/workspace",
-      branch: "main",
+      refName: "main",
     });
   });
 

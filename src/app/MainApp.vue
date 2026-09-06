@@ -14,6 +14,7 @@ import WorkspaceHost from "./shell/WorkspaceHost.vue";
 import CommandPalette from "@/modules/commands/CommandPalette.vue";
 import AIPanel from "@/app/components/AIPanel.vue";
 import { applyLanguagePreference } from "@/modules/i18n";
+import { t } from "@/modules/i18n/translate";
 import { getNaiveLocaleConfig } from "@/modules/i18n/naive";
 import { resolveAppLocale } from "@/modules/i18n/types";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
@@ -31,7 +32,6 @@ import {
   useWorkspacesPiniaStore,
   useWorkspaceRootPiniaStore,
   useWorkspaceEnvPiniaStore,
-  workspaceScopeKey,
   type WorkspaceEnv,
   type WorkspaceSelection,
 } from "@/modules/workspace";
@@ -45,6 +45,7 @@ import {
   disposeSession,
 } from "@/modules/terminal/lib/sessions";
 import { buildNaiveThemeOverrides, getNaiveTheme } from "@/modules/theme/naiveTheme";
+import { notifyError } from "@/modules/notifications/notificationCenter";
 import { FALLBACK_APP_TOKENS, readAppTokens } from "@/styles/tokens";
 import SettingsPanel from "@/settings/SettingsPanel.vue";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
@@ -53,7 +54,6 @@ import {
   disposeAppUpdaterSingleton,
   useAppUpdater,
 } from "./useAppUpdater";
-import { LOCAL_WORKSPACE } from "@/modules/workspace";
 
 const prefs = usePreferencesPiniaStore();
 const tabs = useTabsPiniaStore();
@@ -72,7 +72,7 @@ const aiPanelOpen = ref(false);
 // closeGuard is wired via template ref on UnsavedCloseGuard; the guard emits
 // close-tab events handled directly in the template.
 
-// Window-close PTY teardown listener. WorkspaceHost.onBeforeUnmount already
+// ── Window-close PTY teardown listener. WorkspaceHost.onBeforeUnmount already
 // reclaims sessions when a workspace is removed, and a normal close unmounts
 // every host — but we register an additional best-effort `disposeAllSessions`
 // on CloseRequested so backend PTY processes are killed even if a host fails
@@ -83,17 +83,12 @@ const aiPanelOpen = ref(false);
 let windowCloseUnlisten: (() => void) | null = null;
 
 // ── Terminal disposal wiring ────────────────────────────────────────────
-// The tabs store calls `disposeTerminalSession(leafId)` when closing tabs,
-// but the disposer was never configured (a latent bug that leaked PTY
-// processes). Wire it to the workspace-aware session registry so closes
-// actually tear down the backend PTY. leafId arrives as `${workspaceId}:${n}`
-// so we split to recover the workspace id.
+// The tabs store calls `disposeTerminalSession(leafId)` when closing tabs.
+// Leaf ids are workspace-local numbers, so the owning workspace is unknown
+// here; we try every workspace bucket — disposeSession is a no-op when the
+// leaf isn't found, so this is safe (and only runs on close).
 configureTerminalSessionDisposer((leafId) => {
   const raw = String(leafId);
-  // leaf ids are plain numbers from the tabs store; the workspace id is
-  // resolved via the tab that owns the leaf. For the disposal callback we
-  // attempt all workspace buckets — disposeSession is a no-op when the leaf
-  // isn't found, so trying every workspace is safe (and rare on close).
   for (const ws of workspaces.workspaces) {
     disposeSession(ws.id, raw);
   }
@@ -121,12 +116,24 @@ const naiveLocaleConfig = computed(() => getNaiveLocaleConfig(resolvedLocale.val
 const activeWorkspace = computed(() => workspaces.activeWorkspace);
 const hasWorkspace = computed(() => activeWorkspace.value !== null);
 const workspaceRoot = computed(() => activeWorkspace.value?.rootPath ?? null);
-const workspaceScope = computed(() =>
-  activeWorkspace.value
-    ? workspaceScopeKey(activeWorkspace.value.env)
-    : workspaceScopeKey(LOCAL_WORKSPACE),
+// 每个 workspace 的源控面板上抛当前分支（WorkspaceHost 转发），状态栏读
+// 活动工作区的那一份。无 repo / 无数据时为 null，显示占位符。
+const branchByWorkspace = ref<Record<string, string | null>>({});
+const activeGitBranch = computed(
+  () => branchByWorkspace.value[workspaces.activeWorkspaceId ?? ""] ?? null,
 );
-const gitBranch = ref<string | null>(null);
+function onWorkspaceBranchChange(workspaceId: string, branch: string | null): void {
+  branchByWorkspace.value[workspaceId] = branch;
+}
+// 工作区关闭时清掉对应分支记录，避免残留键值。
+watch(
+  () => workspaces.workspaces.map((ws) => ws.id),
+  (ids) => {
+    for (const key of Object.keys(branchByWorkspace.value)) {
+      if (!ids.includes(key)) delete branchByWorkspace.value[key];
+    }
+  },
+);
 
 const workbenchLayout = useWorkbenchLayout({ prefs });
 useWindowChromeState();
@@ -189,7 +196,7 @@ async function startAddWorkspace(env: WorkspaceEnv) {
     if (!selection) return;
     await workspaces.addWorkspace(selection.path, selection.env);
   } catch (error) {
-    window.alert(String(error));
+    notifyError(t("app.workspace.addFailed"), error);
   }
 }
 
@@ -202,10 +209,10 @@ async function openWorkspaceInNewWindow(env: WorkspaceEnv = workspaceEnv.pending
     );
     const webview = await openWorkspaceInNewWindow(selection);
     void webview.once("tauri://error", (event) => {
-      window.alert(String(event.payload));
+      notifyError(t("app.workspace.openWindowFailed"), event.payload);
     });
   } catch (error) {
-    window.alert(String(error));
+    notifyError(t("app.workspace.openWindowFailed"), error);
   }
 }
 
@@ -218,7 +225,7 @@ async function openRecentWorkspace(record: WorkspaceSelection & { openedAt?: num
   try {
     await workspaces.addWorkspace(record.path, record.env);
   } catch (error) {
-    window.alert(String(error));
+    notifyError(t("app.workspace.addFailed"), error);
   }
 }
 
@@ -248,7 +255,20 @@ function cancelRename() {
 }
 
 // ── Command palette (global; operates on active workspace) ──────────────
-const commandPaletteOpen = ref(false);
+// 单一事实源：有活动 host 时直接读写 host 的 commandPaletteOpen；
+// 没有 host（无工作区）时回落到本地 ref。不再用两个 watch 互相同步。
+const localPaletteOpen = ref(false);
+const commandPaletteOpen = computed<boolean>({
+  get: () =>
+    activeCommandApi.value?.commandPaletteOpen.value ?? localPaletteOpen.value,
+  set: (open) => {
+    if (activeCommandApi.value) {
+      activeCommandApi.value.commandPaletteOpen.value = open;
+    } else {
+      localPaletteOpen.value = open;
+    }
+  },
+});
 
 // WorkspaceHost instance refs, keyed by workspace id. The *active* host's
 // `commandApi` drives the global command palette + keybindings.
@@ -287,18 +307,6 @@ const commandPaletteMode = computed({
     if (activeCommandApi.value) activeCommandApi.value.commandPaletteMode.value = v;
   },
 });
-// The palette overlay reads/writes its own open state but delegates the
-// actual open/close actions to the active host so keybindings stay in sync.
-watch(commandPaletteOpen, (open) => {
-  if (activeCommandApi.value) activeCommandApi.value.commandPaletteOpen.value = open;
-});
-watch(
-  () => activeCommandApi.value?.commandPaletteOpen.value,
-  (open) => {
-    if (open !== undefined) commandPaletteOpen.value = open;
-  },
-);
-
 function openCommandPalette(mode?: "commands" | "files") {
   if (activeCommandApi.value) activeCommandApi.value.openCommandPalette(mode);
   else commandPaletteOpen.value = true;
@@ -351,12 +359,6 @@ onUnmounted(() => {
   disposeAppUpdaterSingleton();
 });
 
-watch(
-  [workspaceRoot, workspaceScope],
-  () => {
-    gitBranch.value = null;
-  },
-);
 watch(resolvedTheme, syncDocumentTheme, { immediate: true });
 watch(() => prefs.accent, syncDocumentTheme);
 watch(
@@ -414,6 +416,7 @@ watch(
                 @request-settings="openSettings()"
                 @request-command-palette="(mode) => openCommandPalette(mode)"
                 @request-rename="(payload) => (renameDialogState = payload)"
+                @branch-change="onWorkspaceBranchChange"
               />
               <WorkspaceWelcome
                 v-if="!hasWorkspace"
@@ -427,7 +430,7 @@ watch(
             </div>
             <StatusBar
               :workspace-name="activeWorkspace?.name ?? null"
-              :git-branch="gitBranch"
+              :git-branch="activeGitBranch"
               :panel-states="{
                 workspace:
                   workbenchLayout.leftSidebar.value.open &&
@@ -467,7 +470,7 @@ watch(
               @cancel="cancelRename"
             />
 
-            <!-- AI assistant drawer (v2 placeholder; see modules/ai/types.ts). -->
+            <!-- AI assistant drawer (v2 placeholder; implementation in AIPanel.vue). -->
             <NDrawer
               v-model:show="aiPanelOpen"
               placement="right"
@@ -490,7 +493,7 @@ watch(
               :context="paletteContext"
               :workspace-root="workspaceRoot"
               :show-hidden="prefs.showHidden"
-              @close="activeCommandApi?.closeCommandPalette()"
+              @close="commandPaletteOpen = false"
               @execute-command="executeCommandFromPalette"
               @open-file="openFileFromCommandPalette"
             />

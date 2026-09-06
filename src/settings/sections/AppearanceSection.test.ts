@@ -15,7 +15,7 @@ vi.mock("@/modules/settings/store", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/modules/settings/store")>();
   return {
     ...mod,
-    setAccent: vi.fn().mockResolvedValue(undefined),
+    setPreference: vi.fn().mockResolvedValue(undefined),
   };
 });
 

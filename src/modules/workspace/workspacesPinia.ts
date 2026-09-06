@@ -1,3 +1,4 @@
+import { basename } from "@/lib/path";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import {
@@ -50,11 +51,6 @@ export interface PersistedWorkspace {
 }
 
 export const RECENT_WORKSPACE_LIMIT = 10;
-
-function basename(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : path;
-}
 
 function workspaceIdOf(path: string, env: WorkspaceEnv): string {
   const scope = workspaceScopeKey(env);

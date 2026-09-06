@@ -9,7 +9,7 @@ import { NButton, NCheckbox, NIcon, NVirtualList } from "naive-ui";
 import { computed, provide, readonly, toRef } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import type { GitDiscardEntry } from "@/lib/native";
-import { t } from "@/modules/i18n/translate";
+import { t, tLoose } from "@/modules/i18n/translate";
 import { statusKindLabel } from "./sourceControlFormat";
 import {
   groupSourceControlEntries,
@@ -107,7 +107,7 @@ const groupTitle = (group: SourceControlEntryGroup): string => {
 };
 
 const sectionTitle = (statusKind: SourceControlStatusKind): string => {
-  return statusKindLabel(statusKind, t);
+  return statusKindLabel(statusKind, tLoose);
 };
 </script>
 

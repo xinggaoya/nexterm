@@ -13,6 +13,7 @@ import {
   watchTerminalTheme,
 } from "./lib/theme";
 import { attachClipboardShortcuts } from "./lib/shortcuts";
+import { attachTerminalBell } from "./lib/bell";
 import {
   createTerminalRenderer,
   type TerminalRenderer,
@@ -62,6 +63,7 @@ let session: PtySessionHandle | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let detachThemeWatch: (() => void) | null = null;
 let detachClipboardShortcuts: (() => void) | null = null;
+let detachBell: (() => void) | null = null;
 let mountRevision = 0;
 /**
  * 上一次 ResizeObserver 回调观察到的容器尺寸。用于检测「容器从隐藏
@@ -216,6 +218,11 @@ onMounted(async () => {
   detachClipboardShortcuts = attachClipboardShortcuts({
     term: nextRenderer.term,
   });
+  detachBell = attachTerminalBell(nextRenderer.term, {
+    enabled: () => prefs.terminalNotificationEnabled,
+    soundEnabled: () => prefs.terminalNotificationSoundEnabled,
+    title: () => props.title || props.leafId,
+  });
   // ensureSession 失败(如冷启动工作区授权竞态、shell 启动失败)以往是静默
   // unhandled rejection,导致 session 永远为 null、键盘输入无处可去、面板
   // 卡在空白。这里捕获并把状态标记为 exited;watch(isActive) 会在面板再次
@@ -279,6 +286,8 @@ onBeforeUnmount(() => {
   deadStartInFlight = false;
   detachThemeWatch?.();
   detachClipboardShortcuts?.();
+  detachBell?.();
+  detachBell = null;
   resizeObserver?.disconnect();
   renderer?.dispose();
   renderer = null;

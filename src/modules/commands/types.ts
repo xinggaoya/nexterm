@@ -42,6 +42,7 @@ export type CommandId =
   | "terminal.focusUp"
   | "terminal.focusDown"
   | "search.findInFiles"
+  | "preview.open"
   | "terminal.runSnippet"
   | "terminal.rename"
   | "terminal.kill";

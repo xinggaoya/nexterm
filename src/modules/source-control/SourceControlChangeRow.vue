@@ -3,7 +3,7 @@ import { AddOutline, DocumentOutline, RemoveOutline, TrashOutline } from "@vicon
 import { NButton, NCheckbox, NIcon, NTag } from "naive-ui";
 import { computed, inject, type Ref } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
-import { t } from "@/modules/i18n/translate";
+import { t, tLoose } from "@/modules/i18n/translate";
 import {
   stageLabel,
   statusClass,
@@ -88,7 +88,7 @@ defineOptions({
         {{ entry.statusCode }}
       </NTag>
       <span class="w-14 shrink-0 text-right text-[10px] text-muted-foreground">
-        {{ stageLabel(entry, t) }}
+        {{ stageLabel(entry, tLoose) }}
       </span>
     </button>
     <TooltipTitle

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useVirtualWindow } from "@/lib/useVirtualWindow";
+import { basename } from "@/lib/path";
+import { normalizeErrorMessage } from "@/lib/error";
 import {
   CopyOutline,
   DocumentOutline,
@@ -163,56 +166,22 @@ const filteredCommits = computed(() => {
   });
 });
 
-// ── Virtual scroll window（定高 32px，复用 FileExplorer 模式）──
+// ── Virtual scroll window（定高 32px，lib/useVirtualWindow 公共实现）──
 // 大仓库历史可达数百上千条；超过阈值才窗口化，小列表直接全量渲染。
-const VIRTUAL_THRESHOLD = 200;
-const VIRTUAL_OVERSCAN = 6;
 const listScrollEl = ref<HTMLElement | null>(null);
-const listScrollTop = ref(0);
-const listViewportH = ref(0);
-let listRO: ResizeObserver | null = null;
-
-const virtualRange = computed(() => {
-  const total = filteredCommits.value.length;
-  if (total < VIRTUAL_THRESHOLD) return { start: 0, end: total, virtual: false };
-  const start = Math.max(0, Math.floor(listScrollTop.value / ROW_HEIGHT) - VIRTUAL_OVERSCAN);
-  const end = Math.min(
-    total,
-    start + Math.ceil(listViewportH.value / ROW_HEIGHT) + VIRTUAL_OVERSCAN * 2,
-  );
-  return { start, end, virtual: true };
+const {
+  range: virtualRange,
+  topPadding: topPad,
+  bottomPadding: bottomPad,
+  onScroll: onListScroll,
+} = useVirtualWindow(listScrollEl, {
+  total: () => filteredCommits.value.length,
+  rowHeight: ROW_HEIGHT,
 });
 const visibleCommits = computed(() => {
   const { start, end } = virtualRange.value;
   return filteredCommits.value.slice(start, end);
 });
-const topPad = computed(() =>
-  virtualRange.value.virtual ? virtualRange.value.start * ROW_HEIGHT : 0,
-);
-const bottomPad = computed(() =>
-  virtualRange.value.virtual
-    ? Math.max(0, (filteredCommits.value.length - virtualRange.value.end) * ROW_HEIGHT)
-    : 0,
-);
-function onListScroll(e: Event) {
-  listScrollTop.value = (e.target as HTMLElement).scrollTop;
-}
-watch(
-  listScrollEl,
-  (el, prev) => {
-    if (prev) listRO?.unobserve(prev);
-    listRO?.disconnect();
-    listRO = null;
-    if (el && typeof ResizeObserver === "function") {
-      listRO = new ResizeObserver((entries) => {
-        for (const entry of entries) listViewportH.value = entry.contentRect.height;
-      });
-      listRO.observe(el);
-      listViewportH.value = el.clientHeight;
-    }
-  },
-  { flush: "post" },
-);
 
 const selectedCommit = computed(() =>
   selectedSha.value
@@ -227,20 +196,6 @@ const selectedWebUrl = computed(() =>
     ? commitWebUrl(remoteWeb.value, selectedCommit.value.sha)
     : null,
 );
-
-function normalizeError(error: unknown): string {
-  if (typeof error === "string") return error;
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string") return message;
-  }
-  return "Unknown error";
-}
-
-function basename(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts.length > 0 ? parts[parts.length - 1] : path;
-}
 
 function dirname(path: string): string {
   const normalized = path.replace(/\\/g, "/");
@@ -343,7 +298,7 @@ async function loadInitial() {
     loadStatus.value = "idle";
   } catch (err) {
     if (myId !== logRequestId.value) return;
-    error.value = normalizeError(err);
+    error.value = normalizeErrorMessage(err);
     loadStatus.value = "error";
   }
 }
@@ -381,7 +336,7 @@ async function loadMore() {
     loadStatus.value = "idle";
   } catch (err) {
     if (myId !== logRequestId.value) return;
-    error.value = normalizeError(err);
+    error.value = normalizeErrorMessage(err);
     loadStatus.value = "error";
   }
 }
@@ -405,7 +360,7 @@ async function selectCommit(commit: GitLogEntry) {
   } catch (err) {
     filesBySha.set(commit.sha, {
       state: "error",
-      error: normalizeError(err),
+      error: normalizeErrorMessage(err),
     });
   }
 }

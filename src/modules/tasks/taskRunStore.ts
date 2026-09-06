@@ -1,3 +1,4 @@
+import { normalizeErrorMessage } from "@/lib/error";
 import { computed, ref, type Ref } from "vue";
 import {
   native,
@@ -64,10 +65,6 @@ export type TaskRunStore = ReturnType<typeof createTaskRunStore>;
 
 const DEFAULT_POLL_INTERVAL_MS = 800;
 
-function normalizeError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
 
 function trimCommand(command: string): string {
   const trimmed = command.trim();
@@ -186,7 +183,7 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
       const stored = findRun(run.id);
       if (stored) {
         stored.status = "error";
-        stored.error = normalizeError(error);
+        stored.error = normalizeErrorMessage(error);
         updateRunGroupStatus(stored.groupId);
       }
     }
@@ -232,7 +229,7 @@ export function createTaskRunStore(options: TaskRunStoreOptions = {}) {
       schedulePoll(id);
     } catch (error) {
       run.status = "error";
-      run.error = normalizeError(error);
+      run.error = normalizeErrorMessage(error);
       updateRunGroupStatus(run.groupId);
     }
   }

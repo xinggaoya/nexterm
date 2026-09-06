@@ -1,3 +1,4 @@
+import { normalizeErrorMessage } from "@/lib/error";
 import { readonly, ref, type Ref } from "vue";
 import {
   checkForAppUpdate,
@@ -19,10 +20,6 @@ const FIRST_CHECK_DELAY_MS = 30_000;
 /** 启动后的周期复查间隔（8 小时）。 */
 const RECHECK_INTERVAL_MS = 8 * 60 * 60 * 1000;
 
-function normalizeError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
 
 export type AppUpdateStatus =
   | "idle" // 尚未检查
@@ -135,7 +132,7 @@ export function createAppUpdaterController(): AppUpdaterController {
         return update;
       } catch (error) {
         status.value = "error";
-        if (!silent) errorMessage.value = normalizeError(error);
+        if (!silent) errorMessage.value = normalizeErrorMessage(error);
         else console.warn("Background update check failed:", error);
         return null;
       } finally {

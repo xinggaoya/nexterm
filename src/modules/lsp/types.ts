@@ -25,3 +25,26 @@ export type LspServerMessage =
   | { kind: "parse_error"; message: string }
   | { kind: "stderr"; message: string }
   | { kind: "exit"; code: number | null };
+
+// ── LSP 协议最小子集（仅声明诊断闭环用到的字段） ─────────────────────────
+
+/** LSP Position（UTF-16 code units，与 CodeMirror 偏移同刻度）。 */
+export type LspPosition = { line: number; character: number };
+
+export type LspRange = { start: LspPosition; end: LspPosition };
+
+/** textDocument/publishDiagnostics 通知里的 Diagnostic。 */
+export type LspDiagnostic = {
+  range: LspRange;
+  severity?: 1 | 2 | 3 | 4;
+  message: string;
+  source?: string;
+  code?: number | string;
+};
+
+export type PublishDiagnosticsParams = {
+  uri: string;
+  version?: number | null;
+  diagnostics: LspDiagnostic[];
+};
+

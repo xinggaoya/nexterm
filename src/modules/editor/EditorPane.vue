@@ -9,6 +9,7 @@ import {
 } from "@codemirror/commands";
 import { autocompletion, closeBrackets } from "@codemirror/autocomplete";
 import { bracketMatching, foldGutter } from "@codemirror/language";
+import { linter } from "@codemirror/lint";
 import { searchKeymap } from "@codemirror/search";
 import {
   EditorState,
@@ -53,7 +54,9 @@ import {
 } from "./lib/languageResolver";
 import { themeExtensionFor } from "./lib/themes";
 import { vimHandlersExtension, vimModeExtension } from "./lib/vim";
-import { attachOrDetachLsp } from "./lib/editorPaneLsp";
+import { attachOrDetachLsp, applyCmDiagnostics } from "./lib/editorPaneLsp";
+import type { LspEditorHooks } from "./lib/editorPaneLsp";
+import { notifyLspDocumentChanged } from "@/modules/lsp/manager";
 
 const props = defineProps<{
   path: string;
@@ -160,6 +163,9 @@ function editorBaseExtensions(): Extension[] {
     closeBrackets(),
     autocompletion(),
     highlightActiveLine(),
+    // LSP 诊断的宿主扩展：真正的诊断由 manager 经 setDiagnostics 效果
+    // 推入；这里挂空 source 的 linter 作为面板/gutter 的载体。
+    linter(() => []),
     ...buildSharedExtensions(),
     optionsCompartment.of(buildPrefExtensions(prefs)),
     themeCompartment.of(themeExtensionFor(prefs.editorTheme)),
@@ -300,6 +306,8 @@ async function saveConfirmed() {
   lastSavedPath.value = props.path;
   lastSavedAt.value = Date.now();
   setDirty(false);
+  // LSP 模式下把保存后的全文推给 server，触发 publishDiagnostics 刷新。
+  if (view.value) notifyLspDocumentChanged(view.value, buffer.value);
   emit("saved");
 }
 
@@ -397,6 +405,21 @@ watch(
   },
 );
 
+const lspHooks: LspEditorHooks = {
+  workspaceRoot: wsCtx.workspace.rootPath,
+  getDocumentText: () => view.value?.state.doc.toString() ?? "",
+  applyDiagnostics: (diagnostics) => {
+    const current = view.value;
+    if (current) applyCmDiagnostics(current, diagnostics);
+  },
+  // no-server-binary 是"没装对应语言服务器"的常态，静默即可。
+  onAttachFailed: (reason) => {
+    if (reason !== "no-server-binary") {
+      console.warn("[lsp] attach failed:", reason);
+    }
+  },
+};
+
 watch(
   () => [prefs.editorLspTypescriptMode, props.path],
   () => {
@@ -405,6 +428,7 @@ watch(
       view.value,
       props.path,
       prefs.editorLspTypescriptMode,
+      lspHooks,
     );
   },
 );
@@ -418,12 +442,26 @@ onBeforeUnmount(() => {
   destroyEditor();
 });
 
+  /** 跳到指定行（1-based）并滚动到可见区域（Find in Files 跳转用）。 */
+  function revealLine(line: number): void {
+    const current = view.value;
+    if (!current) return;
+    const lineNo = Math.min(Math.max(Math.round(line), 1), current.state.doc.lines);
+    const lineInfo = current.state.doc.line(lineNo);
+    current.dispatch({
+      selection: { anchor: lineInfo.from },
+      scrollIntoView: true,
+    });
+    current.focus();
+  }
+
 defineExpose({
   save,
   focus,
   getSelection,
   setContentForTest,
   openGotoLine,
+  revealLine,
   reload: () => reloadExternalChange(true),
   undo: () => {
     const current = view.value;

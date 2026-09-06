@@ -9,7 +9,7 @@ import {
   type WorkspaceFsChangedEvent,
 } from "@/lib/native";
 import { useWorkspaceContext } from "@/app/workspaceContext";
-import { t } from "@/modules/i18n/translate";
+import { t, tLoose } from "@/modules/i18n/translate";
 import SourceControlChangeList from "./SourceControlChangeList.vue";
 import SourceControlCommitBox from "./SourceControlCommitBox.vue";
 import SourceControlGitWorkflows from "./SourceControlGitWorkflows.vue";
@@ -41,6 +41,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   decorationsChange: [decorations: GitDecorationMap];
+  branchChange: [branch: string | null];
   openDiff: [
     input: {
       repoRoot: string;
@@ -53,8 +54,6 @@ const emit = defineEmits<{
   openHistory: [
     input: {
       repoRoot: string;
-      /** @deprecated Use `refName` + `allRefs` instead. */
-      branch: string | null;
       refName: string | null;
       allRefs: boolean;
     },
@@ -102,7 +101,7 @@ const state = useSourceControlState({
   repoRoot: selectedRepoRoot,
   fsEvent,
   wsNative: wsCtx.wsNative,
-  t,
+  t: tLoose,
   isActive,
   untrackedMode: untrackedModeGetter,
 });
@@ -145,7 +144,7 @@ const actions = useSourceControlActions({
   state,
   wsNative: wsCtx.wsNative,
   dialog,
-  t,
+  t: tLoose,
   emitCommitted: (result) => emit("committed", result),
   refreshGitMetadata: gitMetadata.refreshGitMetadata,
 });
@@ -365,6 +364,16 @@ watch(
   { immediate: true },
 );
 
+// 把当前分支名上抛给状态栏（WorkspaceHost → MainApp）。无 repo 时为
+// null，状态栏显示占位符；detached HEAD 显示 "detached"。
+watch(
+  state.repo,
+  (repo) => {
+    emit("branchChange", repo ? (repo.isDetached ? "detached" : repo.branch) : null);
+  },
+  { immediate: true },
+);
+
 function openDiff(entry: SourceControlFileEntry) {
   const root = repoRoot.value;
   if (!root) return;
@@ -380,11 +389,10 @@ function openDiff(entry: SourceControlFileEntry) {
 function openHistory() {
   const root = repoRoot.value;
   if (!root) return;
-  const branch = status.value?.branch ?? null;
+  const refName = status.value?.branch ?? null;
   emit("openHistory", {
     repoRoot: root,
-    branch,
-    refName: branch,
+    refName,
     allRefs: false,
   });
 }

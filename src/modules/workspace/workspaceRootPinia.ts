@@ -1,3 +1,4 @@
+import { normalizeErrorMessage } from "@/lib/error";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import {
@@ -27,14 +28,6 @@ export type WorkspaceSelection = {
 
 export type LaunchWorkspace = WorkspaceSelection;
 
-function normalizeError(error: unknown): string {
-  if (typeof error === "string") return error;
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string") return message;
-  }
-  return String(error);
-}
 
 function isWorkspaceEnv(value: unknown): value is WorkspaceEnv {
   if (!value || typeof value !== "object") return false;
@@ -261,6 +254,6 @@ export const useWorkspaceRootPiniaStore = defineStore("workspace-root", () => {
     clearWorkspace,
     // Re-exported for tests / legacy callers that referenced these off the
     // root store. They delegate to the equivalent workspaces store methods.
-    normalizeError,
+    normalizeError: normalizeErrorMessage,
   };
 });

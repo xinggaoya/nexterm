@@ -36,6 +36,17 @@ const fileOpenModeOptions = computed<{ label: string; value: FileOpenMode }[]>((
         <NFormItem :label="t('settings.general.vimMode')">
           <NSwitch :value="prefs.vimMode" @update:value="prefs.updateVimMode" />
         </NFormItem>
+        <NFormItem :label="t('settings.general.lspDiagnostics')">
+          <div class="flex flex-col gap-1">
+            <NSwitch
+              :value="prefs.editorLspTypescriptMode === 'lsp'"
+              @update:value="(value) => prefs.updateEditorLspTypescriptMode(value ? 'lsp' : 'builtin')"
+            />
+            <span class="text-xs text-muted-foreground">
+              {{ t("settings.general.lspDiagnosticsHint") }}
+            </span>
+          </div>
+        </NFormItem>
       </NForm>
     </NCard>
   </section>

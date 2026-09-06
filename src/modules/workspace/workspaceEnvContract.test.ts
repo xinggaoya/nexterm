@@ -10,7 +10,14 @@ import { workspaceScopeKey, type WorkspaceEnv } from "./workspaceEnvSnapshot";
  */
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
-const rustEnumPath = join(repoRoot, "src-tauri", "src", "modules", "workspace.rs");
+const rustEnumPath = join(
+  repoRoot,
+  "src-tauri",
+  "src",
+  "modules",
+  "workspace",
+  "env.rs",
+);
 const tsTypePath = join(repoRoot, "src", "modules", "workspace", "workspaceEnvSnapshot.ts");
 
 describe("WorkspaceEnv frontend/backend contract", () => {

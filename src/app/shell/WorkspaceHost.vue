@@ -19,9 +19,11 @@
  * bar, settings drawer) — those live in MainApp and read the *active*
  * workspace from the workspaces store.
  */
-import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
+import { computed, h, onMounted, onBeforeUnmount, ref, watch } from "vue";
+import { useDialog, NInput } from "naive-ui";
 import { createNativeForEnv, type WorkspaceFsChangedEvent } from "@/lib/native";
 import { workspaceScopeKey } from "@/modules/workspace";
+import type { GitDecorationMap } from "@/modules/source-control";
 import type {
   WorkspaceEnv,
   WorkspaceInstance,
@@ -37,10 +39,10 @@ import {
 import { useWorkspaceLifecycle } from "@/app/useWorkspaceLifecycle";
 import { useTaskConsoleController } from "@/app/useTaskConsoleController";
 import { useWorkbenchCommands } from "@/app/useWorkbenchCommands";
-import { useDialog } from "naive-ui";
 import { readEditorDocument } from "@/modules/editor/lib/documentService";
 import { isBinaryImagePath } from "@/modules/file-preview/lib/imageFiles";
-import { t } from "@/modules/i18n/translate";
+import { normalizePreviewUrl } from "@/modules/preview/previewUrl";
+import { t, tLoose } from "@/modules/i18n/translate";
 import LeftSidebar from "./LeftSidebar.vue";
 import TabBar from "./TabBar.vue";
 import Workbench from "./Workbench.vue";
@@ -58,6 +60,7 @@ const emit = defineEmits<{
   "request-settings": [];
   "request-command-palette": [mode?: "commands" | "files"];
   "request-rename": [payload: { leafId: number; currentTitle: string }];
+  "branch-change": [workspaceId: string, branch: string | null];
 }>();
 
 const prefs = usePreferencesPiniaStore();
@@ -96,6 +99,12 @@ const activeTab = computed<Tab | null>(
   () => tabs.workspaceTabs(props.workspace.id).find((tab) => tab.id === tabs.activeIdByWorkspace[props.workspace.id]) ?? null,
 );
 const activeRepoRoot = ref<string | null>(null);
+// 源控面板上抛的 git 角标（path → 变更状态），透传给 Workbench →
+// FileExplorer 渲染文件树角标。面板 v-show 隐藏时仍保持挂载，数据持续更新。
+const gitDecorations = ref<GitDecorationMap>(new Map());
+function onDecorationChange(decorations: GitDecorationMap): void {
+  gitDecorations.value = decorations;
+}
 const canSplitActiveTab = computed(() => {
   const tab = activeTab.value;
   if (!tab || tab.kind !== "terminal") return false;
@@ -162,8 +171,42 @@ function openFilePreview(path: string): void {
   tabs.newFilePreviewTab(path, props.workspace.id);
 }
 
-function openSearchResult(path: string, _line: number): void {
+function openSearchResult(path: string, line: number): void {
   tabs.openFileTab(path, props.workspace.id, true);
+  // 编辑器挂载是异步的（tab 激活 + 文档加载），用短轮询等它就绪后跳行。
+  const startedAt = Date.now();
+  const tryReveal = () => {
+    if (workbench.value?.revealEditorLine?.(path, line)) return;
+    if (Date.now() - startedAt < 2500) {
+      setTimeout(tryReveal, 120);
+    }
+  };
+  setTimeout(tryReveal, 120);
+}
+
+// `preview.open` 命令入口：对话框输入 URL，确认后创建 web 预览 tab。
+function openUrlPreview(): void {
+  const urlInput = ref("");
+  const previewDialog = dialog.info({
+    title: t("preview.openTitle"),
+    content: () =>
+      h(NInput, {
+        value: urlInput.value,
+        "onUpdate:value": (value: string) => {
+          urlInput.value = value;
+        },
+        placeholder: t("preview.urlPlaceholder"),
+        autofocus: true,
+      }),
+    positiveText: t("preview.open"),
+    negativeText: t("common.cancel"),
+    onPositiveClick: () => {
+      const url = normalizePreviewUrl(urlInput.value);
+      if (!url) return false;
+      tabs.newPreviewTab(url, props.workspace.id);
+      previewDialog.destroy();
+    },
+  });
 }
 
 function openSourceDiff(input: {
@@ -178,7 +221,6 @@ function openSourceDiff(input: {
 
 function openSourceHistory(input: {
   repoRoot: string;
-  branch?: string | null;
   refName?: string | null;
   allRefs?: boolean;
 }): void {
@@ -222,14 +264,22 @@ const showBranchesModal = ref(false);
 // refs to plain values, so we bridge via a computed that keeps the ref shape.
 const showBranchesModalProp = computed(() => showBranchesModal);
 
-// Watch active tab changes to surface git branch in the status bar (read by
-// MainApp via the workspaces store's active workspace). We keep a local ref
-// and let MainApp derive from whatever workspace is active.
-watch(activeTab, () => {
-  // No-op placeholder — git branch resolution is handled by the
-  // source-control panel which writes decorations. Branch display in the
-  // status bar reads from the active workspace's source-control state.
-});
+// useWorkspaceLifecycle 的 fsEvent 类型含 undefined，模板绑定前归一为
+// null，避免在模板里做 as unknown as 强转。
+const normalizedFsEvent = computed<WorkspaceFsChangedEvent | null>(
+  () => workspaceFsEvent.value ?? null,
+);
+
+// TabBar 右键菜单的"重命名终端标题"：复用 MainApp 的 RenameTerminalDialog
+// 链路（与 terminal.rename 命令同一入口）。
+function requestTabRename(tabId: number): void {
+  const tab = tabs.workspaceTabs(props.workspace.id).find((tk) => tk.id === tabId);
+  if (!tab || tab.kind !== "terminal") return;
+  emit("request-rename", {
+    leafId: tab.activeLeafId,
+    currentTitle: tab.terminalTitle ?? "",
+  });
+}
 
 /**
  * Workspace 切回可见时的"立即激活"编排。
@@ -322,7 +372,7 @@ function requestCloseTab(id: number): void {
 }
 
 const commandApi = useWorkbenchCommands({
-  t: (key: string, vars?: Record<string, unknown>) => t(key, vars),
+  t: tLoose,
   keybindings: computed(() => prefs.keybindings ?? {}),
   hasWorkspace: computed(() => true),
   workspaceRoot,
@@ -349,6 +399,7 @@ const commandApi = useWorkbenchCommands({
   openGotoLine,
   openFindInFiles,
   openCommandPalette: (mode) => emit("request-command-palette", mode),
+  openUrlPreview,
   openRenameDialog: (leafId, currentTitle) =>
     emit("request-rename", { leafId, currentTitle }),
   killActiveTerminal,
@@ -414,6 +465,8 @@ defineExpose({
       @open-diff="openSourceDiff"
       @open-history="openSourceHistory"
       @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
+      @decoration-change="onDecorationChange"
+      @branch-change="(branch) => emit('branch-change', workspace.id, branch)"
     />
 
     <div class="flex min-w-0 flex-1 flex-col">
@@ -434,7 +487,8 @@ defineExpose({
             updateTab: (id, patch) => tabs.updateTab(id, patch, workspace.id),
           }"
           :task-console="taskConsole"
-          :workspace-fs-event="workspaceFsEvent as unknown as WorkspaceFsChangedEvent | null"
+          :git-decorations="gitDecorations"
+          :workspace-fs-event="normalizedFsEvent"
           :workspace-root="workspaceRoot"
           :workspace-scope="workspaceScope"
           @open-file="openFileTab"
@@ -462,7 +516,7 @@ defineExpose({
               @close-all="tabs.closeAll(workspace.id)"
               @duplicate-terminal="duplicateTerminalTab"
               @rename-tab="renameTabTitle"
-              @request-rename="() => {}"
+              @request-rename="requestTabRename"
               @pin-tab="(id) => tabs.pinTab(id, workspace.id)"
               @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement, workspace.id)"
               @new-tab="newTerminalTab"

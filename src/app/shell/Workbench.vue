@@ -76,6 +76,7 @@ const props = defineProps<{
   activeId: number;
   activeRepoRoot: string | null;
   activeTab: Tab | null;
+  gitDecorations: GitDecorationMap;
   layout: WorkbenchLayoutBinding;
   showBranchesModal: Ref<boolean>;
   tabs: Tab[];
@@ -103,8 +104,6 @@ const emit = defineEmits<{
   "open-source-history": [
     input: {
       repoRoot: string;
-      /** @deprecated forwarded for backward compatibility. */
-      branch?: string | null;
       refName?: string | null;
       allRefs?: boolean;
     },
@@ -117,7 +116,6 @@ const emit = defineEmits<{
 
 const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
 const fileExplorerRef = ref<InstanceType<typeof import("@/modules/explorer/FileExplorer.vue").default> | null>(null);
-const emptyGitDecorations: GitDecorationMap = new Map();
 
 function isActiveKind(kind: Tab["kind"]): boolean {
   return props.activeTab?.kind === kind;
@@ -240,10 +238,20 @@ onBeforeUnmount(() => {
   detachUp?.();
 });
 
+  /** Find in Files 跳转：仅当活动 tab 正是该文件且编辑器已挂载时生效。 */
+  function revealEditorLine(path: string, line: number): boolean {
+    if (!props.activeTab || props.activeTab.kind !== "editor") return false;
+    if (props.activeTab.path !== path) return false;
+    if (!activeEditorPane.value) return false;
+    activeEditorPane.value.revealLine(line);
+    return true;
+  }
+
 defineExpose({
   saveActiveEditor,
   openGotoLine,
   openFindInFiles,
+  revealEditorLine,
   killTerminal,
   flushPendingExplorerRefresh,
   activateExplorer,
@@ -402,7 +410,7 @@ defineExpose({
           v-show="layout.rightPanelOpen.value"
           :root-path="workspaceRoot"
           :fs-event="workspaceFsEvent"
-          :git-decorations="emptyGitDecorations"
+          :git-decorations="gitDecorations"
           @open-file="(path, pin) => emit('open-file', path, pin)"
           @open-markdown-preview="(path) => emit('open-markdown-preview', path)"
           @open-in-terminal="(path) => emit('open-in-terminal', path)"

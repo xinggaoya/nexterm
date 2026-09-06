@@ -102,13 +102,3 @@ export const getPtyIdForLeaf = (
   if (!handle) return null;
   return handle.ptyId;
 };
-
-/** @deprecated v1's `respawnSession` mapped to `trackSession` + dispose. */
-export const respawnSession = async (
-  workspaceId: string,
-  leafId: string | number,
-) => {
-  const id = String(leafId);
-  disposeSession(workspaceId, id);
-  return null as never;
-};

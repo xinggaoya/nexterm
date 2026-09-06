@@ -289,7 +289,7 @@ watch(
             :disabled="!canSubmit"
             @click="submitEditor"
           >
-            {{ isEdit ? t("common.save") : t("sourceControl.remoteAdd") }}
+            {{ isEdit ? t("editor.save") : t("sourceControl.remoteAdd") }}
           </NButton>
         </div>
       </div>

@@ -1,3 +1,4 @@
+import { normalizeErrorMessage } from "@/lib/error";
 import {
   computed,
   ref,
@@ -38,10 +39,6 @@ export type TaskConsoleControllerOptions = {
   openTaskTerminal: (input: { command: string; cwd: string }) => void;
 };
 
-function normalizeError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
 
 export function useTaskConsoleController(options: TaskConsoleControllerOptions) {
   const discoverTasks = options.discoverTasks ?? discoverWorkspaceTasks;
@@ -68,7 +65,7 @@ export function useTaskConsoleController(options: TaskConsoleControllerOptions) 
       workspaceTasks.value = await discoverTasks(root, options.readTextFile);
     } catch (error) {
       workspaceTasks.value = [];
-      workspaceTasksError.value = normalizeError(error);
+      workspaceTasksError.value = normalizeErrorMessage(error);
     } finally {
       workspaceTasksLoading.value = false;
     }

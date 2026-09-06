@@ -24,11 +24,6 @@ export type SshProfile = {
 
 export type SshProbeResult = { home: string; shell: string };
 
-export type SshKnownHostEntry = {
-  host: string;
-  keyType: string;
-  publicKey: string;
-};
 export type GitRepoInfo = {
   repoRoot: string;
   branch: string;
@@ -747,9 +742,6 @@ export const ssh = {
   profileSave: (profile: SshProfile) =>
     invoke<SshProfile>("ssh_profile_save", { profile }),
   profileDelete: (id: string) => invoke<void>("ssh_profile_delete", { id }),
-  knownHostsList: () => invoke<SshKnownHostEntry[]>("ssh_known_hosts_list"),
-  knownHostsRemove: (host: string) =>
-    invoke<boolean>("ssh_known_hosts_remove", { host }),
   /**
    * 连接探针:校验凭据并解析远端 HOME / 登录 shell。连接过程中远端主机
    * 密钥按 TOFU 处理;指纹变化会抛 `SshHostKeyChanged: ` 前缀错误。

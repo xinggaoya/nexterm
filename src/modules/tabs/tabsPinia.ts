@@ -1,3 +1,4 @@
+import { basename } from "@/lib/path";
 import { defineStore } from "pinia";
 import { computed, ref, toRaw } from "vue";
 import { useWorkspacesPiniaStore } from "@/modules/workspace/workspacesPinia";
@@ -37,11 +38,6 @@ export type TabPatch = Partial<{
   dirty: boolean;
   url: string;
 }>;
-
-function basename(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : path;
-}
 
 function titleFromUrl(url: string): string {
   try {
@@ -356,6 +352,36 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     );
   }
 
+  /**
+   * 「查找已存在 → 激活/可选更新，否则新建并激活」的公共实现。
+   * 5 个 open/new tab 函数共用这一骨架，仅注入匹配器与工厂。
+   */
+  function findOrAddTab(
+    wsId: string,
+    match: (tab: Tab) => boolean,
+    create: (id: number) => Tab,
+    updateExisting?: (tab: Tab) => Tab,
+  ): number {
+    const list = workspaceTabs(wsId);
+    const existing = list.find(match);
+    if (existing) {
+      if (updateExisting) {
+        setWorkspaceTabs(
+          wsId,
+          list.map((tab) =>
+            tab.id === existing.id ? updateExisting(tab) : tab,
+          ),
+        );
+      }
+      setActiveIdRaw(wsId, existing.id);
+      return existing.id;
+    }
+    const id = nextId.value++;
+    setWorkspaceTabs(wsId, [...list, create(id)]);
+    setActiveIdRaw(wsId, id);
+    return id;
+  }
+
   function newPreviewTab(url: string, workspaceId?: string): number {
     const wsId = resolveWorkspaceId(workspaceId);
     initWorkspace(wsId);
@@ -375,49 +401,33 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
   function newMarkdownTab(path: string, workspaceId?: string): number {
     const wsId = resolveWorkspaceId(workspaceId);
     initWorkspace(wsId);
-    const list = workspaceTabs(wsId);
-    const existing = list.find(
+    return findOrAddTab(
+      wsId,
       (tab) => tab.kind === "markdown" && tab.path === path,
+      (id) => ({
+        id,
+        workspaceId: wsId,
+        kind: "markdown" as const,
+        title: basename(path),
+        path,
+      }),
     );
-    if (existing) {
-      setActiveIdRaw(wsId, existing.id);
-      return existing.id;
-    }
-    const id = nextId.value++;
-    const tab = {
-      id,
-      workspaceId: wsId,
-      kind: "markdown" as const,
-      title: basename(path),
-      path,
-    };
-    setWorkspaceTabs(wsId, [...list, tab]);
-    setActiveIdRaw(wsId, id);
-    return id;
   }
 
   function newFilePreviewTab(path: string, workspaceId?: string): number {
     const wsId = resolveWorkspaceId(workspaceId);
     initWorkspace(wsId);
-    const list = workspaceTabs(wsId);
-    const existing = list.find(
+    return findOrAddTab(
+      wsId,
       (tab) => tab.kind === "file-preview" && tab.path === path,
+      (id): FilePreviewTab => ({
+        id,
+        workspaceId: wsId,
+        kind: "file-preview",
+        title: basename(path),
+        path,
+      }),
     );
-    if (existing) {
-      setActiveIdRaw(wsId, existing.id);
-      return existing.id;
-    }
-    const id = nextId.value++;
-    const tab: FilePreviewTab = {
-      id,
-      workspaceId: wsId,
-      kind: "file-preview" as const,
-      title: basename(path),
-      path,
-    };
-    setWorkspaceTabs(wsId, [...list, tab]);
-    setActiveIdRaw(wsId, id);
-    return id;
   }
 
   function openGitDiffTab(
@@ -433,47 +443,33 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     const wsId = resolveWorkspaceId(workspaceId);
     initWorkspace(wsId);
     const title = input.title ?? basename(input.path);
-    const list = workspaceTabs(wsId);
-    const existing = list.find(
+    return findOrAddTab(
+      wsId,
       (tab) =>
         tab.kind === "git-diff" &&
         tab.repoRoot === input.repoRoot &&
         tab.path === input.path &&
         tab.mode === input.mode,
+      (id): GitDiffTab => ({
+        id,
+        workspaceId: wsId,
+        kind: "git-diff",
+        title,
+        repoRoot: input.repoRoot,
+        path: input.path,
+        mode: input.mode,
+        originalPath: input.originalPath,
+      }),
+      (tab) =>
+        tab.kind === "git-diff"
+          ? { ...tab, title, originalPath: input.originalPath }
+          : tab,
     );
-    if (existing) {
-      setWorkspaceTabs(
-        wsId,
-        list.map((tab) =>
-          tab.id === existing.id
-            ? { ...tab, title, originalPath: input.originalPath }
-            : tab,
-        ),
-      );
-      setActiveIdRaw(wsId, existing.id);
-      return existing.id;
-    }
-    const id = nextId.value++;
-    const tab: GitDiffTab = {
-      id,
-      workspaceId: wsId,
-      kind: "git-diff",
-      title,
-      repoRoot: input.repoRoot,
-      path: input.path,
-      mode: input.mode,
-      originalPath: input.originalPath,
-    };
-    setWorkspaceTabs(wsId, [...list, tab]);
-    setActiveIdRaw(wsId, id);
-    return id;
   }
 
   function openCommitHistoryTab(
     input: {
       repoRoot: string;
-      /** @deprecated Use `refName` + `allRefs` instead. */
-      branch?: string | null;
       refName?: string | null;
       allRefs?: boolean;
     },
@@ -482,41 +478,26 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     const wsId = resolveWorkspaceId(workspaceId);
     initWorkspace(wsId);
     const allRefs = input.allRefs ?? false;
-    const refName = allRefs
-      ? null
-      : input.refName !== undefined
-        ? input.refName
-        : input.branch ?? null;
+    const refName = allRefs ? null : (input.refName ?? null);
     const title = gitHistoryTitle(refName, allRefs);
-    const list = workspaceTabs(wsId);
-    const existing = list.find(
+    return findOrAddTab(
+      wsId,
       (tab) =>
         tab.kind === "git-history" &&
         tab.repoRoot === input.repoRoot &&
         tab.refName === refName &&
         tab.allRefs === allRefs,
+      (id): GitHistoryTab => ({
+        id,
+        workspaceId: wsId,
+        kind: "git-history",
+        title,
+        repoRoot: input.repoRoot,
+        refName,
+        allRefs,
+      }),
+      (tab) => (tab.kind === "git-history" ? { ...tab, title } : tab),
     );
-    if (existing) {
-      setWorkspaceTabs(
-        wsId,
-        list.map((tab) => (tab.id === existing.id ? { ...tab, title } : tab)),
-      );
-      setActiveIdRaw(wsId, existing.id);
-      return existing.id;
-    }
-    const id = nextId.value++;
-    const tab: GitHistoryTab = {
-      id,
-      workspaceId: wsId,
-      kind: "git-history",
-      title,
-      repoRoot: input.repoRoot,
-      refName,
-      allRefs,
-    };
-    setWorkspaceTabs(wsId, [...list, tab]);
-    setActiveIdRaw(wsId, id);
-    return id;
   }
 
   function updateGitHistoryTabRef(
@@ -560,47 +541,35 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     const wsId = resolveWorkspaceId(workspaceId);
     initWorkspace(wsId);
     const title = `${basename(input.path)} @ ${input.shortSha}`;
-    const list = workspaceTabs(wsId);
-    const existing = list.find(
+    return findOrAddTab(
+      wsId,
       (tab) =>
         tab.kind === "git-commit-file" &&
         tab.repoRoot === input.repoRoot &&
         tab.sha === input.sha &&
         tab.path === input.path,
+      (id): GitCommitFileDiffTab => ({
+        id,
+        workspaceId: wsId,
+        kind: "git-commit-file",
+        title,
+        repoRoot: input.repoRoot,
+        sha: input.sha,
+        shortSha: input.shortSha,
+        subject: input.subject,
+        path: input.path,
+        originalPath: input.originalPath,
+      }),
+      (tab) =>
+        tab.kind === "git-commit-file"
+          ? {
+              ...tab,
+              title,
+              subject: input.subject,
+              originalPath: input.originalPath,
+            }
+          : tab,
     );
-    if (existing) {
-      setWorkspaceTabs(
-        wsId,
-        list.map((tab) =>
-          tab.id === existing.id
-            ? {
-                ...tab,
-                title,
-                subject: input.subject,
-                originalPath: input.originalPath,
-              }
-            : tab,
-        ),
-      );
-      setActiveIdRaw(wsId, existing.id);
-      return existing.id;
-    }
-    const id = nextId.value++;
-    const tab: GitCommitFileDiffTab = {
-      id,
-      workspaceId: wsId,
-      kind: "git-commit-file",
-      title,
-      repoRoot: input.repoRoot,
-      sha: input.sha,
-      shortSha: input.shortSha,
-      subject: input.subject,
-      path: input.path,
-      originalPath: input.originalPath,
-    };
-    setWorkspaceTabs(wsId, [...list, tab]);
-    setActiveIdRaw(wsId, id);
-    return id;
   }
 
   function closeTab(id: number, workspaceId?: string): void {
@@ -611,7 +580,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     if (idx < 0) return;
     const target = list[idx];
     const stack = closedStackByWorkspace.value[wsId] ?? [];
-    const snapshot = JSON.parse(JSON.stringify(toRaw(target))) as Tab;
+    const snapshot = structuredClone(toRaw(target)) as Tab;
     closedStackByWorkspace.value = {
       ...closedStackByWorkspace.value,
       [wsId]: [...stack, snapshot].slice(-CLOSED_STACK_MAX),
@@ -894,15 +863,20 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     return newLeafId;
   }
 
-  function closeActivePane(tabId: number, workspaceId?: string): boolean {
-    const wsId = resolveWorkspaceId(workspaceId);
+  /**
+   * 从终端 tab 中移除一个 leaf 的公共实现：
+   * 返回 true 表示整棵 pane 树被移除（tab 本身已关闭）。
+   */
+  function removeLeafFromTab(
+    wsId: string,
+    tabId: number,
+    leafId: number,
+    tabIndex: number,
+  ): boolean {
     const list = workspaceTabs(wsId);
-    const tabIndex = list.findIndex((tab) => tab.id === tabId);
     const tab = list[tabIndex];
     if (!tab || tab.kind !== "terminal") return false;
-
-    const targetLeafId = tab.activeLeafId;
-    const nextTree = removeLeaf(tab.paneTree, targetLeafId);
+    const nextTree = removeLeaf(tab.paneTree, leafId);
     if (nextTree === null) {
       if (list.length <= 1) return false;
       clearLeafOwnersForTab(wsId, tabId);
@@ -914,55 +888,8 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
           nextTabs[Math.max(0, tabIndex - 1)]?.id ?? nextTabs[0]?.id ?? tabId,
         );
       }
-      disposeTerminalSession(wsId, String(targetLeafId));
-      return true;
-    }
-
-    const remaining: number[] = leafIds(nextTree) as number[];
-    const sibling = siblingLeafOf(tab.paneTree, targetLeafId);
-    const activeLeafId: number | undefined =
-      sibling !== null && remaining.includes(sibling as number)
-        ? (sibling as number)
-        : (remaining[0] ?? targetLeafId);
-    const cwd = findLeafCwd(nextTree, activeLeafId);
-    unregisterLeaf(wsId, Number(targetLeafId));
-    setWorkspaceTabs(
-      wsId,
-      list.map((item) =>
-        item.id === tabId && item.kind === "terminal"
-          ? {
-              ...item,
-              paneTree: nextTree,
-              activeLeafId,
-              ...(cwd !== undefined ? { cwd } : {}),
-            }
-          : item,
-      ),
-    );
-    disposeTerminalSession(wsId, String(targetLeafId));
-    return false;
-  }
-
-  function closeLeafInTab(tabId: number, leafId: number, workspaceId?: string): void {
-    const wsId = resolveWorkspaceId(workspaceId);
-    const list = workspaceTabs(wsId);
-    const tabIndex = list.findIndex((tab) => tab.id === tabId);
-    const tab = list[tabIndex];
-    if (!tab || tab.kind !== "terminal") return;
-    const nextTree = removeLeaf(tab.paneTree, leafId);
-    if (nextTree === null) {
-      if (list.length <= 1) return;
-      clearLeafOwnersForTab(wsId, tabId);
-      const nextTabs = list.filter((item) => item.id !== tabId);
-      setWorkspaceTabs(wsId, nextTabs);
-      if (activeIdByWorkspace.value[wsId] === tabId) {
-        setActiveIdRaw(
-          wsId,
-          nextTabs[Math.max(0, tabIndex - 1)]?.id ?? nextTabs[0]?.id ?? tabId,
-        );
-      }
       disposeTerminalSession(wsId, String(leafId));
-      return;
+      return true;
     }
     const remaining: number[] = leafIds(nextTree) as number[];
     const sibling = siblingLeafOf(tab.paneTree, leafId);
@@ -971,7 +898,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
         ? (sibling as number)
         : (remaining[0] ?? leafId);
     const cwd = findLeafCwd(nextTree, activeLeafId);
-    unregisterLeaf(wsId, leafId);
+    unregisterLeaf(wsId, Number(leafId));
     setWorkspaceTabs(
       wsId,
       list.map((item) =>
@@ -986,13 +913,27 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
       ),
     );
     disposeTerminalSession(wsId, String(leafId));
+    return false;
   }
 
-  /**
-   * Tear down a workspace's entire tab set + all its terminal sessions.
-   * Called when a workspace is removed. The entry is deleted from every
-   * per-workspace map so memory is reclaimed.
-   */
+  function closeActivePane(tabId: number, workspaceId?: string): boolean {
+    const wsId = resolveWorkspaceId(workspaceId);
+    const list = workspaceTabs(wsId);
+    const tabIndex = list.findIndex((tab) => tab.id === tabId);
+    const tab = list[tabIndex];
+    if (!tab || tab.kind !== "terminal") return false;
+    return removeLeafFromTab(wsId, tabId, tab.activeLeafId, tabIndex);
+  }
+
+  function closeLeafInTab(tabId: number, leafId: number, workspaceId?: string): void {
+    const wsId = resolveWorkspaceId(workspaceId);
+    const list = workspaceTabs(wsId);
+    const tabIndex = list.findIndex((tab) => tab.id === tabId);
+    const tab = list[tabIndex];
+    if (!tab || tab.kind !== "terminal") return;
+    removeLeafFromTab(wsId, tabId, leafId, tabIndex);
+  }
+
   function disposeWorkspaceTabs(workspaceId: string): void {
     disposeWorkspaceSessions(workspaceId);
     const nextTabs = { ...tabsByWorkspace.value };

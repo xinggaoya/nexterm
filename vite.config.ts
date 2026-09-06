@@ -19,7 +19,7 @@ export default defineConfig(async ({ mode }) => ({
   plugins: [
     vue(),
     AutoImport({
-      imports: ["vue", "vue-router", "pinia"],
+      imports: ["vue", "pinia"],
       vueTemplate: true,
       dts: "src/auto-imports.d.ts",
     }),

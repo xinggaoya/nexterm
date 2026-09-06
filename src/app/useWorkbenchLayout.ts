@@ -266,10 +266,6 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   const rightSplitWidth = ref(0);
   let rightSplitResizeObserver: ResizeObserver | null = null;
   let stopRightSplitHostWatch: (() => void) | null = null;
-  let sourceControlWidthSaveTimer: ReturnType<typeof setTimeout> | null = null;
-  let explorerWidthSaveTimer: ReturnType<typeof setTimeout> | null = null;
-  let leftSidebarSaveTimer: ReturnType<typeof setTimeout> | null = null;
-  let panelVisibilitySaveTimer: ReturnType<typeof setTimeout> | null = null;
 
   const sourceControlSplitSize = computed(() =>
     leftPanelOpen.value ? `${sourceControlPanelWidth.value}px` : "0px",
@@ -320,105 +316,119 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
       rightSplitHost.value?.getBoundingClientRect().width ?? 0;
   }
 
+  /**
+   * 「乐观更新本地 ref → 防抖持久化 → flush 立即落盘（值有变化才写）」
+   * 的公共工厂。四组防抖保存（源控宽度 / explorer 宽度 / 侧栏状态 /
+   * 面板可见性）共用这一骨架。
+   */
+  function createDebouncedPrefSave<V>(
+    load: () => V,
+    persist: (value: V) => Promise<void> | void,
+    options: { equals?: (a: V, b: V) => boolean; guard?: () => boolean } = {},
+  ) {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pendingValue: V;
+    const equals =
+      options.equals ?? ((a: V, b: V) => JSON.stringify(a) === JSON.stringify(b));
+    const guard = options.guard ?? (() => true);
+    return {
+      /** 是否还有未落盘的防抖写入（外部 watch 用它判断回环）。 */
+      get pending() {
+        return timer !== null;
+      },
+      schedule(value: V) {
+        pendingValue = value;
+        if (!guard()) return;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          timer = null;
+          void persist(pendingValue);
+        }, saveDelayMs);
+      },
+      flush() {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        if (!guard()) return;
+        const value = pendingValue ?? load();
+        if (!equals(value, load())) void persist(value);
+      },
+    };
+  }
+
+  const sourceControlWidthSave = createDebouncedPrefSave(
+    () => prefs.sourceControlPanelWidth,
+    (value) => prefs.updateSourceControlPanelWidth(value),
+  );
   function scheduleSourceControlWidthSave(width: number) {
     sourceControlPanelWidth.value = clampPanelWidth(width);
-    if (sourceControlWidthSaveTimer) clearTimeout(sourceControlWidthSaveTimer);
-    sourceControlWidthSaveTimer = setTimeout(() => {
-      sourceControlWidthSaveTimer = null;
-      void prefs.updateSourceControlPanelWidth(sourceControlPanelWidth.value);
-    }, saveDelayMs);
+    sourceControlWidthSave.schedule(sourceControlPanelWidth.value);
   }
-
   function flushSourceControlWidthSave() {
-    if (sourceControlWidthSaveTimer) {
-      clearTimeout(sourceControlWidthSaveTimer);
-      sourceControlWidthSaveTimer = null;
-    }
-    if (sourceControlPanelWidth.value !== prefs.sourceControlPanelWidth) {
-      void prefs.updateSourceControlPanelWidth(sourceControlPanelWidth.value);
-    }
+    sourceControlWidthSave.flush();
   }
 
+  const explorerWidthSave = createDebouncedPrefSave(
+    () => prefs.explorerPanelWidth,
+    (value) => prefs.updateExplorerPanelWidth(value),
+  );
   function scheduleExplorerWidthSave(width: number) {
     explorerPanelWidth.value = clampPanelWidth(width);
-    if (explorerWidthSaveTimer) clearTimeout(explorerWidthSaveTimer);
-    explorerWidthSaveTimer = setTimeout(() => {
-      explorerWidthSaveTimer = null;
-      void prefs.updateExplorerPanelWidth(explorerPanelWidth.value);
-    }, saveDelayMs);
+    explorerWidthSave.schedule(explorerPanelWidth.value);
   }
-
   function flushExplorerWidthSave() {
-    if (explorerWidthSaveTimer) {
-      clearTimeout(explorerWidthSaveTimer);
-      explorerWidthSaveTimer = null;
-    }
-    if (explorerPanelWidth.value !== prefs.explorerPanelWidth) {
-      void prefs.updateExplorerPanelWidth(explorerPanelWidth.value);
-    }
+    explorerWidthSave.flush();
   }
 
+  const leftSidebarSave = createDebouncedPrefSave(
+    () => prefs.leftSidebar,
+    (value) => prefs.updateLeftSidebar(value),
+    {
+      equals: (a, b) =>
+        a !== undefined &&
+        b !== undefined &&
+        a.activity === b.activity &&
+        a.open === b.open &&
+        a.width === b.width,
+      guard: hasTauriInternals,
+    },
+  );
   function scheduleLeftSidebarSave(next: LeftSidebarState): void {
-    if (!hasTauriInternals()) return;
-    if (leftSidebarSaveTimer) clearTimeout(leftSidebarSaveTimer);
-    leftSidebarSaveTimer = setTimeout(() => {
-      leftSidebarSaveTimer = null;
-      void prefs.updateLeftSidebar({
-        activity: next.activity,
-        open: next.open,
-        width: next.width,
-      });
-    }, saveDelayMs);
+    leftSidebarSave.schedule({
+      activity: next.activity,
+      open: next.open,
+      width: next.width,
+    });
   }
-
   function flushLeftSidebarSave(): void {
-    if (leftSidebarSaveTimer) {
-      clearTimeout(leftSidebarSaveTimer);
-      leftSidebarSaveTimer = null;
-    }
-    if (!hasTauriInternals()) return;
     const ls = visibility.leftSidebar;
-    const persisted = prefs.leftSidebar;
-    if (
-      !persisted ||
-      persisted.activity !== ls.activity ||
-      persisted.open !== ls.open ||
-      persisted.width !== ls.width
-    ) {
-      void prefs.updateLeftSidebar({
-        activity: ls.activity,
-        open: ls.open,
-        width: ls.width,
-      });
-    }
+    const next = { activity: ls.activity, open: ls.open, width: ls.width };
+    leftSidebarSave.schedule(next);
+    leftSidebarSave.flush();
   }
 
+  const panelVisibilitySave = createDebouncedPrefSave(
+    () => prefs.panelVisibility,
+    (value) => prefs.updatePanelVisibility(value),
+    {
+      equals: (a, b) =>
+        a !== undefined &&
+        b !== undefined &&
+        a.workspace === b.workspace &&
+        a.sourceControl === b.sourceControl &&
+        a.explorer === b.explorer &&
+        a.taskConsole === b.taskConsole,
+      guard: hasTauriInternals,
+    },
+  );
   function schedulePanelVisibilitySave(next: PanelVisibilityState): void {
-    if (!hasTauriInternals()) return;
-    if (panelVisibilitySaveTimer) clearTimeout(panelVisibilitySaveTimer);
-    panelVisibilitySaveTimer = setTimeout(() => {
-      panelVisibilitySaveTimer = null;
-      void prefs.updatePanelVisibility({ ...next });
-    }, saveDelayMs);
+    panelVisibilitySave.schedule({ ...next });
   }
-
   function flushPanelVisibilitySave(): void {
-    if (panelVisibilitySaveTimer) {
-      clearTimeout(panelVisibilitySaveTimer);
-      panelVisibilitySaveTimer = null;
-    }
-    if (!hasTauriInternals()) return;
     const cur = visibility.panelVisibility;
-    const persisted = prefs.panelVisibility;
-    if (
-      !persisted ||
-      persisted.workspace !== cur.workspace ||
-      persisted.sourceControl !== cur.sourceControl ||
-      persisted.explorer !== cur.explorer ||
-      persisted.taskConsole !== cur.taskConsole
-    ) {
-      void prefs.updatePanelVisibility({ ...cur });
-    }
+    panelVisibilitySave.schedule({ ...cur });
+    panelVisibilitySave.flush();
   }
 
   function updateSourceControlSplitSize(size: string | number) {
@@ -477,7 +487,7 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   watch(
     () => prefs.sourceControlPanelWidth,
     (width) => {
-      if (!sourceControlWidthSaveTimer) {
+      if (!sourceControlWidthSave.pending) {
         sourceControlPanelWidth.value = clampPanelWidth(width);
       }
     },
@@ -487,7 +497,7 @@ export function useWorkbenchLayout(options: WorkbenchLayoutOptions) {
   watch(
     () => prefs.explorerPanelWidth,
     (width) => {
-      if (!explorerWidthSaveTimer) {
+      if (!explorerWidthSave.pending) {
         explorerPanelWidth.value = clampPanelWidth(width);
       }
     },

@@ -428,7 +428,6 @@ describe("SourceControlPanel.vue", () => {
       [
         {
           repoRoot: "/repo",
-          branch: "main",
           refName: "main",
           allRefs: false,
         },

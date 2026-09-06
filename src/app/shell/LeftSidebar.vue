@@ -45,13 +45,13 @@ const emit = defineEmits<{
   "open-history": [
     input: {
       repoRoot: string;
-      branch: string | null;
       refName: string | null;
       allRefs: boolean;
     },
   ];
   "repo-selected": [repoRoot: string | null];
   "decoration-change": [decorations: GitDecorationMap];
+  "branch-change": [branch: string | null];
   committed: [result: GitCommitResult];
 }>();
 
@@ -120,6 +120,7 @@ onBeforeUnmount(() => {
         @open-history="(input) => emit('open-history', input)"
         @repo-selected="(repoRoot) => emit('repo-selected', repoRoot)"
         @decorations-change="(d) => emit('decoration-change', d)"
+        @branch-change="(b) => emit('branch-change', b)"
         @committed="(result) => emit('committed', result)"
       />
       </Transition>

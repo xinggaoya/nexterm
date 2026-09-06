@@ -1,3 +1,4 @@
+import { basename } from "@/lib/path";
 import type { WorkspaceNative } from "@/lib/native";
 
 export type DirEntry = {
@@ -19,16 +20,9 @@ export type SearchResult = {
   truncated: boolean;
 };
 
-export function joinPath(parent: string, name: string): string {
-  if (parent.endsWith("/")) return `${parent}${name}`;
-  return `${parent}/${name}`;
-}
+import { dirname, joinPath } from "@/lib/path";
 
-export function dirname(path: string): string {
-  const i = path.lastIndexOf("/");
-  if (i <= 0) return "/";
-  return path.slice(0, i);
-}
+export { dirname, joinPath };
 
 export function readFileTreeDir(
   wsNative: WorkspaceNative,
@@ -95,11 +89,6 @@ export function generateCopyTarget(source: string): string {
                       // cares about collision-free naming.
   }
   return joinPath(parent, `${stem} copy${ext}`);
-}
-
-function basename(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts.length > 0 ? parts[parts.length - 1] : path;
 }
 
 export function searchFileTree(

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useVirtualWindow } from "@/lib/useVirtualWindow";
+import { basename } from "@/lib/path";
+import { normalizeErrorMessage } from "@/lib/error";
 import {
   DocumentOutline,
   FolderOutline,
@@ -84,61 +87,25 @@ const pendingFsEventPaths = new Set<string>();
 const inFlightLoads = new Map<string, InFlightLoad>();
 
 // ── Virtual scroll window ──────────────────────────────────────────────
-// FileTreeRow 定高 24px（template h-6）。窗口化只对 entry / status 行生效；
-// pending / rename 含内联输入框，仍全量渲染以保留焦点。行数少于阈值时
-// 直接走 v-for，避免给小树引入无谓的 scroll 计算。
-const VIRTUAL_THRESHOLD = 200;
+// FileTreeRow 定高 24px（template h-6）。窗口化实现见 lib/useVirtualWindow；
+// pending / rename 含内联输入框，仍全量渲染以保留焦点。
 const ROW_HEIGHT = 24;
-const VIRTUAL_OVERSCAN = 6;
+const VIRTUAL_THRESHOLD = 200;
 const treeScroll = ref<HTMLElement | null>(null);
-const scrollTop = ref(0);
-const viewportHeight = ref(0);
-let viewportRO: ResizeObserver | null = null;
-
-const virtualRange = computed(() => {
-  const total = rows.value.length;
-  if (total === 0) return { start: 0, end: 0 };
-  const visibleStart = Math.floor(scrollTop.value / ROW_HEIGHT) - VIRTUAL_OVERSCAN;
-  const visibleRows = Math.ceil(viewportHeight.value / ROW_HEIGHT) + VIRTUAL_OVERSCAN * 2;
-  const start = Math.max(0, visibleStart);
-  const end = Math.min(total, start + visibleRows);
-  return { start, end };
+const {
+  range: virtualRange,
+  topPadding: virtualTopPadding,
+  bottomPadding: virtualBottomPadding,
+  onScroll: onTreeScroll,
+} = useVirtualWindow(treeScroll, {
+  total: () => rows.value.length,
+  rowHeight: ROW_HEIGHT,
+  onScroll: () => closeMenu(),
 });
-
 const virtualRows = computed(() => {
   const { start, end } = virtualRange.value;
   return rows.value.slice(start, end);
 });
-const virtualTopPadding = computed(() => virtualRange.value.start * ROW_HEIGHT);
-const virtualBottomPadding = computed(() => {
-  const total = rows.value.length;
-  const { end } = virtualRange.value;
-  return Math.max(0, (total - end) * ROW_HEIGHT);
-});
-
-function onTreeScroll(event: Event) {
-  scrollTop.value = (event.target as HTMLElement).scrollTop;
-  closeMenu();
-}
-
-watch(
-  treeScroll,
-  (el, prev) => {
-    if (prev) viewportRO?.unobserve(prev);
-    viewportRO?.disconnect();
-    viewportRO = null;
-    if (el && typeof ResizeObserver === "function") {
-      viewportRO = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          viewportHeight.value = entry.contentRect.height;
-        }
-      });
-      viewportRO.observe(el);
-      viewportHeight.value = el.clientHeight;
-    }
-  },
-  { flush: "post" },
-);
 
 const rootName = computed(() => {
   if (!props.rootPath) return "";
@@ -222,20 +189,6 @@ const pendingAtRoot = computed<VisibleTreeRow | null>(() => {
   };
 });
 
-function basename(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts.length > 0 ? parts[parts.length - 1] : path;
-}
-
-function normalizeError(error: unknown): string {
-  if (typeof error === "string") return error;
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string") return message;
-  }
-  return String(error);
-}
-
 async function loadChildren(path: string, options: LoadChildrenOptions = {}) {
   const current = nodes[path];
   const silent = options.silent === true && current?.status === "loaded";
@@ -271,7 +224,7 @@ async function loadChildren(path: string, options: LoadChildrenOptions = {}) {
       rebuildTreeSnapshot();
     }
   } catch (error) {
-    nodes[path] = { status: "error", message: normalizeError(error) };
+    nodes[path] = { status: "error", message: normalizeErrorMessage(error) };
     rebuildTreeSnapshot();
   } finally {
     const finished = inFlightLoads.get(path);
@@ -744,17 +697,11 @@ watch(rows, () => {
 
 onBeforeUnmount(() => {
   clearScheduledTreeRefresh();
-  viewportRO?.disconnect();
-  viewportRO = null;
 });
 
 function setMode(next: "files" | "content") {
   mode.value = next;
-  if (next === "files") {
-    isSearchOpen.value = false;
-  } else {
-    isSearchOpen.value = false;
-  }
+  isSearchOpen.value = false;
 }
 
 defineExpose({

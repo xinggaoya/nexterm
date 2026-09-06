@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { basename } from "@/lib/path";
 import {
   AlertCircleOutline,
   DesktopOutline,
@@ -34,11 +35,6 @@ const workspaceEnv = useWorkspaceEnvPiniaStore();
 
 const distros = computed(() => workspaceEnv.distros ?? []);
 const distrosLoading = computed(() => workspaceEnv.loading);
-
-function basename(path: string): string {
-  const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : path;
-}
 
 function envLabel(env: WorkspaceEnv): string {
   if (env.kind === "wsl") return env.distro;

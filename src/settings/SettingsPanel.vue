@@ -16,7 +16,7 @@ import {
   normalizeSettingsTab,
   type SettingsTab,
 } from "@/modules/settings/tabs";
-import { t } from "@/modules/i18n/translate";
+import { t, tLoose } from "@/modules/i18n/translate";
 import AboutSection from "./sections/AboutSection.vue";
 import AppearanceSection from "./sections/AppearanceSection.vue";
 import EditorSection from "./sections/EditorSection.vue";
@@ -87,7 +87,7 @@ function selectTab(tab: SettingsTab) {
 const menuOptions = computed<MenuOption[]>(() =>
   tabs.map((tab) => ({
     key: tab.id,
-    label: t(tab.labelKey),
+    label: tLoose(tab.labelKey),
     icon: () => h(NIcon, null, { default: () => h(tab.icon) }),
   })),
 );

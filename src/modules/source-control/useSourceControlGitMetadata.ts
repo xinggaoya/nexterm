@@ -1,3 +1,4 @@
+import { normalizeErrorMessage } from "@/lib/error";
 import { getCurrentInstance, onBeforeUnmount, ref, watch } from "vue";
 import type { ReadonlyRef } from "@/lib/refs";
 import type {
@@ -41,7 +42,7 @@ export function useSourceControlGitMetadata(options: SourceControlGitMetadataOpt
           // Remotes are a soft signal — keep branches/stashes rendering even
           // when the remote list can't be read (e.g. corrupted config). The
           // error is surfaced to the reminders/modal via the `error` ref.
-          error.value = normalizeError(err);
+          error.value = normalizeErrorMessage(err);
           return [] as GitRemoteInfo[];
         }),
       ]);
@@ -51,7 +52,7 @@ export function useSourceControlGitMetadata(options: SourceControlGitMetadataOpt
       remotes.value = nextRemotes;
     } catch (err) {
       if (currentId !== requestId.value) return;
-      error.value = normalizeError(err);
+      error.value = normalizeErrorMessage(err);
       branches.value = [];
       stashes.value = [];
       remotes.value = [];
@@ -87,11 +88,4 @@ export function useSourceControlGitMetadata(options: SourceControlGitMetadataOpt
   };
 }
 
-function normalizeError(error: unknown): string {
-  if (typeof error === "string") return error;
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string") return message;
-  }
-  return "Unknown Git metadata error";
-}
+

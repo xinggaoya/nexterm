@@ -59,6 +59,7 @@ type WorkbenchCommandOptions = {
   openFindInFiles: () => void;
   openCommandPalette: (mode?: "commands" | "files") => void;
   openRenameDialog: (leafId: number, currentTitle: string) => void;
+  openUrlPreview: () => void;
   killActiveTerminal: () => void | Promise<void>;
   resolveGitRepo: (root: string) => Promise<GitRepoInfo | null>;
   gitStatus: (repoRoot: string) => Promise<GitStatusSnapshot>;
@@ -184,7 +185,7 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
       if (!repo) return;
       options.tabs.openCommitHistoryTab({
         repoRoot: repo.repoRoot,
-        branch: repo.branch,
+        refName: repo.isDetached ? null : repo.branch,
       });
     } catch (error) {
       console.warn("Failed to resolve git repository", error);
@@ -340,6 +341,9 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
         return;
       case "settings.open":
         options.openSettings();
+        return;
+      case "preview.open":
+        options.openUrlPreview();
         return;
       case "git.refresh":
         refreshSourceControlFromCommand();

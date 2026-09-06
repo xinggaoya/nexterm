@@ -79,12 +79,6 @@ const fastScrollModifierOptions = computed(() =>
           @update:value="prefs.updateTerminalMacOptionClickForcesSelection"
         />
       </NFormItem>
-      <NFormItem :label="t('settings.general.terminalOscHyperlink')">
-        <NSwitch
-          :value="prefs.terminalOscHyperlink"
-          @update:value="prefs.updateTerminalOscHyperlink"
-        />
-      </NFormItem>
       <NFormItem :label="t('settings.general.terminalDrawBoldTextInBrightColors')">
         <NSwitch
           :value="prefs.terminalDrawBoldTextInBrightColors"

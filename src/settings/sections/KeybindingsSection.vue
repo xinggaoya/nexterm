@@ -12,7 +12,7 @@ import {
   type CommandId,
 } from "@/modules/commands";
 import { IS_MAC } from "@/lib/platform";
-import { t } from "@/modules/i18n/translate";
+import { t, tLoose } from "@/modules/i18n/translate";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 
 const prefs = usePreferencesPiniaStore();
@@ -20,7 +20,7 @@ const prefs = usePreferencesPiniaStore();
 const commandDefinitions = computed<CommandDefinition[]>(() =>
   CORE_COMMAND_SPECS.map((spec) => ({
     id: spec.id,
-    title: t(spec.titleKey),
+    title: tLoose(spec.titleKey),
     category: spec.category,
     defaultKeybinding: spec.defaultKeybinding,
     when: spec.workspaceRequired ? (context) => context.workspaceReady : undefined,
@@ -47,7 +47,7 @@ const conflictByCommandId = computed(() => {
 });
 
 function categoryLabel(category: string): string {
-  return t(`commands.categories.${category}`);
+  return tLoose(`commands.categories.${category}`);
 }
 
 function displayKeybinding(commandId: CommandId): string {
