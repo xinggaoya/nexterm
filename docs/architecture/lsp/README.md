@@ -1,6 +1,6 @@
 # LSP 模块架构
 
-> 状态：草案（设计见 `docs/superpowers/specs/2026-07-16-monaco-lsp-migration-design.md`;编辑器内核现基于 CodeMirror 6）
+> 状态：**最小实现（实验性）**。已落地：传输层（Tauri Channel + vscode-jsonrpc）、`initialize` 握手、`didOpen`/`didChange`（保存时全文推送）、`publishDiagnostics` → CodeMirror `setDiagnostics` 展示、设置页开关（`editorLspTypescriptMode`）。未落地：按键级增量 didChange、completion/hover/format 等能力。原始设计见 `docs/superpowers/specs/2026-07-16-monaco-lsp-migration-design.md`（编辑器内核现基于 CodeMirror 6）。
 
 ## 1. 概述
 
@@ -37,7 +37,7 @@ src/modules/lsp/
 ### 3.1 Rust 内部
 
 - `src-tauri/src/modules/lock.rs` -- mutex poison 处理
-- `src-tauri/src/modules/workspace.rs` -- WorkspaceEnv
+- `src-tauri/src/modules/workspace/env.rs` -- WorkspaceEnv
 - `src-tauri/src/modules/process.rs` -- 子进程管理（tokio::process）
 
 ### 3.2 Rust 外部

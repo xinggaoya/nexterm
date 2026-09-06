@@ -13,7 +13,7 @@ pnpm i
 pnpm dev                  # Vite dev server on :3180
 pnpm tauri dev            # Tauri dev (desktop)
 pnpm build                # vue-tsc --noEmit && vite build
-pnpm exec tsc --noEmit    # type check only
+pnpm exec vue-tsc --noEmit  # type check only
 pnpm test                 # vitest run
 pnpm test:watch           # vitest --watch
 cd src-tauri && cargo check --all-targets --locked
@@ -121,7 +121,7 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 ### Path Handling
 
 - Paths may originate from Windows, Unix, OSC 7, or file tree -- always normalize separators at boundaries (`@/lib/path`)
-- WSL path conversion handled in `src-tauri/src/modules/workspace.rs`
+- WSL path conversion handled in `src-tauri/src/modules/workspace/wsl.rs`
 - Backslashes in strings are always literal `\\` (Windows path) -- never interpret them
 
 ### IPC Contract
@@ -135,7 +135,7 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 |------|------|
 | `src/main.ts` | App entry: creates Vue app, installs Pinia + i18n, hydrates preferences, mounts |
 | `src/app/MainApp.vue` | Root component: theme, layout, settings drawer, command palette, notification bridge |
-| `src/modules/settings/preferencesPinia.ts` | Central preferences Pinia store (setup-function, 21 fields) |
+| `src/modules/settings/preferencesPinia.ts` | Central preferences Pinia store (setup-function, spec-driven；新增偏好只需改 `store.ts` 的 `PREF_SPECS` 表 + 默认值) |
 | `src/modules/settings/store.ts` | Low-level Tauri store persistence layer with all preference keys and types |
 | `src/modules/tabs/tabsPinia.ts` | Tab state management |
 | `src/modules/tabs/tabsTypes.ts` | Tab type unions (Terminal, Editor, Preview, Markdown, GitDiff, GitHistory, GitCommitFileDiff) |
@@ -149,8 +149,8 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 | `src-tauri/src/modules/pty/session.rs` | PTY session, Transcript, Job Object, flusher |
 | `src-tauri/src/modules/shell/mod.rs` | Shell commands: run, session, background spawn/kill/list |
 | `src-tauri/src/modules/fs/mod.rs` | FS commands: read/write/stat, mutate, search, grep, glob, tree, watcher |
-| `src-tauri/src/modules/git/mod.rs` | Git commands: status, diff, stage, commit, branch, stash, log |
-| `src-tauri/src/modules/workspace.rs` | Workspace auth, current dir, WSL distros |
+| `src-tauri/src/modules/git/` | `commands.rs` 为 Tauri 包装层；`operations/` 按 status/stage/commit/branch/stash/log/remote/discover 分文件实现 git 能力 |
+| `src-tauri/src/modules/workspace/` | Workspace auth/registry (`mod.rs`, `registry.rs`), env 与 SSH 守卫 (`env.rs`), WSL 路径与进程助手 (`wsl.rs`) |
 | `src-tauri/src/modules/lock.rs` | Mutex/RwLock poison error wrappers |
 | `src-tauri/wsl-watcher-helper/src/main.rs` | WSL filesystem watcher binary (independent process) |
 | `vite.config.ts` | Vite 7 config with Vue, Tailwind 4, auto-imports, chunk splitting |
@@ -173,10 +173,8 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 - **Mocking**: `vi.mock()` for Tauri API mocking, `vi.hoisted()` for mock hoisting before module import
 - **Run**: `pnpm test` (single run), `pnpm test:watch` (watch mode)
 - **Before PRs**: Run `pnpm test` + `pnpm build` + `cargo clippy --all-targets --locked -- -D warnings`
+- **CI 门禁**: `.github/workflows/ci.yml` 在 push(main)/PR 上运行相同的前端与 Rust 检查（Ubuntu + Windows 双矩阵）
 - **Add boundary tests** when changing: module ownership, framework migration rules, IPC contracts, or security-sensitive behavior
-- Two pre-existing test failures on `main` are out of refactor scope; see `docs/superpowers/plans/frontend-vue3-refactor-summary.md`:
-  - `src/modules/explorer/FileExplorer.vue.test.ts > renders git tones for changed files and parent folders`
-  - `src/modules/source-control/SourceControlPanel.vue.test.ts > runs fetch pull and push operations then refreshes status`
 
 ## Commit & Pull Request Guidelines
 

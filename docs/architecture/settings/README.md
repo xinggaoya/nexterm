@@ -57,10 +57,8 @@ type Preferences = {
   terminalFontSize: number;
   terminalScrollback: number;
   keybindings: KeybindingOverrides;
-  lastWslDistro: string | null;
   lastWorkspace: StoredWorkspace | null;
   recentWorkspaces: StoredWorkspace[];
-  zoomLevel: number;
   sourceControlPanelWidth: number;
   explorerPanelWidth: number;
   touchOptimizations: TouchMode;

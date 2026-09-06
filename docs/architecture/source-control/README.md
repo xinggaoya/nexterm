@@ -179,7 +179,7 @@ type GitRepositoryDiscovery = {
 - `SourceControlGitWorkflows.vue.test.ts`
 - `SourceControlRemotes.vue.test.ts`（覆盖空态、列表、添加、编辑、删除、名称校验）
 - `sourceControlVueBoundary.test.ts`
-- 后端：`src-tauri/src/modules/git/operations.rs` 内 `mod tests::remote` 覆盖 `validate_remote_name` / `parse_remote_name` / `remote_list` / `remote_add` / `remote_remove` / `remote_set_url` 集成路径。
+- 后端：`src-tauri/src/modules/git/operations/remote.rs` 内 `mod tests` 覆盖 `validate_remote_name` / `parse_remote_name` / `remote_list` / `remote_add` / `remote_remove` / `remote_set_url` 集成路径。
 
 ## 9. 相关文档
 

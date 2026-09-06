@@ -61,11 +61,11 @@ nexterm/
 |  |  +- modules/
 |  |     +- lock.rs           # mutex/rwlock 毒化错误包装
 |  |     +- process.rs        # Windows 隐藏控制台窗口
-|  |     +- workspace.rs      # WorkspaceRegistry 授权、WSL 辅助
+|  |     +- workspace/       # mod.rs(命令/launch) + registry.rs(授权/缓存) + env.rs + wsl.rs(路径/进程)
 |  |     +- pty/              # PTY 会话、Transcript、Job Object、da_filter、shell_init
 |  |     +- shell/            # 一次性命令 / 持久 session / 后台进程 / ringbuffer
 |  |     +- fs/               # tree / file / mutate / search / grep / watcher
-|  |     +- git/              # commands / operations / parser / process / types / errors / utils
+|  |     +- git/              # commands / operations/(status/stage/commit/branch/stash/log/remote/discover) / parser / process / types / errors / utils
 |  +- wsl-watcher-helper/       # 独立二进制，监控 WSL 工作区并以 JSON 行输出事件
 |  +- Cargo.toml                # 顶层 crate + workspace
 |  +- tauri.conf.json
@@ -188,8 +188,8 @@ nexterm/
 | `pty` | `mod.rs` / `session.rs` / `transcript.rs` / `job.rs` / `da_filter.rs` / `shell_init.rs` / `io.rs` | PTY 会话；ConPTY 串行化、Job Object 防止子进程逃逸、Transcript 临时文件作为转录缓冲 |
 | `shell` | `mod.rs` / `session.rs` / `background.rs` / `ringbuffer.rs` | 一次性命令、持久 shell session、后台进程（spawn/logs/kill/list） |
 | `fs` | `mod.rs` / `tree.rs` / `file.rs` / `mutate.rs` / `search.rs` / `grep.rs` / `watcher.rs` / `watcher/{local,polling,wsl,events}.rs` / `wsl_ops.rs` | 读/写/遍历/搜索/grep/glob/变更；`FsWatcherState` 维护当前工作区 watcher |
-| `git` | `mod.rs` / `commands.rs` / `operations.rs` / `parser.rs` / `process.rs` / `types.rs` / `errors.rs` / `utils.rs` | Git 命令封装、输出解析、错误码归一 |
-| `workspace` | `workspace.rs` | `WorkspaceRegistry` 授权、canonical 缓存、WSL 辅助 |
+| `git` | `mod.rs` / `commands.rs` / `operations/`（`mod`+`status`+`stage`+`commit`+`branch`+`stash`+`log`+`remote`+`discover`+`test_support`）/ `parser.rs` / `process.rs` / `types.rs` / `errors.rs` / `utils.rs` | Git 命令封装、输出解析、错误码归一 |
+| `workspace` | `mod.rs` / `registry.rs` / `env.rs` / `wsl.rs` | Tauri 命令与 launch dir、`WorkspaceRegistry` 授权与 canonical 缓存、WorkspaceEnv 与 SSH 守卫、WSL 路径换算与进程助手 |
 | `lock` | `lock.rs` | `mutex_lock` / `rwlock_read` / `rwlock_write` / `condvar_wait_timeout`，统一毒化错误 |
 | `process` | `process.rs` | Windows 下隐藏子进程控制台窗口 |
 

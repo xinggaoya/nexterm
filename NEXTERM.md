@@ -24,7 +24,7 @@ Nexterm 是终端开发环境。技术栈：
 pnpm i
 pnpm dev
 pnpm tauri dev
-pnpm exec tsc --noEmit
+pnpm exec vue-tsc --noEmit
 pnpm build
 ```
 
@@ -46,8 +46,11 @@ Rust 进程负责所有系统访问。Webview 不直接访问文件系统、进�
 - `fs::*`：文件树、文件读写、搜索、grep 和变更操作。
 - `shell::*`：一次性命令、持久 shell 会话、后台进程和日志缓冲。
 - `workspace::*` / `git::*`：工作区和 Git 辅助能力。
+- `ssh::*` / `agent::*`：SSH 远程工作区与 nexterm-agent 常驻代理（WSL/远端 fs/exec 加速）。
 
-前端按 `src/modules/` 分区。新功能应放入对应模块，主窗口入口由 `src/main.ts` 挂载 Vue 工作台，设置页作为主窗口内的 Naive UI 抽屉/面板挂载，不再创建独立设置窗口。迁移过程中仍可能存在待替换的旧 React 模块，不能继续向旧 React 层增加新功能。
+实现强度备注：`src/modules/lsp/`（LSP 诊断闭环，实验性，需本机安装对应语言服务器）、`src/modules/snippets/`（仅终端模板片段，无管理 UI）、`src/modules/search/`（Find in Files 最小实现）为最小实现，扩展前先看各自 `docs/architecture/<module>/` 文档。
+
+前端按 `src/modules/` 分区。新功能应放入对应模块，主窗口入口由 `src/main.ts` 挂载 Vue 工作台，设置页作为主窗口内的 Naive UI 抽屉/面板挂载，不再创建独立设置窗口。React 迁移已完成：源代码中不存在 React 模块，`noReactSourceBoundary` / `noReactPackageBoundary` 等边界测试会阻止其回流。
 
 ## Frontend Rules
 

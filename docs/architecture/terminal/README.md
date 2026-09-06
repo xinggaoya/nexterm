@@ -133,7 +133,6 @@ type PaneNode =
 | `terminalDrawBoldTextInBrightColors` | boolean | true | 亮色加粗 |
 | `terminalCustomGlyphs` | boolean | true | 自定义字形 |
 | `terminalRescaleOverlappingGlyphs` | boolean | true | 缩放宽字符 |
-| `terminalOscHyperlink` | boolean | true | OSC 8 超链接 |
 
 ## 6. 关键算法
 

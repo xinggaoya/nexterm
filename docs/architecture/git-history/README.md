@@ -163,7 +163,7 @@ type RemoteWebHost = "github" | "gitlab" | "bitbucket" | "unknown";
 - `GitHistoryPane.vue.test.ts`：分页 + ref 切换 + 远程链接 + 提交详情流程。
 - `GitHistoryStack.vue.test.ts`：tabs -> pane 路由、ref 切换事件回传。
 - `gitHistoryVueBoundary.test.ts`：模块下不允许 React 残留。
-- 后端 `operations.rs::log` 测试覆盖 default / refName / all / ref 分类 / 分页 offset / hasMore / 无效 ref / 空仓。
+- 后端 `operations/log.rs::log` 测试覆盖 default / refName / all / ref 分类 / 分页 offset / hasMore / 无效 ref / 空仓。
 
 ## 9. 相关文档
 
