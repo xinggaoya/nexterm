@@ -21,15 +21,15 @@ jobs:
           - name: Windows
             platform: windows-latest
             args: ""
-            rustTargets: ""
+            rustTargets: "x86_64-unknown-linux-musl"
           - name: Ubuntu
             platform: ubuntu-22.04
             args: ""
-            rustTargets: ""
+            rustTargets: "x86_64-unknown-linux-musl"
           - name: macOS
             platform: macos-latest
             args: "--target universal-apple-darwin"
-            rustTargets: "aarch64-apple-darwin,x86_64-apple-darwin"
+            rustTargets: "aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-musl"
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -71,12 +71,22 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # nexterm-agent 运行在远端(WSL/SSH Linux 主机),由宿主 App 内嵌后推送。
+      # 产物路径与 src-tauri/build.rs 的默认探测路径一致,三个平台的安装包都要内嵌。
+      - name: Build nexterm-agent (x86_64-unknown-linux-musl)
+        working-directory: src-tauri
+        run: cargo build --release --locked --target x86_64-unknown-linux-musl -p nexterm-agent
+
+      - name: Verify agent asset
+        run: test -f src-tauri/target/x86_64-unknown-linux-musl/release/nexterm-agent
+
       - name: Build and upload Tauri bundles
         uses: tauri-apps/tauri-action@action-v0.5.25
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          NEXTERM_AGENT: ${{ github.workspace }}/src-tauri/target/x86_64-unknown-linux-musl/release/nexterm-agent
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Nexterm ${{ github.ref_name }}
