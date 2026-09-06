@@ -38,6 +38,40 @@ fn parse_launch_dir() -> Option<String> {
     None
 }
 
+/// 前端偏好 store 的文件名（src/modules/settings/store.ts 的 STORE_PATH）。
+const PREFERENCES_STORE_FILE: &str = "nexterm-settings.json";
+
+/// 读取 `restoreWindowState` 偏好（默认 true）。
+///
+/// window-state 插件一旦注册就会在启动时无条件恢复上次窗口几何，没有
+/// 运行时开关；而 tauri-plugin-store 的 Rust API 要等 AppHandle 可用才能
+/// 读，晚于插件注册时机。因此按 store 插件相同的解析规则
+/// （`BaseDirectory::AppData` = `dirs::data_dir()`/bundle identifier）
+/// 直接读同一份 JSON。文件/键缺失或解析失败都回落默认值。
+///
+/// 注意：`BUNDLE_IDENTIFIER` 必须与 tauri.conf.json 的 identifier 保持
+/// 一致（下方有契约测试守护）。
+fn should_restore_window_state() -> bool {
+    const BUNDLE_IDENTIFIER: &str = "app.xinggaoya.nexterm";
+    let Some(data_dir) = dirs::data_dir() else {
+        return true;
+    };
+    let path = data_dir
+        .join(BUNDLE_IDENTIFIER)
+        .join(PREFERENCES_STORE_FILE);
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return true;
+    };
+    serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("restoreWindowState")
+                .and_then(serde_json::Value::as_bool)
+        })
+        .unwrap_or(true)
+}
+
 /// Tauri event name the frontend listens to for deep-link requests. Payload
 /// mirrors the URL `nexterm://open?workspacePath=...&workspaceEnv=...&wslDistro=...`
 /// query parameters parsed by `src/lib/launchDir.ts`.
@@ -136,8 +170,15 @@ pub fn run() {
     workspace::init_launch_cwd();
     let launch_dir = parse_launch_dir();
 
-    if let Err(error) = tauri::Builder::default()
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+    // restoreWindowState 偏好关掉时不注册 window-state 插件：既不恢复也
+    // 不保存窗口几何（插件注册即生效，没有运行时开关）。
+    let builder = tauri::Builder::default();
+    let builder = if should_restore_window_state() {
+        builder.plugin(tauri_plugin_window_state::Builder::default().build())
+    } else {
+        builder
+    };
+    if let Err(error) = builder
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_os::init())
@@ -150,7 +191,6 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -272,5 +312,63 @@ pub fn run() {
     {
         log::error!("error while running tauri application: {error}");
         eprintln!("[nexterm] error while running tauri application: {error}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use url::Url;
+
+    fn parse(raw: &str) -> Option<DeepLinkOpenRequest> {
+        parse_deep_link_query(&Url::parse(raw).expect("valid url"))
+    }
+
+    #[test]
+    fn deep_link_query_style_parses_path_env_and_distro() {
+        let request = parse("nexterm://open?workspacePath=%2Fhome%2Fu%2Frepo&workspaceEnv=wsl&wslDistro=Ubuntu")
+            .expect("request");
+        assert_eq!(request.path, "/home/u/repo");
+        assert_eq!(request.env, "wsl");
+        assert_eq!(request.wsl_distro.as_deref(), Some("Ubuntu"));
+    }
+
+    #[test]
+    fn deep_link_query_style_without_distro_omits_field() {
+        let request = parse("nexterm://open?workspacePath=%2Frepo&workspaceEnv=local").expect("request");
+        assert_eq!(request.path, "/repo");
+        assert_eq!(request.env, "local");
+        assert!(request.wsl_distro.is_none());
+    }
+
+    #[test]
+    fn deep_link_absolute_path_style_maps_to_local() {
+        let request = parse("nexterm:///home/u/repo").expect("request");
+        assert_eq!(request.path, "home/u/repo");
+        assert_eq!(request.env, "local");
+        assert!(request.wsl_distro.is_none());
+    }
+
+    #[test]
+    fn deep_link_rejects_other_schemes_and_empty_urls() {
+        assert!(parse("https://open?workspacePath=%2Frepo&workspaceEnv=local").is_none());
+        assert!(parse("nexterm://open").is_none());
+    }
+
+    #[test]
+    fn bundle_identifier_matches_tauri_config() {
+        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let raw = std::fs::read_to_string(manifest_dir.join("tauri.conf.json"))
+            .expect("tauri.conf.json readable");
+        let config: serde_json::Value = serde_json::from_str(&raw).expect("valid json");
+        let identifier = config
+            .pointer("/identifier")
+            .and_then(serde_json::Value::as_str)
+            .expect("identifier field");
+        assert_eq!(
+            identifier,
+            "app.xinggaoya.nexterm",
+            "should_restore_window_state 里的 BUNDLE_IDENTIFIER 与 tauri.conf.json 不同步"
+        );
     }
 }

@@ -182,12 +182,14 @@ pub async fn open(
     Ok(session)
 }
 
-/// 连接探针:解析远端 HOME(工作区根默认值)与登录 shell。
-pub async fn probe(
+/// 连接探针:解析远端 HOME(工作区根默认值)与登录 shell,并返回这条
+/// 已认证的连接供调用方入池复用 —— 整个流程只做一次 SSH 握手(TOFU
+/// 校验在 `client::connect` 内完成,语义不变)。
+pub(crate) async fn probe(
     profile: SshProfile,
     secret: Option<&str>,
     known_hosts_path: std::path::PathBuf,
-) -> Result<SshProbeResult, String> {
+) -> Result<(SshProbeResult, SshConnection), String> {
     let mut connection = client::connect(&profile, secret, known_hosts_path).await?;
     let home = probe_command(&mut connection.handle, "printf %s \"$HOME\"").await?;
     if home.is_empty() {
@@ -199,10 +201,13 @@ pub async fn probe(
     )
     .await
     .unwrap_or_default();
-    Ok(SshProbeResult {
-        home,
-        shell: shell.trim().to_string(),
-    })
+    Ok((
+        SshProbeResult {
+            home,
+            shell: shell.trim().to_string(),
+        },
+        connection,
+    ))
 }
 
 async fn probe_command(

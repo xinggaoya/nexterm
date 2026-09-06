@@ -23,471 +23,195 @@ where
     .map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
-pub async fn git_resolve_repo(
-    cwd: String,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<Option<GitRepoInfo>, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::resolve_repo(r, &cwd, &workspace).map_err(Into::into)
-    })
-    .await
+/// 统一生成 git 域的 Tauri 包装命令。每个命令都是同一模板:
+/// 可选参数预处理(prelude)→ `WorkspaceEnv::from_option` →
+/// `blocking`(spawn_blocking)→ `operations::<op>(...)`。
+///
+/// 用法:
+/// ```ignore
+/// git_command!(git_stage, stage, () :
+///     repo_root: String => &repo_root,
+///     paths: Vec<String> => &paths);
+///
+/// git_command!(git_remote_url, remote_url,
+///     prelude { let remote = name.unwrap_or_else(|| "origin".into()); },
+///     Option<String> :
+///     repo_root: String => &repo_root,
+///     name: Option<String> => &remote);
+/// ```
+/// - `$cmd` / `$op`:命令函数名与 operations 函数名;
+/// - `$ret`:operations 的成功返回类型(命令返回 `Result<$ret, String>`);
+/// - 参数列表的转发表达式决定传参方式:按引用 `&x`、`Option` 转
+///   `x.as_deref()`、或经 prelude 计算出的值;
+/// - `prelude { .. }` 可选(置于 `$ret` 之前),在闭包之前执行
+///   (如默认值回填)。
+///
+/// 生成的函数名、参数名(serde camelCase)与返回类型和手写版本
+/// 完全一致;`lib.rs` 的 `generate_handler` 引用不变。
+macro_rules! git_command {
+    (
+        $cmd:ident, $op:ident, $ret:ty :
+        $( $arg:ident : $ty:ty => $fwd:expr ),* $(,)?
+    ) => {
+        git_command!(@generate $cmd, $op, $ret, [], [$( $arg : $ty => $fwd ),*]);
+    };
+    (
+        $cmd:ident, $op:ident, prelude { $( $pre:stmt )* }, $ret:ty :
+        $( $arg:ident : $ty:ty => $fwd:expr ),* $(,)?
+    ) => {
+        git_command!(@generate $cmd, $op, $ret, [$( $pre )*], [$( $arg : $ty => $fwd ),*]);
+    };
+    (@generate $cmd:ident, $op:ident, $ret:ty, [$($pre:tt)*], [$($arg:ident : $ty:ty => $fwd:expr),*]) => {
+        #[tauri::command]
+        pub async fn $cmd(
+            $( $arg : $ty, )*
+            workspace: Option<WorkspaceEnv>,
+            app: AppHandle,
+        ) -> Result<$ret, String> {
+            $($pre)*
+            let workspace = WorkspaceEnv::from_option(workspace);
+            blocking(app, move |r| {
+                operations::$op(r, $( $fwd, )* &workspace).map_err(Into::into)
+            })
+            .await
+        }
+    };
 }
 
-#[tauri::command]
-pub async fn git_panel_snapshot(
-    cwd: String,
-    workspace: Option<WorkspaceEnv>,
-    untracked_files: Option<String>,
-    app: AppHandle,
-) -> Result<GitPanelSnapshot, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::panel_snapshot(r, &cwd, &workspace, untracked_files.as_deref())
-            .map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_resolve_repo, resolve_repo, Option<GitRepoInfo> :
+    cwd: String => &cwd);
 
-#[tauri::command]
-pub async fn git_status(
-    repo_root: String,
-    workspace: Option<WorkspaceEnv>,
-    untracked_files: Option<String>,
-    app: AppHandle,
-) -> Result<GitStatusSnapshot, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::status(r, &repo_root, &workspace, untracked_files.as_deref())
-            .map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_panel_snapshot, panel_snapshot, GitPanelSnapshot :
+    cwd: String => &cwd,
+    untracked_files: Option<String> => untracked_files.as_deref());
 
-#[tauri::command]
-pub async fn git_diff(
-    repo_root: String,
-    path: Option<String>,
-    staged: bool,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitDiffResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::diff(r, &repo_root, path.as_deref(), staged, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_status, status, GitStatusSnapshot :
+    repo_root: String => &repo_root,
+    untracked_files: Option<String> => untracked_files.as_deref());
 
-#[tauri::command]
-pub async fn git_diff_content(
-    repo_root: String,
-    path: String,
-    staged: bool,
-    original_path: Option<String>,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitDiffContentResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::diff_content(
-            r,
-            &repo_root,
-            &path,
-            staged,
-            original_path.as_deref(),
-            &workspace,
-        )
-        .map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_diff, diff, GitDiffResult :
+    repo_root: String => &repo_root,
+    path: Option<String> => path.as_deref(),
+    staged: bool => staged);
 
-#[tauri::command]
-pub async fn git_stage(
-    repo_root: String,
-    paths: Vec<String>,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<(), String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::stage(r, &repo_root, &paths, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_diff_content, diff_content, GitDiffContentResult :
+    repo_root: String => &repo_root,
+    path: String => &path,
+    staged: bool => staged,
+    original_path: Option<String> => original_path.as_deref());
 
-#[tauri::command]
-pub async fn git_unstage(
-    repo_root: String,
-    paths: Vec<String>,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<(), String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::unstage(r, &repo_root, &paths, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_stage, stage, () :
+    repo_root: String => &repo_root,
+    paths: Vec<String> => &paths);
 
-#[tauri::command]
-pub async fn git_discard(
-    repo_root: String,
-    entries: Vec<DiscardEntry>,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<(), String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::discard(r, &repo_root, &entries, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_unstage, unstage, () :
+    repo_root: String => &repo_root,
+    paths: Vec<String> => &paths);
 
-#[tauri::command]
-pub async fn git_commit(
-    repo_root: String,
-    message: String,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitCommitResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::commit(r, &repo_root, &message, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_discard, discard, () :
+    repo_root: String => &repo_root,
+    entries: Vec<DiscardEntry> => &entries);
 
-#[tauri::command]
-pub async fn git_fetch(
-    repo_root: String,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitFetchResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::fetch(r, &repo_root, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_commit, commit, GitCommitResult :
+    repo_root: String => &repo_root,
+    message: String => &message);
 
-#[tauri::command]
-pub async fn git_pull_ff_only(
-    repo_root: String,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitPullResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::pull_ff_only(r, &repo_root, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_fetch, fetch, GitFetchResult :
+    repo_root: String => &repo_root);
 
-#[tauri::command]
-pub async fn git_push(
-    repo_root: String,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitPushResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::push(r, &repo_root, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_pull_ff_only, pull_ff_only, GitPullResult :
+    repo_root: String => &repo_root);
 
-#[tauri::command]
-pub async fn git_branch_list(
-    repo_root: String,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<Vec<GitBranchInfo>, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::branch_list(r, &repo_root, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_push, push, GitPushResult :
+    repo_root: String => &repo_root);
 
-#[tauri::command]
-pub async fn git_checkout_branch(
-    repo_root: String,
-    branch: String,
-    remote: bool,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitBranchResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::checkout_branch(r, &repo_root, &branch, remote, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_branch_list, branch_list, Vec<GitBranchInfo> :
+    repo_root: String => &repo_root);
 
-#[tauri::command]
-pub async fn git_create_branch(
-    repo_root: String,
-    branch: String,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitBranchResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::create_branch(r, &repo_root, &branch, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_checkout_branch, checkout_branch, GitBranchResult :
+    repo_root: String => &repo_root,
+    branch: String => &branch,
+    remote: bool => remote);
 
-#[tauri::command]
-pub async fn git_stash_list(
-    repo_root: String,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<Vec<GitStashEntry>, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::stash_list(r, &repo_root, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_create_branch, create_branch, GitBranchResult :
+    repo_root: String => &repo_root,
+    branch: String => &branch);
 
-#[tauri::command]
-pub async fn git_stash_push(
-    repo_root: String,
-    options: GitStashPushOptions,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitStashResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::stash_push(r, &repo_root, &options, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_stash_list, stash_list, Vec<GitStashEntry> :
+    repo_root: String => &repo_root);
 
-#[tauri::command]
-pub async fn git_stash_pop(
-    repo_root: String,
-    selector: String,
-    expected_sha: Option<String>,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitStashResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::stash_pop(
-            r,
-            &repo_root,
-            &selector,
-            expected_sha.as_deref(),
-            &workspace,
-        )
-        .map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_stash_push, stash_push, GitStashResult :
+    repo_root: String => &repo_root,
+    options: GitStashPushOptions => &options);
 
-#[tauri::command]
-pub async fn git_stash_drop(
-    repo_root: String,
-    selector: String,
-    expected_sha: Option<String>,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitStashResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::stash_drop(
-            r,
-            &repo_root,
-            &selector,
-            expected_sha.as_deref(),
-            &workspace,
-        )
-        .map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_stash_pop, stash_pop, GitStashResult :
+    repo_root: String => &repo_root,
+    selector: String => &selector,
+    expected_sha: Option<String> => expected_sha.as_deref());
 
-#[tauri::command]
-pub async fn git_stash_apply(
-    repo_root: String,
-    selector: String,
-    expected_sha: Option<String>,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitStashResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::stash_apply(
-            r,
-            &repo_root,
-            &selector,
-            expected_sha.as_deref(),
-            &workspace,
-        )
-        .map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_stash_drop, stash_drop, GitStashResult :
+    repo_root: String => &repo_root,
+    selector: String => &selector,
+    expected_sha: Option<String> => expected_sha.as_deref());
 
-#[tauri::command]
-pub async fn git_log(
-    repo_root: String,
-    options: GitLogOptions,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitLogPage, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::log(r, &repo_root, &options, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_stash_apply, stash_apply, GitStashResult :
+    repo_root: String => &repo_root,
+    selector: String => &selector,
+    expected_sha: Option<String> => expected_sha.as_deref());
 
-#[tauri::command]
-pub async fn git_show_commit(
-    repo_root: String,
-    sha: String,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitDiffResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::show_commit_diff(r, &repo_root, &sha, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_log, log, GitLogPage :
+    repo_root: String => &repo_root,
+    options: GitLogOptions => &options);
 
-#[tauri::command]
-pub async fn git_commit_files(
-    repo_root: String,
-    sha: String,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<Vec<GitCommitFileChange>, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::commit_files(r, &repo_root, &sha, &workspace).map_err(Into::into)
-    })
-    .await
-}
+// 命令名是 `git_show_commit`,但实际调用 `show_commit_diff` 操作。
+git_command!(git_show_commit, show_commit_diff, GitDiffResult :
+    repo_root: String => &repo_root,
+    sha: String => &sha);
 
-#[tauri::command]
-pub async fn git_commit_file_diff(
-    repo_root: String,
-    sha: String,
-    path: String,
-    original_path: Option<String>,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitDiffContentResult, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::commit_file_diff(
-            r,
-            &repo_root,
-            &sha,
-            &path,
-            original_path.as_deref(),
-            &workspace,
-        )
-        .map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_commit_files, commit_files, Vec<GitCommitFileChange> :
+    repo_root: String => &repo_root,
+    sha: String => &sha);
 
-#[tauri::command]
-pub async fn git_remote_url(
-    repo_root: String,
-    name: Option<String>,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<Option<String>, String> {
-    let remote = name.unwrap_or_else(|| "origin".to_string());
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::remote_url(r, &repo_root, &remote, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_commit_file_diff, commit_file_diff, GitDiffContentResult :
+    repo_root: String => &repo_root,
+    sha: String => &sha,
+    path: String => &path,
+    original_path: Option<String> => original_path.as_deref());
 
-#[tauri::command]
-pub async fn git_remote_list(
-    repo_root: String,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<Vec<GitRemoteInfo>, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::remote_list(r, &repo_root, &workspace).map_err(Into::into)
-    })
-    .await
-}
+// 远端名缺省为 `origin`:前端允许不传 `name`。
+git_command!(git_remote_url, remote_url,
+    prelude {
+        let remote = name.unwrap_or_else(|| "origin".to_string());
+    },
+    Option<String> :
+    repo_root: String => &repo_root,
+    name: Option<String> => &remote);
 
-#[tauri::command]
-pub async fn git_remote_add(
-    repo_root: String,
-    input: GitRemoteInput,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitRemoteInfo, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::remote_add(r, &repo_root, &input, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_remote_list, remote_list, Vec<GitRemoteInfo> :
+    repo_root: String => &repo_root);
 
-#[tauri::command]
-pub async fn git_remote_remove(
-    repo_root: String,
-    name: String,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<(), String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::remote_remove(r, &repo_root, &name, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_remote_add, remote_add, GitRemoteInfo :
+    repo_root: String => &repo_root,
+    input: GitRemoteInput => &input);
 
-#[tauri::command]
-pub async fn git_remote_set_url(
-    repo_root: String,
-    input: GitRemoteUrlUpdate,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitRemoteInfo, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    blocking(app, move |r| {
-        operations::remote_set_url(r, &repo_root, &input, &workspace).map_err(Into::into)
-    })
-    .await
-}
+git_command!(git_remote_remove, remote_remove, () :
+    repo_root: String => &repo_root,
+    name: String => &name);
+
+git_command!(git_remote_set_url, remote_set_url, GitRemoteInfo :
+    repo_root: String => &repo_root,
+    input: GitRemoteUrlUpdate => &input);
 
 const DEFAULT_DISCOVERY_DEPTH: u32 = 4;
 const DEFAULT_DISCOVERY_MAX_REPOS: u32 = 32;
 
-#[tauri::command]
-pub async fn git_discover_repositories(
-    root_path: String,
-    max_depth: Option<u32>,
-    max_repos: Option<u32>,
-    workspace: Option<WorkspaceEnv>,
-    app: AppHandle,
-) -> Result<GitRepositoryDiscovery, String> {
-    let workspace = WorkspaceEnv::from_option(workspace);
-    let depth = max_depth.unwrap_or(DEFAULT_DISCOVERY_DEPTH);
-    let limit = max_repos.unwrap_or(DEFAULT_DISCOVERY_MAX_REPOS);
-    blocking(app, move |r| {
-        operations::discover_repositories(r, &root_path, depth, limit, &workspace)
-            .map_err(Into::into)
-    })
-    .await
-}
+// 发现深度 / 数量上限缺省回填后才进入 blocking 闭包。
+git_command!(git_discover_repositories, discover_repositories,
+    prelude {
+        let depth = max_depth.unwrap_or(DEFAULT_DISCOVERY_DEPTH);
+        let limit = max_repos.unwrap_or(DEFAULT_DISCOVERY_MAX_REPOS);
+    },
+    GitRepositoryDiscovery :
+    root_path: String => &root_path,
+    max_depth: Option<u32> => depth,
+    max_repos: Option<u32> => limit);

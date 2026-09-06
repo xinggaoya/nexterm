@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
-use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -15,7 +14,7 @@ use crate::modules::git::types::{
     GitOutput, TextSource, DEFAULT_TIMEOUT_SECS, MAX_FILE_BYTES, MAX_OUTPUT_BYTES,
     MAX_TIMEOUT_SECS, MIN_GIT_VERSION,
 };
-use crate::modules::process::suppress_command_window;
+use crate::modules::process::{drain_limited, suppress_command_window, wait_with_timeout, WaitFailure};
 #[cfg(windows)]
 use crate::modules::workspace::validate_wsl_distro_name;
 use crate::modules::workspace::WorkspaceEnv;
@@ -293,24 +292,16 @@ where
         .take_stderr()
         .ok_or_else(|| GitError::Spawn("no stderr pipe".into()))?;
 
-    let stdout_handle = thread::spawn(move || drain(&mut stdout_pipe, 64 * 1024));
-    let stderr_handle = thread::spawn(move || drain(&mut stderr_pipe, 4 * 1024));
+    // stdout 常见为结构化输出(64KB 预分配),stderr 多为短消息(4KB)。
+    let stdout_handle =
+        thread::spawn(move || drain_limited(&mut stdout_pipe, MAX_OUTPUT_BYTES, 16 * 1024, 64 * 1024));
+    let stderr_handle =
+        thread::spawn(move || drain_limited(&mut stderr_pipe, MAX_OUTPUT_BYTES, 16 * 1024, 4 * 1024));
 
-    let (tx, rx) = mpsc::channel();
-    let waiter = Arc::clone(&child);
-    thread::spawn(move || {
-        let _ = tx.send(waiter.wait());
-    });
-
-    let (exit_code, timed_out) = match rx.recv_timeout(dur) {
-        Ok(Ok(status)) => (status.code(), false),
-        Ok(Err(e)) => return Err(GitError::Io(e)),
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            (None, true)
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
+    let (exit_code, timed_out) = match wait_with_timeout(&child, dur) {
+        Ok(result) => result,
+        Err(WaitFailure::Io(e)) => return Err(GitError::Io(e)),
+        Err(WaitFailure::Disconnected) => {
             return Err(GitError::Spawn("git wait thread disconnected".into()));
         }
     };
@@ -348,7 +339,6 @@ fn run_git_via_remote_agent(
     let (tx, rx) = mpsc::channel();
     tauri::async_runtime::spawn(async move {
         let result = crate::modules::ssh::remote::remote_git_exec(
-            crate::modules::ssh::remote::global_pool(),
             &profile_id,
             cwd.as_deref(),
             &argv,
@@ -359,7 +349,7 @@ fn run_git_via_remote_agent(
         .await;
         let _ = tx.send(result);
     });
-    match rx.recv_timeout(timeout + AGENT_TRANSPORT_GRACE + Duration::from_secs(5)) {
+    match rx.recv_timeout(timeout + AGENT_TRANSPORT_GRACE + LEGACY_TRANSPORT_GRACE) {
         Ok(Ok(outcome)) => Ok(GitOutput {
             stdout: outcome.stdout,
             stderr: outcome.stderr,
@@ -417,6 +407,11 @@ const GIT_AGENT_ENV: &[(&str, &str)] = &[
 /// 传输层在业务超时之上再多等的余量,覆盖 agent 往返与 JSON 编解码。
 #[cfg(windows)]
 const AGENT_TRANSPORT_GRACE: Duration = Duration::from_secs(5);
+
+/// legacy 传输(wsl.exe / SSH 直连)在业务超时之外的兜底余量:该 5s
+/// 早于 agent 通道存在,覆盖远端 shell 往返与 JSON 编解码等固定开销,
+/// 与 AGENT_TRANSPORT_GRACE 叠加使用。
+const LEGACY_TRANSPORT_GRACE: Duration = Duration::from_secs(5);
 
 /// 经常驻 agent 执行 git。返回 `None` 表示 agent 不可用(资产缺失、
 /// 熔断、非 UTF-8 参数、agent 报错),调用方应走 legacy 路径。
@@ -501,30 +496,6 @@ fn decode_text(bytes: Vec<u8>) -> TextSource {
         Ok(text) => TextSource::Text(text),
         Err(e) => TextSource::Text(String::from_utf8_lossy(&e.into_bytes()).into_owned()),
     }
-}
-
-fn drain<R: Read>(reader: &mut R, prealloc: usize) -> (Vec<u8>, bool) {
-    let mut out: Vec<u8> = Vec::with_capacity(prealloc.min(MAX_OUTPUT_BYTES));
-    let mut buf = [0u8; 16 * 1024];
-    let mut truncated = false;
-    loop {
-        match reader.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                if out.len() >= MAX_OUTPUT_BYTES {
-                    truncated = true;
-                    continue;
-                }
-                let take = (MAX_OUTPUT_BYTES - out.len()).min(n);
-                out.extend_from_slice(&buf[..take]);
-                if take < n {
-                    truncated = true;
-                }
-            }
-            Err(_) => break,
-        }
-    }
-    (out, truncated)
 }
 
 #[cfg(test)]

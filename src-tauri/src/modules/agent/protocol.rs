@@ -103,3 +103,206 @@ mod tests {
         assert!(matches!(parse_line("   "), ParsedLine::Ignored));
     }
 }
+
+// ---- 方法名与参数构造的唯一定义 ----
+// WSL(agent/mod.rs 经 manager::request)与 SSH(ssh::remote.rs 经
+// agent_once)两条传输通道共用。方法名或参数字段变更时只改这里,
+// 避免两侧 JSON 构造镜像漂移。
+
+/// fs.readFile:返回内容 base64。
+pub(crate) const METHOD_FS_READ_FILE: &str = "fs.readFile";
+/// fs.readDir:目录条目列表。
+pub(crate) const METHOD_FS_READ_DIR: &str = "fs.readDir";
+/// fs.stat:文件元信息。
+pub(crate) const METHOD_FS_STAT: &str = "fs.stat";
+/// fs.writeFile:contentBase64 全量写。
+pub(crate) const METHOD_FS_WRITE_FILE: &str = "fs.writeFile";
+/// fs.createFile
+pub(crate) const METHOD_FS_CREATE_FILE: &str = "fs.createFile";
+/// fs.createDir
+pub(crate) const METHOD_FS_CREATE_DIR: &str = "fs.createDir";
+/// fs.rename
+pub(crate) const METHOD_FS_RENAME: &str = "fs.rename";
+/// fs.delete
+pub(crate) const METHOD_FS_DELETE: &str = "fs.delete";
+/// fs.copy
+pub(crate) const METHOD_FS_COPY: &str = "fs.copy";
+/// fs.search
+pub(crate) const METHOD_FS_SEARCH: &str = "fs.search";
+/// fs.listFiles
+pub(crate) const METHOD_FS_LIST_FILES: &str = "fs.listFiles";
+/// fs.grep
+pub(crate) const METHOD_FS_GREP: &str = "fs.grep";
+/// fs.glob
+pub(crate) const METHOD_FS_GLOB: &str = "fs.glob";
+/// exec:不经 shell 的 argv 执行。
+pub(crate) const METHOD_EXEC: &str = "exec";
+
+pub(crate) fn fs_read_file_params(path: &str) -> Value {
+    serde_json::json!({ "path": path })
+}
+
+pub(crate) fn fs_read_dir_params(path: &str) -> Value {
+    serde_json::json!({ "path": path })
+}
+
+pub(crate) fn fs_stat_params(path: &str) -> Value {
+    serde_json::json!({ "path": path })
+}
+
+pub(crate) fn fs_write_file_params(path: &str, content_base64: &str) -> Value {
+    serde_json::json!({ "path": path, "contentBase64": content_base64 })
+}
+
+pub(crate) fn fs_create_file_params(path: &str) -> Value {
+    serde_json::json!({ "path": path })
+}
+
+pub(crate) fn fs_create_dir_params(path: &str) -> Value {
+    serde_json::json!({ "path": path })
+}
+
+pub(crate) fn fs_rename_params(from: &str, to: &str) -> Value {
+    serde_json::json!({ "from": from, "to": to })
+}
+
+pub(crate) fn fs_delete_params(path: &str) -> Value {
+    serde_json::json!({ "path": path })
+}
+
+pub(crate) fn fs_copy_params(from: &str, to: &str) -> Value {
+    serde_json::json!({ "from": from, "to": to })
+}
+
+pub(crate) fn fs_search_params(
+    root: &str,
+    query: &str,
+    limit: Option<usize>,
+    show_hidden: bool,
+    root_display: &str,
+) -> Value {
+    serde_json::json!({
+        "root": root,
+        "query": query,
+        "limit": limit,
+        "showHidden": show_hidden,
+        "rootDisplay": root_display,
+    })
+}
+
+pub(crate) fn fs_list_files_params(
+    root: &str,
+    limit: Option<usize>,
+    max_depth: Option<usize>,
+    show_hidden: bool,
+) -> Value {
+    serde_json::json!({
+        "root": root,
+        "limit": limit,
+        "maxDepth": max_depth,
+        "showHidden": show_hidden,
+    })
+}
+
+pub(crate) fn fs_grep_params(
+    pattern: &str,
+    root: &str,
+    glob: Option<&[String]>,
+    case_insensitive: bool,
+    max_results: Option<usize>,
+    root_display: &str,
+) -> Value {
+    serde_json::json!({
+        "pattern": pattern,
+        "root": root,
+        "glob": glob,
+        "caseInsensitive": case_insensitive,
+        "maxResults": max_results,
+        "rootDisplay": root_display,
+    })
+}
+
+pub(crate) fn fs_glob_params(
+    pattern: &str,
+    root: &str,
+    max_results: Option<usize>,
+    root_display: &str,
+) -> Value {
+    serde_json::json!({
+        "pattern": pattern,
+        "root": root,
+        "maxResults": max_results,
+        "rootDisplay": root_display,
+    })
+}
+
+/// exec 参数。`stdin` 为 Some 时才输出 `stdinBase64`(WSL 通道支持
+/// stdin;SSH git 桥不传该字段,保持与既有协议形状一致)。
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn exec_params(
+    cwd: Option<&str>,
+    argv: &[String],
+    env: &[(&str, &str)],
+    stdin: Option<&[u8]>,
+    timeout: std::time::Duration,
+    max_output_bytes: usize,
+) -> Value {
+    let mut env_map = serde_json::Map::new();
+    for (key, value) in env {
+        env_map.insert((*key).to_string(), Value::String((*value).to_string()));
+    }
+    let mut params = serde_json::Map::new();
+    params.insert("argv".to_string(), serde_json::json!(argv));
+    params.insert("cwd".to_string(), serde_json::json!(cwd));
+    params.insert("env".to_string(), Value::Object(env_map));
+    if let Some(bytes) = stdin {
+        use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+        use base64::Engine as _;
+        params.insert(
+            "stdinBase64".to_string(),
+            Value::String(BASE64_STANDARD.encode(bytes)),
+        );
+    }
+    params.insert(
+        "timeoutMs".to_string(),
+        serde_json::json!(timeout.as_millis() as u64),
+    );
+    params.insert(
+        "maxOutputBytes".to_string(),
+        serde_json::json!(max_output_bytes),
+    );
+    Value::Object(params)
+}
+
+#[cfg(test)]
+mod params_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn exec_params_includes_stdin_only_when_present() {
+        let argv = vec!["git".to_string(), "status".to_string()];
+        let env = [("GIT_DIR", "/repo")];
+        let with_stdin = exec_params(
+            Some("/repo"),
+            &argv,
+            &env,
+            Some(b"hello"),
+            std::time::Duration::from_secs(5),
+            1024,
+        );
+        assert_eq!(with_stdin["argv"], json!(["git", "status"]));
+        assert_eq!(with_stdin["timeoutMs"], json!(5000));
+        assert!(with_stdin.get("stdinBase64").is_some());
+
+        let without_stdin = exec_params(None, &argv, &env, None, std::time::Duration::from_secs(5), 1024);
+        assert!(without_stdin.get("stdinBase64").is_none());
+        assert!(without_stdin["cwd"].is_null());
+    }
+
+    #[test]
+    fn fs_write_file_params_shape() {
+        let value = fs_write_file_params("/a", "QUJD");
+        assert_eq!(value, json!({ "path": "/a", "contentBase64": "QUJD" }));
+    }
+}

@@ -32,9 +32,12 @@ use self::wsl::{workspace_fs_event_from_wsl_json_line, HelperFailureTracker};
 /// mixed local + WSL — can be watched concurrently. This replaced the old
 /// single-slot `Option<ActiveWatcher>` that could only track one workspace at
 /// a time.
-#[derive(Default)]
+///
+/// 内部为 `Arc`:克隆廉价,异步命令壳可以把克隆体安全地 move 进
+/// `spawn_blocking` 闭包,而 `State` 借用本身无法跨越 `'static` 边界。
+#[derive(Clone, Default)]
 pub struct FsWatcherState {
-    watchers: Mutex<HashMap<String, ActiveWatcher>>,
+    watchers: Arc<Mutex<HashMap<String, ActiveWatcher>>>,
 }
 
 struct ActiveWatcher {
@@ -48,6 +51,9 @@ struct ActiveWatcher {
     batch_thread: Option<std::thread::JoinHandle<()>>,
 }
 
+/// 刷新源的持有容器:各变体在自身 Drop 时停止各自的 watch 线程/handle,
+/// 枚举值本身从不被读取 —— 存进 `ActiveWatcher` 就是为了把生命周期绑定
+/// 到 watcher 上(`fs_unwatch_workspace` 移除条目时 Drop 链触发停机)。
 #[allow(dead_code)]
 enum ActiveRefreshSource {
     Local(local::LocalRefreshSource),
@@ -173,19 +179,6 @@ pub fn fs_force_flush_workspace(
 ///
 /// `kinds` is a parallel vector to `paths`; when omitted, callers that
 /// don't care about per-path kind default every entry to `Modify`.
-pub(crate) fn emit_workspace_fs_changed(
-    state: &FsWatcherState,
-    root_path: &str,
-    paths: Vec<String>,
-    git_related: bool,
-) {
-    emit_workspace_fs_changed_with_kinds(state, root_path, paths, git_related, None);
-}
-
-/// Like [`emit_workspace_fs_changed`] but allows the caller to pin the
-/// per-path `FsChangeKind`. Internal `fs_create_*`/`fs_rename`/`fs_delete`
-/// commands use this to advertise Create/Delete to the file explorer so
-/// its silent refresh can decide to rebuild instead of patch.
 pub(crate) fn emit_workspace_fs_changed_with_kinds(
     state: &FsWatcherState,
     root_path: &str,
@@ -231,7 +224,11 @@ pub(crate) fn emit_workspace_fs_changed_with_kinds(
             delivered = true;
         }
     }
-    let _ = delivered;
+    if !delivered {
+        // 该 root 当前没有打开的 watcher(例如工作区未在前台打开):
+        // 属正常情形,降为 debug 日志便于排查"改了文件但面板没刷新"。
+        log::debug!("no active workspace watcher for {normalized}; proactive emit skipped");
+    }
 }
 
 fn build_refresh_context(
@@ -292,14 +289,10 @@ fn start_refresh_source(
 ) -> ActiveRefreshSource {
     let has_git_repo = context.has_git_repo;
     match &context.workspace {
-        // SSH 工作区不支持 watcher(命令入口已拒绝);防御性降级轮询。
+        // SSH 工作区不支持 watcher:fs_watch_workspace 入口已提前拒绝,
+        // 此分支不可达,仅为维持 match 穷尽性而保留。
         WorkspaceEnv::Ssh { .. } => {
-            log::warn!("watcher on ssh workspace is unsupported; using polling");
-            ActiveRefreshSource::Polling(polling::start_polling_refresh(
-                context.root_path.clone(),
-                event_tx,
-                has_git_repo,
-            ))
+            unreachable!("ssh workspace watcher is rejected by fs_watch_workspace")
         }
         WorkspaceEnv::Local => {
             let Some(local_root) = context.local_root.clone() else {

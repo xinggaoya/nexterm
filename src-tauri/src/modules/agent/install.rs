@@ -25,8 +25,14 @@ pub(crate) fn agent_version() -> &'static str {
 /// 安装/拉起进程。显式设置 `NEXTERM_AGENT_E2E=1` 可重新启用 —— 供
 /// `#[ignore]` 级别的端到端测试(`cargo test -- --ignored`)使用。
 pub(crate) fn asset_available() -> bool {
+    asset_available_with(std::env::var("NEXTERM_AGENT_E2E").as_deref() == Ok("1"))
+}
+
+/// 注入式的内部实现,便于单元测试不经进程级环境变量直接验证契约
+/// (env 是进程全局态,并行测试下读写它会互相干扰)。
+fn asset_available_with(e2e_enabled: bool) -> bool {
     if cfg!(test) {
-        return std::env::var("NEXTERM_AGENT_E2E").as_deref() == Ok("1") && asset_bytes().is_ok();
+        return e2e_enabled && asset_bytes().is_ok();
     }
     asset_bytes().is_ok()
 }
@@ -148,8 +154,8 @@ mod tests {
     fn asset_is_unavailable_under_test() {
         // 契约:测试进程内 agent 默认不可用(无论是否内置了 musl 资产),
         // 保证测试不往真实 WSL 里安装/拉起进程;E2E 逃生口仅显式 env 生效。
-        std::env::remove_var("NEXTERM_AGENT_E2E");
-        assert!(!asset_available());
+        // 经注入式变体验证,不再改动进程级环境变量(并行测试下有竞争)。
+        assert!(!asset_available_with(false));
     }
 
     #[test]

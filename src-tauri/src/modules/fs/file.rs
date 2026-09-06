@@ -7,8 +7,9 @@ use serde::Serialize;
 use tauri::State;
 use tempfile::NamedTempFile;
 
+use crate::modules::fs::mutate::{notify_workspace_fs_changed, FsNotifyIntent};
+use crate::modules::fs::watcher::{events::FsChangeKind, FsWatcherState};
 use crate::modules::fs::wsl_ops;
-use crate::modules::fs::watcher::{emit_workspace_fs_changed, FsWatcherState};
 use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
 
 const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
@@ -31,8 +32,16 @@ pub enum ReadResult {
     },
 }
 
+/// SSH 分支含网络 I/O(超时可达数十秒):整体下沉阻塞线程池,避免冻结
+/// UI;本地/WSL 的同步逻辑原样保留在闭包内。
 #[tauri::command]
-pub fn fs_read_file(path: String, workspace: Option<WorkspaceEnv>) -> Result<ReadResult, String> {
+pub async fn fs_read_file(path: String, workspace: Option<WorkspaceEnv>) -> Result<ReadResult, String> {
+    tauri::async_runtime::spawn_blocking(move || fs_read_file_blocking(path, workspace))
+        .await
+        .map_err(|error| format!("fs_read_file background task failed: {error}"))?
+}
+
+fn fs_read_file_blocking(path: String, workspace: Option<WorkspaceEnv>) -> Result<ReadResult, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     match read_file_bytes(&path, &workspace)? {
         FileBytes::Read { bytes, size } => Ok(bytes_to_read_result(bytes, size)),
@@ -52,7 +61,6 @@ fn read_file_bytes(path: &str, workspace: &WorkspaceEnv) -> Result<FileBytes, St
     if let WorkspaceEnv::Ssh { profile_id } = workspace {
         // Phase 2:远端文件经 SSH 通道上的 agent 读取。
         let stat = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_stat(
-            crate::modules::ssh::remote::global_pool(),
             profile_id,
             path,
         ))?;
@@ -63,7 +71,6 @@ fn read_file_bytes(path: &str, workspace: &WorkspaceEnv) -> Result<FileBytes, St
             });
         }
         let bytes = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_read_file(
-            crate::modules::ssh::remote::global_pool(),
             profile_id,
             path,
         ))?;
@@ -136,7 +143,16 @@ pub enum Base64ReadResult {
 /// 二进制嗅探丢弃。文件类型过滤由前端扩展名白名单负责;此处与
 /// `fs_read_file` 一样只受 10MB 上限约束。
 #[tauri::command]
-pub fn fs_read_file_base64(
+pub async fn fs_read_file_base64(
+    path: String,
+    workspace: Option<WorkspaceEnv>,
+) -> Result<Base64ReadResult, String> {
+    tauri::async_runtime::spawn_blocking(move || fs_read_file_base64_blocking(path, workspace))
+        .await
+        .map_err(|error| format!("fs_read_file_base64 background task failed: {error}"))?
+}
+
+fn fs_read_file_base64_blocking(
     path: String,
     workspace: Option<WorkspaceEnv>,
 ) -> Result<Base64ReadResult, String> {
@@ -163,8 +179,10 @@ fn write_atomic(target: &Path, content: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
+/// SSH 分支含网络 I/O(超时可达数十秒):I/O 下沉阻塞线程池,写完在
+/// 异步侧主动通知 watcher;本地/WSL 的同步逻辑原样保留在闭包内。
 #[tauri::command]
-pub fn fs_write_file(
+pub async fn fs_write_file(
     path: String,
     content: String,
     workspace: Option<WorkspaceEnv>,
@@ -172,25 +190,46 @@ pub fn fs_write_file(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    // FsWatcherState 内部为 Arc,克隆廉价;registry 只在通知阶段读授权根。
+    let watcher = watcher.inner().clone();
+    let intent = tauri::async_runtime::spawn_blocking(move || {
+        fs_write_file_blocking(&path, &content, workspace)
+    })
+    .await
+    .map_err(|error| format!("fs_write_file background task failed: {error}"))??;
+    if let Some(intent) = intent {
+        notify_workspace_fs_changed(registry.inner(), &watcher, &intent);
+    }
+    Ok(())
+}
+
+/// 写入实现。返回 `Some(intent)` 表示写入完成且需要通知本地 watcher;
+/// SSH 分支在远端完成写入,本地 watcher 不适用,返回 `None`。
+fn fs_write_file_blocking(
+    path: &str,
+    content: &str,
+    workspace: WorkspaceEnv,
+) -> Result<Option<FsNotifyIntent>, String> {
     if let WorkspaceEnv::Ssh { profile_id } = &workspace {
         let content_b64 = BASE64_STANDARD.encode(content.as_bytes());
-        return tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_write_file(
-            crate::modules::ssh::remote::global_pool(),
+        tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_write_file(
             profile_id,
-            &path,
+            path,
             &content_b64,
-        ));
+        ))?;
+        return Ok(None);
     }
-    let target = resolve_path(&path, &workspace);
+    let target = resolve_path(path, &workspace);
     // Phase 0b:WSL 非 drvfs 路径经常驻 agent 原子写;失败回退 UNC 原子写。
     if let WorkspaceEnv::Wsl { distro } = &workspace {
-        if wsl_ops::should_use_wsl_ops(&path, &workspace) {
+        if wsl_ops::should_use_wsl_ops(path, &workspace) {
             let content_b64 = BASE64_STANDARD.encode(content.as_bytes());
-            if crate::modules::agent::write_file(distro, &path, &content_b64).is_ok() {
-                if let Some(root) = registry.longest_authorized_root(&target) {
-                    emit_workspace_fs_changed(&watcher, &root, vec![path.clone()], true);
-                }
-                return Ok(());
+            if crate::modules::agent::write_file(distro, path, &content_b64).is_ok() {
+                return Ok(Some(FsNotifyIntent::new(
+                    target,
+                    vec![path.to_string()],
+                    vec![FsChangeKind::Modify],
+                )));
             }
         }
     }
@@ -205,11 +244,11 @@ pub fn fs_write_file(
     // any tracked file write can affect `git status` output; the
     // back-end batcher's 1s repeated-signature throttle absorbs the
     // double-fire from the OS notify callback.
-    if let Some(root) = registry.longest_authorized_root(&target) {
-        emit_workspace_fs_changed(&watcher, &root, vec![path.clone()], true);
-    }
-
-    Ok(())
+    Ok(Some(FsNotifyIntent::new(
+        target,
+        vec![path.to_string()],
+        vec![FsChangeKind::Modify],
+    )))
 }
 
 #[cfg(all(test, unix))]
@@ -275,7 +314,7 @@ mod read_result_tests {
         let png_header: &[u8] = b"\x89PNG\r\n\x1a\n";
         std::fs::write(&p, png_header).unwrap();
 
-        match fs_read_file_base64(p.to_string_lossy().to_string(), None).unwrap() {
+        match fs_read_file_base64_blocking(p.to_string_lossy().to_string(), None).unwrap() {
             Base64ReadResult::Content { content, size } => {
                 assert_eq!(BASE64_STANDARD.decode(&content).unwrap(), png_header);
                 assert_eq!(size, png_header.len() as u64);
@@ -288,6 +327,6 @@ mod read_result_tests {
     fn base64_read_missing_file_is_error() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("nope.png");
-        assert!(fs_read_file_base64(p.to_string_lossy().to_string(), None).is_err());
+        assert!(fs_read_file_base64_blocking(p.to_string_lossy().to_string(), None).is_err());
     }
 }

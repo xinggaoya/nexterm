@@ -211,3 +211,83 @@ pub fn spawn(
 
     Ok(proc)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 起一个瞬间退出的真实子进程，仅为填充 `child` 字段
+    /// （`Arc<SharedChild>` 无法脱离真实进程构造）。
+    fn exited_child() -> Arc<SharedChild> {
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut c = std::process::Command::new("cmd");
+            c.args(["/C", "exit", "0"]);
+            c
+        };
+        #[cfg(not(windows))]
+        let mut cmd = {
+            let mut c = std::process::Command::new("sh");
+            c.arg("-c").arg("exit 0");
+            c
+        };
+        let child = SharedChild::spawn(&mut cmd).expect("spawn exited child");
+        let _ = child.wait();
+        Arc::new(child)
+    }
+
+    fn sample_proc(exited: bool) -> BackgroundProc {
+        let mut buffer = BoundedRingBuffer::new(RING_CAP);
+        buffer.push(b"hello world");
+        BackgroundProc {
+            command: "demo".into(),
+            cwd: Some("/repo".into()),
+            started_at_ms: 42,
+            child: exited_child(),
+            buffer: Mutex::new(buffer),
+            exited: AtomicBool::new(exited),
+            exit_code: AtomicI32::new(0),
+            exit_unknown: AtomicBool::new(false),
+        }
+    }
+
+    #[test]
+    fn read_logs_full_read_reports_offsets_and_exit_state() {
+        let proc = sample_proc(true);
+        let resp = proc.read_logs(0);
+        assert_eq!(resp.bytes, "hello world");
+        assert_eq!(resp.next_offset, 11);
+        assert_eq!(resp.dropped, 0);
+        assert!(resp.exited);
+        assert_eq!(resp.exit_code, Some(0));
+    }
+
+    #[test]
+    fn read_logs_since_reads_incrementally() {
+        let proc = sample_proc(true);
+        let resp = proc.read_logs(5);
+        assert_eq!(resp.bytes, " world");
+        assert_eq!(resp.next_offset, 11);
+    }
+
+    #[test]
+    fn running_process_hides_exit_code() {
+        let proc = sample_proc(false);
+        let resp = proc.read_logs(0);
+        assert!(!resp.exited);
+        assert_eq!(resp.exit_code, None);
+        let info = proc.info(7);
+        assert_eq!(info.handle, 7);
+        assert_eq!(info.command, "demo");
+        assert_eq!(info.cwd.as_deref(), Some("/repo"));
+        assert_eq!(info.exit_code, None);
+    }
+
+    #[test]
+    fn info_reports_exit_code_once_exited() {
+        let proc = sample_proc(true);
+        let info = proc.info(1);
+        assert!(info.exited);
+        assert_eq!(info.exit_code, Some(0));
+    }
+}

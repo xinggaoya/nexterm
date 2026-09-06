@@ -25,8 +25,21 @@ pub struct DirEntry {
 /// Lists immediate children of `path`. Dirs first, then files, each sorted
 /// case-insensitively. Dot-prefixed entries (files and dirs) are hidden unless
 /// `show_hidden` is set.
+///
+/// SSH 分支含网络 I/O(超时可达数十秒):整体下沉阻塞线程池,避免占住
+/// 异步 worker 或冻结 UI;本地/WSL 的同步逻辑原样保留在闭包内。
 #[tauri::command]
-pub fn fs_read_dir(
+pub async fn fs_read_dir(
+    path: String,
+    show_hidden: bool,
+    workspace: Option<WorkspaceEnv>,
+) -> Result<Vec<DirEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || fs_read_dir_blocking(path, show_hidden, workspace))
+        .await
+        .map_err(|error| format!("fs_read_dir background task failed: {error}"))?
+}
+
+fn fs_read_dir_blocking(
     path: String,
     show_hidden: bool,
     workspace: Option<WorkspaceEnv>,
@@ -35,7 +48,6 @@ pub fn fs_read_dir(
     if let WorkspaceEnv::Ssh { profile_id } = &workspace {
         // Phase 2:远端条目经 SSH 通道上的 agent 读取。
         let entries = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_read_dir(
-            crate::modules::ssh::remote::global_pool(),
             profile_id,
             &path,
         ))?

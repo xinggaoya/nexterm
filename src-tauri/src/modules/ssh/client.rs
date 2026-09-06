@@ -86,7 +86,7 @@ impl client::Handler for ClientHandler {
 
 pub(crate) struct SshConnection {
     pub handle: Handle<ClientHandler>,
-    #[allow(dead_code)]
+    /// 连接所属档案 id;探针成功后据此把连接存入连接池。
     pub profile_id: String,
 }
 
@@ -165,21 +165,23 @@ pub struct ExecOutput {
 }
 
 /// 在远端执行一条命令并收齐输出。用于探针(home 目录、agent 安装等)。
+/// 错误按类别标记(通道失败/超时),供连接池参与驱逐决策;文案不变。
 pub(crate) async fn exec_simple(
     handle: &mut Handle<ClientHandler>,
     command: &str,
     timeout: Duration,
-) -> Result<ExecOutput, String> {
+) -> Result<ExecOutput, super::remote::RemoteError> {
     use russh::ChannelMsg;
+    use super::remote::RemoteError;
 
     let mut channel = handle
         .channel_open_session()
         .await
-        .map_err(|error| format!("open exec channel: {error}"))?;
+        .map_err(|error| RemoteError::channel(format!("open exec channel: {error}")))?;
     channel
         .exec(true, command)
         .await
-        .map_err(|error| format!("exec {command}: {error}"))?;
+        .map_err(|error| RemoteError::channel(format!("exec {command}: {error}")))?;
 
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
@@ -193,7 +195,9 @@ pub(crate) async fn exec_simple(
             Ok(Some(ChannelMsg::Close)) | Ok(None) => break,
             Ok(Some(_)) => {}
             Err(_) => {
-                return Err(format!("exec {command}: timed out after {timeout:?}"));
+                return Err(RemoteError::timeout(format!(
+                    "exec {command}: timed out after {timeout:?}"
+                )));
             }
         }
     }
@@ -202,4 +206,25 @@ pub(crate) async fn exec_simple(
         stdout,
         stderr,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_key_error_keeps_tofu_prefix() {
+        let msg = ClientHandler::host_key_error("AAAA");
+        assert!(msg.starts_with(HOST_KEY_CHANGED_PREFIX));
+        assert!(msg.contains("host key changed since last connection"));
+    }
+
+    #[test]
+    fn host_key_error_truncates_stored_key() {
+        let long = "a".repeat(64);
+        let msg = ClientHandler::host_key_error(&long);
+        // 只回显前 24 个字符，避免错误信息过长。
+        assert!(msg.contains(&"a".repeat(24)));
+        assert!(!msg.contains(&"a".repeat(25)));
+    }
 }

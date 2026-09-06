@@ -206,13 +206,9 @@ pub fn spawn(
         })
         .map_err(|e| format!("spawn pty waiter thread: {e}"))?;
 
-    let on_data_cleanup = on_data;
-    thread::Builder::new()
-        .name("nexterm-pty-cleanup".into())
-        .spawn(move || {
-            let _ = on_data_cleanup;
-        })
-        .ok();
+    // on_data 的 reader 克隆已随读取线程持有;此处直接丢弃原始
+    // Channel,与原先的空转清理线程等效(该线程只负责 drop)。
+    drop(on_data);
 
     Ok((session, size))
 }

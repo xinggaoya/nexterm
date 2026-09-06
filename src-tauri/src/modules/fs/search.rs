@@ -43,8 +43,24 @@ const PRUNE_DIRS: &[&str] = &[
     "__pycache__",
 ];
 
+/// SSH 分支含网络 I/O(超时可达数十秒):整体下沉阻塞线程池,避免冻结
+/// UI;本地/WSL 的同步逻辑原样保留在闭包内。
 #[tauri::command]
-pub fn fs_search(
+pub async fn fs_search(
+    root: String,
+    query: String,
+    limit: Option<usize>,
+    workspace: Option<WorkspaceEnv>,
+    show_hidden: Option<bool>,
+) -> Result<SearchResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        fs_search_blocking(root, query, limit, workspace, show_hidden)
+    })
+    .await
+    .map_err(|error| format!("fs_search background task failed: {error}"))?
+}
+
+fn fs_search_blocking(
     root: String,
     query: String,
     limit: Option<usize>,
@@ -87,7 +103,6 @@ pub fn fs_search(
     }
     if let WorkspaceEnv::Ssh { profile_id } = &workspace {
         let parsed = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_search(
-            crate::modules::ssh::remote::global_pool(),
             profile_id,
             &root,
             &q,
@@ -194,7 +209,21 @@ pub struct ListFilesResult {
 }
 
 #[tauri::command]
-pub fn fs_list_files(
+pub async fn fs_list_files(
+    root: String,
+    limit: Option<usize>,
+    max_depth: Option<usize>,
+    workspace: Option<WorkspaceEnv>,
+    show_hidden: Option<bool>,
+) -> Result<ListFilesResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        fs_list_files_blocking(root, limit, max_depth, workspace, show_hidden)
+    })
+    .await
+    .map_err(|error| format!("fs_list_files background task failed: {error}"))?
+}
+
+fn fs_list_files_blocking(
     root: String,
     limit: Option<usize>,
     max_depth: Option<usize>,
@@ -222,7 +251,6 @@ pub fn fs_list_files(
     if let WorkspaceEnv::Ssh { profile_id } = &workspace {
         let (files, truncated) = tauri::async_runtime::block_on(
             crate::modules::ssh::remote::remote_list_files(
-                crate::modules::ssh::remote::global_pool(),
                 profile_id,
                 &root,
                 Some(cap),
@@ -309,4 +337,31 @@ fn display_path(
         }
     }
     to_canon(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_path_joins_root_display_for_wsl_workspaces() {
+        let root = std::path::Path::new("/home/dev/repo");
+        let file = root.join("src/main.rs");
+        let wsl = WorkspaceEnv::Wsl {
+            distro: "Ubuntu".to_string(),
+        };
+        assert_eq!(
+            display_path(&file, root, "//wsl$/Ubuntu/home/dev/repo", &wsl),
+            "//wsl$/Ubuntu/home/dev/repo/src/main.rs"
+        );
+    }
+
+    #[test]
+    fn display_path_falls_back_to_canonical_path_for_local_workspaces() {
+        let root = std::path::Path::new("/tmp/repo");
+        assert_eq!(
+            display_path(&root.join("a.txt"), root, "/tmp/repo", &WorkspaceEnv::Local),
+            "/tmp/repo/a.txt"
+        );
+    }
 }

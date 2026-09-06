@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine as _;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::modules::fs::wsl_ops::{WslDirEntry, WslEntryKind, WslFileStat};
 
@@ -43,19 +43,13 @@ pub fn exec_simple(
     timeout: Duration,
     max_output_bytes: usize,
 ) -> Result<ExecOutcome, String> {
-    let mut env_map = serde_json::Map::new();
-    for (key, value) in env {
-        env_map.insert((*key).to_string(), Value::String((*value).to_string()));
-    }
-    let params = json!({
-        "argv": argv,
-        "cwd": cwd,
-        "env": Value::Object(env_map),
-        "stdinBase64": stdin.map(|bytes| BASE64_STANDARD.encode(bytes)),
-        "timeoutMs": timeout.as_millis() as u64,
-        "maxOutputBytes": max_output_bytes,
-    });
-    let value = manager::request(distro, "exec", params, timeout + TRANSPORT_GRACE)?;
+    let params = protocol::exec_params(cwd.as_deref(), &argv, env, stdin, timeout, max_output_bytes);
+    let value = manager::request(
+        distro,
+        protocol::METHOD_EXEC,
+        params,
+        timeout + TRANSPORT_GRACE,
+    )?;
     parse_exec_outcome(&value)
 }
 
@@ -93,8 +87,8 @@ pub(crate) fn parse_exec_outcome(value: &Value) -> Result<ExecOutcome, String> {
 pub fn read_dir(distro: &str, path: &str) -> Result<Vec<WslDirEntry>, String> {
     let value = manager::request(
         distro,
-        "fs.readDir",
-        json!({ "path": path }),
+        protocol::METHOD_FS_READ_DIR,
+        protocol::fs_read_dir_params(path),
         FS_TIMEOUT,
     )?;
     parse_dir_entries(&value)
@@ -124,7 +118,12 @@ pub(crate) fn parse_dir_entries(value: &Value) -> Result<Vec<WslDirEntry>, Strin
 }
 
 pub fn stat(distro: &str, path: &str) -> Result<WslFileStat, String> {
-    let value = manager::request(distro, "fs.stat", json!({ "path": path }), FS_TIMEOUT)?;
+    let value = manager::request(
+        distro,
+        protocol::METHOD_FS_STAT,
+        protocol::fs_stat_params(path),
+        FS_TIMEOUT,
+    )?;
     parse_stat(&value)
 }
 
@@ -140,8 +139,8 @@ pub(crate) fn parse_stat(value: &Value) -> Result<WslFileStat, String> {
 pub fn read_file(distro: &str, path: &str) -> Result<Vec<u8>, String> {
     let value = manager::request(
         distro,
-        "fs.readFile",
-        json!({ "path": path }),
+        protocol::METHOD_FS_READ_FILE,
+        protocol::fs_read_file_params(path),
         FS_TIMEOUT,
     )?;
     parse_file_bytes(&value)
@@ -165,8 +164,8 @@ pub(crate) fn parse_file_bytes(value: &Value) -> Result<Vec<u8>, String> {
 pub fn write_file(distro: &str, path: &str, content_base64: &str) -> Result<(), String> {
     let value = manager::request(
         distro,
-        "fs.writeFile",
-        json!({ "path": path, "contentBase64": content_base64 }),
+        protocol::METHOD_FS_WRITE_FILE,
+        protocol::fs_write_file_params(path, content_base64),
         Duration::from_secs(60),
     )?;
     let _ = value;
@@ -174,33 +173,50 @@ pub fn write_file(distro: &str, path: &str, content_base64: &str) -> Result<(), 
 }
 
 pub fn create_file(distro: &str, path: &str) -> Result<(), String> {
-    manager::request(distro, "fs.createFile", json!({ "path": path }), FS_TIMEOUT)
-        .map(|_| ())
+    manager::request(
+        distro,
+        protocol::METHOD_FS_CREATE_FILE,
+        protocol::fs_create_file_params(path),
+        FS_TIMEOUT,
+    )
+    .map(|_| ())
 }
 
 pub fn create_dir(distro: &str, path: &str) -> Result<(), String> {
-    manager::request(distro, "fs.createDir", json!({ "path": path }), FS_TIMEOUT).map(|_| ())
+    manager::request(
+        distro,
+        protocol::METHOD_FS_CREATE_DIR,
+        protocol::fs_create_dir_params(path),
+        FS_TIMEOUT,
+    )
+    .map(|_| ())
 }
 
 pub fn rename(distro: &str, from: &str, to: &str) -> Result<(), String> {
     manager::request(
         distro,
-        "fs.rename",
-        json!({ "from": from, "to": to }),
+        protocol::METHOD_FS_RENAME,
+        protocol::fs_rename_params(from, to),
         FS_TIMEOUT,
     )
     .map(|_| ())
 }
 
 pub fn delete(distro: &str, path: &str) -> Result<(), String> {
-    manager::request(distro, "fs.delete", json!({ "path": path }), FS_TIMEOUT).map(|_| ())
+    manager::request(
+        distro,
+        protocol::METHOD_FS_DELETE,
+        protocol::fs_delete_params(path),
+        FS_TIMEOUT,
+    )
+    .map(|_| ())
 }
 
 pub fn copy(distro: &str, from: &str, to: &str) -> Result<(), String> {
     manager::request(
         distro,
-        "fs.copy",
-        json!({ "from": from, "to": to }),
+        protocol::METHOD_FS_COPY,
+        protocol::fs_copy_params(from, to),
         FS_TIMEOUT,
     )
     .map(|_| ())
@@ -240,14 +256,8 @@ pub fn search(
 ) -> Result<SearchResultParsed, String> {
     let value = manager::request(
         distro,
-        "fs.search",
-        json!({
-            "root": root,
-            "query": query,
-            "limit": limit,
-            "showHidden": show_hidden,
-            "rootDisplay": root_display,
-        }),
+        protocol::METHOD_FS_SEARCH,
+        protocol::fs_search_params(root, query, limit, show_hidden, root_display),
         Duration::from_secs(60),
     )?;
     parse_search_result(&value)
@@ -280,13 +290,8 @@ pub fn list_files(
 ) -> Result<(Vec<String>, bool), String> {
     let value = manager::request(
         distro,
-        "fs.listFiles",
-        json!({
-            "root": root,
-            "limit": limit,
-            "maxDepth": max_depth,
-            "showHidden": show_hidden,
-        }),
+        protocol::METHOD_FS_LIST_FILES,
+        protocol::fs_list_files_params(root, limit, max_depth, show_hidden),
         Duration::from_secs(60),
     )?;
     parse_list_files(&value)
@@ -333,15 +338,8 @@ pub fn grep(
 ) -> Result<GrepResponseParsed, String> {
     let value = manager::request(
         distro,
-        "fs.grep",
-        json!({
-            "pattern": pattern,
-            "root": root,
-            "glob": glob,
-            "caseInsensitive": case_insensitive,
-            "maxResults": max_results,
-            "rootDisplay": root_display,
-        }),
+        protocol::METHOD_FS_GREP,
+        protocol::fs_grep_params(pattern, root, glob, case_insensitive, max_results, root_display),
         Duration::from_secs(120),
     )?;
     parse_grep_response(&value)
@@ -380,13 +378,8 @@ pub fn glob(
 ) -> Result<(Vec<GlobHitParsed>, bool), String> {
     let value = manager::request(
         distro,
-        "fs.glob",
-        json!({
-            "pattern": pattern,
-            "root": root,
-            "maxResults": max_results,
-            "rootDisplay": root_display,
-        }),
+        protocol::METHOD_FS_GLOB,
+        protocol::fs_glob_params(pattern, root, max_results, root_display),
         Duration::from_secs(60),
     )?;
     parse_glob(&value)

@@ -2,7 +2,6 @@ pub mod background;
 pub mod ringbuffer;
 
 use std::collections::HashMap;
-use std::io::Read;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{mpsc, Arc, RwLock};
@@ -13,7 +12,7 @@ use serde::Serialize;
 use shared_child::SharedChild;
 
 use crate::modules::lock::{rwlock_read, rwlock_write};
-use crate::modules::process::suppress_command_window;
+use crate::modules::process::{drain_limited, suppress_command_window, wait_with_timeout, WaitFailure};
 #[cfg(windows)]
 use crate::modules::workspace::validate_wsl_distro_name;
 use crate::modules::workspace::{authorize_spawn_cwd, WorkspaceEnv, WorkspaceRegistry};
@@ -102,26 +101,13 @@ fn run_blocking(
         "no stderr pipe".to_string()
     })?;
 
-    let stdout_handle = thread::spawn(move || drain(&mut stdout_pipe));
-    let stderr_handle = thread::spawn(move || drain(&mut stderr_pipe));
+    let stdout_handle = thread::spawn(move || drain_limited(&mut stdout_pipe, MAX_OUTPUT_BYTES, 8 * 1024, 0));
+    let stderr_handle = thread::spawn(move || drain_limited(&mut stderr_pipe, MAX_OUTPUT_BYTES, 8 * 1024, 0));
 
-    let (tx, rx) = mpsc::channel();
-    let waiter = Arc::clone(&child);
-    thread::spawn(move || {
-        let _ = tx.send(waiter.wait());
-    });
-
-    let (exit_code, timed_out) = match rx.recv_timeout(dur) {
-        Ok(Ok(status)) => (status.code(), false),
-        Ok(Err(e)) => return Err(e.to_string()),
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            (None, true)
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            return Err("shell wait thread disconnected".into());
-        }
+    let (exit_code, timed_out) = match wait_with_timeout(&child, dur) {
+        Ok(result) => result,
+        Err(WaitFailure::Io(e)) => return Err(e.to_string()),
+        Err(WaitFailure::Disconnected) => return Err("shell wait thread disconnected".into()),
     };
 
     let (stdout_bytes, stdout_truncated) = stdout_handle.join().unwrap_or((Vec::new(), false));
@@ -247,28 +233,4 @@ pub(crate) fn build_oneshot_command(
         suppress_command_window(&mut cmd);
         Ok(cmd)
     }
-}
-
-fn drain<R: Read>(reader: &mut R) -> (Vec<u8>, bool) {
-    let mut out = Vec::new();
-    let mut buf = [0u8; 8192];
-    let mut truncated = false;
-    loop {
-        match reader.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                if out.len() >= MAX_OUTPUT_BYTES {
-                    truncated = true;
-                    continue;
-                }
-                let take = (MAX_OUTPUT_BYTES - out.len()).min(n);
-                out.extend_from_slice(&buf[..take]);
-                if take < n {
-                    truncated = true;
-                }
-            }
-            Err(_) => break,
-        }
-    }
-    (out, truncated)
 }

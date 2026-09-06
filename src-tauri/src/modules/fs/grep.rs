@@ -45,8 +45,25 @@ fn build_globset(patterns: &[String]) -> Result<Option<GlobSet>, String> {
     Ok(Some(set))
 }
 
+/// SSH 分支含网络 I/O(超时可达数十秒):整体下沉阻塞线程池,避免冻结
+/// UI;本地/WSL 的同步逻辑原样保留在闭包内。
 #[tauri::command]
-pub fn fs_grep(
+pub async fn fs_grep(
+    pattern: String,
+    root: String,
+    glob: Option<Vec<String>>,
+    case_insensitive: Option<bool>,
+    max_results: Option<usize>,
+    workspace: Option<WorkspaceEnv>,
+) -> Result<GrepResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        fs_grep_blocking(pattern, root, glob, case_insensitive, max_results, workspace)
+    })
+    .await
+    .map_err(|error| format!("fs_grep background task failed: {error}"))?
+}
+
+fn fs_grep_blocking(
     pattern: String,
     root: String,
     glob: Option<Vec<String>>,
@@ -99,7 +116,6 @@ pub fn fs_grep(
     }
     if let WorkspaceEnv::Ssh { profile_id } = &workspace_for_route {
         let parsed = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_grep(
-            crate::modules::ssh::remote::global_pool(),
             profile_id,
             &pattern,
             &root,
@@ -269,7 +285,20 @@ pub struct GlobResponse {
 }
 
 #[tauri::command]
-pub fn fs_glob(
+pub async fn fs_glob(
+    pattern: String,
+    root: String,
+    max_results: Option<usize>,
+    workspace: Option<WorkspaceEnv>,
+) -> Result<GlobResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        fs_glob_blocking(pattern, root, max_results, workspace)
+    })
+    .await
+    .map_err(|error| format!("fs_glob background task failed: {error}"))?
+}
+
+fn fs_glob_blocking(
     pattern: String,
     root: String,
     max_results: Option<usize>,
@@ -308,7 +337,6 @@ pub fn fs_glob(
     }
     if let WorkspaceEnv::Ssh { profile_id } = &workspace {
         let (hits, truncated) = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_glob(
-            crate::modules::ssh::remote::global_pool(),
             profile_id,
             &pattern,
             &root,
@@ -386,4 +414,46 @@ fn display_path(
         }
     }
     to_canon(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_globset_matches_only_configured_patterns() {
+        let set = build_globset(&["*.rs".to_string(), "**/tests/**".to_string()])
+            .unwrap()
+            .expect("non-empty patterns should build a set");
+        assert!(set.is_match("src/main.rs"));
+        assert!(set.is_match("crates/x/tests/it.rs"));
+        assert!(!set.is_match("src/main.ts"));
+    }
+
+    #[test]
+    fn build_globset_empty_patterns_builds_no_set() {
+        assert!(build_globset(&[]).unwrap().is_none());
+    }
+
+    #[test]
+    fn build_globset_rejects_bad_glob_pattern() {
+        assert!(build_globset(&["[".to_string()]).is_err());
+    }
+
+    #[test]
+    fn display_path_uses_root_display_for_wsl_and_canon_for_local() {
+        let root = std::path::Path::new("/home/dev/repo");
+        let file = root.join("src/main.rs");
+        let wsl = WorkspaceEnv::Wsl {
+            distro: "Ubuntu".to_string(),
+        };
+        assert_eq!(
+            display_path(&file, root, "//wsl$/Ubuntu/home/dev/repo", &wsl),
+            "//wsl$/Ubuntu/home/dev/repo/src/main.rs"
+        );
+        assert_eq!(
+            display_path(&file, root, "/home/dev/repo", &WorkspaceEnv::Local),
+            "/home/dev/repo/src/main.rs"
+        );
+    }
 }
