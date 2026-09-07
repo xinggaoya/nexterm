@@ -5,12 +5,14 @@
 //! `wsl.exe sh -c 'mkdir && cat > && chmod'` 管道写入发行版的用户缓存目录。
 //! 资产不存在时(开发机未构建)agent 直接判定不可用,调用方走 legacy 路径。
 
+#[cfg(windows)]
 use std::sync::{Mutex, OnceLock};
 
 /// 与主程序同版本发布;安装路径携带版本号,升级后旧版本二进制自然失效。
 const AGENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// 两次构建间缓存 wsl_home,省掉每次 spawn 前的 `wsl.exe` 探测。
+#[cfg(windows)]
 fn home_cache() -> &'static Mutex<std::collections::HashMap<String, String>> {
     static CACHE: OnceLock<Mutex<std::collections::HashMap<String, String>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
@@ -55,6 +57,9 @@ pub(crate) fn asset_bytes() -> Result<Vec<u8>, String> {
 }
 
 /// 确保当前版本二进制已写入发行版,返回 Linux 侧绝对路径。
+/// 常驻 agent 是 Windows 宿主经 wsl.exe 拉起的通道;其余平台不存在
+/// WSL,直接返回 Err 让调用方走 legacy/远端路径。
+#[cfg(windows)]
 pub(crate) fn ensure_agent_installed(distro: &str) -> Result<String, String> {
     crate::modules::workspace::validate_wsl_distro_name(distro)?;
     let arch = match std::env::consts::ARCH {
@@ -80,6 +85,12 @@ pub(crate) fn ensure_agent_installed(distro: &str) -> Result<String, String> {
     Ok(linux_path)
 }
 
+#[cfg(not(windows))]
+pub(crate) fn ensure_agent_installed(_distro: &str) -> Result<String, String> {
+    Err("WSL is only available on Windows".into())
+}
+
+#[cfg(windows)]
 fn cached_wsl_home(distro: &str) -> Result<String, String> {
     if let Ok(cache) = home_cache().lock() {
         if let Some(home) = cache.get(distro) {
@@ -100,6 +111,7 @@ fn agent_install_path(home: &str, arch: &str) -> String {
     )
 }
 
+#[cfg(windows)]
 fn write_bytes_to_wsl(distro: &str, target_path: &str, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
     use std::process::{Command, Stdio};
@@ -158,6 +170,7 @@ mod tests {
         assert!(!asset_available_with(false));
     }
 
+    #[cfg(windows)]
     #[test]
     fn cached_home_second_read_hits_cache() {
         // 直接操作缓存,验证缓存读写路径;不发 wsl.exe 调用。

@@ -392,8 +392,8 @@ fn build_git_command(
 }
 
 /// agent 传输的 env 覆盖集:与 `run_git_uncached` 给 legacy 命令设的
-/// 环境完全一致(wsl.exe 会把它们透传进 Linux 侧 git)。
-#[cfg(windows)]
+/// 环境完全一致(WSL 下 wsl.exe 会把它们透传进 Linux 侧 git,SSH 下由
+/// 远端 agent 注入远端进程)。
 const GIT_AGENT_ENV: &[(&str, &str)] = &[
     ("GIT_TERMINAL_PROMPT", "0"),
     ("GIT_ASKPASS", ""),
@@ -405,7 +405,6 @@ const GIT_AGENT_ENV: &[(&str, &str)] = &[
 ];
 
 /// 传输层在业务超时之上再多等的余量,覆盖 agent 往返与 JSON 编解码。
-#[cfg(windows)]
 const AGENT_TRANSPORT_GRACE: Duration = Duration::from_secs(5);
 
 /// legacy 传输(wsl.exe / SSH 直连)在业务超时之外的兜底余量:该 5s
