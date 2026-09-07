@@ -19,7 +19,7 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 
 ### 2.2 模块自治与白名单通信
 
-前端按 17 个领域模块划分。模块之间**只允许**通过三种白名单通道通信：
+前端按 21 个领域模块划分。模块之间**只允许**通过三种白名单通道通信：
 
 1. **共享 Pinia store**：例如 `preferencesPinia` 被 `commands` / `editor` / `terminal` 同时读取。
 2. **直接 composable / 组件挂载**：A 模块组件挂载时调用 B 模块的 composable。
@@ -36,7 +36,7 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 - 能放进 composable 的不放在 store。
 - 能放在组件 `ref` 的不放在 store。
 - store 只放真正**跨模块共享**的状态。
-- 偏好只有一份：`preferencesPinia`（21 个字段）。其他模块不维护"重复"的偏好。
+- 偏好只有一份：`preferencesPinia`（字段集由 `store.ts` 的 `PREF_SPECS` 表驱动）。其他模块不维护"重复"的偏好。
 
 ### 2.4 显式优于隐式
 
@@ -145,7 +145,7 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 
 | 状态 | 归属 | 说明 |
 |------|------|------|
-| 用户偏好 | `preferencesPinia` | 21 个字段，与 Rust `LazyStore` 双向同步 |
+| 用户偏好 | `preferencesPinia` | 全量字段，与 Rust `LazyStore` 双向同步 |
 | 标签页 | `tabsPinia` | tab 数组、activeId、pane tree |
 | 工作区根 | `workspaceRootPinia` | 根路径、最近工作区、bootstrap 状态 |
 | 工作区 env | `workspaceEnvPinia` | local / wsl，distro 列表 |
@@ -175,7 +175,7 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 3. **FS watcher 反压**：`events.rs` 用事件量阈值、根级刷新降级、max batch age、重复签名节流，不特殊化目录名。
 4. **Vite manualChunks**：`xterm` / `codemirror` / `vue-vendor` 三个分块。
 5. **Tailwind v4** 仅用于布局，不参与组件主题，主题一律走 `AppTokens` 派生。
-6. **Pinia 字段粒度**：`preferencesPinia` 21 个字段独立 `ref`，避免一刀切重渲染。
+6. **Pinia 字段粒度**：`preferencesPinia` 每个偏好独立 `ref`，避免一刀切重渲染。
 
 ## 8. 兼容性
 

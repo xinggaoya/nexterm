@@ -19,9 +19,9 @@ graph TB
     end
 
     subgraph "Backend Modules"
-        J[git/commands.rs] --> K[git/operations.rs]
+        J[git/commands.rs] --> K[git/operations/]
         K --> L[git/parser.rs]
-        J --> M[workspace.rs]
+        J --> M[workspace/]
     end
 
     subgraph "Tauri IPC"

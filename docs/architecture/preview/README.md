@@ -11,10 +11,14 @@ src/modules/preview/
   PreviewPane.vue          # 主面板
   PreviewStack.vue         # 栈容器
   PreviewAddressBar.vue    # 地址栏
-  previewUrl.ts            # URL 工具 / 协议校验
+  previewUrl.ts            # URL 工具 / 协议校验 / normalizePreviewUrl
+  previewCommands.ts       # preview.open 命令 spec（命令面板入口）
   previewTypes.ts
   index.ts
 ```
+
+入口：命令面板执行 `preview.open`（WorkspaceHost 弹 URL 对话框，输入经
+`normalizePreviewUrl` 规范化后创建 preview tab）。
 
 ## 3. 依赖
 

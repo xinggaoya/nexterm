@@ -32,7 +32,7 @@ Webview **永远不**直接接触：
 
 ## 3. WorkspaceRegistry 授权
 
-`src-tauri/src/modules/workspace.rs` 的 `WorkspaceRegistry` 维护"已授权工作区根集合"。
+`src-tauri/src/modules/workspace/registry.rs` 的 `WorkspaceRegistry` 维护"已授权工作区根集合"。
 
 ### 3.1 授权 API
 

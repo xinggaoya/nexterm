@@ -1,158 +1,78 @@
 # 设置模块详细设计
 
-## 架构设计
+> 本文档只描述**已实现**的设计。字段清单以 `src/modules/settings/store.ts` 为唯一事实来源，此处不重复枚举（重复清单会腐烂）。
 
-### 整体架构
+## 整体架构
 
 ```mermaid
 graph TB
     subgraph "Frontend Settings Module"
-        A[preferencesPinia.ts] --> B[Reactive State]
-        C[store.ts] --> D[Persistence Layer]
-        E[preferences.ts] --> F[Type Definitions]
-        G[preferencesSnapshot.ts] --> H[Snapshot Management]
-        I[tabs.ts] --> J[Settings Tabs]
+        A[preferencesPinia.ts<br/>spec 驱动的 Pinia store] --> B[updatePref 统一更新]
+        C[store.ts<br/>PREF_SPECS 表] --> A
+        D[preferencesSnapshot.ts] --> A
+        E[tabs.ts] --> F[SettingsPanel 分区]
     end
-    
-    subgraph "External Dependencies"
-        K[LazyStore] --> L[File Storage]
-        M[Tauri Events] --> N[Cross-window Sync]
+
+    subgraph "Persistence"
+        C --> G[LazyStore<br/>nexterm-settings.json]
+        C --> H[nexterm://prefs-changed<br/>跨窗口同步事件]
     end
-    
-    A --> C
-    C --> K
-    K --> L
-    A --> M
-    M --> N
 ```
 
-### 数据流
+## 核心抽象：PREF_SPECS 表
 
-1. **初始化**: LazyStore → 加载偏好 → Pinia 状态
-2. **更新**: 用户修改 → Pinia 更新 → LazyStore 持久化
-3. **同步**: 窗口事件 → 状态同步 → UI 更新
-4. **快照**: 创建快照 → 恢复快照
+每个偏好一条 spec，包含三个职责：
 
-## 数据结构
+| 字段 | 职责 | 时机 |
+|------|------|------|
+| `storageKey` | 存储键映射（默认与字段同名；`layout.leftSidebar` 等例外） | 读/写 |
+| `read(raw)` | 磁盘任意 JSON → 合法偏好值（含默认回落、枚举校验、clamp） | `loadPreferences` |
+| `sanitize(value)` | 写盘/乐观更新前的同步钳制（幂等） | `updatePref` / `setPreference` |
 
-### 偏好设置
+新增偏好 = `Preferences` 类型加字段 + `DEFAULT_PREFERENCES` 加默认值 + 表加一行；
+`store.test.ts` 的"spec 覆盖 DEFAULT_PREFERENCES 每一个键"不变量保证不漏。
 
-```typescript
-interface Preferences {
-  theme: ThemePref
-  language: LanguagePref
-  editorTheme: EditorThemeId
-  autostart: boolean
-  restoreWindowState: boolean
-  vimMode: boolean
-  fileOpenMode: FileOpenMode
-  showHidden: boolean
-  terminalWebglEnabled: boolean
-  terminalContextMenuEnabled: boolean
-  terminalFontFamily: string
-  terminalLetterSpacing: number
-  terminalFontSize: number
-  terminalScrollback: number
-  keybindings: KeybindingOverrides
-  lastWslDistro: string | null
-  lastWorkspace: StoredWorkspace | null
-  recentWorkspaces: StoredWorkspace[]
-  zoomLevel: number
-  sourceControlPanelWidth: number
-  explorerPanelWidth: number
-  touchOptimizations: TouchMode
-  editorFontSize: number
-  editorTabSize: number
-  editorWordWrap: boolean
-}
-```
+## 数据流
 
-### 偏好快照
+1. **启动**：`hydrate()` → `loadPreferences()`（逐键 `spec.read`）→ 替换快照 → 写 ref →
+   订阅 `onPreferencesChange`。
+2. **更新**：`updatePref(key, value)` → `sanitize` → 乐观写 ref → 快照 patch →
+   `setPreference`（`spec.sanitize` 幂等复用）→ `writePref`（store.set + save +
+   emit `nexterm://prefs-changed`）。
+3. **回灌**：`onPreferencesChange` 同时监听 `store.onChange`（本窗口）与
+   `nexterm://prefs-changed`（其它窗口），值视作已 sanitize 直接写 ref 与快照。
+4. **Legacy 键**：spec 可声明 `legacyKey`（如 `showHidden` → `showHiddenDirectories`），
+   主键缺失时回落读取。
 
-```typescript
-interface PreferencesSnapshot {
-  timestamp: number
-  preferences: Preferences
-  version: number
-}
-```
+## 持久化策略
 
-## 算法逻辑
+- 底层 `LazyStore`（`autoSave: 200`）：写后由插件节流落盘。
+- `writePref` 每次显式 `store.save()` 并 emit 事件，保证跨窗口及时性。
+- 值损坏不致污染：`spec.read` 对非预期类型回落默认（如 scrollback 收到字符串回落 2000）。
 
-### 持久化策略
+## 跨窗口同步
 
-1. **延迟保存**: 用户修改后延迟保存
-2. **批量保存**: 合并多个修改保存
-3. **原子保存**: 保证保存的原子性
-4. **版本迁移**: 处理版本兼容性
-
-### 状态同步
-
-1. **事件监听**: 监听 Tauri 事件
-2. **状态合并**: 合并不同窗口的状态
-3. **冲突解决**: 解决状态冲突
-4. **UI 更新**: 更新 UI 反映状态变化
-
-### 快照管理
-
-1. **创建快照**: 保存当前状态
-2. **恢复快照**: 恢复到快照状态
-3. **快照清理**: 清理旧快照
-4. **版本管理**: 管理快照版本
+无冲突解决逻辑：最后写入者胜。回灌路径直接采用事件值（已 sanitize），
+以 `preferencesSnapshot` 模块级单例为对照，多窗口间短暂不一致可接受
+（与 `LazyStore.onChange` 并存，谁后到谁生效）。
 
 ## 错误处理
 
-### 持久化错误
+- `loadPreferences` 整体失败由调用方兜底（`workspacesPinia` 以
+  `DEFAULT_PREFERENCES` 回落，`preferencesPinia.hydrate` 保持未水合态）。
+- 单键损坏只影响该键（`spec.read` 逐键隔离）。
+- `restoreWindowState`（Rust 侧启动路径）读取失败一律按默认 `true` 处理。
 
-1. **文件锁定**: 处理文件锁定
-2. **磁盘空间**: 处理空间不足
-3. **权限错误**: 处理权限问题
-4. **损坏恢复**: 恢复损坏的配置
+## 测试
 
-### 同步错误
-
-1. **事件丢失**: 处理事件丢失
-2. **状态不一致**: 处理状态不一致
-3. **网络错误**: 处理网络问题
-
-## 性能考虑
-
-### 持久化优化
-
-1. **延迟写入**: 避免频繁写入
-2. **压缩存储**: 压缩配置数据
-3. **索引优化**: 优化存储索引
-4. **缓存**: 缓存常用配置
-
-### 状态管理优化
-
-1. **响应式**: 使用 Pinia 响应式
-2. **计算属性**: 使用计算属性
-3. **选择性更新**: 只更新变化的部分
-4. **批量更新**: 合并多个更新
-
-## 测试策略
-
-### 单元测试
-
-1. **持久化测试**: 读写操作
-2. **状态管理测试**: Pinia store
-3. **快照测试**: 创建、恢复
-
-### 集成测试
-
-1. **跨窗口同步测试**: 多窗口
-2. **版本迁移测试**: 兼容性
-3. **错误恢复测试**: 损坏恢复
-
-### 组件测试
-
-1. **设置面板渲染测试**: UI 组件
-2. **交互测试**: 修改、保存
-3. **主题切换测试**: 主题应用
+- `store.test.ts`：spec 覆盖不变量、缺省回落、sanitize 幂等、clamp 边界
+- `preferencesSnapshot.test.ts`：快照与 reset
+- `src/settings/sections/*.test.ts`：分区渲染 + 交互 + 持久化路径
+  （断言 `setPreference` 以正确 key/value 被调用）
 
 ## 相关文件
 
-- 前端: `src/modules/settings/`
-- 存储: `@tauri-apps/plugin-store`
-- 事件: `@tauri-apps/api/event`
+- 前端：`src/modules/settings/`（store / pinia / snapshot / tabs）
+- 面板：`src/settings/`（SettingsPanel + 9 个分区组件）
+- 存储：`@tauri-apps/plugin-store`
+- Rust 启动关联：`src-tauri/src/lib.rs` 的 `should_restore_window_state`

@@ -17,7 +17,7 @@ graph TB
     end
     
     subgraph "Backend Modules"
-        O[workspace.rs] --> P[Workspace Registry]
+        O[workspace/mod.rs] --> P[workspace/registry.rs]
         O --> Q[WSL Support]
         R[fs/mod.rs] --> S[File Operations]
     end
@@ -150,5 +150,5 @@ interface WorkspaceSelection {
 ## 相关文件
 
 - 前端: `src/modules/workspace/`
-- 后端: `src-tauri/src/modules/workspace.rs`
+- 后端: `src-tauri/src/modules/workspace/`（`mod.rs` 命令与 launch dir、`registry.rs` 授权与缓存、`env.rs` 环境与 SSH 守卫、`wsl.rs` WSL 路径与进程助手）
 - 设置: `src/modules/settings/`

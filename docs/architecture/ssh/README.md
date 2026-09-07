@@ -20,12 +20,15 @@ Phase 1 提供「能用的 SSH 终端」:
 
 SSH 工作区的能力经 SSH 通道上的 **nexterm-agent** 提供:
 
-- **连接池**:`SshConnectionPool`(每 profile 一条持久 russh 连接)。
-  `ssh_connect_test` 探针成功后入池;keepalive 判死后操作报错,重新打开
-  工作区重建(Phase 3 keychain 落地前无凭据可自动重连)。
+- **连接池**:模块级静态 cell(每 profile 一条持久 russh 连接,由
+  `store_connection`/`get_connection`/`evict_connection` 管理)。
+  `ssh_connect_test` 探针成功后连接直接入池(单次握手);通道/超时类失败
+  按错误类别(`RemoteFailure`)驱逐连接,重新打开工作区重建(Phase 3
+  keychain 落地前无凭据可自动重连)。
 - **agent 安装**:`ensure_remote_agent` 校验远端
-  `~/.cache/nexterm/agent/nexterm-agent-<版本>-<架构>`(存在且大小一致则
-  跳过),否则把内嵌二进制经 exec 通道 stdin 管道推送。
+  `~/.cache/nexterm/agent/nexterm-agent-<版本>-<架构>`;校验结果按 profile
+  缓存(路径含版本号,升级自然失效),命中则省去 `test -x && stat` 往返;
+  未命中且远端缺失时把内嵌二进制经 exec 通道 stdin 管道推送。
 - **执行形态**:每操作一个 exec 通道(`nexterm-agent once`:stdin 一行
   请求、stdout 一行响应)。TCP 连接持久,开通道成本可控;持久 serve
   通道复用属后续优化,协议不变。
@@ -37,6 +40,8 @@ SSH 工作区的能力经 SSH 通道上的 **nexterm-agent** 提供:
 - **仍被 `reject_ssh_unsupported` 拒绝**:fs watcher(事件流尚未经 SSH
   传输;可后续挂 agent watch)与后台 shell(`shell_bg_*` 的日志环仍在
   宿主侧)。
+- **协议共享**:方法名与参数构造统一在 `modules/agent/protocol.rs`
+  (与 WSL 通道共用),两侧 JSON 形状不会漂移。
 
 ## Tauri 命令
 

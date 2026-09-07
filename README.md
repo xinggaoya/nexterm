@@ -18,12 +18,17 @@ pnpm tauri dev
 ## 检查
 
 ```bash
-pnpm exec tsc --noEmit
+pnpm exec vue-tsc --noEmit
+pnpm test
 pnpm build
 cd src-tauri
 cargo check --all-targets --locked
 cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
 ```
+
+以上检查在 push(main)/PR 时由 `.github/workflows/ci.yml` 自动运行
+（Ubuntu + Windows 双矩阵）。
 
 ## 项目说明
 

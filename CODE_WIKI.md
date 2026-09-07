@@ -185,7 +185,7 @@ nexterm/
 
 | 模块 | 主要文件 | 职责 |
 |------|----------|------|
-| `pty` | `mod.rs` / `session.rs` / `transcript.rs` / `job.rs` / `da_filter.rs` / `shell_init.rs` / `io.rs` | PTY 会话；ConPTY 串行化、Job Object 防止子进程逃逸、Transcript 临时文件作为转录缓冲 |
+| `pty` | `mod.rs` / `session.rs` / `transcript.rs` / `job.rs` / `da_filter.rs` / `shell_init/`（`mod`+`unix`+`windows`）/ `io.rs` | PTY 会话；ConPTY 串行化、Job Object 防止子进程逃逸、Transcript 临时文件作为转录缓冲 |
 | `shell` | `mod.rs` / `session.rs` / `background.rs` / `ringbuffer.rs` | 一次性命令、持久 shell session、后台进程（spawn/logs/kill/list） |
 | `fs` | `mod.rs` / `tree.rs` / `file.rs` / `mutate.rs` / `search.rs` / `grep.rs` / `watcher.rs` / `watcher/{local,polling,wsl,events}.rs` / `wsl_ops.rs` | 读/写/遍历/搜索/grep/glob/变更；`FsWatcherState` 维护当前工作区 watcher |
 | `git` | `mod.rs` / `commands.rs` / `operations/`（`mod`+`status`+`stage`+`commit`+`branch`+`stash`+`log`+`remote`+`discover`+`test_support`）/ `parser.rs` / `process.rs` / `types.rs` / `errors.rs` / `utils.rs` | Git 命令封装、输出解析、错误码归一 |

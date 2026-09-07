@@ -37,6 +37,7 @@ src/modules/terminal/
     sessions.ts                 # PtySessionHandle 单会话模型
     shortcuts.ts                # 自定义键位(剪贴板 copy/paste)
     layout.ts                   # PaneNode / splitLeaf / leafIds 等
+    bell.ts                     # BEL 响铃：toast/系统通知 + 可选蜂鸣（冷却限流）
     commands.ts                 # 注册到 commands 的终端命令
 ```
 
@@ -50,7 +51,8 @@ src/modules/terminal/
 - `@/lib/useEventListener` -- window resize 订阅
 - `@/modules/settings/preferencesPinia` -- 终端字体 / 字号 / 主题
 - `@/modules/workspace/workspaceEnvPinia` -- 终端启动 cwd
-- `@/modules/notifications/notificationCenter` -- 终端错误提示
+- `@/modules/notifications/notificationCenter` -- 终端错误提示 / 响铃 toast
+- `@/lib/osNotifications` -- 窗口失焦时的系统级响铃通知
 - `@/modules/tabs` -- TerminalTab 形态
 
 ### 3.2 外部

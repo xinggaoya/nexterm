@@ -20,12 +20,12 @@ graph TB
     end
 
     subgraph "Backend Modules"
-        H[git/commands.rs] --> I[git/operations.rs::log]
+        H[git/commands.rs（宏生成包装）] --> I[git/operations/log.rs::log]
         I --> J[git/parser.rs::parse_log_refs]
-        I --> K[git/operations.rs::collect_ref_kind_map]
-        H --> L[git/operations.rs::commit_files]
-        H --> M[git/operations.rs::commit_file_diff]
-        H --> N[git/operations.rs::remote_url]
+        I --> K[git/operations/log.rs::collect_ref_kind_map]
+        H --> L[git/operations/log.rs::commit_files]
+        H --> M[git/operations/log.rs::commit_file_diff]
+        H --> N[git/operations/remote.rs::remote_url]
     end
 
     subgraph "Tabs Pinia"
@@ -233,7 +233,7 @@ type RemoteWebHost = "github" | "gitlab" | "bitbucket" | "unknown";
 - `GitHistoryPane.vue.test.ts`：ref 切换、分页、远程链接、提交详情流程、空仓、无效 ref、ref 标签渲染。
 - `GitHistoryStack.vue.test.ts`：tabs -> pane 路由、changeRef 事件向上传。
 - `gitHistoryVueBoundary.test.ts`：不允许 React 残留。
-- 后端 `operations.rs::log` 单测：
+- 后端 `operations/log.rs::log` 单测：
   - `log_default_returns_page_with_entries`
   - `log_ref_name_limits_to_branch`
   - `log_all_includes_refs_outside_current_head`

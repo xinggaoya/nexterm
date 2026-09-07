@@ -135,7 +135,7 @@ graph LR
     F -.->|spawn| I[nexterm-agent watch]
 ```
 
-`lock.rs` 是所有 `Mutex` / `RwLock` 的统一入口；`process.rs` 在 Windows 下隐藏子进程控制台窗口；`workspace.rs` 是 fs/pty/shell/git 的授权与路径中枢。
+`lock.rs` 是所有 `Mutex` / `RwLock` 的统一入口；`process.rs` 在 Windows 下隐藏子进程控制台窗口并提供共享的限流排水/超时击杀助手；`workspace/` 目录（mod/registry/env/wsl）是 fs/pty/shell/git 的授权与路径中枢。
 
 ## 数据流
 
@@ -157,10 +157,10 @@ graph LR
 ## 关键设计决策
 
 1. **Rust 后端独占系统访问**：所有 fs/pty/shell/git 路径都必须过 `WorkspaceRegistry.authorize_*`，防止 webview 直连敏感资源。
-2. **模块化前端**：17 个领域模块自治，跨模块通信走 store/composable/事件总线三种白名单通道。
+2. **模块化前端**：21 个领域模块自治，跨模块通信走 store/composable/事件总线三种白名单通道。
 3. **事件驱动**：PTY 用 `Channel`，其他用 `EventBus`；不引入 store-to-store 直接订阅。
 4. **Pinia 状态管理**：setup-function 模式强制，单一 `preferencesPinia` 维护所有偏好。
-5. **统一路径处理**：边界处归一化 `\\` 与 `/`，WSL 转换集中在 `workspace.rs`。
+5. **统一路径处理**：边界处归一化 `\\` 与 `/`，WSL 转换集中在 `workspace/wsl.rs`。
 6. **ConPTY 序列化保护**：Windows 上 `pty_open` 通过互斥避免首屏输出管道卡住。
 7. **Job Object**：所有 Windows shell 子进程必须挂 Job Object，不允许在无替代方案时移除。
 8. **WSL agent**：`nexterm-agent` 独立二进制（fs/git/watch），避免 webview 进程阻塞。

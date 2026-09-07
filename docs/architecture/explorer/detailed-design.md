@@ -17,7 +17,7 @@ graph TB
     
     subgraph "Backend Modules"
         H[fs/mod.rs] --> I[File Operations]
-        J[workspace.rs] --> K[Workspace Management]
+        J[workspace/] --> K[Workspace Management]
         L[ignore] --> M[Gitignore Support]
     end
     
@@ -167,5 +167,5 @@ interface SearchState {
 ## 相关文件
 
 - 前端: `src/modules/explorer/`
-- 后端: `src-tauri/src/modules/fs/`, `src-tauri/src/modules/workspace.rs`
+- 后端: `src-tauri/src/modules/fs/`, `src-tauri/src/modules/workspace/`
 - 配置: `src/modules/settings/`

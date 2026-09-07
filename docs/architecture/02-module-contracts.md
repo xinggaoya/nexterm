@@ -114,7 +114,7 @@ const result = await native.fsReadFile("/abs/path");
 | Pinia store | `<domain>Pinia.ts` | `preferencesPinia.ts` |
 | 内部 lib | `camelCase.ts` | `fileTreeRows.ts` |
 | 类型模块 | `<domain>Types.ts` | `tabsTypes.ts` |
-| Rust 模块 | `snake_case` | `workspace.rs` |
+| Rust 模块 | `snake_case`，大文件按域拆目录 | `workspace/`（`mod.rs` + `registry.rs` + `env.rs` + `wsl.rs`） |
 
 ### 4.2 TypeScript
 

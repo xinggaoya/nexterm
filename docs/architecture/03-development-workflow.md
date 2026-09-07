@@ -25,7 +25,7 @@ pnpm i
 |------|------|
 | `pnpm dev` | 启动 Vite dev server（端口 3180） |
 | `pnpm tauri dev` | 启动 Tauri 桌面应用 dev 模式（包含 Vite） |
-| `pnpm exec tsc --noEmit` | 仅类型检查 |
+| `pnpm exec vue-tsc --noEmit` | 仅类型检查（裸 tsc 解析不了 .vue） |
 | `pnpm build` | 类型检查 + 生产构建（产出 `dist/`） |
 | `pnpm test` | Vitest 单次运行 |
 | `pnpm test:watch` | Vitest 监听模式 |
