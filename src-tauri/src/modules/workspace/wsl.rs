@@ -17,6 +17,7 @@ pub struct WslDistro {
 // WSL itself is missing or disabled (vs. e.g. an invalid distro name). The
 // shape is `WslNotAvailable: <hint>` so a single string still fits the existing
 // `Result<_, String>` Tauri commands without a new error enum.
+#[cfg(windows)]
 pub(crate) const WSL_NOT_AVAILABLE_PREFIX: &str = "WslNotAvailable: ";
 
 #[cfg(windows)]

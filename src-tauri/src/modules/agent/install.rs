@@ -104,6 +104,7 @@ fn cached_wsl_home(distro: &str) -> Result<String, String> {
     Ok(home)
 }
 
+#[cfg(windows)]
 fn agent_install_path(home: &str, arch: &str) -> String {
     format!(
         "{}/.cache/nexterm/agent/nexterm-agent-{AGENT_VERSION}-{arch}",
@@ -154,6 +155,7 @@ fn write_bytes_to_wsl(distro: &str, target_path: &str, bytes: &[u8]) -> Result<(
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
     #[test]
     fn install_path_pins_version_and_arch() {
         assert_eq!(
