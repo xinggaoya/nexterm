@@ -140,6 +140,27 @@ jobs:
           includeUpdaterJson: true
           args: ${{ matrix.args }}
 
+      # tauri build 可能在 release 过程中接收 crates.io index 中某个 dep
+      # 的重新发布 (checksum 变化),导致 Cargo.lock 被自动更新。把更新的
+      # Cargo.lock 提交到 main,避免后续 push 触发的 CI 跑 cargo check
+      # --locked 时遇到 stale lock file 假红。
+      # commit message 含 [skip ci] 不重复触发 ci.yml。
+      # 只在 ubuntu 上执行,避免三平台并发 push 冲突。
+      - name: Commit Cargo.lock refresh
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- src-tauri/Cargo.lock; then
+            echo "Cargo.lock unchanged, skipping commit"
+            exit 0
+          fi
+          git add src-tauri/Cargo.lock
+          git commit -m "chore(lock): refresh Cargo.lock after ${{ github.ref_name }} release [skip ci]"
+          git push origin HEAD:main
+
       # GitHub Release asset CDN 在某些网络位置偶尔会返回 404(边缘节点 stale),
       # tauri-plugin-updater 走到 ReleaseNotFound 分支会抛出
       # "Could not fetch a valid release JSON from the remote" 错误。

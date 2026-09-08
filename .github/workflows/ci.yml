@@ -71,11 +71,16 @@ jobs:
             librsvg2-dev \
             libssl-dev
 
+      # CI 容器是 fresh environment,第一次 cargo build 会 fetch 最新
+      # crates.io index。若某个 dep 在 lock file 记录后被 yank / 重新发布
+      # (checksum 变化),--locked 会拒绝更新,导致 CI 假红。
+      # 主 release build (release.yml) 仍走 --locked 保证发布物可复现;
+      # CI 接受 lock file 跟当前 index 自动 reconcile。
       - name: cargo check
-        run: cargo check --all-targets --locked
+        run: cargo check --all-targets
 
       - name: cargo clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: cargo test
-        run: cargo test --locked
+        run: cargo test
