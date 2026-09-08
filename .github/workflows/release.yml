@@ -10,8 +10,54 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # nexterm-agent 编译为 musl 静态二进制,需要 musl 工具链;
+  # Windows runner 默认是 MinGW(ld 不支持 musl 链接选项),
+  # macOS runner 是系统 ld(不支持 GNU 链接选项),
+  # 只有 Ubuntu runner 自带 musl 工具链能完成 cross-compile。
+  # 因此 agent 收敛到一个独立的 ubuntu job,产物通过 artifact
+  # 共享给后续三个平台的 tauri bundle 步骤嵌入。
+  agent:
+    name: Build musl agent
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install musl build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            musl-tools \
+            patchelf
+
+      # 注意:此步骤不带 --locked。musl cross-compile 引入
+      # platform-specific 解析(linux-raw-sys / rustix / ring 等),
+      # CI runner 是 fresh container,cargo 首次 fetch crates.io index
+      # 时可能发现 lock file 校验不一致(某个 dep 被 yank/重发后 checksum 变化)。
+      # 主 build (Tauri bundle) 仍走 --locked 保持锁版本。
+      - name: Build nexterm-agent (x86_64-unknown-linux-musl)
+        working-directory: src-tauri
+        run: cargo build --release --target x86_64-unknown-linux-musl -p nexterm-agent
+
+      - name: Verify agent asset
+        run: test -f src-tauri/target/x86_64-unknown-linux-musl/release/nexterm-agent
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexterm-agent-musl
+          path: src-tauri/target/x86_64-unknown-linux-musl/release/nexterm-agent
+          if-no-files-found: error
+
   build:
     name: Build ${{ matrix.name }}
+    needs: agent
     permissions:
       contents: write
     strategy:
@@ -21,15 +67,12 @@ jobs:
           - name: Windows
             platform: windows-latest
             args: ""
-            rustTargets: "x86_64-unknown-linux-musl"
           - name: Ubuntu
             platform: ubuntu-22.04
             args: ""
-            rustTargets: "x86_64-unknown-linux-musl"
           - name: macOS
             platform: macos-latest
             args: "--target universal-apple-darwin"
-            rustTargets: "aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-musl"
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -45,12 +88,6 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
-        if: matrix.rustTargets == ''
-
-      - uses: dtolnay/rust-toolchain@stable
-        if: matrix.rustTargets != ''
-        with:
-          targets: ${{ matrix.rustTargets }}
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -71,18 +108,12 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      # nexterm-agent 运行在远端(WSL/SSH Linux 主机),由宿主 App 内嵌后推送。
-      # 产物路径与 src-tauri/build.rs 的默认探测路径一致,三个平台的安装包都要内嵌。
-      #
-      # 注意:此步骤**不**带 --locked。musl cross-compile 引入
-      # platform-specific 解析(linux-raw-sys / rustix / ring 等),
-      # CI runner 是 fresh container,cargo 首次 fetch crates.io index
-      # 时可能发现 lock file 校验不一致(某个 dep 被 yank/重发后 checksum 变化)。
-      # 主 build (Tauri bundle) 仍走 --locked 保持锁版本;此步骤只构建
-      # musl agent,接受 lock file 在 CI 内自动更新。
-      - name: Build nexterm-agent (x86_64-unknown-linux-musl)
-        working-directory: src-tauri
-        run: cargo build --release --target x86_64-unknown-linux-musl -p nexterm-agent
+      # 把 agent job 产出的 musl 静态二进制放到 build.rs 默认探测路径,
+      # 这样 build.rs 即使不显式传入 NEXTERM_AGENT 环境变量也能找到。
+      - uses: actions/download-artifact@v4
+        with:
+          name: nexterm-agent-musl
+          path: src-tauri/target/x86_64-unknown-linux-musl/release/
 
       - name: Verify agent asset
         run: test -f src-tauri/target/x86_64-unknown-linux-musl/release/nexterm-agent
