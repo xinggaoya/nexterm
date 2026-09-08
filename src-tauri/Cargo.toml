@@ -1,6 +1,6 @@
 [package]
 name = "nexterm"
-version = "0.1.3"
+version = "0.1.4"
 description = "Nexterm - terminal development environment"
 authors = ["xinggaoya"]
 edition = "2021"
