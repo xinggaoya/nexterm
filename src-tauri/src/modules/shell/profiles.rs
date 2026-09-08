@@ -412,8 +412,13 @@ fn capitalize(s: &str) -> String {
 mod tests {
     use super::*;
 
+    // `Path::file_name` 在不同平台的拆分规则不同:Windows 认 `\` 和 `/`,
+    // unix 只认 `/`。所以 Windows 路径断言只在 windows 编译目标下跑,
+    // unix 路径断言只在 unix 目标下跑 —— 否则反斜杠路径会被当成一个
+    // 超长文件名,case 全部 fallthrough 到 Other,linux CI 会因此红。
+    #[cfg(windows)]
     #[test]
-    fn kind_from_program_detects_known_shells() {
+    fn kind_from_program_detects_windows_shells() {
         assert_eq!(
             ShellKind::from_program(Path::new(r"C:\Program Files\PowerShell\7\pwsh.exe")),
             ShellKind::Powershell
@@ -426,6 +431,11 @@ mod tests {
             ShellKind::from_program(Path::new(r"C:\Program Files\Git\bin\bash.exe")),
             ShellKind::Bash
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn kind_from_program_detects_unix_shells() {
         assert_eq!(
             ShellKind::from_program(Path::new("/bin/zsh")),
             ShellKind::Zsh
