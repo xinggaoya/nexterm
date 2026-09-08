@@ -5,6 +5,7 @@ import {
   type AppUpdate,
 } from "@/lib/native";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
+import { t } from "@/modules/i18n/translate";
 
 /**
  * 应用内自动更新控制器。
@@ -132,8 +133,21 @@ export function createAppUpdaterController(): AppUpdaterController {
         return update;
       } catch (error) {
         status.value = "error";
-        if (!silent) errorMessage.value = normalizeErrorMessage(error);
-        else console.warn("Background update check failed:", error);
+        if (!silent) {
+          // tauri-plugin-updater 的错误信息对最终用户不友好:
+          // - "Could not fetch a valid release JSON from the remote" 实际可能是
+          //   GitHub Release CDN 节点临时 404 / 网络连通性问题。
+          // 这里附加中文提示,让用户在设置面板能看出可以重试。
+          const raw = normalizeErrorMessage(error);
+          const isUpdaterFetchError =
+            raw.includes("Could not fetch a valid release JSON") ||
+            raw.includes("error sending request");
+          errorMessage.value = isUpdaterFetchError
+            ? `${raw}\n${t("app.updater.networkHint")}`
+            : raw;
+        } else {
+          console.warn("Background update check failed:", error);
+        }
         return null;
       } finally {
         inflight = null;

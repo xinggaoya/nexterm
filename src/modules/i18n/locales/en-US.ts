@@ -160,6 +160,9 @@ const enUS = {
       subtitle: "A terminal-first development environment",
       tagline: "Pick a workspace to begin",
     },
+    updater: {
+      networkHint: "(possibly a network issue or GitHub temporarily unavailable; please retry shortly)",
+    },
     ai: {
       title: "AI Assistant",
       comingSoon: "AI Assistant coming soon",

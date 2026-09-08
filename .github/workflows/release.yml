@@ -139,3 +139,56 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           args: ${{ matrix.args }}
+
+      # GitHub Release asset CDN 在某些网络位置偶尔会返回 404(边缘节点 stale),
+      # tauri-plugin-updater 走到 ReleaseNotFound 分支会抛出
+      # "Could not fetch a valid release JSON from the remote" 错误。
+      # 把 latest.json 同步到 main 分支的固定路径,作为 fallback endpoint
+      # (tauri.conf.json 已把 raw.githubusercontent.com 列为备用 endpoint)。
+      # 只在 ubuntu job 上执行,避免三个平台并发 push 冲突。
+      # commit message 含 [skip ci] 避免触发 ci.yml 的 push 工作流。
+      - name: Sync latest.json to main branch fallback
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          echo "Fetching latest.json content from release asset API..."
+          ASSET_API_URL=$(curl -s \
+            -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG_NAME" \
+            | jq -r '.assets[] | select(.name=="latest.json") | .url')
+          if [ -z "$ASSET_API_URL" ] || [ "$ASSET_API_URL" = "null" ]; then
+            echo "::warning::latest.json asset not found in release $TAG_NAME, skipping sync"
+            exit 0
+          fi
+          CONTENT_BASE64=$(curl -sL \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/octet-stream" \
+            "$ASSET_API_URL" \
+            | base64 -w 0)
+          EXISTING_SHA=$(curl -s \
+            -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/contents/updates/latest.json?ref=main" \
+            | jq -r '.sha // empty')
+          PAYLOAD=$(jq -n \
+            --arg msg "chore(release): sync latest.json for $TAG_NAME [skip ci]" \
+            --arg content "$CONTENT_BASE64" \
+            --arg branch "main" \
+            --arg sha "$EXISTING_SHA" \
+            '{message: $msg, content: $content, branch: $branch}
+             + (if $sha != "" then {sha: $sha} else {} end)')
+          HTTP_STATUS=$(curl -s -o /tmp/sync-response.json -w "%{http_code}" \
+            -X PUT \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "https://api.github.com/repos/${{ github.repository }}/contents/updates/latest.json")
+          if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "201" ]; then
+            echo "latest.json synced to main branch (status $HTTP_STATUS)"
+          else
+            echo "::error::Failed to sync latest.json (status $HTTP_STATUS)"
+            cat /tmp/sync-response.json
+            exit 1
+          fi

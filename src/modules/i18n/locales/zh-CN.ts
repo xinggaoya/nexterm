@@ -162,6 +162,9 @@ const zhCN = {
       subtitle: "终端优先的现代化开发环境",
       tagline: "选择一个工作区开始",
     },
+    updater: {
+      networkHint: "（可能是网络问题或 GitHub 临时不可用，稍后重试）",
+    },
     ai: {
       title: "AI 助手",
       comingSoon: "AI 助手即将上线",
