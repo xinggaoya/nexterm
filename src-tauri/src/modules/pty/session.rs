@@ -76,6 +76,7 @@ pub fn spawn(
     cols: u16,
     rows: u16,
     cwd: Option<String>,
+    shell_id: Option<String>,
     workspace: WorkspaceEnv,
     on_data: Channel<String>,
     on_exit: Channel<i32>,
@@ -89,7 +90,7 @@ pub fn spawn(
     };
     let pair = pty_system.openpty(size).map_err(|e| e.to_string())?;
 
-    let cmd = shell_init::build_command(cwd, workspace)?;
+    let cmd = shell_init::build_command(cwd, shell_id.as_deref(), workspace)?;
     let mut child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
     drop(pair.slave);
 

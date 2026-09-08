@@ -49,16 +49,17 @@ pub(super) fn fish_init_script() -> &'static str {
 
 pub fn build_command(
     cwd: Option<String>,
+    shell_id: Option<&str>,
     workspace: WorkspaceEnv,
 ) -> Result<CommandBuilder, String> {
     #[cfg(unix)]
     {
         let _ = workspace;
-        unix::build(cwd)
+        unix::build(cwd, shell_id)
     }
     #[cfg(windows)]
     {
-        windows::build(cwd, workspace)
+        windows::build(cwd, shell_id, workspace)
     }
 }
 
@@ -101,46 +102,4 @@ pub(super) fn apply_common(cmd: &mut CommandBuilder, cwd: Option<String>) {
     } else {
         log::warn!("pty cwd: no usable directory, inheriting from process");
     }
-}
-
-/// Windows 本地 shell 的选择:优先 PowerShell 7,回退 Windows
-/// 自带的 PowerShell 5,最后兜底 cmd.exe。
-#[cfg(windows)]
-pub fn windows_shell_path() -> PathBuf {
-    if let Some(p) = which_in_path("pwsh.exe") {
-        return p;
-    }
-
-    if let Some(pf) = std::env::var_os("ProgramFiles").map(PathBuf::from) {
-        let candidate = pf.join("PowerShell").join("7").join("pwsh.exe");
-        if candidate.is_file() {
-            return candidate;
-        }
-    }
-
-    let system32 = std::env::var_os("SystemRoot")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
-        .join("System32");
-    let ps5 = system32
-        .join("WindowsPowerShell")
-        .join("v1.0")
-        .join("powershell.exe");
-    if ps5.is_file() {
-        return ps5;
-    }
-
-    system32.join("cmd.exe")
-}
-
-#[cfg(windows)]
-fn which_in_path(name: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path) {
-        let candidate = dir.join(name);
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
-    None
 }

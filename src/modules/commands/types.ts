@@ -9,6 +9,7 @@ export type CommandId =
   | "terminal.splitVertical"
   | "terminal.clear"
   | "terminal.reset"
+  | "terminal.selectDefaultShell"
   | "panel.sourceControl.toggle"
   | "panel.explorer.toggle"
   | "explorer.refresh"

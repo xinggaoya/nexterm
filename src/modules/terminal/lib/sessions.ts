@@ -81,6 +81,12 @@ interface CreateSessionOptions {
   /** Env-bound native surface for the workspace owning this session. */
   wsNative: WorkspaceNative;
   /**
+   * 本地终端的 shell profile id（后端探测白名单内）。"auto" / 未传 =
+   * 后端历史默认顺序（pwsh → Windows PowerShell → CMD）。仅本地环境
+   * 生效；WSL / SSH 有各自的登录 shell 逻辑。只影响新开的 PTY。
+   */
+  shellProfileId?: string;
+  /**
    * PTY 打开后若在 watchdogMs 内既无输出也未退出，视为 shell 假死
    * （WSL 冷启动常见：wsl.exe 进程创建成功但 shell 半启动、无输出）。
    * 触发后回调上层销毁坏 session 并重建。正常 shell 首帧会在毫秒级到达，
@@ -205,6 +211,7 @@ export async function createSession(
       },
     },
     opts.cwd,
+    opts.shellProfileId,
   );
   // PTY 打开成功后挂上 watchdog（仅当上层关心假死时）。
   if (opts.onDeadStart) {

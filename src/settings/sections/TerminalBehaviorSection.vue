@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import {
+  NButton,
   NCard,
   NForm,
   NFormItem,
   NInputNumber,
   NSelect,
   NSlider,
+  NSpace,
   NSwitch,
 } from "naive-ui";
-import { computed } from "vue";
+import { computed, onMounted, ref } from "vue";
+import { IS_WINDOWS } from "@/lib/platform";
+import { hasTauriInternals } from "@/lib/tauriRuntime";
+import { native, type ShellProfileInfo } from "@/lib/native";
 import { currentLocale, t } from "@/modules/i18n/translate";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import {
@@ -31,11 +36,75 @@ const fastScrollModifierOptions = computed(() =>
     value,
   })),
 );
+
+// 本地默认 Shell（Windows）：探测白名单由后端维护，前端只持有 id。
+// 切换仅影响之后新开的终端，运行中的 PTY 不重启。
+const shellProfiles = ref<ShellProfileInfo[]>([]);
+const shellLoading = ref(false);
+
+async function loadShellProfiles(): Promise<void> {
+  if (!IS_WINDOWS || !hasTauriInternals()) return;
+  shellLoading.value = true;
+  try {
+    shellProfiles.value = await native.shellListProfiles();
+  } catch {
+    shellProfiles.value = [];
+  } finally {
+    shellLoading.value = false;
+  }
+}
+
+onMounted(() => {
+  void loadShellProfiles();
+});
+
+const shellOptions = computed(() => [
+  { label: t("settings.general.terminalShellAuto"), value: "auto" },
+  ...shellProfiles.value.map((profile) => ({
+    label: profile.name,
+    value: profile.id,
+  })),
+]);
+
+const selectedShellProgram = computed(() => {
+  if (prefs.terminalShellId === "auto") return null;
+  return (
+    shellProfiles.value.find((profile) => profile.id === prefs.terminalShellId)
+      ?.program ?? null
+  );
+});
 </script>
 
 <template>
   <NCard class="nexterm-settings-group" size="small" :title="t('settings.general.terminal')" embedded>
     <NForm label-placement="left" label-width="180" size="small">
+      <NFormItem v-if="IS_WINDOWS" :label="t('settings.general.terminalShell')">
+        <NSpace vertical class="w-full">
+          <NSpace>
+            <NSelect
+              class="w-60"
+              :value="prefs.terminalShellId"
+              :options="shellOptions"
+              @update:value="(value) => prefs.updateTerminalShellId(String(value))"
+            />
+            <NButton
+              size="small"
+              quaternary
+              :loading="shellLoading"
+              @click="loadShellProfiles"
+            >
+              {{ t("settings.general.terminalShellRescan") }}
+            </NButton>
+          </NSpace>
+          <span class="text-xs text-muted-foreground">
+            {{
+              selectedShellProgram ??
+              t("settings.general.terminalShellAutoHint")
+            }}
+            · {{ t("settings.general.terminalShellHint") }}
+          </span>
+        </NSpace>
+      </NFormItem>
       <NFormItem :label="t('settings.general.scrollback')">
         <NSelect
           :value="prefs.terminalScrollback"

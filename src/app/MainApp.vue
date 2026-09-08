@@ -413,7 +413,7 @@ watch(
                 :workspace="ws"
                 @add-workspace="(env) => startAddWorkspace(env)"
                 @open-in-new-window="() => openWorkspaceInNewWindow()"
-                @request-settings="openSettings()"
+                @request-settings="(tab) => openSettings(tab)"
                 @request-command-palette="(mode) => openCommandPalette(mode)"
                 @request-rename="(payload) => (renameDialogState = payload)"
                 @branch-change="onWorkspaceBranchChange"

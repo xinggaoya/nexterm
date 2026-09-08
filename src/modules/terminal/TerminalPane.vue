@@ -150,6 +150,8 @@ async function ensureSession(): Promise<void> {
     cwd: props.cwd,
     callbacks: sessionCallbacks,
     wsNative: wsCtx!.wsNative,
+    // 本地 shell profile（设置里的"默认 Shell"），"auto" 走后端默认顺序。
+    shellProfileId: prefs.terminalShellId,
     // 启动 watchdog 检测到 shell 假死（WSL 冷启动常见）时的回调：销毁坏
     // session 并延迟重建。第二次 pty_open 命中已预热的 WSL，会成功。
     onDeadStart: () => {

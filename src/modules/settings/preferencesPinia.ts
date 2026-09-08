@@ -100,6 +100,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const updateTabWidthMode = (value: TabWidthMode) => updatePref("tabWidthMode", value);
   const updateTabFixedWidth = (value: number) => updatePref("tabFixedWidth", value);
   const updateTerminalWebglEnabled = (value: boolean) => updatePref("terminalWebglEnabled", value);
+  const updateTerminalShellId = (value: string) => updatePref("terminalShellId", value);
   const updateTerminalContextMenuEnabled = (value: boolean) =>
     updatePref("terminalContextMenuEnabled", value);
   const updateTerminalFontFamily = (value: string) => updatePref("terminalFontFamily", value);
@@ -197,6 +198,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateTabWidthMode,
     updateTabFixedWidth,
     updateTerminalWebglEnabled,
+    updateTerminalShellId,
     updateTerminalContextMenuEnabled,
     updateTerminalFontFamily,
     updateTerminalFontWeight,

@@ -83,4 +83,11 @@ export const TERMINAL_COMMAND_SPECS: CommandSpec[] = [
     defaultKeybinding: null,
     workspaceRequired: true,
   },
+  {
+    // 打开设置的终端分区选择本地默认 Shell（Windows）。
+    id: "terminal.selectDefaultShell",
+    titleKey: "commands.items.selectDefaultShell",
+    category: "terminal",
+    defaultKeybinding: null,
+  },
 ];

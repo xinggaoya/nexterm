@@ -292,6 +292,7 @@ pub fn run() {
             shell::shell_bg_logs,
             shell::shell_bg_kill,
             shell::shell_bg_list,
+            shell::shell_list_profiles,
             workspace::wsl_list_distros,
             workspace::wsl_home,
             workspace::workspace_authorize,

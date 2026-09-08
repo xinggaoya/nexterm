@@ -156,6 +156,8 @@ export type Preferences = {
   terminalRendererAutoFallback: boolean;
   terminalWebglEnabled: boolean;
   // 终端 - 行为
+  /** 本地终端 shell profile id（"auto" = 历史默认顺序），仅对新开终端生效。 */
+  terminalShellId: string;
   terminalScrollback: number;
   terminalFastScrollSensitivity: number;
   terminalFastScrollModifier: TerminalFastScrollModifier;
@@ -411,6 +413,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   terminalRendererAutoFallback: true,
   terminalWebglEnabled: true,
   // 终端 - 行为
+  terminalShellId: "auto",
   terminalScrollback: TERMINAL_SCROLLBACK_DEFAULT,
   terminalFastScrollSensitivity: 5,
   terminalFastScrollModifier: "alt",
@@ -655,6 +658,7 @@ export const PREF_SPECS: PrefSpecMap = {
   terminalRendererAutoFallback: spec("terminalRendererAutoFallback", boolPref(DEFAULT_PREFERENCES.terminalRendererAutoFallback)),
   terminalWebglEnabled: spec("terminalWebglEnabled", boolPref(DEFAULT_PREFERENCES.terminalWebglEnabled)),
   // 终端 - 行为
+  terminalShellId: spec("terminalShellId", withDefault(DEFAULT_PREFERENCES.terminalShellId), (value) => value.trim() || "auto"),
   terminalScrollback: spec("terminalScrollback", numberPref(DEFAULT_PREFERENCES.terminalScrollback, clampScrollback), clampScrollback),
   terminalFastScrollSensitivity: spec("terminalFastScrollSensitivity", numberPref(DEFAULT_PREFERENCES.terminalFastScrollSensitivity), clampTerminalFastScrollSensitivity),
   terminalFastScrollModifier: spec("terminalFastScrollModifier", clampTerminalFastScrollModifier, clampTerminalFastScrollModifier),

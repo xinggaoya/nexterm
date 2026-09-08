@@ -148,6 +148,7 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 | `src-tauri/src/modules/pty/mod.rs` | PTY commands: open, write, resize, read_transcript, close |
 | `src-tauri/src/modules/pty/session.rs` | PTY session, Transcript, Job Object, flusher |
 | `src-tauri/src/modules/shell/mod.rs` | Shell commands: run, session, background spawn/kill/list |
+| `src-tauri/src/modules/shell/profiles.rs` | 本地终端 shell profile 探测与白名单解析（`shell_list_profiles`、`pty_open` 的 `shellId` 只收 id） |
 | `src-tauri/src/modules/fs/mod.rs` | FS commands: read/write/stat, mutate, search, grep, glob, tree, watcher |
 | `src-tauri/src/modules/git/` | `commands.rs` 为 Tauri 包装层；`operations/` 按 status/stage/commit/branch/stash/log/remote/discover 分文件实现 git 能力 |
 | `src-tauri/src/modules/workspace/` | Workspace auth/registry (`mod.rs`, `registry.rs`), env 与 SSH 守卫 (`env.rs`), WSL 路径与进程助手 (`wsl.rs`) |

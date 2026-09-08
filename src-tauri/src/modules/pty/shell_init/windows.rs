@@ -1,7 +1,8 @@
-//! Windows 平台的 shell 启动:本地走 PowerShell(带 profile 集成)
-//! 或 cmd;WSL 发行版先探测登录 shell,把集成脚本经 UNC 路径写进
-//! 发行版的 `~/.cache/nexterm/shell-integration/`,再组装 wsl.exe
-//! 启动参数。
+//! Windows 平台的 shell 启动:本地按用户选择的 shell profile(白名单
+//! 解析见 `shell::profiles`)注入对应集成——PowerShell 走 profile.ps1,
+//! Git Bash 走 --rcfile;WSL 发行版先探测登录 shell,把集成脚本经 UNC
+//! 路径写进发行版的 `~/.cache/nexterm/shell-integration/`,再组装
+//! wsl.exe 启动参数。
 
 use std::ffi::OsString;
 use std::fs;
@@ -9,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use portable_pty::CommandBuilder;
 
+use crate::modules::shell::profiles::{self, ShellKind as LocalShellKind};
 use crate::modules::workspace::WorkspaceEnv;
 
 const PROFILE_PS1: &str = include_str!("../scripts/profile.ps1");
@@ -50,40 +52,62 @@ struct WslLaunchSpec {
     args: Vec<String>,
 }
 
-pub fn build(cwd: Option<String>, workspace: WorkspaceEnv) -> Result<CommandBuilder, String> {
+pub fn build(
+    cwd: Option<String>,
+    shell_id: Option<&str>,
+    workspace: WorkspaceEnv,
+) -> Result<CommandBuilder, String> {
     if let WorkspaceEnv::Wsl { distro } = workspace {
         return build_wsl(cwd, distro);
     }
-    let shell_path = super::windows_shell_path();
-    let shell_name = shell_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(|s| s.to_ascii_lowercase())
-        .unwrap_or_default();
-    let is_powershell = shell_name == "pwsh.exe" || shell_name == "powershell.exe";
+    let resolved = profiles::resolve_local_shell(shell_id);
 
-    let mut cmd = CommandBuilder::new(&shell_path);
+    let mut cmd = CommandBuilder::new(&resolved.program);
     super::apply_common(&mut cmd, cwd);
 
-    if is_powershell {
-        match prepare_ps_profile() {
-            Ok(profile) => {
-                cmd.arg("-NoLogo");
-                cmd.arg("-NoExit");
-                cmd.arg("-ExecutionPolicy");
-                cmd.arg("Bypass");
-                cmd.arg("-File");
-                cmd.arg(profile);
-            }
-            Err(e) => {
-                log::warn!("powershell shell integration disabled: {e}");
+    match resolved.kind {
+        LocalShellKind::Powershell => {
+            match prepare_ps_profile() {
+                Ok(profile) => {
+                    cmd.arg("-NoLogo");
+                    cmd.arg("-NoExit");
+                    cmd.arg("-ExecutionPolicy");
+                    cmd.arg("Bypass");
+                    cmd.arg("-File");
+                    cmd.arg(profile);
+                }
+                Err(e) => {
+                    log::warn!("powershell shell integration disabled: {e}");
+                }
             }
         }
-    } else {
-        log::info!("spawning {} without shell integration", shell_name);
+        LocalShellKind::Bash => {
+            // bash 只在交互模式下读 --rcfile，且 -l 会忽略它——集成脚本
+            // 自身会链回 /etc/profile 与用户 rc 文件来模拟登录初始化。
+            match prepare_local_bash_rcfile() {
+                Ok(rcfile) => {
+                    cmd.arg("--rcfile");
+                    cmd.arg(rcfile);
+                }
+                Err(e) => {
+                    log::warn!("bash shell integration disabled: {e}");
+                }
+            }
+            cmd.arg("-i");
+        }
+        LocalShellKind::Cmd | LocalShellKind::Zsh | LocalShellKind::Fish | LocalShellKind::Other => {
+            log::info!(
+                "spawning {} without shell integration",
+                resolved.program.display()
+            );
+        }
     }
 
-    log::info!("spawning Windows shell: {}", shell_path.display());
+    log::info!(
+        "spawning Windows shell: {} (profile {})",
+        resolved.program.display(),
+        resolved.id
+    );
     Ok(cmd)
 }
 
@@ -283,6 +307,17 @@ fn prepare_ps_profile() -> Result<PathBuf, String> {
     let file = dir.join("profile.ps1");
     write_if_changed(&file, PROFILE_PS1)?;
     Ok(file)
+}
+
+/// Git Bash / Cygwin bash 的集成:rcfile 指向与 WSL bash 共用的 bashrc
+/// 脚本。MSYS bash 对 CRLF 敏感,写入前统一换行;传给 bash 的参数用
+/// 正斜杠路径,避免反斜杠被当转义处理。
+fn prepare_local_bash_rcfile() -> Result<PathBuf, String> {
+    let dir = integration_root()?.join("bash");
+    fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    let rc = dir.join("bashrc");
+    write_if_changed(&rc, &normalize_script(super::bashrc_script()))?;
+    Ok(PathBuf::from(rc.to_string_lossy().replace('\\', "/")))
 }
 
 fn write_if_changed(path: &Path, content: &str) -> Result<(), String> {

@@ -49,6 +49,7 @@ import Workbench from "./Workbench.vue";
 import { useWorkbenchLayout } from "@/app/useWorkbenchLayout";
 import { useWorkspacesPiniaStore } from "@/modules/workspace/workspacesPinia";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import type { SettingsTab } from "@/modules/settings/tabs";
 
 const props = defineProps<{
   workspace: WorkspaceInstance;
@@ -57,7 +58,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   "add-workspace": [env: WorkspaceEnv];
   "open-in-new-window": [];
-  "request-settings": [];
+  "request-settings": [tab?: SettingsTab];
   "request-command-palette": [mode?: "commands" | "files"];
   "request-rename": [payload: { leafId: number; currentTitle: string }];
   "branch-change": [workspaceId: string, branch: string | null];
@@ -389,7 +390,7 @@ const commandApi = useWorkbenchCommands({
   newTerminalTab,
   splitActivePane,
   openFileTab,
-  openSettings: () => emit("request-settings"),
+  openSettings: (tab?: SettingsTab) => emit("request-settings", tab),
   openTaskConsole: () => {
     workbenchLayout.panelVisibility.value.taskConsole = true;
     void taskConsole.openTaskConsole();

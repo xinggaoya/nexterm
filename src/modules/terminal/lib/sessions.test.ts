@@ -84,6 +84,7 @@ describe("terminal sessions", () => {
       30,
       expect.any(Object),
       "/workspace",
+      undefined,
     );
 
     handlers?.onData("before\x1b]7;file:///tmp/pro");
@@ -111,6 +112,38 @@ describe("terminal sessions", () => {
     expect(pty.close).toHaveBeenCalled();
     session.dispose();
     expect(pty.close).toHaveBeenCalledTimes(2);
+  });
+
+  it("passes shellProfileId through to ptyOpen", async () => {
+    const pty = {
+      id: 7,
+      write: vi.fn().mockResolvedValue(undefined),
+      resize: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const ptyOpen = vi.fn().mockResolvedValue(pty);
+    const wsNative = makeWsNative(ptyOpen);
+    const term = {
+      cols: 80,
+      rows: 24,
+      write: vi.fn(),
+      onData: vi.fn(),
+    } as unknown as Terminal;
+
+    const session = await createSession({
+      term,
+      callbacks: { onCwd: vi.fn(), onTitle: vi.fn(), onStateChange: vi.fn() },
+      wsNative,
+      shellProfileId: "git-bash",
+    });
+    expect(ptyOpen).toHaveBeenCalledWith(
+      80,
+      24,
+      expect.any(Object),
+      undefined,
+      "git-bash",
+    );
+    session.dispose();
   });
 
   it("partitions sessions by workspace id", async () => {

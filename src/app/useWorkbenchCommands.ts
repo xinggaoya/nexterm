@@ -32,6 +32,7 @@ import {
 } from "@/modules/source-control/sourceControlModel";
 import type { SplitDir } from "@/modules/terminal/lib/layout";
 import { createTerminalSessionHandle } from "@/modules/terminal";
+import type { SettingsTab } from "@/modules/settings/tabs";
 import { DEFAULT_TERMINAL_SNIPPETS } from "@/modules/snippets";
 import type { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { Tab } from "@/modules/tabs/tabsTypes";
@@ -51,7 +52,7 @@ type WorkbenchCommandOptions = {
   newTerminalTab: () => void;
   splitActivePane: (dir: SplitDir) => void;
   openFileTab: (path: string, pin: boolean) => void;
-  openSettings: () => void;
+  openSettings: (tab?: SettingsTab) => void;
   openTaskConsole: () => void | Promise<void>;
   requestCloseTab: (id: number) => void;
   saveActiveEditor: () => void | Promise<void>;
@@ -341,6 +342,9 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
         return;
       case "settings.open":
         options.openSettings();
+        return;
+      case "terminal.selectDefaultShell":
+        options.openSettings("terminal");
         return;
       case "preview.open":
         options.openUrlPreview();

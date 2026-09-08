@@ -36,6 +36,10 @@ impl Default for PtyState {
     }
 }
 
+/// 打开一个 PTY 会话。
+///
+/// `shell_id` 为本地终端 shell profile id（探测白名单内）；None /
+/// "auto" 走历史默认顺序，WSL / SSH 环境忽略此参数。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn pty_open(
@@ -46,6 +50,7 @@ pub async fn pty_open(
     rows: u16,
     cwd: Option<String>,
     auth_secret: Option<String>,
+    shell_id: Option<String>,
     workspace: Option<WorkspaceEnv>,
     on_data: Channel<String>,
     on_exit: Channel<i32>,
@@ -79,7 +84,7 @@ pub async fn pty_open(
         e
     })?;
     let session = tauri::async_runtime::spawn_blocking(move || {
-        session::spawn(cols, rows, cwd, workspace, on_data, on_exit)
+        session::spawn(cols, rows, cwd, shell_id, workspace, on_data, on_exit)
     })
     .await
     .map_err(|e| {

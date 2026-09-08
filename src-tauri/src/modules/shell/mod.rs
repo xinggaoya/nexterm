@@ -1,4 +1,5 @@
 pub mod background;
+pub mod profiles;
 pub mod ringbuffer;
 
 use std::collections::HashMap;
@@ -192,6 +193,13 @@ pub fn shell_bg_list(state: tauri::State<ShellState>) -> Result<Vec<BackgroundPr
     Ok(out)
 }
 
+/// 探测本机可用的终端 shell profile（设置界面"默认 Shell"下拉）。
+/// 只返回实际存在的条目；前端选择的是 id，路径解析收敛在后端白名单里。
+#[tauri::command]
+pub fn shell_list_profiles() -> Vec<profiles::ShellProfile> {
+    profiles::detected_profiles()
+}
+
 pub(crate) fn build_oneshot_command(
     command: &str,
     #[cfg_attr(not(windows), allow(unused_variables))] workspace: &WorkspaceEnv,
@@ -218,7 +226,7 @@ pub(crate) fn build_oneshot_command(
     }
     #[cfg(windows)]
     {
-        let shell = crate::modules::pty::shell_init::windows_shell_path();
+        let shell = profiles::windows_shell_path();
         let mut cmd = Command::new(&shell);
         let is_cmd = shell
             .file_name()

@@ -24,6 +24,18 @@ export type SshProfile = {
 
 export type SshProbeResult = { home: string; shell: string };
 
+/**
+ * 探测到的本地终端 shell profile（与 Rust `ShellProfile` 对齐）。
+ * 前端只持有 id，真实路径解析收敛在后端白名单里。
+ */
+export type ShellProfileInfo = {
+  id: string;
+  name: string;
+  program: string;
+  args: string[];
+  kind: "powershell" | "cmd" | "zsh" | "bash" | "fish" | "other";
+};
+
 export type GitRepoInfo = {
   repoRoot: string;
   branch: string;
@@ -649,6 +661,7 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
       rows: number,
       handlers: PtyHandlers,
       cwd?: string,
+      shellId?: string,
     ): Promise<PtySession> => {
       const onData = new Channel<string>();
       const onExit = new Channel<number>();
@@ -671,6 +684,8 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
         cwd: cwd ?? null,
         // SSH 工作区:从内存缓存取本次口令(如有)。本地/WSL 为 null。
         authSecret: workspace.kind === "ssh" ? getSshSecret(workspace) : null,
+        // 本地终端的 shell profile id；"auto" 传 null 走后端默认顺序。
+        shellId: shellId && shellId !== "auto" ? shellId : null,
         workspace,
         onData,
         onExit,
@@ -712,6 +727,7 @@ export const native = {
   getLaunchDir: () => invoke<string | null>("get_launch_dir"),
   getWslHome: (distro: string) => invoke<string>("wsl_home", { distro }),
   wslListDistros: () => invoke<WslDistro[]>("wsl_list_distros"),
+  shellListProfiles: () => invoke<ShellProfileInfo[]>("shell_list_profiles"),
   ptyWrite: (id: number, data: string) =>
     invoke<void>("pty_write", { id, data }),
   ptyResize: (id: number, cols: number, rows: number) =>

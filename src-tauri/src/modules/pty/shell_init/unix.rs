@@ -1,4 +1,5 @@
-//! unix 平台的登录 shell 集成:探测用户默认 shell(zsh/bash/fish),
+//! unix 平台的登录 shell 集成:默认取 passwd 登录 shell(或 `$SHELL`),
+//! 也可按用户选择的 shell profile(`shell::profiles` 白名单)指定程序;
 //! 把 Nexterm 的集成脚本落到 `~/.cache/nexterm/shell-integration/`
 //! 并以对应机制注入(ZDOTDIR / --rcfile / conf.d)。
 
@@ -8,53 +9,26 @@ use std::path::{Path, PathBuf};
 
 use portable_pty::CommandBuilder;
 
-pub enum Shell {
-    Zsh,
-    Bash,
-    Fish,
-    Other,
-}
+use crate::modules::shell::profiles::{self, ShellKind};
 
-impl Shell {
-    pub fn detect() -> (Shell, String) {
-        let path = login_shell()
-            .or_else(|| std::env::var("SHELL").ok())
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "/bin/zsh".into());
-        let name = path.rsplit('/').next().unwrap_or("").to_string();
-        let shell = match name.as_str() {
-            "zsh" => Shell::Zsh,
-            "bash" => Shell::Bash,
-            "fish" => Shell::Fish,
-            _ => Shell::Other,
-        };
-        (shell, path)
-    }
-}
-
-fn login_shell() -> Option<String> {
-    use std::ffi::CStr;
-    unsafe {
-        let uid = libc::getuid();
-        let pw = libc::getpwuid(uid);
-        if pw.is_null() {
-            return None;
+pub fn build(cwd: Option<String>, shell_id: Option<&str>) -> Result<CommandBuilder, String> {
+    let explicit = shell_id
+        .filter(|s| !s.is_empty() && *s != "auto")
+        .and_then(profiles::resolve_unix_shell_program);
+    let (shell, shell_path) = match explicit {
+        Some(path) => (ShellKind::from_program(Path::new(&path)), path),
+        None => {
+            let path = profiles::default_unix_shell_program()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "/bin/zsh".into());
+            (ShellKind::from_program(Path::new(&path)), path)
         }
-        let shell_ptr = (*pw).pw_shell;
-        if shell_ptr.is_null() {
-            return None;
-        }
-        CStr::from_ptr(shell_ptr).to_str().ok().map(String::from)
-    }
-}
-
-pub fn build(cwd: Option<String>) -> Result<CommandBuilder, String> {
-    let (shell, shell_path) = Shell::detect();
+    };
     let mut cmd = CommandBuilder::new(&shell_path);
     super::apply_common(&mut cmd, cwd);
 
     match shell {
-        Shell::Zsh => {
+        ShellKind::Zsh => {
             match prepare_zdotdir() {
                 Ok(zdotdir) => {
                     // Guard against Nexterm-in-Nexterm :)
@@ -73,7 +47,7 @@ pub fn build(cwd: Option<String>) -> Result<CommandBuilder, String> {
             // this, GUI-launched apps get a minimal PATH missing Homebrew.
             cmd.arg("-l");
         }
-        Shell::Bash => {
+        ShellKind::Bash => {
             match prepare_bash_rcfile() {
                 Ok(rc) => {
                     cmd.arg("--rcfile");
@@ -87,13 +61,13 @@ pub fn build(cwd: Option<String>) -> Result<CommandBuilder, String> {
             // /etc/profile from inside our rcfile to emulate login init.
             cmd.arg("-i");
         }
-        Shell::Fish => {
+        ShellKind::Fish => {
             if let Err(e) = prepare_fish_conf_d() {
                 log::warn!("fish shell integration disabled: {e}");
             }
             cmd.arg("-i");
         }
-        Shell::Other => {
+        ShellKind::Powershell | ShellKind::Cmd | ShellKind::Other => {
             log::info!(
                 "unsupported shell '{}', spawning without integration",
                 shell_path
