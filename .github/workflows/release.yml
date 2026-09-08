@@ -73,6 +73,7 @@ jobs:
           - name: macOS
             platform: macos-latest
             args: "--target universal-apple-darwin"
+            rustTargets: "aarch64-apple-darwin,x86_64-apple-darwin"
     runs-on: ${{ matrix.platform }}
 
     steps:
@@ -88,6 +89,11 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: matrix.rustTargets != ''
+        with:
+          targets: ${{ matrix.rustTargets }}
 
       - uses: swatinem/rust-cache@v2
         with:
