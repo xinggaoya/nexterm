@@ -98,13 +98,31 @@ type PaneNode =
 
 | 命令 | 参数 | 返回 | 说明 |
 |------|------|------|------|
-| `pty_open` | `{cols, rows, cwd?, workspace?}` + `onData` / `onExit` Channel | `id: u32` | 打开会话,Channel 流式输出 |
+| `pty_open` | `{cols, rows, cwd?, shellId?, workspace?}` + `onData` / `onExit` Channel | `id: u32` | 打开会话,Channel 流式输出 |
 | `pty_write` | `{id, data}` | `void` | 写入 |
 | `pty_resize` | `{id, cols, rows}` | `void` | 调整 |
 | `pty_read_transcript` | `{id, sinceOffset, maxBytes}` | `PtyTranscriptRead` | 拉取 transcript 片段 |
 | `pty_close` | `{id}` | `void` | 关闭,drop 在独立线程 |
+| `shell_list_profiles` | `{}` | `ShellProfile[]` | 探测本机可用 shell profile(id/name/program/args/kind) |
 
-### 4.3 事件
+### 4.3 本地 Shell Profile(Windows)
+
+`pty_open` 的 `shellId` 只接收 `shell_list_profiles` 返回的 profile id,
+真实路径解析收敛在 Rust 白名单里(`src-tauri/src/modules/shell/profiles.rs`),
+webview 无法借此拉起白名单之外的程序。id 缺失 / `"auto"` / 未命中时
+回退历史默认顺序(pwsh → Windows PowerShell → CMD)。按 `kind` 注入
+shell 集成:`powershell` 走 profile.ps1,`bash`(Git Bash)走
+`--rcfile`(复用 WSL bash 脚本,链回用户 rc 模拟登录初始化),其余裸启动。
+偏好项 `terminalShellId` 仅影响新开的终端;WSL / SSH 环境有各自的登录
+shell 逻辑,忽略此参数。一次性命令(`shell_run_command`)不受该偏好影响,
+始终用 auto 选择。
+
+> Unix 本地终端同样接收 `shellId`:非 `"auto"` 时按 `profiles::resolve_unix_shell_program`
+> 在 `passwd` 登录 shell / `$SHELL` / `/etc/shells` 探测列表内匹配,未命中则
+> 回退默认 shell。设置 UI 当前仅在 Windows 暴露该下拉(`v-if="IS_WINDOWS"`),
+> macOS / Linux 下偏好始终为 `"auto"`,行为与历史完全一致。
+
+### 4.4 事件
 
 无独立事件。PTY 输出走 `Channel`;关闭通知走 `onExit` Channel。
 设置项变更走 `nexterm://prefs-changed` 事件,主题模块(`theme.ts`)订阅后强制 apply。
