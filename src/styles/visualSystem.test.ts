@@ -34,20 +34,44 @@ describe("visual system contract", () => {
     expect(globalsCss).toContain(".nexterm-overlay");
   });
 
-  it("uses the approved compact shell dimensions without card gutters", () => {
-    const titleBar = readSource("../app/shell/TitleBar.vue");
-    expect(titleBar).toContain("h-10");
-    expect(titleBar).toContain(
-      `:aria-label="t('app.header.openCommandCenter')"`,
-    );
-    expect(titleBar).toContain(`:aria-label="t('common.settings')"`);
-    expect(readSource("../app/shell/ActivityIcons.vue")).toContain("w-11");
-    expect(readSource("../app/shell/TabBar.vue")).toContain("h-[34px]");
-    expect(readSource("../app/shell/StatusBar.vue")).toContain("h-6");
+  it("uses the terminal-first shell dimensions (rail / top bar / status dock)", () => {
+    // 终端优先壳层:52px 工作区轨道 + 44px 单一顶栏 + 24px 状态坞。
+    const rail = readSource("../app/shell/Rail.vue");
+    expect(rail).toContain("w-[52px]");
+    expect(rail).toContain("data-workspace-rail");
 
-    const workbench = readSource("../app/shell/Workbench.vue");
-    expect(workbench).not.toContain("nexterm-canvas h-full min-h-0 min-w-0 p-2");
-    expect(workbench).not.toContain("nexterm-card-elevated");
+    const topBar = readSource("../app/shell/TopBar.vue");
+    expect(topBar).toContain("h-11");
+    expect(topBar).toContain(`:aria-label="t('app.header.openCommandCenter')"`);
+    expect(topBar).toContain(`:aria-label="t('common.settings')"`);
+
+    expect(readSource("../app/shell/SessionStrip.vue")).toContain("h-7");
+    expect(readSource("../app/shell/StatusDock.vue")).toContain("h-6");
+
+    // 单终端极简模式:会话条退化为面包屑芯片。
+    const strip = readSource("../app/shell/SessionStrip.vue");
+    expect(strip).toContain("data-session-minimal");
+    expect(strip).toContain("data-session-strip");
+  });
+
+  it("keeps the terminal canvas full-bleed with floating glass overlays", () => {
+    const host = readSource("../app/shell/WorkspaceHost.vue");
+    const canvas = readSource("../app/shell/Canvas.vue");
+
+    // Host 组合:轨道 → 顶栏(内嵌会话条) → 画布 → 状态坞。
+    expect(host).toMatch(/<Rail[\s\S]*?<TopBar[\s\S]*?<SessionStrip/);
+    expect(host).toMatch(/<Canvas[\s\S]*?<StatusDock/);
+
+    // 画布:终端层铺满,浮层玻璃容器挂在画布内。
+    expect(canvas).toMatch(/<TerminalWorkspace/);
+    expect(canvas).toMatch(/<OverlayPanel[\s\S]*?<FileExplorer/);
+    expect(canvas).toMatch(/<OverlayPanel[\s\S]*?<SourceControlPanel/);
+    expect(canvas).toMatch(/<OverlayPanel[\s\S]*?<TaskConsole/);
+
+    // 浮层使用玻璃令牌,而不是实心卡片。
+    const overlay = readSource("../app/shell/OverlayPanel.vue");
+    expect(overlay).toContain("v2-glass");
+    expect(overlay).toContain("nexterm-overlay-panel");
   });
 
   it("forces Naive UI settings cards into unframed groups", () => {
@@ -62,8 +86,8 @@ describe("visual system contract", () => {
       "../modules/explorer/ExplorerContextMenu.vue",
       "../modules/commands/CommandPalette.vue",
     ]) {
-      // 重做后的右键菜单（TerminalContextMenu / ExplorerContextMenu）使用
-      // Naive UI 的 NDropdown 替代手写的 nexterm-overlay 容器；这里接受
+      // 重做后的右键菜单(TerminalContextMenu / ExplorerContextMenu)使用
+      // Naive UI 的 NDropdown 替代手写的 nexterm-overlay 容器;这里接受
       // 任一形态以便菜单重构滚动进行。
       const source = readSource(path);
       expect(
@@ -96,19 +120,6 @@ describe("visual system contract", () => {
       expect(source).toContain("nexterm-surface");
       expect(source).not.toContain("rounded-md border border-border/60");
     }
-  });
-
-  it("keeps the tab bar inside the center pane instead of above Explorer", () => {
-    const workspaceHost = readSource("../app/shell/WorkspaceHost.vue");
-    const workbench = readSource("../app/shell/Workbench.vue");
-
-    expect(workspaceHost).toMatch(
-      /<Workbench[\s\S]*?<template #tab-bar>[\s\S]*?<TabBar/,
-    );
-    expect(workbench).toMatch(
-      /<template #1>[\s\S]*?<slot name="tab-bar" \/>[\s\S]*?<div class="relative min-h-0 flex-1">/,
-    );
-    expect(workbench).toMatch(/<template #2>[\s\S]*?<FileExplorer/);
   });
 
   it("keeps xterm-consumed custom properties concrete", () => {

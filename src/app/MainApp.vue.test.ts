@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { NConfigProvider, NNotificationProvider } from "naive-ui";
 import { createPinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -106,53 +106,27 @@ vi.mock("@/settings/SettingsPanel.vue", () => ({
   },
 }));
 
-vi.mock("./shell/TitleBar.vue", () => ({
-  default: {
-    props: ["showWindowControls"],
-    emits: [
-      "openCommandPalette",
-      "openSettings",
-      "selectWorkspace",
-      "closeWorkspace",
-      "addWorkspace",
-      "openInNewWindow",
-    ],
-    template:
-      '<header data-title-bar><button data-add-workspace @click="$emit(\'addWorkspace\', { kind: \'local\' })" /><button data-add-wsl-workspace @click="$emit(\'addWorkspace\', { kind: \'wsl\', distro: \'Ubuntu\' })" /><button data-open-settings @click="$emit(\'openSettings\')" /><button data-open-command-palette @click="$emit(\'openCommandPalette\')" /></header>',
-  },
-}));
-
-vi.mock("./shell/StatusBar.vue", () => ({
-  default: {
-    props: ["workspaceName", "gitBranch", "panelStates"],
-    emits: ["togglePanel"],
-    template:
-      '<footer data-status-bar><button data-toggle-panel="sourceControl" @click="$emit(\'togglePanel\', \'sourceControl\')" /><button data-toggle-panel="explorer" @click="$emit(\'togglePanel\', \'explorer\')" /><button data-toggle-panel="workspace" @click="$emit(\'togglePanel\', \'workspace\')" /><button data-toggle-panel="taskConsole" @click="$emit(\'togglePanel\', \'taskConsole\')" /></footer>',
-  },
-}));
-
-vi.mock("./shell/WorkspaceBar.vue", () => ({
-  default: {
-    emits: ["selectWorkspace", "closeWorkspace", "addWorkspace", "openInNewWindow"],
-    template:
-      '<nav data-workspace-bar><button data-add-workspace @click="$emit(\'addWorkspace\')" /><button data-open-in-new-window @click="$emit(\'openInNewWindow\')" /></nav>',
-  },
-}));
-
 vi.mock("./shell/WorkspaceHost.vue", () => ({
   default: {
     props: ["workspace"],
-    emits: ["add-workspace", "open-in-new-window"],
-    template: '<section data-workspace-host>{{ workspace.rootPath }}</section>',
+    emits: [
+      "add-workspace",
+      "request-settings",
+      "request-command-palette",
+      "request-rename",
+      "request-remove-workspace",
+    ],
+    template:
+      '<section data-workspace-host>{{ workspace.rootPath }}<button data-add-workspace @click="$emit(\'add-workspace\', { kind: \'local\' })" /><button data-open-settings @click="$emit(\'request-settings\')" /><button data-open-command-palette @click="$emit(\'request-command-palette\')" /><button data-close-workspace @click="$emit(\'request-remove-workspace\', workspace.id)" /></section>',
   },
 }));
 
-vi.mock("./components/WorkspaceWelcome.vue", () => ({
+vi.mock("./components/WorkspaceDashboard.vue", () => ({
   default: {
     props: ["recentWorkspaces", "loading", "error"],
     emits: ["chooseWorkspace", "openRecent", "workspaceEnvChange"],
     template:
-      '<section data-workspace-welcome><span>{{ error ?? "welcome" }}</span><button data-welcome-open @click="$emit(\'chooseWorkspace\', { kind: \'local\' })" /></section>',
+      '<section data-workspace-dashboard><span>{{ error ?? "dashboard" }}</span><button data-welcome-open @click="$emit(\'chooseWorkspace\', { kind: \'local\' })" /><button data-add-workspace @click="$emit(\'chooseWorkspace\', { kind: \'local\' })" /><button data-add-wsl-workspace @click="$emit(\'chooseWorkspace\', { kind: \'wsl\', distro: \'Ubuntu\' })" /></section>',
   },
 }));
 
@@ -201,7 +175,7 @@ describe("MainApp.vue", () => {
       global: { plugins: [createPinia(), i18n] },
     });
 
-    expect(wrapper.find("[data-workspace-welcome]").exists()).toBe(true);
+    expect(wrapper.find("[data-workspace-dashboard]").exists()).toBe(true);
     expect(wrapper.find("[data-workspace-host]").exists()).toBe(false);
   });
 
@@ -377,11 +351,12 @@ describe("MainApp.vue", () => {
         await nextTick();
       }
       expect(workspaces.workspaces).toHaveLength(1);
-      const id = workspaces.workspaces[0].id;
 
-      // 标题栏发出 closeWorkspace 后不应立即移除，而是弹出确认对话框。
-      const titleBar = wrapper.findComponent("[data-title-bar]") as VueWrapper;
-      titleBar.vm.$emit("closeWorkspace", id);
+      // 工作区芯片/轨道发出 request-remove-workspace 后不应立即移除,
+      // 而是弹出确认对话框。
+      const hostStub = wrapper.find("[data-close-workspace]");
+      expect(hostStub.exists()).toBe(true);
+      await hostStub.trigger("click");
       await flushPromises();
       await nextTick();
 
@@ -410,14 +385,23 @@ describe("MainApp.vue", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     const pinia = createPinia();
-    useWorkspaceRootPiniaStore(pinia);
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.pickWorkspaceDirectory = vi.fn(async () => ({
+      path: "/repo",
+      env: LOCAL_WORKSPACE,
+    }));
 
     try {
       const wrapper = mount(MainApp, {
         attachTo: host,
         global: { plugins: [pinia, i18n] },
       });
-      await nextTick();
+      // 新壳层没有全局工具条:先开一个工作区,再从轨道/顶栏入口打开设置。
+      await wrapper.find("[data-add-workspace]").trigger("click");
+      for (let i = 0; i < 10; i++) {
+        await flushPromises();
+        await nextTick();
+      }
       invokeMock.mockClear();
 
       expect(document.body.querySelector("[data-settings-panel]")).toBeNull();
@@ -430,9 +414,7 @@ describe("MainApp.vue", () => {
       expect(document.body.querySelector("[data-settings-panel]")).not.toBeNull();
     } finally {
       document.body.removeChild(host);
-      document.body
-        .querySelectorAll("[data-settings-panel]")
-        .forEach((node) => node.remove());
+      wrapperCleanup(host);
     }
   });
 });

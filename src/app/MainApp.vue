@@ -8,15 +8,12 @@ import {
   NNotificationProvider,
 } from "naive-ui";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import TitleBar from "./shell/TitleBar.vue";
-import StatusBar from "./shell/StatusBar.vue";
 import WorkspaceHost from "./shell/WorkspaceHost.vue";
 import CommandPalette from "@/modules/commands/CommandPalette.vue";
 import { applyLanguagePreference } from "@/modules/i18n";
 import { t } from "@/modules/i18n/translate";
 import { getNaiveLocaleConfig } from "@/modules/i18n/naive";
 import { resolveAppLocale } from "@/modules/i18n/types";
-import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { useEventListener } from "@/lib/useEventListener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -34,7 +31,7 @@ import {
   type WorkspaceEnv,
   type WorkspaceSelection,
 } from "@/modules/workspace";
-import WorkspaceWelcome from "./components/WorkspaceWelcome.vue";
+import WorkspaceDashboard from "./components/WorkspaceDashboard.vue";
 import UnsavedCloseGuard from "./components/UnsavedCloseGuard.vue";
 import WorkspaceRemoveGuard from "./components/WorkspaceRemoveGuard.vue";
 import RenameTerminalDialog from "./components/RenameTerminalDialog.vue";
@@ -48,7 +45,6 @@ import { buildNaiveThemeOverrides, getNaiveTheme } from "@/modules/theme/naiveTh
 import { notifyError } from "@/modules/notifications/notificationCenter";
 import { FALLBACK_APP_TOKENS, readAppTokens } from "@/styles/tokens";
 import SettingsPanel from "@/settings/SettingsPanel.vue";
-import { useWorkbenchLayout } from "./useWorkbenchLayout";
 import { useWindowChromeState } from "./useWindowChromeState";
 import {
   disposeAppUpdaterSingleton,
@@ -64,9 +60,6 @@ const workspaceEnv = useWorkspaceEnvPiniaStore();
 const settingsOpen = ref(false);
 const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
 const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
-
-// closeGuard is wired via template ref on UnsavedCloseGuard; the guard emits
-// close-tab events handled directly in the template.
 
 // ── Window-close PTY teardown listener. WorkspaceHost.onBeforeUnmount already
 // reclaims sessions when a workspace is removed, and a normal close unmounts
@@ -108,52 +101,7 @@ const resolvedTheme = computed(() => {
 const naiveTheme = computed(() => getNaiveTheme(resolvedTheme.value));
 const naiveLocaleConfig = computed(() => getNaiveLocaleConfig(resolvedLocale.value));
 
-// ── Active-workspace derived state (read by global shell components) ─────
-const activeWorkspace = computed(() => workspaces.activeWorkspace);
-const hasWorkspace = computed(() => activeWorkspace.value !== null);
-const workspaceRoot = computed(() => activeWorkspace.value?.rootPath ?? null);
-// 每个 workspace 的源控面板上抛当前分支（WorkspaceHost 转发），状态栏读
-// 活动工作区的那一份。无 repo / 无数据时为 null，显示占位符。
-const branchByWorkspace = ref<Record<string, string | null>>({});
-const activeGitBranch = computed(
-  () => branchByWorkspace.value[workspaces.activeWorkspaceId ?? ""] ?? null,
-);
-function onWorkspaceBranchChange(workspaceId: string, branch: string | null): void {
-  branchByWorkspace.value[workspaceId] = branch;
-}
-// 工作区关闭时清掉对应分支记录，避免残留键值。
-watch(
-  () => workspaces.workspaces.map((ws) => ws.id),
-  (ids) => {
-    for (const key of Object.keys(branchByWorkspace.value)) {
-      if (!ids.includes(key)) delete branchByWorkspace.value[key];
-    }
-  },
-);
-
-const workbenchLayout = useWorkbenchLayout({ prefs });
 useWindowChromeState();
-const { startLayoutObservers, stopLayoutObservers, togglePanel } =
-  workbenchLayout;
-
-// 底部栏面板切换的总入口：explorer/sourceControl/workspace 走 layout 的
-// togglePanel（已联动对应面板），taskConsole 单独驱动活动工作区的控制器
-// （因为 taskConsole 状态是 per-workspace 的）。
-function handleTogglePanel(key: Parameters<typeof togglePanel>[0]): void {
-  if (key !== "taskConsole") {
-    togglePanel(key);
-    return;
-  }
-  const taskConsole = activeHost.value?.taskConsole;
-  if (!taskConsole) return;
-  if (taskConsole.isOpen?.value) {
-    taskConsole.close();
-    workbenchLayout.panelVisibility.value.taskConsole = false;
-  } else {
-    void taskConsole.open();
-    workbenchLayout.panelVisibility.value.taskConsole = true;
-  }
-}
 
 function syncDocumentTheme() {
   const root = document.documentElement;
@@ -196,27 +144,7 @@ async function startAddWorkspace(env: WorkspaceEnv) {
   }
 }
 
-async function openWorkspaceInNewWindow(env: WorkspaceEnv = workspaceEnv.pendingEnv) {
-  try {
-    const selection = await workspaceRootStore.pickWorkspaceDirectory(env);
-    if (!selection) return;
-    const { openWorkspaceInNewWindow } = await import(
-      "@/modules/workspace/workspaceWindow"
-    );
-    const webview = await openWorkspaceInNewWindow(selection);
-    void webview.once("tauri://error", (event) => {
-      notifyError(t("app.workspace.openWindowFailed"), event.payload);
-    });
-  } catch (error) {
-    notifyError(t("app.workspace.openWindowFailed"), error);
-  }
-}
-
-// ── Welcome screen actions (no workspace open) ──────────────────────────
-async function chooseWorkspaceFromWelcome(env: WorkspaceEnv) {
-  await startAddWorkspace(env);
-}
-
+// ── Dashboard actions (no workspace open) ───────────────────────────────
 async function openRecentWorkspace(record: WorkspaceSelection & { openedAt?: number }) {
   try {
     await workspaces.addWorkspace(record.path, record.env);
@@ -226,7 +154,7 @@ async function openRecentWorkspace(record: WorkspaceSelection & { openedAt?: num
 }
 
 // ── Remove-workspace flow ───────────────────────────────────────────────
-// 标题栏的关闭按钮误触成本很高（终端会话、未保存编辑全部丢失），
+// 关闭工作区成本很高（终端会话、未保存编辑全部丢失），
 // 所以先弹二次确认，用户确认后才真正 removeWorkspace。
 const workspaceRemoveGuard = ref<InstanceType<typeof WorkspaceRemoveGuard> | null>(null);
 
@@ -260,7 +188,7 @@ const renameDialogState = ref<{ leafId: number; currentTitle: string } | null>(
 function commitRename(title: string) {
   const state = renameDialogState.value;
   if (!state) return;
-  const ws = activeWorkspace.value;
+  const ws = workspaces.activeWorkspace;
   if (ws) tabs.setLeafTitle(state.leafId, title, ws.id);
   renameDialogState.value = null;
 }
@@ -299,12 +227,6 @@ const activeHost = computed(
 );
 const activeCommandApi = computed(() => activeHost.value?.commandApi ?? null);
 
-// 活动工作区的 TaskConsole 开关状态。底部栏 taskConsole 按钮据此亮起，
-// 并通过 handleTogglePanel 驱动活动工作区的 taskConsole 控制器。
-const activeTaskConsoleOpen = computed(
-  () => activeHost.value?.taskConsole?.isOpen?.value ?? false,
-);
-
 // Derive the palette's reactive inputs from the active host's command api.
 // When no workspace is open these resolve to safe empties.
 const paletteCommands = computed(() => activeCommandApi.value?.commandDefinitions.value ?? []);
@@ -340,7 +262,6 @@ function handleGlobalCommandKeydown(event: KeyboardEvent) {
 
 onMounted(() => {
   if (hasTauriInternals()) void prefs.hydrate();
-  startLayoutObservers();
   window.addEventListener("keydown", handleGlobalCommandKeydown, true);
   // 自动更新检查（启动延迟 30s + 每 8 小时复查）；每次触发时实时读
   // "自动检查更新"偏好，关闭开关后后续轮次自动跳过。
@@ -367,7 +288,6 @@ useEventListener(window, "languagechange", syncLanguage);
 useEventListener(window, "contextmenu", preventNativeContextMenu);
 
 onUnmounted(() => {
-  stopLayoutObservers();
   window.removeEventListener("keydown", handleGlobalCommandKeydown, true);
   windowCloseUnlisten?.();
   windowCloseUnlisten = null;
@@ -404,62 +324,37 @@ watch(
               @close-tab="(id) => tabs.closeTab(id)"
             />
             <WorkspaceRemoveGuard ref="workspaceRemoveGuard" />
-            <TitleBar
-              :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
-              @open-command-palette="openCommandPalette('commands')"
-              @open-settings="openSettings"
-              @select-workspace="(id) => workspaces.setActive(id)"
-              @close-workspace="requestRemoveWorkspace"
-              @add-workspace="(env) => startAddWorkspace(env)"
-              @open-in-new-window="() => openWorkspaceInNewWindow()"
-            />
-            <div class="flex min-h-0 flex-1 flex-col">
+            <div class="relative flex min-h-0 flex-1 flex-col">
               <!--
                 All open workspaces are mounted simultaneously and toggled via
                 v-show so inactive ones keep running in the background (PTY
                 sessions, watchers, editor state all stay alive). Only the
-                active workspace is visible.
+                active workspace is visible — each host renders its own full-
+                screen shell (rail + top bar + canvas + status dock).
               -->
               <WorkspaceHost
                 v-for="ws in workspaces.workspaces"
                 :key="ws.id"
                 :ref="(el) => setWorkspaceHostRef(ws.id, el as InstanceType<typeof WorkspaceHost> | null)"
                 v-show="ws.id === workspaces.activeWorkspaceId"
+                class="min-h-0 flex-1"
                 :workspace="ws"
                 @add-workspace="(env) => startAddWorkspace(env)"
-                @open-in-new-window="() => openWorkspaceInNewWindow()"
                 @request-settings="(tab) => openSettings(tab)"
                 @request-command-palette="(mode) => openCommandPalette(mode)"
                 @request-rename="(payload) => (renameDialogState = payload)"
                 @request-remove-workspace="requestRemoveWorkspace"
-                @branch-change="onWorkspaceBranchChange"
               />
-              <WorkspaceWelcome
-                v-if="!hasWorkspace"
+              <WorkspaceDashboard
+                v-if="workspaces.activeWorkspace === null"
                 :recent-workspaces="workspaceRootStore.recentWorkspaces"
                 :loading="workspaceRootStore.loading"
                 :error="workspaceRootStore.error"
-                @choose-workspace="chooseWorkspaceFromWelcome"
+                @choose-workspace="(env) => startAddWorkspace(env)"
                 @open-recent="openRecentWorkspace"
                 @workspace-env-change="(env) => workspaceEnv.setPendingEnv(env)"
               />
             </div>
-            <StatusBar
-              :workspace-name="activeWorkspace?.name ?? null"
-              :git-branch="activeGitBranch"
-              :panel-states="{
-                workspace:
-                  workbenchLayout.leftSidebar.value.open &&
-                  workbenchLayout.leftSidebar.value.activity === 'workspace',
-                sourceControl:
-                  workbenchLayout.leftSidebar.value.open &&
-                  workbenchLayout.leftSidebar.value.activity ===
-                    'sourceControl',
-                explorer: workbenchLayout.panelVisibility.value.explorer,
-                taskConsole: activeTaskConsoleOpen,
-              }"
-              @toggle-panel="handleTogglePanel"
-            />
 
             <NDrawer
               v-model:show="settingsOpen"
@@ -495,7 +390,7 @@ watch(
               :commands="paletteCommands"
               :keybindings="paletteKeybindings"
               :context="paletteContext"
-              :workspace-root="workspaceRoot"
+              :workspace-root="workspaces.activeWorkspace?.rootPath ?? null"
               :show-hidden="prefs.showHidden"
               @close="commandPaletteOpen = false"
               @execute-command="executeCommandFromPalette"

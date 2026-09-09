@@ -48,29 +48,6 @@ vi.mock("@/app/useTaskConsoleController", () => ({
   useTaskConsoleController: () => taskConsole,
 }));
 
-const layout = {
-  leftSidebar: ref({ activity: "sourceControl", open: true, width: 320 }),
-  leftSidebarWidthMin: 240,
-  leftSidebarWidthMax: 520,
-  setLeftSidebarActivity: vi.fn(),
-  toggleLeftSidebar: vi.fn(),
-  setLeftSidebarWidth: vi.fn(),
-  leftPanelOpenRef: ref(false),
-  rightPanelOpenRef: ref(false),
-  panelVisibility: ref({
-    workspace: true,
-    sourceControl: true,
-    explorer: true,
-    taskConsole: false,
-  }),
-  startLayoutObservers: vi.fn(),
-  stopLayoutObservers: vi.fn(),
-};
-
-vi.mock("@/app/useWorkbenchLayout", () => ({
-  useWorkbenchLayout: () => layout,
-}));
-
 vi.mock("@/app/useWorkbenchCommands", () => ({
   useWorkbenchCommands: () => ({ commandApi: { stub: true } }),
 }));
@@ -116,26 +93,40 @@ vi.mock("@/modules/workspace/workspacesPinia", () => ({
   }),
 }));
 
-vi.mock("./LeftSidebar.vue", () => ({
+vi.mock("./Rail.vue", () => ({
   default: {
-    name: "LeftSidebarStub",
-    props: ["gitDecorations"],
-    emits: ["branch-change", "decoration-change"],
-    template: "<div class='leftsidebar-stub' />",
+    name: "RailStub",
+    props: ["explorerOpen", "sourceControlOpen", "tasksOpen"],
+    emits: ["toggle-tool", "close-workspace", "add-workspace", "select-workspace"],
+    template: "<nav class='rail-stub' />",
   },
 }));
-vi.mock("./Workbench.vue", () => ({
+vi.mock("./TopBar.vue", () => ({
   default: {
-    name: "WorkbenchStub",
-    props: ["gitDecorations", "workspaceRoot"],
-    template: "<div class='workbench-stub'><slot name='tab-bar' /></div>",
+    name: "TopBarStub",
+    template: "<header class='topbar-stub'><slot name='center' /></header>",
   },
 }));
-vi.mock("./TabBar.vue", () => ({
+vi.mock("./SessionStrip.vue", () => ({
   default: {
-    name: "TabBarStub",
+    name: "SessionStripStub",
     emits: ["request-rename", "select-tab", "close-tab"],
-    template: "<div class='tabbar-stub' />",
+    template: "<div class='sessionstrip-stub' />",
+  },
+}));
+vi.mock("./Canvas.vue", () => ({
+  default: {
+    name: "CanvasStub",
+    props: ["gitDecorations", "workspaceRoot", "explorerOpen", "sourceControlOpen"],
+    emits: ["branch-change", "decorations-change", "update:explorerOpen"],
+    template: "<div class='canvas-stub' />",
+  },
+}));
+vi.mock("./StatusDock.vue", () => ({
+  default: {
+    name: "StatusDockStub",
+    props: ["gitBranch", "workspaceName"],
+    template: "<footer class='statusdock-stub' />",
   },
 }));
 
@@ -171,7 +162,7 @@ describe("WorkspaceHost.vue", () => {
     wrapper.unmount();
   });
 
-  it("卸载时按序回收：生命周期、任务控制台、tabs、布局观察器", async () => {
+  it("卸载时按序回收：生命周期、任务控制台、tabs", async () => {
     const wrapper = mountHost();
     await nextTick();
     wrapper.unmount();
@@ -181,35 +172,61 @@ describe("WorkspaceHost.vue", () => {
     expect(lifecycle.stopWorkspaceLifecycle).toHaveBeenCalledTimes(1);
     expect(taskConsole.disposeTaskConsole).toHaveBeenCalledTimes(1);
     expect(tabsStore.disposeWorkspaceTabs).toHaveBeenCalledWith("w1");
-    expect(layout.stopLayoutObservers).toHaveBeenCalledTimes(1);
   });
 
-  it("LeftSidebar 的 branch-change 转发为带 workspaceId 的顶层事件", async () => {
+  it("终端优先:浮层默认全关,打开文件树浮层时互斥关闭源控浮层", async () => {
     const wrapper = mountHost();
     await nextTick();
-    const sidebar = wrapper.findComponent({ name: "LeftSidebarStub" });
-    await sidebar.vm.$emit("branch-change", "main");
-    expect(wrapper.emitted("branch-change")).toEqual([["w1", "main"]]);
+    const rail = wrapper.findComponent({ name: "RailStub" });
+    const canvas = wrapper.findComponent({ name: "CanvasStub" });
+    expect(canvas.props("explorerOpen")).toBe(false);
+    expect(canvas.props("sourceControlOpen")).toBe(false);
+
+    await rail.vm.$emit("toggle-tool", "explorer");
+    await nextTick();
+    expect(canvas.props("explorerOpen")).toBe(true);
+
+    // 源控与文件树互斥(左列浮层单选)。
+    await rail.vm.$emit("toggle-tool", "sourceControl");
+    await nextTick();
+    expect(canvas.props("sourceControlOpen")).toBe(true);
+    expect(canvas.props("explorerOpen")).toBe(false);
+
+    // 再切一次源控 → 关闭。
+    await rail.vm.$emit("toggle-tool", "sourceControl");
+    await nextTick();
+    expect(canvas.props("sourceControlOpen")).toBe(false);
     wrapper.unmount();
   });
 
-  it("decoration-change 更新传给 Workbench 的角标", async () => {
+  it("Canvas 的 branch-change 就地驱动状态坞,不再上抛顶层", async () => {
     const wrapper = mountHost();
     await nextTick();
-    const sidebar = wrapper.findComponent({ name: "LeftSidebarStub" });
+    const canvas = wrapper.findComponent({ name: "CanvasStub" });
+    await canvas.vm.$emit("branch-change", "main");
+    await nextTick();
+    const dock = wrapper.findComponent({ name: "StatusDockStub" });
+    expect(dock.props("gitBranch")).toBe("main");
+    expect(wrapper.emitted("branch-change")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("decoration-change 更新传给 Canvas 的角标", async () => {
+    const wrapper = mountHost();
+    await nextTick();
+    const canvas = wrapper.findComponent({ name: "CanvasStub" });
     const decorations: GitDecorationMap = new Map([
       ["/repo/a.ts", { status: "modified" } as never],
     ]);
-    await sidebar.vm.$emit("decoration-change", decorations);
+    await canvas.vm.$emit("decorations-change", decorations);
     await nextTick();
-    const workbench = wrapper.findComponent({ name: "WorkbenchStub" });
-    const received = workbench.props("gitDecorations") as GitDecorationMap;
+    const received = wrapper.findComponent({ name: "CanvasStub" }).props("gitDecorations") as GitDecorationMap;
     expect(received.size).toBe(1);
     expect(received.get("/repo/a.ts")).toEqual({ status: "modified" });
     wrapper.unmount();
   });
 
-  it("TabBar 的 request-rename 解析出终端 leaf 后向上抛对话框请求", async () => {
+  it("SessionStrip 的 request-rename 解析出终端 leaf 后向上抛对话框请求", async () => {
     tabsStore.workspaceTabs.mockReturnValue([
       {
         id: 7,
@@ -223,8 +240,8 @@ describe("WorkspaceHost.vue", () => {
     ] as Array<Record<string, unknown>>);
     const wrapper = mountHost();
     await nextTick();
-    const bar = wrapper.findComponent({ name: "TabBarStub" });
-    await bar.vm.$emit("request-rename", 7);
+    const strip = wrapper.findComponent({ name: "SessionStripStub" });
+    await strip.vm.$emit("request-rename", 7);
     expect(wrapper.emitted("request-rename")).toEqual([
       [{ leafId: 7, currentTitle: "zsh" }],
     ]);
@@ -243,9 +260,18 @@ describe("WorkspaceHost.vue", () => {
     ] as Array<Record<string, unknown>>);
     const wrapper = mountHost();
     await nextTick();
-    const bar = wrapper.findComponent({ name: "TabBarStub" });
-    await bar.vm.$emit("request-rename", 8);
+    const strip = wrapper.findComponent({ name: "SessionStripStub" });
+    await strip.vm.$emit("request-rename", 8);
     expect(wrapper.emitted("request-rename")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("Rail 的 close-workspace 上抛为 request-remove-workspace(由 MainApp 二次确认)", async () => {
+    const wrapper = mountHost();
+    await nextTick();
+    const rail = wrapper.findComponent({ name: "RailStub" });
+    await rail.vm.$emit("close-workspace", "w1");
+    expect(wrapper.emitted("request-remove-workspace")).toEqual([["w1"]]);
     wrapper.unmount();
   });
 });

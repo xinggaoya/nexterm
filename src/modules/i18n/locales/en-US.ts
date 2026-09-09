@@ -113,12 +113,29 @@ const enUS = {
     },
     status: {
       crumb: "{workspace} · {branch}",
+      tasksRunning: "{count} task(s) running",
       toggle: {
         sourceControl: "Source Control",
         explorer: "Explorer",
         workspace: "Workspaces",
         taskConsole: "Task Console",
       },
+    },
+    rail: {
+      envLocal: "Local",
+      addWorkspace: "Add workspace",
+      openInNewWindow: "Open in new window",
+      closeWorkspace: "Close workspace",
+      tool: {
+        explorer: "Files",
+        sourceControl: "Source Control",
+        tasks: "Tasks",
+      },
+    },
+    dashboard: {
+      tagline: "A terminal-first development environment",
+      openFolder: "Open Folder",
+      recent: "Recent Workspaces",
     },
     leftSidebar: {
       addWorkspace: "Add Workspace",

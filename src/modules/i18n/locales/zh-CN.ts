@@ -115,12 +115,29 @@ const zhCN = {
     },
     status: {
       crumb: "{workspace} · {branch}",
+      tasksRunning: "{count} 个任务运行中",
       toggle: {
         sourceControl: "源代码管理",
         explorer: "资源管理器",
         workspace: "工作区列表",
         taskConsole: "任务控制台",
       },
+    },
+    rail: {
+      envLocal: "本机",
+      addWorkspace: "添加工作区",
+      openInNewWindow: "在新窗口中打开",
+      closeWorkspace: "关闭工作区",
+      tool: {
+        explorer: "文件树",
+        sourceControl: "源代码管理",
+        tasks: "任务",
+      },
+    },
+    dashboard: {
+      tagline: "终端优先的现代化开发环境",
+      openFolder: "打开文件夹",
+      recent: "最近工作区",
     },
     leftSidebar: {
       addWorkspace: "添加工作区",

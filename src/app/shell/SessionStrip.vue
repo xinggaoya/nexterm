@@ -1,52 +1,30 @@
 <script setup lang="ts">
-import {
-  CloseOutline,
-  DuplicateOutline,
-  AddOutline,
-  ReorderTwoOutline,
-} from "@vicons/ionicons5";
-import { NDropdown, NIcon, type DropdownOption } from "naive-ui";
-import { computed, h, onBeforeUnmount, ref, type VNode } from "vue";
-import NextermIconButton from "@/components/NextermIconButton.vue";
-import TooltipTitle from "@/components/TooltipTitle.vue";
+import { CloseOutline, DuplicateOutline, TerminalOutline } from "@vicons/ionicons5";
+import { NIcon } from "naive-ui";
+import { computed, onBeforeUnmount, ref } from "vue";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
 import { tabLabel } from "@/modules/tabs/tabLabel";
 import { t } from "@/modules/i18n/translate";
 import type { TabDropPlacement } from "@/modules/tabs/tabsReorder";
-import type { Tab } from "@/modules/tabs/tabsTypes";
-import type { SplitDir } from "@/modules/terminal/lib/layout";
+import type { Tab, TerminalTab } from "@/modules/tabs/tabsTypes";
 import type { TabWidthMode } from "@/modules/settings/store";
 import TabContextMenu, {
   type TabContextMenuTarget,
 } from "./TabContextMenu.vue";
+import { startWindowDrag } from "./useWindowDrag";
 
 const props = defineProps<{
   tabs: Tab[];
   activeId: number;
-  canSplit: boolean;
-  showActions: boolean;
   widthMode: TabWidthMode;
   fixedWidth: number;
 }>();
-
-function tabWidthStyle(): Record<string, string> | undefined {
-  if (props.widthMode !== "fixed") return undefined;
-  return { width: `${Math.round(props.fixedWidth)}px` };
-}
-
-function tabWidthClass(): string {
-  return props.widthMode === "fixed"
-    ? "flex-none"
-    : "max-w-48 flex-[1_1_8rem]";
-}
 
 const emit = defineEmits<{
   selectTab: [id: number];
   closeTab: [id: number];
   pinTab: [id: number];
-  newTab: [];
   reorderTab: [sourceId: number, targetId: number, placement: TabDropPlacement];
-  splitPane: [dir: SplitDir];
   closeOthers: [id: number];
   closeToRight: [id: number];
   closeAll: [];
@@ -55,11 +33,15 @@ const emit = defineEmits<{
   requestRename: [tabId: number];
 }>();
 
+// ── Minimal mode ────────────────────────────────────────────────────────
+// 终端优先:工作区里只有一个终端 tab 时,会话条退化为一枚 cwd 面包屑,
+// 顶栏看起来就像一台原生终端。出现第二个 tab 或非终端 tab 时恢复完整标签。
+const minimalTab = computed<TerminalTab | null>(() => {
+  if (props.tabs.length !== 1) return null;
+  const only = props.tabs[0];
+  return only && only.kind === "terminal" ? only : null;
+});
 
-
-// tabKindLabel 调用的是静态翻译串，结果完全由 tab.kind 决定。把它做成
-// computed Map 只在 tabs 数组引用变化时重算，避免每次父组件重渲染都重新
-// 调用 t()（i18n key→字符串映射本身不重，但函数开销和模板求值仍然存在）。
 const kindLabelByTabKind = computed(() => {
   const m = new Map<Tab["kind"], string>();
   m.set("terminal", t("app.header.terminal"));
@@ -76,8 +58,19 @@ const kindLabelByTabKind = computed(() => {
 function tabKindLabel(tab: Tab): string {
   return kindLabelByTabKind.value.get(tab.kind) ?? "";
 }
-// --- Drag-to-reorder ---
 
+function tabWidthStyle(): Record<string, string> | undefined {
+  if (props.widthMode !== "fixed") return undefined;
+  return { width: `${Math.round(props.fixedWidth)}px` };
+}
+
+function tabWidthClass(): string {
+  return props.widthMode === "fixed"
+    ? "flex-none"
+    : "max-w-48 flex-[1_1_8rem]";
+}
+
+// ── Drag-to-reorder(移植自旧 TabBar)─────────────────────────────────
 
 type PointerDragState = {
   sourceId: number;
@@ -135,9 +128,7 @@ function updateDropTarget(e: PointerEvent) {
   dropTarget.value = { id, placement: dropPlacementFromElement(e.clientX, el) };
 }
 
-// 拖拽中每帧 pointermove 都会跑。原先 props.tabs.find 是 O(Tab 数)，
-// 大标签数时叠加 layout 抖动。这里在拖拽开始时把 sourceTab 缓存，
-// pointermove 期间直接读缓存，避免重复线性扫描。
+// 拖拽开始时缓存 sourceTab,避免 pointermove 每帧线性扫描 tabs。
 let cachedDragTab: Tab | null = null;
 let cachedDragTabId: number | null = null;
 
@@ -208,8 +199,6 @@ function handleTabPointerDown(e: PointerEvent, tab: Tab) {
   removePointerListeners();
   const actualWidth =
     (e.currentTarget as HTMLElement)?.getBoundingClientRect().width ?? 160;
-  // 在 fixed 模式下，ghost 跟随用户配置的固定宽度，看起来更连贯；
-  // auto 模式沿用历史 clamp（104–224）保持原有视觉。
   const ghostCap = props.widthMode === "fixed"
     ? Math.max(104, props.fixedWidth)
     : 224;
@@ -239,7 +228,7 @@ function pinPreviewTab(tab: Tab) {
   if (tab.kind === "editor" && tab.preview) emit("pinTab", tab.id);
 }
 
-// --- Right-click context menu ---
+// ── Right-click context menu ────────────────────────────────────────────
 
 const tabContextMenu = ref<TabContextMenuTarget | null>(null);
 
@@ -261,126 +250,116 @@ function closeTabContextMenu() {
 }
 
 onBeforeUnmount(removePointerListeners);
-
-// --- Split dropdown ---
-
-const splitOptions = computed<DropdownOption[]>(() => [
-  { key: "row", label: t("app.header.splitRight") },
-  { key: "col", label: t("app.header.splitDown") },
-]);
-
-function renderSplitIcon(option: DropdownOption): VNode {
-  return h(NIcon, { size: 14 }, { default: () => h(option.key === "col" ? ReorderTwoOutline : DuplicateOutline) });
-}
-
-function handleSplitSelect(key: string | number) {
-  emit("splitPane", key === "col" ? "col" : "row");
-}
 </script>
 
 <template>
-  <div class="flex h-[34px] shrink-0 items-center rounded-t-[6px] border-b border-border bg-surface-subtle/60">
-    <div class="no-scrollbar min-w-0 flex-1 overflow-x-auto">
-      <div class="flex min-w-full items-end gap-0.5 px-1.5 py-1.5">
-        <TransitionGroup tag="div" name="v2-tab-move" class="flex min-w-0 items-end gap-0.5">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          type="button"
-          :data-tab-id="tab.id"
-          :aria-grabbed="draggingTabId === tab.id"
-          :title="`${tabKindLabel(tab)}: ${tabLabel(tab)}`"
-          :style="tabWidthStyle()"
-          :class="[
-            'group relative flex h-7 min-w-[5rem] items-center justify-between gap-1.5 rounded-[6px] px-2.5 text-left text-[12px] transition-[background-color,color,opacity] duration-[var(--dur-fast)]',
-            tabWidthClass(),
-            draggingTabId === tab.id ? 'opacity-60' : '',
-            dropTarget?.id === tab.id && dropTarget.placement === 'before'
-              ? 'before:absolute before:inset-y-1.5 before:left-[-2px] before:w-0.5 before:rounded-full before:bg-primary'
-              : '',
-            dropTarget?.id === tab.id && dropTarget.placement === 'after'
-              ? 'after:absolute after:inset-y-1.5 after:right-[-2px] after:w-0.5 after:rounded-full after:bg-primary'
-              : '',
-            tab.id === activeId
-              ? 'bg-accent/70 text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
-              : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
-          ]"
-          @click="handleTabClick(tab)"
-          @dblclick="pinPreviewTab(tab)"
-          @contextmenu.prevent="handleTabContextMenu($event, tab)"
-          @pointerdown="handleTabPointerDown($event, tab)"
-        >
-          <span class="flex min-w-0 flex-1 items-center gap-1.5 truncate">
-            <img
-              v-if="tab.kind === 'editor' || tab.kind === 'markdown'"
-              v-memo="[tab.kind, tab.title]"
-              :src="fileIconUrl(tab.title)"
-              alt=""
-              class="size-3.5 shrink-0"
-            />
-            <span
-              class="min-w-0 truncate"
-              :class="tab.kind === 'editor' && tab.preview ? 'italic text-muted-foreground' : ''"
-            >
-              {{ tabLabel(tab) }}
-            </span>
-            <span
-              v-if="tab.kind === 'editor' && tab.dirty"
-              class="size-1.5 shrink-0 rounded-full bg-primary"
-            />
-          </span>
-          <TooltipTitle v-if="tabs.length > 1" :label="t('app.header.closeTab')">
-            <span
-              role="button"
-              tabindex="-1"
-              class="grid size-4 shrink-0 place-items-center rounded-[3px] text-muted-foreground opacity-0 transition-all duration-[var(--dur-fast)] hover:bg-destructive/15 hover:text-destructive group-hover:opacity-60 group-hover:hover:opacity-100"
-              @click.stop="emit('closeTab', tab.id)"
-              @pointerdown.stop
-            >
-              <NIcon :component="CloseOutline" :size="11" />
-            </span>
-          </TooltipTitle>
-        </button>
-        </TransitionGroup>
+  <div
+    class="flex h-full min-w-0 flex-1 items-center"
+    data-session-strip
+  >
+    <!-- 极简模式:单终端面包屑 -->
+    <button
+      v-if="minimalTab"
+      type="button"
+      data-session-minimal
+      :title="minimalTab.cwd ?? tabLabel(minimalTab)"
+      class="flex h-7 max-w-64 items-center gap-1.5 rounded-full bg-accent/50 px-3 text-[12px] text-foreground transition-colors duration-[var(--dur-fast)] hover:bg-accent"
+      @click="emit('selectTab', minimalTab.id)"
+      @contextmenu.prevent="handleTabContextMenu($event, minimalTab)"
+    >
+      <NIcon :component="TerminalOutline" :size="13" class="shrink-0 text-primary" />
+      <span class="min-w-0 truncate">{{ tabLabel(minimalTab) }}</span>
+      <span
+        v-if="minimalTab.terminalTitle"
+        class="min-w-0 truncate text-[11px] text-muted-foreground"
+      >{{ minimalTab.cwd }}</span>
+    </button>
 
-        <div
-          data-window-drag-region
-          class="h-6 min-w-4 flex-1"
-        />
+    <!-- 完整会话条 -->
+    <template v-else>
+      <div class="no-scrollbar min-w-0 flex-1 overflow-x-auto">
+        <div class="flex min-w-full items-center gap-1 px-1">
+          <TransitionGroup tag="div" name="v2-tab-move" class="flex min-w-0 items-center gap-1">
+            <button
+              v-for="tab in tabs"
+              :key="tab.id"
+              type="button"
+              :data-tab-id="tab.id"
+              :aria-grabbed="draggingTabId === tab.id"
+              :aria-pressed="tab.id === activeId"
+              :title="`${tabKindLabel(tab)}: ${tabLabel(tab)}`"
+              :style="tabWidthStyle()"
+              :class="[
+                'group relative flex h-7 min-w-[5rem] items-center justify-between gap-1.5 rounded-full px-3 text-left text-[12px] transition-[background-color,color,opacity,box-shadow] duration-[var(--dur-fast)]',
+                tabWidthClass(),
+                draggingTabId === tab.id ? 'opacity-60' : '',
+                dropTarget?.id === tab.id && dropTarget.placement === 'before'
+                  ? 'before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-primary'
+                  : '',
+                dropTarget?.id === tab.id && dropTarget.placement === 'after'
+                  ? 'after:absolute after:inset-y-1.5 after:right-0 after:w-0.5 after:rounded-full after:bg-primary'
+                  : '',
+                tab.id === activeId
+                  ? 'bg-accent text-foreground shadow-[inset_0_0_0_1px_var(--border)]'
+                  : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
+              ]"
+              @click="handleTabClick(tab)"
+              @dblclick="pinPreviewTab(tab)"
+              @contextmenu.prevent="handleTabContextMenu($event, tab)"
+              @pointerdown="handleTabPointerDown($event, tab)"
+            >
+              <span class="flex min-w-0 flex-1 items-center gap-1.5">
+                <img
+                  v-if="tab.kind === 'editor' || tab.kind === 'markdown'"
+                  v-memo="[tab.kind, tab.title]"
+                  :src="fileIconUrl(tab.title)"
+                  alt=""
+                  class="size-3.5 shrink-0"
+                />
+                <NIcon
+                  v-else-if="tab.kind === 'terminal'"
+                  :component="TerminalOutline"
+                  :size="12"
+                  class="shrink-0"
+                  :class="tab.id === activeId ? 'text-primary' : ''"
+                />
+                <span
+                  class="min-w-0 truncate"
+                  :class="tab.kind === 'editor' && tab.preview ? 'italic text-muted-foreground' : ''"
+                >
+                  {{ tabLabel(tab) }}
+                </span>
+                <span
+                  v-if="tab.kind === 'editor' && tab.dirty"
+                  class="size-1.5 shrink-0 rounded-full bg-primary"
+                />
+              </span>
+              <span
+                role="button"
+                tabindex="-1"
+                class="grid size-4 shrink-0 place-items-center rounded-full text-muted-foreground opacity-0 transition-all duration-[var(--dur-fast)] hover:bg-destructive/15 hover:text-destructive group-hover:opacity-60 group-hover:hover:opacity-100"
+                @click.stop="emit('closeTab', tab.id)"
+                @pointerdown.stop
+              >
+                <NIcon :component="CloseOutline" :size="11" />
+              </span>
+            </button>
+          </TransitionGroup>
+        </div>
       </div>
-    </div>
+    </template>
 
-    <div v-if="showActions" class="flex shrink-0 items-center gap-0.5 pr-1.5">
-      <TooltipTitle :label="t('app.header.newTerminal')">
-        <NextermIconButton
-          data-new-tab
-          @click="emit('newTab')"
-        >
-          <NIcon :component="AddOutline" :size="14" />
-        </NextermIconButton>
-      </TooltipTitle>
-      <TooltipTitle :label="t('app.header.splitActions')">
-        <NDropdown
-          trigger="click"
-          placement="bottom-end"
-          :options="splitOptions"
-          :disabled="!canSplit"
-          :render-icon="renderSplitIcon"
-          @select="handleSplitSelect"
-        >
-          <NextermIconButton
-            :disabled="!canSplit"
-          >
-            <NIcon :component="DuplicateOutline" :size="14" />
-          </NextermIconButton>
-        </NDropdown>
-      </TooltipTitle>
-    </div>
+    <!-- 拖拽区:会话条之后的空白带 -->
+    <div
+      data-window-drag-region
+      class="h-8 min-w-2 flex-1"
+      @pointerdown="startWindowDrag"
+    />
 
     <!-- Drag ghost -->
     <div
       v-if="dragGhost"
-      class="v2-glass-float will-change-transform pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-[12px] opacity-95"
+      class="v2-glass-float will-change-transform pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-full px-3 text-[12px] opacity-95"
       :style="{
         width: `${dragGhost.width}px`,
         transform: `translate3d(${dragGhost.x}px, ${dragGhost.y}px, 0) translate(-50%, -50%)`,
@@ -391,6 +370,11 @@ function handleSplitSelect(key: string | number) {
         :src="fileIconUrl(dragGhost.tab.title)"
         alt=""
         class="size-3.5 shrink-0"
+      />
+      <NIcon
+        v-else-if="dragGhost.tab.kind === 'terminal'"
+        :component="DuplicateOutline"
+        :size="12"
       />
       <span class="min-w-0 truncate">{{ tabLabel(dragGhost.tab) }}</span>
     </div>
