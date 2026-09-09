@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Nexterm Brand Mark v3.1 — Android adaptive icon foreground (refined)
+  =============================================================
+  108×108 dp，透明背景。Mark 落在 66dp 安全区内。
+  与 app-icon.svg v3.1 共用同一套 inner gradient / inner highlight / inner shadow 设计语言。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108" role="img" aria-label="Nexterm">
+  <defs>
+    <!-- N inner gradient（缩放版） -->
+    <linearGradient id="inkGrad" x1="54" y1="22" x2="54" y2="86" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.45" stop-color="#F4F8FB"/>
+      <stop offset="1" stop-color="#DDE3EA"/>
+    </linearGradient>
+
+    <!-- 光标渐变 -->
+    <linearGradient id="cursorGrad" x1="76.5" y1="54" x2="76.5" y2="86" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#BEF264"/>
+      <stop offset="0.42" stop-color="#5EEAD4"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+
+    <!-- 光标顶部反光带 -->
+    <linearGradient id="cursorHighlight" x1="76.5" y1="54" x2="76.5" y2="61" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- 光标底部 inner shadow -->
+    <linearGradient id="cursorShadow" x1="76.5" y1="81" x2="76.5" y2="86" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0E7490" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0E7490" stop-opacity="0.55"/>
+    </linearGradient>
+
+    <filter id="cursorGlowWide" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+    <filter id="cursorGlow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="2.5"/>
+    </filter>
+
+    <clipPath id="nClip">
+      <rect x="27" y="22" width="11" height="64" rx="2"/>
+      <path d="M 38 22 L 49 22 L 71 86 L 60 86 Z"/>
+      <rect x="71" y="22" width="11" height="32" rx="2"/>
+    </clipPath>
+  </defs>
+
+  <!-- N 字符主体 -->
+  <g fill="url(#inkGrad)">
+    <rect x="27" y="22" width="11" height="64" rx="2"/>
+    <path d="M 38 22 L 49 22 L 71 86 L 60 86 Z"/>
+    <rect x="71" y="22" width="11" height="32" rx="2"/>
+  </g>
+
+  <!-- N 微弱内描边 -->
+  <g fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="0.2" clip-path="url(#nClip)">
+    <rect x="27" y="22" width="11" height="64" rx="2"/>
+    <path d="M 38 22 L 49 22 L 71 86 L 60 86 Z"/>
+    <rect x="71" y="22" width="11" height="32" rx="2"/>
+  </g>
+
+  <!-- 光标方块 -->
+  <g>
+    <!-- 外发光宽范围 -->
+    <rect x="65" y="49" width="22" height="42" rx="4" fill="#22D3EE" opacity="0.22" filter="url(#cursorGlowWide)"/>
+    <!-- 外发光紧凑 -->
+    <rect x="68" y="51" width="17" height="38" rx="3" fill="#22D3EE" opacity="0.50" filter="url(#cursorGlow)"/>
+    <!-- 主体 -->
+    <rect x="71" y="54" width="11" height="32" rx="2" fill="url(#cursorGrad)"/>
+    <!-- 顶部反光 -->
+    <rect x="71.5" y="54.5" width="10" height="7" rx="1.5" fill="url(#cursorHighlight)"/>
+    <!-- 底部 inner shadow -->
+    <rect x="71.5" y="81" width="10" height="5" rx="1.5" fill="url(#cursorShadow)"/>
+    <!-- 内核反光点 -->
+    <rect x="73.5" y="56" width="6" height="3" rx="0.6" fill="#FFFFFF" opacity="0.45"/>
+  </g>
+</svg>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Nexterm Brand Mark v3 — Android adaptive icon background layer
+  =============================================================
+  108×108 dp 纯色背景。系统按 launcher mask 裁剪前景，
+  故背景只提供统一底色，不带阴影/渐变（避免与前景的 cyan 发光冲突）。
+  与 ic_launcher_background.xml 的 #0A0D12 一致。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <rect x="0" y="0" width="108" height="108" fill="#0A0D12"/>
+</svg>

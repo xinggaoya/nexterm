@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Nexterm Brand Mark v3 — Android 13+ Themed Icon (monochrome)
+  ============================================================
+  108×108 dp，单色版本。Android 13+ 系统会按用户主题色自动着色，
+  故仅保留几何形状，去掉所有渐变 / 发光 / 阴影。
+  形状与主图严格对齐，确保识别度。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108" role="img" aria-label="Nexterm">
+  <!-- 单一前景色：纯白（系统会基于 launcher 主题色着色） -->
+  <g fill="#FFFFFF">
+    <!-- 左竖 -->
+    <rect x="27" y="22" width="11" height="64" rx="2"/>
+    <!-- 斜段 -->
+    <path d="M 38 22 L 49 22 L 71 86 L 60 86 Z"/>
+    <!-- 右竖上半 + 下半光标（连续单色，无视觉断开） -->
+    <rect x="71" y="22" width="11" height="64" rx="2"/>
+  </g>
+</svg>

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "_comment": "Nexterm Brand Mark v3 — tauri icon 命令的入口清单。所有 SVG 路径相对于本文件。",
+
+  "default": "./app-icon.svg",
+  "_default_doc": "主图标（带背景）。用于 macOS .icns / Windows .ico / Linux .png / Windows Store Square*/StoreLogo。",
+
+  "bg_color": "#0A0D12",
+  "_bg_color_doc": "iOS AppIcon 背景色（覆盖 --ios-color）。深炭与主图一致。",
+
+  "android_bg": "./app-icon-bg.svg",
+  "_android_bg_doc": "Android adaptive icon 背景层（纯色 #0A0D12，避免与前景 cyan 发光叠加）。",
+
+  "android_fg": "./app-icon-fg.svg",
+  "_android_fg_doc": "Android adaptive icon 前景层（透明背景的 N × 光标 mark）。",
+
+  "android_fg_scale": 70,
+  "_android_fg_scale_doc": "前景缩放至 70%（默认 85），为 cyan 外发光留出安全边距。",
+
+  "android_monochrome": "./app-icon-monochrome.svg",
+  "_android_monochrome_doc": "Android 13+ Themed Icon 单色版本（系统按 launcher 主题色自动着色）。"
+}

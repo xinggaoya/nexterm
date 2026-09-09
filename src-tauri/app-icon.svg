@@ -1,41 +1,136 @@
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Nexterm Brand Mark v3.1 — "N × Cursor" (refined)
+  ================================================
+  v3.1 打磨要点（在 v3 基础上）：
+    1. N 字符 inner gradient（顶亮底暗）—— 给 N 微妙立体感
+    2. 光标 inner highlight（顶部白色反光带）—— 玻璃质感
+    3. 光标 inner shadow（底部青蓝暗带）—— 增强体积
+    4. 背景 subtle noise texture（feTurbulence）—— 金属/玻璃微粒
+    5. 顶部弧形高光带 —— 更自然的环境光反射
+    6. N 字符微弱内描边 —— 让 mark 从背景"浮出"
+
+  色板（v3.1，与 v3 一致）：
+    bg-deep       #0A0D12   深炭底色
+    bg-mid        #11151B   深炭中段
+    bg-light      #161D26   深炭亮段（对角三段渐变）
+    ink-top       #FFFFFF   N 字符顶部（inner gradient）
+    ink-mid       #F4F8FB   N 字符中段
+    ink-bottom    #DDE3EA   N 字符底部
+    accent-cyan   #22D3EE   光标主色
+    accent-mint   #5EEAD4   光标中段
+    accent-lime   #BEF264   光标高亮
+
+  安全区：viewBox 0 0 1024 1024，mark 留 12.5% 边距（≥128px）。
+  单一事实源：所有平台图标由 `pnpm icon:regen` 从本文件派生。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Nexterm">
   <defs>
-    <linearGradient id="shell" x1="142" y1="872" x2="894" y2="140" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#071013"/>
-      <stop offset="0.52" stop-color="#102025"/>
-      <stop offset="1" stop-color="#18323B"/>
+    <!-- 背景对角三段渐变（金属感，比 v3 双段更细腻） -->
+    <linearGradient id="bgGrad" x1="142" y1="872" x2="894" y2="140" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0A0D12"/>
+      <stop offset="0.55" stop-color="#11151B"/>
+      <stop offset="1" stop-color="#161D26"/>
     </linearGradient>
-    <linearGradient id="rim" x1="168" y1="170" x2="850" y2="850" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#2EF2D0"/>
-      <stop offset="0.42" stop-color="#5CE1FF"/>
-      <stop offset="1" stop-color="#95FFCB"/>
-    </linearGradient>
-    <linearGradient id="accent" x1="278" y1="426" x2="734" y2="704" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#9DFFD7"/>
-      <stop offset="0.45" stop-color="#48E8FF"/>
-      <stop offset="1" stop-color="#20D7A2"/>
-    </linearGradient>
-    <linearGradient id="glass" x1="246" y1="126" x2="712" y2="696" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFFFFF" stop-opacity="0.18"/>
+
+    <!-- 顶部弧形高光带（自然环境光） -->
+    <linearGradient id="topArc" x1="512" y1="0" x2="512" y2="320" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.09"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.035"/>
       <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
     </linearGradient>
-    <filter id="softShadow" x="58" y="78" width="908" height="886" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="34" stdDeviation="28" flood-color="#02090A" flood-opacity="0.36"/>
+
+    <!-- 噪点纹理（金属/玻璃微粒，subtle） -->
+    <filter id="grain" x="0" y="0" width="100%" height="100%" filterUnits="objectBoundingBox" primitiveUnits="userSpaceOnUse">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7" stitchTiles="stitch"/>
+      <feColorMatrix values="0 0 0 0 1   0 0 0 0 1   0 0 0 0 1   0 0 0 0.045 0"/>
     </filter>
+
+    <!-- N 字符 inner gradient（顶部白 → 中段浅白 → 底部灰白，微妙立体感） -->
+    <linearGradient id="inkGrad" x1="512" y1="212" x2="512" y2="812" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.45" stop-color="#F4F8FB"/>
+      <stop offset="1" stop-color="#DDE3EA"/>
+    </linearGradient>
+
+    <!-- 光标方块渐变（保留） -->
+    <linearGradient id="cursorGrad" x1="712" y1="512" x2="712" y2="812" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#BEF264"/>
+      <stop offset="0.42" stop-color="#5EEAD4"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+
+    <!-- 光标顶部反光带（玻璃质感） -->
+    <linearGradient id="cursorHighlight" x1="712" y1="512" x2="712" y2="580" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- 光标底部 inner shadow（深青蓝） -->
+    <linearGradient id="cursorShadow" x1="712" y1="770" x2="712" y2="812" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0E7490" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0E7490" stop-opacity="0.55"/>
+    </linearGradient>
+
+    <!-- 光标外发光（保留） -->
+    <filter id="cursorGlowWide" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="48"/>
+    </filter>
+    <filter id="cursorGlow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+
+    <!-- 整图软阴影（保留） -->
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="20" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+
+    <!-- N 字符 clipPath（用于 inner gradient + 描边的形状约束） -->
+    <clipPath id="nClip">
+      <rect x="262" y="212" width="100" height="600" rx="16"/>
+      <path d="M 362 212 L 462 212 L 662 812 L 562 812 Z"/>
+      <rect x="662" y="212" width="100" height="300" rx="16"/>
+    </clipPath>
   </defs>
 
-  <g filter="url(#softShadow)">
-    <rect x="112" y="128" width="800" height="768" rx="206" fill="url(#shell)"/>
-    <rect x="127" y="143" width="770" height="738" rx="191" stroke="url(#rim)" stroke-opacity="0.9" stroke-width="30"/>
-    <path d="M188 300C188 238.144 238.144 188 300 188H724C785.856 188 836 238.144 836 300V355H188V300Z" fill="#101D22"/>
-    <path d="M188 300C188 238.144 238.144 188 300 188H724C785.856 188 836 238.144 836 300V355H188V300Z" fill="url(#glass)"/>
-    <circle cx="278" cy="274" r="24" fill="#48E8FF" fill-opacity="0.9"/>
-    <circle cx="352" cy="274" r="24" fill="#58F0C2" fill-opacity="0.76"/>
-    <circle cx="426" cy="274" r="24" fill="#E8F7F2" fill-opacity="0.52"/>
+  <g filter="url(#dropShadow)">
+    <!-- 1) 圆角方框背景 -->
+    <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#bgGrad)"/>
 
-    <path d="M322 502L430 604L322 706" stroke="url(#accent)" stroke-width="68" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M544 714H700" stroke="#BDFCF1" stroke-opacity="0.84" stroke-width="56" stroke-linecap="round"/>
-    <path d="M548 496L724 496" stroke="#EAFDF9" stroke-opacity="0.26" stroke-width="48" stroke-linecap="round"/>
-    <path d="M548 604L758 604" stroke="#EAFDF9" stroke-opacity="0.18" stroke-width="48" stroke-linecap="round"/>
+    <!-- 2) 噪点纹理（细微金属颗粒） -->
+    <rect x="0" y="0" width="1024" height="1024" rx="224" filter="url(#grain)" opacity="0.55"/>
+
+    <!-- 3) 顶部弧形高光带 -->
+    <rect x="0" y="0" width="1024" height="320" rx="224" fill="url(#topArc)"/>
+
+    <!-- 4) N 字符主体（带 inner gradient 立体感） -->
+    <g fill="url(#inkGrad)">
+      <rect x="262" y="212" width="100" height="600" rx="16"/>
+      <path d="M 362 212 L 462 212 L 662 812 L 562 812 Z"/>
+      <rect x="662" y="212" width="100" height="300" rx="16"/>
+    </g>
+
+    <!-- 5) N 字符微弱内描边（让 mark 从背景"浮出"） -->
+    <g fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="1.5" clip-path="url(#nClip)">
+      <rect x="262" y="212" width="100" height="600" rx="16"/>
+      <path d="M 362 212 L 462 212 L 662 812 L 562 812 Z"/>
+      <rect x="662" y="212" width="100" height="300" rx="16"/>
+    </g>
+
+    <!-- 6) 光标方块组（外发光 + 主体 + inner highlight + inner shadow + 内核高光） -->
+    <g>
+      <!-- 外发光宽范围 -->
+      <rect x="620" y="470" width="184" height="384" rx="22" fill="#22D3EE" opacity="0.20" filter="url(#cursorGlowWide)"/>
+      <!-- 外发光紧凑 -->
+      <rect x="640" y="490" width="144" height="344" rx="20" fill="#22D3EE" opacity="0.45" filter="url(#cursorGlow)"/>
+      <!-- 光标主体（lime→cyan 渐变） -->
+      <rect x="662" y="512" width="100" height="300" rx="16" fill="url(#cursorGrad)"/>
+      <!-- 顶部反光带（玻璃质感） -->
+      <rect x="666" y="516" width="92" height="68" rx="12" fill="url(#cursorHighlight)"/>
+      <!-- 底部 inner shadow（深青蓝） -->
+      <rect x="666" y="770" width="92" height="38" rx="10" fill="url(#cursorShadow)"/>
+      <!-- 内核顶部反光点 -->
+      <rect x="685" y="528" width="54" height="24" rx="6" fill="#FFFFFF" opacity="0.45"/>
+    </g>
   </g>
 </svg>
