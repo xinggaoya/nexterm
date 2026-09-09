@@ -94,7 +94,12 @@ watch(() => props.path, () => void load(), { immediate: true });
       </div>
     </div>
 
-    <div v-else class="min-h-0 flex-1 overflow-auto px-6 py-5">
+    <!-- 应用根节点是 select-none，预览正文需要显式恢复可选中以便复制。 -->
+    <div
+      v-else
+      class="min-h-0 flex-1 cursor-text overflow-auto px-6 py-5 select-text"
+      data-markdown-preview-scroll
+    >
       <article
         data-markdown-preview
         class="markdown-preview mx-auto max-w-4xl text-sm leading-7 text-foreground"

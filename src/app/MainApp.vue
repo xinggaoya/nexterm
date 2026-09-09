@@ -12,7 +12,6 @@ import TitleBar from "./shell/TitleBar.vue";
 import StatusBar from "./shell/StatusBar.vue";
 import WorkspaceHost from "./shell/WorkspaceHost.vue";
 import CommandPalette from "@/modules/commands/CommandPalette.vue";
-import AIPanel from "@/app/components/AIPanel.vue";
 import { applyLanguagePreference } from "@/modules/i18n";
 import { t } from "@/modules/i18n/translate";
 import { getNaiveLocaleConfig } from "@/modules/i18n/naive";
@@ -37,6 +36,7 @@ import {
 } from "@/modules/workspace";
 import WorkspaceWelcome from "./components/WorkspaceWelcome.vue";
 import UnsavedCloseGuard from "./components/UnsavedCloseGuard.vue";
+import WorkspaceRemoveGuard from "./components/WorkspaceRemoveGuard.vue";
 import RenameTerminalDialog from "./components/RenameTerminalDialog.vue";
 import { applyTerminalSessionTheme } from "@/modules/terminal";
 import { configureTerminalSessionDisposer } from "@/modules/tabs/terminalDisposal";
@@ -65,10 +65,6 @@ const settingsOpen = ref(false);
 const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
 const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
 
-// v2 — AI assistant panel placeholder toggle. The panel itself lands in
-// phase 5; for now this only opens/closes a reserved surface so the
-// title-bar affordance is wired end-to-end.
-const aiPanelOpen = ref(false);
 // closeGuard is wired via template ref on UnsavedCloseGuard; the guard emits
 // close-tab events handled directly in the template.
 
@@ -227,6 +223,25 @@ async function openRecentWorkspace(record: WorkspaceSelection & { openedAt?: num
   } catch (error) {
     notifyError(t("app.workspace.addFailed"), error);
   }
+}
+
+// ── Remove-workspace flow ───────────────────────────────────────────────
+// 标题栏的关闭按钮误触成本很高（终端会话、未保存编辑全部丢失），
+// 所以先弹二次确认，用户确认后才真正 removeWorkspace。
+const workspaceRemoveGuard = ref<InstanceType<typeof WorkspaceRemoveGuard> | null>(null);
+
+function requestRemoveWorkspace(id: string) {
+  const target = workspaces.workspaces.find((ws) => ws.id === id);
+  if (!target) return;
+  const remove = () => {
+    void workspaces.removeWorkspace(id);
+  };
+  const guard = workspaceRemoveGuard.value;
+  if (!guard) {
+    remove();
+    return;
+  }
+  guard.confirmRemove(target, remove);
 }
 
 function openSettings(tab: SettingsTab = SETTINGS_DEFAULT_TAB) {
@@ -388,13 +403,13 @@ watch(
               :tabs="tabs.tabs"
               @close-tab="(id) => tabs.closeTab(id)"
             />
+            <WorkspaceRemoveGuard ref="workspaceRemoveGuard" />
             <TitleBar
               :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
               @open-command-palette="openCommandPalette('commands')"
               @open-settings="openSettings"
-              @open-ai-assistant="aiPanelOpen = !aiPanelOpen"
               @select-workspace="(id) => workspaces.setActive(id)"
-              @close-workspace="(id) => workspaces.removeWorkspace(id)"
+              @close-workspace="requestRemoveWorkspace"
               @add-workspace="(env) => startAddWorkspace(env)"
               @open-in-new-window="() => openWorkspaceInNewWindow()"
             />
@@ -416,6 +431,7 @@ watch(
                 @request-settings="(tab) => openSettings(tab)"
                 @request-command-palette="(mode) => openCommandPalette(mode)"
                 @request-rename="(payload) => (renameDialogState = payload)"
+                @request-remove-workspace="requestRemoveWorkspace"
                 @branch-change="onWorkspaceBranchChange"
               />
               <WorkspaceWelcome
@@ -469,18 +485,6 @@ watch(
               @submit="commitRename"
               @cancel="cancelRename"
             />
-
-            <!-- AI assistant drawer (v2 placeholder; implementation in AIPanel.vue). -->
-            <NDrawer
-              v-model:show="aiPanelOpen"
-              placement="right"
-              :width="380"
-              :auto-focus="false"
-            >
-              <NDrawerContent body-content-style="height: 100%; padding: 0;">
-                <AIPanel @close="aiPanelOpen = false" />
-              </NDrawerContent>
-            </NDrawer>
 
             <!-- Command palette overlay — driven by the active workspace's
                  command api. Rendered globally so it floats above everything. -->

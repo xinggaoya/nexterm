@@ -378,6 +378,120 @@ describe("FileExplorer.vue", () => {
     expect(wrapper.emitted("pathDeleted")).toEqual([["/repo/README.md"]]);
   });
 
+  it("toggles multi-selection with ctrl-click and deletes the whole selection from the context menu", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    const readme = () => wrapper.find("[data-explorer-row-path='/repo/README.md']");
+    const pkg = () => wrapper.find("[data-explorer-row-path='/repo/package.json']");
+
+    // Ctrl+点击只改变选择集，不打开文件。
+    await readme().trigger("click", { ctrlKey: true });
+    await pkg().trigger("click", { ctrlKey: true });
+    await flush();
+    expect(wrapper.emitted("openFile")).toBeUndefined();
+    expect(readme().classes()).toContain("bg-accent");
+    expect(pkg().classes()).toContain("bg-accent");
+
+    // 右键已选中的行保留整批选择，菜单显示批量删除。
+    await pkg().trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+    expect(wrapper.text()).toContain("Delete 2 items");
+    expect(wrapper.find("[data-menu-action='rename']").exists()).toBe(false);
+
+    await wrapper.find("[data-menu-action='delete']").trigger("click");
+    await flush();
+    expect(deleteFileTreePath).not.toHaveBeenCalled();
+    await wrapper.find("[data-menu-action='delete']").trigger("click");
+    await flush();
+
+    expect(deleteFileTreePath).toHaveBeenCalledTimes(2);
+    expect(deleteFileTreePath).toHaveBeenCalledWith(WS_NATIVE_MATCHER, "/repo/README.md");
+    expect(deleteFileTreePath).toHaveBeenCalledWith(WS_NATIVE_MATCHER, "/repo/package.json");
+    const deleted = (wrapper.emitted("pathDeleted") ?? []).map((args) => args[0]);
+    expect(deleted.sort()).toEqual(["/repo/README.md", "/repo/package.json"]);
+    // 两个文件同属根目录，只需刷新根目录一次。
+    expect(readFileTreeDir).toHaveBeenLastCalledWith(WS_NATIVE_MATCHER, "/repo", false);
+  });
+
+  it("right-clicking an unselected row collapses the selection to that row", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("click", { ctrlKey: true });
+    await wrapper
+      .find("[data-explorer-row-path='/repo/package.json']")
+      .trigger("click", { ctrlKey: true });
+    await wrapper
+      .find("[data-explorer-row-path='/repo/src']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+
+    // 单选菜单：仍能看到重命名，且删除的是被右键的那一行。
+    expect(wrapper.find("[data-menu-action='rename']").exists()).toBe(true);
+    await wrapper.find("[data-menu-action='delete']").trigger("click");
+    await wrapper.find("[data-menu-action='delete']").trigger("click");
+    await flush();
+    expect(deleteFileTreePath).toHaveBeenCalledTimes(1);
+    expect(deleteFileTreePath).toHaveBeenCalledWith(WS_NATIVE_MATCHER, "/repo/src");
+  });
+
+  it("shift-click selects the visible range between the anchor and the clicked row", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    // 先普通点击 src（锚点），再 Shift+点击 package.json → 三行全部选中。
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+    await wrapper
+      .find("[data-explorer-row-path='/repo/package.json']")
+      .trigger("click", { shiftKey: true });
+    await flush();
+
+    for (const path of ["/repo/src", "/repo/README.md", "/repo/package.json"]) {
+      expect(
+        wrapper.find(`[data-explorer-row-path='${path}']`).classes(),
+      ).toContain("bg-accent");
+    }
+    // Shift 点击不打开文件。
+    expect(wrapper.emitted("openFile")).toBeUndefined();
+  });
+
+  it("commits the inline rename when the input loses focus", async () => {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("dblclick");
+    await flush();
+    await wrapper.find("[data-inline-tree-input]").setValue("README.old.md");
+    await wrapper.find("[data-inline-tree-input]").trigger("blur");
+    await flush();
+
+    expect(renameFileTreePath).toHaveBeenCalledWith(
+      WS_NATIVE_MATCHER,
+      "/repo/README.md",
+      "/repo/README.old.md",
+    );
+    // 输入框在失焦提交后消失，不需要用户回到输入框回车。
+    expect(wrapper.find("[data-inline-tree-input]").exists()).toBe(false);
+  });
+
   it("renames files through the context menu", async () => {
     const wrapper = mount(FileExplorer, {
       global: { plugins: [createPinia()] },

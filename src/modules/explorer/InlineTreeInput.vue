@@ -65,6 +65,11 @@ onMounted(() => {
 </script>
 
 <template>
+  <!--
+    blur 必须绑在 NInput 组件级 prop 上：Naive UI 渲染原生 <input> 时是
+    `{ ...inputProps, onBlur: handleInputBlur }`，input-props 里的 onBlur 会被
+    内部处理器覆盖而永不触发；keydown 没有内部覆盖，留在 input-props 即可。
+  -->
   <NInput
     ref="inputRef"
     v-model:value="value"
@@ -73,7 +78,7 @@ onMounted(() => {
     :input-props="{
       'data-inline-tree-input': '',
       onKeydown: handleKeydown,
-      onBlur: handleBlur,
     } as Record<string, unknown>"
+    @blur="handleBlur"
   />
 </template>

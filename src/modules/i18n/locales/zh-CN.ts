@@ -104,7 +104,6 @@ const zhCN = {
       newTerminal: "新建终端",
       openCommandCenter: "打开命令中心",
       openFolder: "打开文件夹",
-      openAiAssistant: "AI 助手",
       preview: "预览",
       sourceControl: "源代码管理",
       splitActions: "拆分布局",
@@ -150,6 +149,9 @@ const zhCN = {
     workspace: {
       addFailed: "添加工作区失败",
       openWindowFailed: "打开工作区窗口失败",
+      removeConfirm: "移除",
+      removeContent: "确定要从当前窗口移除工作区“{name}”吗？其终端会话将被关闭，未保存的编辑内容会丢失。",
+      removeTitle: "移除工作区",
     },
     welcome: {
       noRecentWorkspaces: "没有最近工作区",
@@ -164,15 +166,6 @@ const zhCN = {
     },
     updater: {
       networkHint: "（可能是网络问题或 GitHub 临时不可用，稍后重试）",
-    },
-    ai: {
-      title: "AI 助手",
-      comingSoon: "AI 助手即将上线",
-      description: "终端原生的 agent 能力正在开发中。它将理解你的工作区上下文，协助编写命令、调试代码、解释输出。",
-      placeholder: "向 AI 提问…",
-      send: "发送",
-      empty: "还没有对话。AI 接入后，这里会显示你的对话。",
-      close: "关闭 AI 助手",
     },
     unsaved: {
       closeFileContent: "{files} 中的未保存更改将被丢弃。",
@@ -324,6 +317,8 @@ const zhCN = {
     copyPath: "复制路径",
     copyRelativePath: "复制相对路径",
     delete: "删除",
+    deleteFailed: "删除失败",
+    deleteSelected: "删除 {count} 项",
     duplicate: "复制副本",
     loading: "加载中...",
     newFile: "新建文件",

@@ -102,7 +102,6 @@ const enUS = {
       newTerminal: "New terminal",
       openCommandCenter: "Open command center",
       openFolder: "Open Folder",
-      openAiAssistant: "AI Assistant",
       preview: "Preview",
       sourceControl: "Source Control",
       splitActions: "Split pane",
@@ -148,6 +147,10 @@ const enUS = {
     workspace: {
       addFailed: "Failed to add workspace",
       openWindowFailed: "Failed to open workspace window",
+      removeConfirm: "Remove",
+      removeContent:
+        "Remove workspace \"{name}\" from this window? Its terminal sessions will be closed and unsaved editor changes will be lost.",
+      removeTitle: "Remove workspace",
     },
     welcome: {
       noRecentWorkspaces: "No recent workspaces",
@@ -162,15 +165,6 @@ const enUS = {
     },
     updater: {
       networkHint: "(possibly a network issue or GitHub temporarily unavailable; please retry shortly)",
-    },
-    ai: {
-      title: "AI Assistant",
-      comingSoon: "AI Assistant coming soon",
-      description: "Terminal-native agent capabilities are in development. It will understand your workspace context, help write commands, debug code, and explain output.",
-      placeholder: "Ask AI…",
-      send: "Send",
-      empty: "No conversations yet. Once AI is connected, your chats will appear here.",
-      close: "Close AI assistant",
     },
     unsaved: {
       closeFileContent: "Unsaved changes in {files} will be discarded.",
@@ -325,6 +319,8 @@ const enUS = {
     copyPath: "Copy Path",
     copyRelativePath: "Copy Relative Path",
     delete: "Delete",
+    deleteFailed: "Delete failed",
+    deleteSelected: "Delete {count} items",
     duplicate: "Duplicate",
     loading: "Loading...",
     newFile: "New file",

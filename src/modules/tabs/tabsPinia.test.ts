@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useTabsPiniaStore } from "./tabsPinia";
+import type { TerminalTab } from "./tabsTypes";
 import { useWorkspacesPiniaStore } from "@/modules/workspace/workspacesPinia";
 
 // The tabs store delegates to the workspaces store for the active workspace
@@ -145,6 +146,32 @@ describe("tabs pinia store (workspace-scoped)", () => {
     tabs.closeTab(1, WORKSPACE_ID);
 
     expect(sessionFns.disposeSession).toHaveBeenCalled();
+  });
+
+  it("closes a terminal tab whose paneTree was reactively updated (DataCloneError 回归)", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    const id = tabs.newTab("/repo", WORKSPACE_ID);
+    const leafId = (
+      tabs.workspaceTabs(WORKSPACE_ID).find((tab) => tab.id === id) as TerminalTab
+    ).activeLeafId;
+
+    // 模拟真实使用中必然发生的更新：OSC title/cwd 事件（setLeaf*）与
+    // 点击 pane 聚焦（focusPane）。focusPane 这类用 spread 拷贝 tab 的
+    // 路径会把响应式 Proxy 原样存进 raw tab 的 paneTree 字段，
+    // structuredClone 无法克隆 Proxy，曾在 closeTab 里抛 DataCloneError
+    // 导致终端 tab 关不掉（editor tab 无嵌套对象字段所以不受影响）。
+    tabs.setLeafTitle(leafId, "gwmi", WORKSPACE_ID);
+    tabs.setLeafCwd(leafId, "/repo/sub", WORKSPACE_ID);
+    tabs.focusPane(id, leafId, WORKSPACE_ID);
+
+    expect(() => tabs.closeTab(id, WORKSPACE_ID)).not.toThrow();
+    expect(tabs.workspaceTabs(WORKSPACE_ID).some((tab) => tab.id === id)).toBe(
+      false,
+    );
+    // 关闭栈快照必须是纯净数据，恢复关闭要能正常工作。
+    const restored = tabs.restoreClosed(WORKSPACE_ID);
+    expect(restored).toMatchObject({ id: restored?.id, kind: "terminal" });
   });
 
   it("tears down a workspace's tabs and sessions on dispose", () => {

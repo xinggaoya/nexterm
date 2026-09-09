@@ -11,9 +11,15 @@ import { isPreviewableImagePath } from "@/modules/file-preview/lib/imageFiles";
 import { t } from "@/modules/i18n/translate";
 
 export type ExplorerContextMenuTarget = {
+  /** 右键命中的那一行（多选时作为"主"目标，决定 open/rename 等单项动作）。 */
   path: string;
   name: string;
   isDir: boolean;
+  /**
+   * 当前选中的全部路径（树的可见顺序）。单选时等于 `[path]`，根目录菜单为 `[]`。
+   * 多于一项时菜单退化为只保留批量安全的动作（复制路径 / 删除）。
+   */
+  paths: string[];
   x: number;
   y: number;
   source: "row" | "root";
@@ -33,7 +39,7 @@ const emit = defineEmits<{
   duplicate: [path: string];
   create: [parentPath: string, kind: "file" | "dir"];
   rename: [path: string];
-  deletePath: [path: string];
+  deletePaths: [paths: string[]];
 }>();
 
 // NDropdown 默认监听 Escape（在 trigger=manual 下由 VueUse onKeyStroke
@@ -92,10 +98,42 @@ function createTargetPath(target: ExplorerContextMenuTarget): string {
   return target.isDir ? target.path : dirname(target.path);
 }
 
+function selectionPaths(target: ExplorerContextMenuTarget): string[] {
+  return target.paths.length > 0 ? target.paths : [target.path];
+}
+
+function isMultiSelection(target: ExplorerContextMenuTarget): boolean {
+  return target.paths.length > 1;
+}
+
 const menuOptions = computed<DropdownOption[]>(() => {
   const target = props.target;
   if (!target) return [];
   const opts: DropdownOption[] = [];
+
+  // 多选：只保留对整批选择都有意义且安全的动作。
+  if (isMultiSelection(target)) {
+    opts.push({
+      key: "copy-path",
+      label: t("explorer.copyPath"),
+      render: renderOption("copy-path"),
+    });
+    opts.push({
+      key: "copy-relative-path",
+      label: t("explorer.copyRelativePath"),
+      render: renderOption("copy-relative-path"),
+    });
+    opts.push({ key: "divider-multi", type: "divider" });
+    opts.push({
+      key: "delete",
+      label:
+        confirmPath.value === target.path
+          ? t("explorer.clickAgainToConfirm")
+          : t("explorer.deleteSelected", { count: target.paths.length }),
+      render: renderOption("delete"),
+    });
+    return opts;
+  }
 
   if (!target.isDir) {
     opts.push({
@@ -216,14 +254,20 @@ function handleSelect(key: string | number) {
       close();
       break;
     case "copy-path":
-      void copyToClipboard(target.path);
+      void copyToClipboard(selectionPaths(target).join("\n"));
       close();
       break;
-    case "copy-relative-path":
-      if (!props.rootPath) return;
-      void copyToClipboard(relativePath(props.rootPath, target.path));
+    case "copy-relative-path": {
+      const root = props.rootPath;
+      if (!root) return;
+      void copyToClipboard(
+        selectionPaths(target)
+          .map((path) => relativePath(root, path))
+          .join("\n"),
+      );
       close();
       break;
+    }
     case "rename":
       emit("rename", target.path);
       close();
@@ -233,7 +277,7 @@ function handleSelect(key: string | number) {
         confirmPath.value = target.path;
         return;
       }
-      emit("deletePath", target.path);
+      emit("deletePaths", selectionPaths(target));
       close();
       break;
     default:

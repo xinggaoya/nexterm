@@ -17,7 +17,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  entryClick: [row: EntryRow];
+  // 透传原始事件，父级据 ctrl/meta/shift 决定是切换多选、范围选还是单选打开。
+  entryClick: [row: EntryRow, event: MouseEvent];
   beginRename: [path: string];
   commitRename: [value: string];
   cancelRename: [];
@@ -60,8 +61,8 @@ const iconUrl = computed(() => {
   return fileIconUrl(row.name);
 });
 
-function handleEntryClick() {
-  if (props.row.kind === "entry") emit("entryClick", props.row);
+function handleEntryClick(event: MouseEvent) {
+  if (props.row.kind === "entry") emit("entryClick", props.row, event);
 }
 
 function handleDoubleClick() {

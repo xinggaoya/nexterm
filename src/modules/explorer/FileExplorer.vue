@@ -14,6 +14,7 @@ import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t } from "@/modules/i18n/translate";
 import { useWorkspaceContext } from "@/app/workspaceContext";
 import type { WorkspaceFsChangedEvent } from "@/lib/native";
+import { notifyError } from "@/modules/notifications/notificationCenter";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { isSameWorkspaceRoot, normalizeWorkspacePath } from "@/modules/workspace";
 import type { GitDecorationMap } from "@/modules/source-control";
@@ -77,7 +78,13 @@ const nodes = reactive<FileTreeState>({});
 const expanded = reactive(new Set<string>());
 const pendingCreate = ref<PendingCreate | null>(null);
 const renaming = ref<string | null>(null);
-const selectedPath = ref<string | null>(null);
+// ── 多选状态 ────────────────────────────────────────────────────────────
+// selectedPaths：当前高亮的全部行；每次变更都整体替换 Set，shallowRef 即可触发更新。
+// focusedPath：键盘导航的光标行（最近一次操作的行）。
+// anchorPath：Shift 范围选择的起点，普通点击 / Ctrl 点击会把锚点移到该行。
+const selectedPaths = shallowRef<ReadonlySet<string>>(new Set());
+const focusedPath = ref<string | null>(null);
+const anchorPath = ref<string | null>(null);
 const isSearchOpen = ref(false);
 const isSearchActive = ref(false);
 const mode = ref<"files" | "content">("files");
@@ -188,6 +195,53 @@ const pendingAtRoot = computed<VisibleTreeRow | null>(() => {
     pendingKind: pendingCreate.value.kind,
   };
 });
+
+// ── 选择操作 ────────────────────────────────────────────────────────────
+function selectOnly(path: string | null) {
+  selectedPaths.value = path ? new Set([path]) : new Set();
+  focusedPath.value = path;
+  anchorPath.value = path;
+}
+
+function toggleSelection(path: string) {
+  const next = new Set(selectedPaths.value);
+  if (next.has(path)) next.delete(path);
+  else next.add(path);
+  selectedPaths.value = next;
+  focusedPath.value = path;
+  anchorPath.value = path;
+}
+
+// 从锚点到目标行（含）之间的可见行全部选中；锚点不动，光标移到目标行。
+function selectRange(toPath: string) {
+  const paths = entryPaths.value;
+  const anchor = anchorPath.value ?? toPath;
+  const from = paths.indexOf(anchor);
+  const to = paths.indexOf(toPath);
+  if (from < 0 || to < 0) {
+    selectOnly(toPath);
+    return;
+  }
+  const [start, end] = from <= to ? [from, to] : [to, from];
+  selectedPaths.value = new Set(paths.slice(start, end + 1));
+  focusedPath.value = toPath;
+  anchorPath.value = anchor;
+}
+
+function selectAll() {
+  const paths = entryPaths.value;
+  if (paths.length === 0) return;
+  selectedPaths.value = new Set(paths);
+  if (!focusedPath.value) focusedPath.value = paths[0];
+  if (!anchorPath.value) anchorPath.value = paths[0];
+}
+
+// 选中路径按树的可见顺序返回，供上下文菜单批量操作使用。
+function orderedSelectedPaths(): string[] {
+  const selected = selectedPaths.value;
+  if (selected.size === 0) return [];
+  return entryPaths.value.filter((path) => selected.has(path));
+}
 
 async function loadChildren(path: string, options: LoadChildrenOptions = {}) {
   const current = nodes[path];
@@ -429,9 +483,18 @@ function toggleDir(path: string) {
   }
 }
 
-function handleEntryClick(row: EntryRow) {
+function handleEntryClick(row: EntryRow, event?: MouseEvent) {
   if (renaming.value) return;
-  selectedPath.value = row.path;
+  // 修饰键点击只改变选择集，不打开文件 / 不展开目录。
+  if (event?.shiftKey) {
+    selectRange(row.path);
+    return;
+  }
+  if (event?.ctrlKey || event?.metaKey) {
+    toggleSelection(row.path);
+    return;
+  }
+  selectOnly(row.path);
   if (row.isDir) {
     toggleDir(row.path);
     return;
@@ -502,7 +565,7 @@ async function commitRename(newName: string) {
   try {
     await renameFileTreePath(wsCtx.wsNative, from, to);
     emit("pathRenamed", from, to);
-    selectedPath.value = to;
+    selectOnly(to);
     await loadChildren(parent);
   } finally {
     renaming.value = null;
@@ -510,13 +573,35 @@ async function commitRename(newName: string) {
   }
 }
 
-async function deletePath(path: string) {
-  await deleteFileTreePath(wsCtx.wsNative, path);
-  emit("pathDeleted", path);
-  if (selectedPath.value === path || selectedPath.value?.startsWith(`${path}/`)) {
-    selectedPath.value = null;
+// 批量删除：深路径优先（先删子项再删父目录），单项失败不阻断其余项；
+// 全部完成后只刷新仍然存在的父目录。
+async function deletePaths(paths: string[]) {
+  const ordered = Array.from(new Set(paths)).sort((a, b) => b.length - a.length);
+  const deleted: string[] = [];
+  for (const path of ordered) {
+    try {
+      await deleteFileTreePath(wsCtx.wsNative, path);
+      deleted.push(path);
+      emit("pathDeleted", path);
+    } catch (error) {
+      notifyError(t("explorer.deleteFailed"), error);
+    }
   }
-  await loadChildren(dirname(path));
+  if (deleted.length === 0) return;
+
+  const isGone = (path: string) =>
+    deleted.some((gone) => path === gone || path.startsWith(`${gone}/`));
+  const remaining = new Set(
+    Array.from(selectedPaths.value).filter((path) => !isGone(path)),
+  );
+  selectedPaths.value = remaining;
+  if (focusedPath.value && isGone(focusedPath.value)) focusedPath.value = null;
+  if (anchorPath.value && isGone(anchorPath.value)) anchorPath.value = null;
+
+  const parents = Array.from(new Set(deleted.map((path) => dirname(path)))).filter(
+    (parent) => !isGone(parent),
+  );
+  await Promise.all(parents.map((parent) => loadChildren(parent)));
 }
 
 async function duplicatePath(path: string) {
@@ -545,11 +630,16 @@ async function duplicatePath(path: string) {
 }
 
 function handleRowContext(payload: { row: MenuRow; x: number; y: number }) {
-  selectedPath.value = payload.row.path;
+  const path = payload.row.path;
+  // 右键未选中的行：选择集收敛为该行；右键已选中的行：保留整批多选。
+  if (!selectedPaths.value.has(path)) selectOnly(path);
+  const ordered = orderedSelectedPaths();
+  const paths = ordered.includes(path) ? ordered : [path];
   menu.value = {
-    path: payload.row.path,
+    path,
     name: payload.row.name,
     isDir: payload.row.isDir,
+    paths,
     x: payload.x,
     y: payload.y,
     source: "row",
@@ -562,6 +652,7 @@ function openRootMenu(event: MouseEvent) {
     path: props.rootPath,
     name: rootName.value || props.rootPath,
     isDir: true,
+    paths: [],
     x: event.clientX,
     y: event.clientY,
     source: "root",
@@ -577,11 +668,12 @@ function openTerminalInDir(path: string) {
   emit("openInTerminal", path);
 }
 
-function moveSelection(index: number) {
+function moveSelection(index: number, extend = false) {
   const paths = entryPaths.value;
   if (paths.length === 0) return;
   const clamped = Math.max(0, Math.min(paths.length - 1, index));
-  selectedPath.value = paths[clamped];
+  if (extend) selectRange(paths[clamped]);
+  else selectOnly(paths[clamped]);
 }
 
 function handleKeydown(event: KeyboardEvent) {
@@ -597,16 +689,21 @@ function handleKeydown(event: KeyboardEvent) {
 
   const paths = entryPaths.value;
   if (paths.length === 0) return;
-  const currentIdx = selectedPath.value
-    ? paths.indexOf(selectedPath.value)
-    : -1;
+
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+    event.preventDefault();
+    selectAll();
+    return;
+  }
+
+  const currentIdx = focusedPath.value ? paths.indexOf(focusedPath.value) : -1;
 
   if (event.key === "ArrowDown") {
     event.preventDefault();
-    moveSelection(currentIdx < 0 ? 0 : currentIdx + 1);
+    moveSelection(currentIdx < 0 ? 0 : currentIdx + 1, event.shiftKey);
   } else if (event.key === "ArrowUp") {
     event.preventDefault();
-    moveSelection(currentIdx < 0 ? paths.length - 1 : currentIdx - 1);
+    moveSelection(currentIdx < 0 ? paths.length - 1 : currentIdx - 1, event.shiftKey);
   } else if (event.key === "ArrowRight") {
     if (currentIdx < 0) return;
     event.preventDefault();
@@ -625,7 +722,7 @@ function handleKeydown(event: KeyboardEvent) {
     }
     const parent = dirname(row.path);
     if (parent && parent !== props.rootPath && entryIndexByPath.value.has(parent)) {
-      selectedPath.value = parent;
+      selectOnly(parent);
     }
   } else if (event.key === "Enter") {
     if (currentIdx < 0) return;
@@ -645,7 +742,7 @@ watch(
     expanded.clear();
     pendingCreate.value = null;
     renaming.value = null;
-    selectedPath.value = null;
+    selectOnly(null);
     isSearchOpen.value = false;
     isSearchActive.value = false;
     closeMenu();
@@ -689,10 +786,20 @@ watch(() => props.gitDecorations, () => {
   patchTreeSnapshot(visible);
 });
 
+// 行集合变化（目录折叠、刷新、重命名中）后剔除已不可见的选中项，
+// 避免选择集里残留"幽灵路径"参与批量删除。
 watch(rows, () => {
-  if (selectedPath.value && !entryIndexByPath.value.has(selectedPath.value)) {
-    selectedPath.value = null;
+  const index = entryIndexByPath.value;
+  const selected = selectedPaths.value;
+  if (selected.size > 0) {
+    const next = new Set<string>();
+    for (const path of selected) {
+      if (index.has(path)) next.add(path);
+    }
+    if (next.size !== selected.size) selectedPaths.value = next;
   }
+  if (focusedPath.value && !index.has(focusedPath.value)) focusedPath.value = null;
+  if (anchorPath.value && !index.has(anchorPath.value)) anchorPath.value = null;
 });
 
 onBeforeUnmount(() => {
@@ -886,7 +993,7 @@ defineExpose({
               v-for="row in virtualRows"
               :key="row.key"
               :row="row"
-              :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPath === row.path"
+              :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPaths.has(row.path)"
               @entry-click="handleEntryClick"
               @begin-rename="beginRename"
               @commit-rename="commitRename"
@@ -905,7 +1012,7 @@ defineExpose({
               v-for="row in rows"
               :key="row.key"
               :row="row"
-              :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPath === row.path"
+              :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPaths.has(row.path)"
               @entry-click="handleEntryClick"
               @begin-rename="beginRename"
               @commit-rename="commitRename"
@@ -930,7 +1037,7 @@ defineExpose({
       @duplicate="duplicatePath"
       @create="beginCreate"
       @rename="beginRename"
-      @delete-path="deletePath"
+      @delete-paths="deletePaths"
     />
   </aside>
 </template>

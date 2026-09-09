@@ -61,6 +61,8 @@ const emit = defineEmits<{
   "request-settings": [tab?: SettingsTab];
   "request-command-palette": [mode?: "commands" | "files"];
   "request-rename": [payload: { leafId: number; currentTitle: string }];
+  // 移除工作区需要二次确认，确认对话框由 MainApp 统一持有。
+  "request-remove-workspace": [id: string];
   "branch-change": [workspaceId: string, branch: string | null];
 }>();
 
@@ -461,7 +463,7 @@ defineExpose({
       @add-workspace="(env) => emit('add-workspace', env)"
       @open-in-new-window="emit('open-in-new-window')"
       @select-workspace="(id) => workspaces.setActive(id)"
-      @close-workspace="(id) => workspaces.removeWorkspace(id)"
+      @close-workspace="(id) => emit('request-remove-workspace', id)"
       @resize-width="(w) => workbenchLayout.setLeftSidebarWidth(w)"
       @open-diff="openSourceDiff"
       @open-history="openSourceHistory"

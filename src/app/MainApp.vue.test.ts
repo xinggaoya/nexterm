@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { NConfigProvider, NNotificationProvider } from "naive-ui";
 import { createPinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,7 +8,11 @@ import MainApp from "./MainApp.vue";
 import { i18n, setI18nLanguage } from "@/modules/i18n";
 import { applyTerminalSessionTheme } from "@/modules/terminal";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
-import { LOCAL_WORKSPACE, useWorkspaceRootPiniaStore } from "@/modules/workspace";
+import {
+  LOCAL_WORKSPACE,
+  useWorkspaceRootPiniaStore,
+  useWorkspacesPiniaStore,
+} from "@/modules/workspace";
 
 // MainApp 已完全重写为多工作区架构：WorkspaceBar + WorkspaceHost 栈，
 // 不再有单工作区 rootPath / openWorkspace / setEnv / switchWorkspace 等旧 API。
@@ -349,6 +353,57 @@ describe("MainApp.vue", () => {
     await nextTick();
 
     expect(workspaceRoot.pickWorkspaceDirectory).toHaveBeenCalledWith(wslEnv);
+  });
+
+  it("asks for confirmation before removing a workspace from the title bar", async () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const pinia = createPinia();
+    const workspaceRoot = useWorkspaceRootPiniaStore(pinia);
+    workspaceRoot.pickWorkspaceDirectory = vi.fn(async () => ({
+      path: "/repo",
+      env: LOCAL_WORKSPACE,
+    }));
+    const workspaces = useWorkspacesPiniaStore(pinia);
+
+    try {
+      const wrapper = mount(MainApp, {
+        attachTo: host,
+        global: { plugins: [pinia, i18n] },
+      });
+      await wrapper.find("[data-add-workspace]").trigger("click");
+      for (let i = 0; i < 10; i++) {
+        await flushPromises();
+        await nextTick();
+      }
+      expect(workspaces.workspaces).toHaveLength(1);
+      const id = workspaces.workspaces[0].id;
+
+      // 标题栏发出 closeWorkspace 后不应立即移除，而是弹出确认对话框。
+      const titleBar = wrapper.findComponent("[data-title-bar]") as VueWrapper;
+      titleBar.vm.$emit("closeWorkspace", id);
+      await flushPromises();
+      await nextTick();
+
+      expect(workspaces.workspaces).toHaveLength(1);
+      const dialog = document.body.querySelector(".n-dialog");
+      expect(dialog).not.toBeNull();
+      expect(dialog?.textContent).toContain("Remove workspace");
+      expect(dialog?.textContent).toContain("repo");
+
+      // 点击确认按钮才真正移除。
+      const confirmButton = Array.from(
+        dialog?.querySelectorAll<HTMLButtonElement>("button") ?? [],
+      ).find((button) => button.textContent?.trim() === "Remove");
+      expect(confirmButton).toBeDefined();
+      confirmButton?.click();
+      await flushPromises();
+      await nextTick();
+
+      expect(workspaces.workspaces).toHaveLength(0);
+    } finally {
+      wrapperCleanup(host);
+    }
   });
 
   it("opens settings inside the main window without invoking a Tauri settings window", async () => {

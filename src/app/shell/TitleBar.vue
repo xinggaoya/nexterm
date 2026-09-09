@@ -2,7 +2,6 @@
 import {
   SearchOutline,
   SettingsOutline,
-  SparklesOutline,
 } from "@vicons/ionicons5";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { NIcon } from "naive-ui";
@@ -24,7 +23,6 @@ defineProps<{
 const emit = defineEmits<{
   openCommandPalette: [];
   openSettings: [];
-  openAiAssistant: [];
   selectWorkspace: [id: string];
   closeWorkspace: [id: string];
   addWorkspace: [env: WorkspaceEnv];
@@ -83,7 +81,7 @@ async function startWindowDrag(event: PointerEvent) {
       />
     </div>
 
-    <!-- Right: command center + AI + settings + window controls -->
+    <!-- Right: command center + settings + window controls -->
     <div class="flex w-28 shrink-0 items-center justify-end gap-0.5 pr-1">
       <TooltipTitle :label="t('app.header.openCommandCenter')">
         <NextermIconButton
@@ -92,20 +90,6 @@ async function startWindowDrag(event: PointerEvent) {
           @click="emit('openCommandPalette')"
         >
           <NIcon :component="SearchOutline" :size="14" />
-        </NextermIconButton>
-      </TooltipTitle>
-      <TooltipTitle :label="t('app.header.openAiAssistant')">
-        <NextermIconButton
-          data-open-ai-assistant
-          :aria-label="t('app.header.openAiAssistant')"
-          class="group"
-          @click="emit('openAiAssistant')"
-        >
-          <NIcon
-            :component="SparklesOutline"
-            :size="14"
-            class="transition-colors group-hover:text-primary"
-          />
         </NextermIconButton>
       </TooltipTitle>
       <TooltipTitle :label="t('common.settings')">

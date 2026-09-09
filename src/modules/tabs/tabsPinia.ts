@@ -65,6 +65,19 @@ function gitHistoryTitle(refName: string | null, allRefs: boolean): string {
 }
 
 /**
+ * 关闭栈快照的深拷贝。必须走 JSON 往返，不能用 structuredClone：
+ * pinia 深层响应式下，focusPane / updateTab 这类 spread 更新会把响应式
+ * Proxy 原样存回 raw tab 的嵌套字段（paneTree），toRaw 只剥顶层代理；
+ * structuredClone 遇到 Proxy 抛 DataCloneError，且抛在 tab 从列表移除
+ * 之前，导致终端 tab 永远关不掉（editor tab 无嵌套对象字段所以幸免）。
+ * Tab 是纯 JSON 数据（string/number/boolean/null/数组/普通对象），
+ * JSON 序列化读写均穿透 Proxy，得到的是无代理纯净快照。
+ */
+function cloneTabSnapshot(tab: Tab): Tab {
+  return JSON.parse(JSON.stringify(toRaw(tab))) as Tab;
+}
+
+/**
  * Tabs store, partitioned by workspace.
  *
  * Each workspace owns an independent tab list + active id + closed-tab undo
@@ -580,7 +593,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     if (idx < 0) return;
     const target = list[idx];
     const stack = closedStackByWorkspace.value[wsId] ?? [];
-    const snapshot = structuredClone(toRaw(target)) as Tab;
+    const snapshot = cloneTabSnapshot(target);
     closedStackByWorkspace.value = {
       ...closedStackByWorkspace.value,
       [wsId]: [...stack, snapshot].slice(-CLOSED_STACK_MAX),

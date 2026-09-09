@@ -86,6 +86,7 @@ const fileTarget = {
   path: "/repo/README.md",
   name: "README.md",
   isDir: false,
+  paths: ["/repo/README.md"],
   x: 10,
   y: 20,
   source: "row" as const,
@@ -95,6 +96,7 @@ const dirTarget = {
   path: "/repo/src",
   name: "src",
   isDir: true,
+  paths: ["/repo/src"],
   x: 30,
   y: 40,
   source: "row" as const,
@@ -104,15 +106,27 @@ const rootTarget = {
   path: "/repo",
   name: "repo",
   isDir: true,
+  paths: [] as string[],
   x: 0,
   y: 0,
   source: "root" as const,
 };
 
+const multiTarget = {
+  path: "/repo/package.json",
+  name: "package.json",
+  isDir: false,
+  paths: ["/repo/src", "/repo/README.md", "/repo/package.json"],
+  x: 10,
+  y: 20,
+  source: "row" as const,
+};
+
 type AnyTarget =
   | typeof fileTarget
   | typeof dirTarget
-  | typeof rootTarget;
+  | typeof rootTarget
+  | typeof multiTarget;
 
 function mountMenu(target: AnyTarget) {
   return mount(ExplorerContextMenu, {
@@ -279,21 +293,57 @@ describe("ExplorerContextMenu.vue", () => {
     expect(wrapper.emitted("rename")).toEqual([["/repo/README.md"]]);
   });
 
-  it("requires two clicks before deletePath fires", async () => {
+  it("requires two clicks before deletePaths fires", async () => {
     const wrapper = mountMenu(fileTarget);
     await flush();
 
-    // 第一次点击切换 label 为「Click again to confirm」，不发 deletePath。
+    // 第一次点击切换 label 为「Click again to confirm」，不发 deletePaths。
     await wrapper.find("[data-menu-action='delete']").trigger("click");
     await flush();
-    expect(wrapper.emitted("deletePath")).toBeUndefined();
+    expect(wrapper.emitted("deletePaths")).toBeUndefined();
     expect(wrapper.text()).toContain("Click again to confirm");
 
     // 第二次点击才真正删除。
     await wrapper.find("[data-menu-action='delete']").trigger("click");
     await flush();
-    expect(wrapper.emitted("deletePath")).toEqual([["/repo/README.md"]]);
+    expect(wrapper.emitted("deletePaths")).toEqual([[["/repo/README.md"]]]);
     expect(wrapper.emitted("close")).toBeTruthy();
+  });
+
+  it("collapses to batch-safe actions and deletes every selected path for a multi-selection", async () => {
+    const wrapper = mountMenu(multiTarget);
+    await flush();
+
+    // 多选时单项动作（打开 / 重命名 / 副本 / 新建 / 终端）全部隐藏。
+    for (const action of [
+      "open",
+      "open-preview",
+      "rename",
+      "duplicate",
+      "new-file",
+      "new-folder",
+      "open-in-terminal",
+      "reveal",
+    ]) {
+      expect(wrapper.find(`[data-menu-action='${action}']`).exists()).toBe(false);
+    }
+    expect(wrapper.find("[data-menu-action='copy-path']").exists()).toBe(true);
+    expect(wrapper.text()).toContain("Delete 3 items");
+
+    await wrapper.find("[data-menu-action='copy-path']").trigger("click");
+    await flush();
+    expect(copyToClipboard).toHaveBeenLastCalledWith(
+      "/repo/src\n/repo/README.md\n/repo/package.json",
+    );
+
+    await wrapper.find("[data-menu-action='delete']").trigger("click");
+    await flush();
+    expect(wrapper.emitted("deletePaths")).toBeUndefined();
+    await wrapper.find("[data-menu-action='delete']").trigger("click");
+    await flush();
+    expect(wrapper.emitted("deletePaths")).toEqual([
+      [["/repo/src", "/repo/README.md", "/repo/package.json"]],
+    ]);
   });
 
   it("emits close on clickoutside", async () => {
