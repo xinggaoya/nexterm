@@ -546,6 +546,22 @@ defineExpose({
       </TopBar>
 
       <div class="flex min-h-0 flex-1">
+        <Canvas
+          ref="canvas"
+          :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
+          :active-tab="activeTab"
+          :tabs="tabs.workspaceTabs(workspace.id)"
+          :tabs-store="{
+            focusPane: (tabId, leafId) => tabs.focusPane(tabId, leafId, workspace.id),
+            openCommitFileDiffTab: (input) => tabs.openCommitFileDiffTab(input, workspace.id),
+            setLeafCwd: (leafId, cwd) => tabs.setLeafCwd(leafId, cwd, workspace.id),
+            setLeafTitle: (leafId, titleVal) => tabs.setLeafTitle(leafId, titleVal, workspace.id),
+            updateTab: (id, patch) => tabs.updateTab(id, patch, workspace.id),
+          }"
+          :workspace-fs-event="normalizedFsEvent"
+          @history-ref-change="onHistoryRefChange"
+        />
+
         <WorkspacePanel
           ref="panel"
           :tab="panelTab"
@@ -570,22 +586,6 @@ defineExpose({
           @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
           @branch-change="(branch) => gitBranch = branch"
           @decorations-change="onDecorationChange"
-        />
-
-        <Canvas
-          ref="canvas"
-          :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
-          :active-tab="activeTab"
-          :tabs="tabs.workspaceTabs(workspace.id)"
-          :tabs-store="{
-            focusPane: (tabId, leafId) => tabs.focusPane(tabId, leafId, workspace.id),
-            openCommitFileDiffTab: (input) => tabs.openCommitFileDiffTab(input, workspace.id),
-            setLeafCwd: (leafId, cwd) => tabs.setLeafCwd(leafId, cwd, workspace.id),
-            setLeafTitle: (leafId, titleVal) => tabs.setLeafTitle(leafId, titleVal, workspace.id),
-            updateTab: (id, patch) => tabs.updateTab(id, patch, workspace.id),
-          }"
-          :workspace-fs-event="normalizedFsEvent"
-          @history-ref-change="onHistoryRefChange"
         />
       </div>
 

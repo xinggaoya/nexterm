@@ -57,23 +57,24 @@ describe("visual system contract", () => {
     expect(strip).toContain("data-session-strip");
   });
 
-  it("docks the workspace panel instead of floating overlays", () => {
+  it("docks the workspace panel on the right of the canvas", () => {
     const host = readSource("../app/shell/WorkspaceHost.vue");
     const panel = readSource("../app/shell/WorkspacePanel.vue");
     const canvas = readSource("../app/shell/Canvas.vue");
 
-    // Host 组合:侧栏 → 顶栏(内嵌会话条) → 停靠面板 | 画布 → 状态坞。
+    // Host 组合:侧栏 → 顶栏(内嵌会话条) → 画布 | 停靠面板 → 状态坞。
     expect(host).toMatch(/<Sidebar[\s\S]*?<TopBar[\s\S]*?<SessionStrip/);
-    expect(host).toMatch(/<WorkspacePanel[\s\S]*?<Canvas[\s\S]*?<StatusDock/);
+    expect(host).toMatch(/<Canvas[\s\S]*?<WorkspacePanel[\s\S]*?<StatusDock/);
 
-    // 面板是停靠列(非浮层):三标签内容全部挂载在面板内。
-    expect(panel).toContain("data-workspace-panel");
-    expect(panel).toContain("data-panel-resizer");
+    // 面板停靠在画布右侧(非浮层):三标签内容全部挂载在面板内,
+    // 拖宽手柄在面板左缘(向左拖加宽)。
+    expect(panel).toContain("data-workspace-panel-right");
+    expect(panel).toMatch(/data-panel-resizer[\s\S]*?left-0/);
     expect(panel).toMatch(/<FileExplorer/);
     expect(panel).toMatch(/<SourceControlPanel/);
     expect(panel).toMatch(/<TaskConsole/);
 
-    // 画布是纯内容层:终端铺满,不再承载任何浮层/面板。
+    // 画布是纯内容层:终端铺满中间区域,不再承载任何浮层/面板。
     expect(canvas).toMatch(/<TerminalWorkspace/);
     expect(canvas).not.toContain("OverlayPanel");
     expect(canvas).not.toContain("FileExplorer");

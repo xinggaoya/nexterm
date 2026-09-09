@@ -122,14 +122,14 @@ describe("WorkspacePanel.vue", () => {
     taskConsole.taskRunList.value = [];
   });
 
-  it("拖拽右缘手柄调宽:向右拖加宽并发出 resize-width", async () => {
+  it("拖拽左缘手柄调宽:向左拖加宽并发出 resize-width", async () => {
     const wrapper = mountPanel({ width: 300 });
 
     wrapper.find("[data-panel-resizer]").element.dispatchEvent(
       new MouseEvent("pointerdown", { clientX: 300, button: 0, bubbles: true }),
     );
-    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 360, bubbles: true }));
-    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 360, bubbles: true }));
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 240, bubbles: true }));
+    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 240, bubbles: true }));
 
     expect(wrapper.emitted("resize-width")).toEqual([[360]]);
     wrapper.unmount();

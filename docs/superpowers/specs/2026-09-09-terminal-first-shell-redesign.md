@@ -111,3 +111,11 @@ i18n:新增 `app.rail.*`、`app.dashboard.*` 等键(zh-CN/en-US)。
 3. **Canvas 回归纯内容层**:终端/编辑器等铺满剩余宽度,不再承载任何浮层;各内容层加 `data-tab-layer` 标记。
 4. 命令系统面板语义:`leftPanelOpen` = 更改标签、`rightPanelOpen` = 文件树标签(写入即切换标签);`openTaskConsole` = 切到任务标签。
 5. 视觉契约(visualSystem.test.ts)同步更新为停靠结构断言。
+
+## 8. 修订 v3.2 — 面板移至右侧(2026-09-09,用户反馈后)
+
+用户反馈:终端和内容应放在中间区域,文件树和更改放右侧栏。修订:
+
+1. WorkspaceHost 行布局改为 `Sidebar | [TopBar / (Canvas | WorkspacePanel) / StatusDock]`——画布居中,停靠面板移到右缘。
+2. WorkspacePanel 拖宽手柄从右缘改为**左缘**(向左拖加宽),DOM 顺序 Canvas 在前、面板在后;新增 `data-workspace-panel-right` 标记。
+3. 契约测试同步:断言 `<Canvas ... <WorkspacePanel` 次序与左缘手柄。

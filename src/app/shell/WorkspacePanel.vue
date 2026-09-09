@@ -98,7 +98,7 @@ function selectTab(key: WorkspacePanelTab): void {
   if (key !== props.tab) emit("update:tab", key);
 }
 
-// ── 右缘拖宽(持久化由宿主负责) ────────────────────────────────────────
+// ── 左缘拖宽(面板位于画布右侧;持久化由宿主负责) ─────────────────────
 let detachMove: (() => void) | null = null;
 let detachUp: (() => void) | null = null;
 
@@ -109,9 +109,10 @@ function onResizeStart(e: PointerEvent) {
 
   function onMove(ev: PointerEvent) {
     const dx = ev.clientX - startX;
+    // 向左拖(dx<0)加宽面板,与旧版右缘卡片拖拽手感一致。
     const next = Math.min(
       SIDE_PANEL_MAX,
-      Math.max(SIDE_PANEL_MIN, Math.round(startWidth + dx)),
+      Math.max(SIDE_PANEL_MIN, Math.round(startWidth - dx)),
     );
     emit("resize-width", next);
   }
@@ -153,6 +154,7 @@ defineExpose({
     class="relative flex h-full min-h-0 shrink-0 flex-col border-r border-border bg-sidebar"
     :style="{ width: `${width}px` }"
     data-workspace-panel
+    data-workspace-panel-right
   >
     <!-- 标签头 -->
     <header class="flex h-11 shrink-0 items-center gap-1 border-b border-border/70 px-2">
@@ -256,10 +258,10 @@ defineExpose({
       </div>
     </div>
 
-    <!-- 右缘拖宽手柄 -->
+    <!-- 左缘拖宽手柄(面板在画布右侧,向左拖加宽) -->
     <div
       data-panel-resizer
-      class="absolute inset-y-0 right-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors duration-[var(--dur-fast)] hover:bg-primary/30"
+      class="absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors duration-[var(--dur-fast)] hover:bg-primary/30"
       @pointerdown="onResizeStart"
     />
   </aside>
