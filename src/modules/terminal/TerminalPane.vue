@@ -433,7 +433,6 @@ defineExpose({
   position: relative;
   background: var(--term-bg);
   overflow: hidden;
-  padding: var(--term-padding-y, 4px) var(--term-padding-x, 8px);
 }
 .terminal-pane.focused .terminal-pane-body {
   outline: 0;
@@ -444,6 +443,14 @@ defineExpose({
 .terminal-pane-body > .xterm {
   height: 100% !important;
   width: 100% !important;
+  /*
+   * 内边距必须挂在 .xterm 自身而不是 .terminal-pane-body:FitAddon 用父容器
+   * getComputedStyle().width 推列数,Tailwind preflight 的 border-box 会让该值
+   * 连 padding 一起计入,父容器上的 padding 就不会被扣掉,多算出的两列会把
+   * 内容顶到滚动条下面。而 .xterm 自身的 padding 是 FitAddon 公式显式读取并
+   * 减去的项(elementPadding),挂在它上面才能正确为滚动条留出沟槽。
+   */
+  padding: var(--term-padding-y, 4px) var(--term-padding-x, 8px);
 }
 .terminal-pane-body .xterm-viewport {
   background-color: transparent !important;
