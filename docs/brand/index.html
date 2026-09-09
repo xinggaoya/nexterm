@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Nexterm · Brand Board v3</title>
+<style>
+  /* ===== 基础 ===== */
+  :root {
+    --bg-page: #0a0c10;
+    --bg-card: #14171d;
+    --bg-card-2: #1b1f27;
+    --line: #262b34;
+    --line-2: #303641;
+    --ink: #e6eaf2;
+    --ink-2: #a9b0bd;
+    --ink-3: #6e7686;
+    --cyan: #22d3ee;
+    --lime: #bef264;
+    --mint: #5eead4;
+    --white: #f4f8fb;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg-page); color: var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, "Helvetica Neue", sans-serif; font-feature-settings: "ss01", "cv11"; -webkit-font-smoothing: antialiased; }
+  body { padding: 64px 48px 96px; max-width: 1400px; margin: 0 auto; }
+  code, pre, .mono { font-family: ui-monospace, "JetBrains Mono", "Cascadia Code", Menlo, monospace; }
+  h1 { font-size: 48px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+  h2 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; margin: 64px 0 16px; padding-top: 32px; border-top: 1px solid var(--line); }
+  h2 .num { color: var(--ink-3); margin-right: 12px; font-family: ui-monospace, monospace; font-size: 18px; font-weight: 400; }
+  .lede { color: var(--ink-2); font-size: 16px; line-height: 1.6; max-width: 720px; margin: 0 0 48px; }
+
+  /* ===== 顶部条 ===== */
+  .topbar { display: flex; align-items: center; gap: 16px; padding-bottom: 32px; border-bottom: 1px solid var(--line); margin-bottom: 48px; }
+  .topbar .logo { width: 48px; height: 48px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(34,211,238,0.18); }
+  .topbar .logo img { display: block; width: 100%; height: 100%; }
+  .topbar .name { font-weight: 700; font-size: 20px; letter-spacing: -0.01em; }
+  .topbar .meta { margin-left: auto; color: var(--ink-3); font-size: 13px; font-family: ui-monospace, monospace; }
+
+  /* ===== 网格 ===== */
+  .grid { display: grid; gap: 16px; }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  .grid-5 { grid-template-columns: repeat(5, 1fr); }
+  .grid-6 { grid-template-columns: repeat(6, 1fr); }
+  .card { background: var(--bg-card); border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
+  .card .label { color: var(--ink-3); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 12px; font-family: ui-monospace, monospace; }
+  .card .desc { color: var(--ink-2); font-size: 13px; line-height: 1.5; margin-top: 12px; }
+
+  /* ===== 对比 ===== */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .compare .cell { background: var(--bg-card); border: 1px solid var(--line); border-radius: 18px; padding: 32px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+  .compare .cell h3 { margin: 0; font-size: 14px; color: var(--ink-3); font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+  .compare .cell .big { width: 240px; height: 240px; display: grid; place-items: center; border-radius: 24px; overflow: hidden; }
+  .compare .old .big { background: #fafafa; }
+  .compare .old .big svg, .compare .old .big img { width: 200px; height: 200px; }
+  .compare .new .big { background: transparent; }
+  .compare .new .big svg, .compare .new .big img { width: 200px; height: 200px; }
+  .compare .meta { color: var(--ink-3); font-size: 12px; font-family: ui-monospace, monospace; }
+  .compare .meta strong { color: var(--ink); font-weight: 600; }
+
+  /* ===== 多尺寸 ===== */
+  .sizes { display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap; padding: 16px 8px; }
+  .size { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .size .px { font-size: 11px; color: var(--ink-3); font-family: ui-monospace, monospace; }
+  .size img { display: block; border-radius: 4px; image-rendering: -webkit-optimize-contrast; }
+
+  /* ===== 多背景 ===== */
+  .bg-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .bg-cell { aspect-ratio: 1; border-radius: 18px; display: grid; place-items: center; overflow: hidden; position: relative; }
+  .bg-cell img { width: 64%; height: 64%; display: block; }
+  .bg-cell.dark { background: #0a0d12; }
+  .bg-cell.mid { background: #1b1f27; }
+  .bg-cell.light { background: #f4f5f7; }
+  .bg-cell.brand { background: linear-gradient(135deg, #22d3ee 0%, #5eead4 50%, #bef264 100%); }
+  .bg-cell.photo { background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #475569 100%); position: relative; }
+  .bg-cell.photo::before { content: ""; position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px); background-size: 8px 8px; }
+  .bg-name { position: absolute; bottom: 8px; left: 8px; font-size: 10px; color: rgba(255,255,255,0.5); font-family: ui-monospace, monospace; }
+  .bg-cell.light .bg-name { color: rgba(0,0,0,0.4); }
+
+  /* ===== 场景模拟 ===== */
+  .scene { background: var(--bg-card); border: 1px solid var(--line); border-radius: 18px; padding: 24px; overflow: hidden; }
+  .scene-title { color: var(--ink-3); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px; font-family: ui-monospace, monospace; }
+
+  /* macOS dock */
+  .dock { background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%); border-radius: 16px; padding: 14px 16px; display: flex; gap: 14px; align-items: flex-end; border: 1px solid rgba(255,255,255,0.06); }
+  .dock .item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .dock .item img { width: 56px; height: 56px; border-radius: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+  .dock .item .name { font-size: 10px; color: rgba(255,255,255,0.85); }
+  .dock .item.active img { box-shadow: 0 0 0 2px rgba(34,211,238,0.6), 0 6px 16px rgba(34,211,238,0.25); }
+
+  /* Windows taskbar */
+  .taskbar { background: #1c1f26; border-radius: 12px; padding: 8px 12px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line-2); }
+  .taskbar .win { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; }
+  .taskbar .start { color: #5eead4; font-weight: 700; font-size: 16px; }
+  .taskbar .pin { width: 28px; height: 28px; border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 1px rgba(34,211,238,0.5); }
+  .taskbar .pin img { width: 100%; height: 100%; }
+  .taskbar .clock { margin-left: auto; color: rgba(255,255,255,0.8); font-size: 12px; font-family: ui-monospace, monospace; }
+
+  /* Android home */
+  .android { background: linear-gradient(180deg, #1a1f2e 0%, #0e1320 100%); border-radius: 28px; padding: 16px; aspect-ratio: 9/16; max-width: 280px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; border: 4px solid #000; position: relative; }
+  .android .notch { width: 80px; height: 16px; background: #000; border-radius: 0 0 12px 12px; margin: -16px auto 0; }
+  .android .apps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 0 8px; flex: 1; align-content: center; }
+  .android .app { aspect-ratio: 1; border-radius: 18px; overflow: hidden; background: rgba(255,255,255,0.05); }
+  .android .app img { width: 100%; height: 100%; }
+  .android .app-name { color: rgba(255,255,255,0.85); font-size: 9px; text-align: center; margin-top: 4px; }
+  .android .app-wrap { display: flex; flex-direction: column; align-items: center; }
+  .android .clock-strip { color: rgba(255,255,255,0.9); font-size: 24px; font-weight: 600; font-family: ui-monospace, monospace; padding: 8px 16px 0; letter-spacing: -0.02em; }
+
+  /* iOS home */
+  .ios { background: linear-gradient(180deg, #fcd5ce 0%, #f8a4c4 40%, #a18cd1 100%); border-radius: 36px; padding: 12px; aspect-ratio: 9/19; max-width: 280px; margin: 0 auto; border: 4px solid #000; position: relative; display: flex; flex-direction: column; gap: 8px; }
+  .ios .notch { width: 100px; height: 24px; background: #000; border-radius: 0 0 16px 16px; margin: -12px auto 0; }
+  .ios .apps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 24px 8px 0; flex: 1; align-content: center; }
+  .ios .app { aspect-ratio: 1; border-radius: 22%; overflow: hidden; background: rgba(255,255,255,0.2); box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+  .ios .app img { width: 100%; height: 100%; }
+  .ios .dock-area { background: rgba(255,255,255,0.25); backdrop-filter: blur(20px); border-radius: 24px; padding: 12px; margin: 8px 4px; display: flex; justify-content: space-around; }
+
+  /* ===== 调色板 ===== */
+  .swatches { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
+  .swatch { aspect-ratio: 1; border-radius: 14px; border: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; font-family: ui-monospace, monospace; }
+  .swatch .name { font-weight: 600; }
+  .swatch .hex { opacity: 0.7; font-size: 10px; }
+  .swatch.dark-bg { color: #fff; }
+  .swatch.light-bg { color: #0a0d12; }
+
+  /* ===== 几何构造 ===== */
+  .geometry { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; }
+  .geometry .diagram { aspect-ratio: 1; max-width: 480px; margin: 0 auto; }
+  .geometry .spec { background: var(--bg-card-2); border-radius: 14px; padding: 20px; }
+  .geometry .spec table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .geometry .spec td { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .geometry .spec td:first-child { color: var(--ink-3); width: 50%; }
+  .geometry .spec td:last-child { font-family: ui-monospace, monospace; color: var(--ink); }
+
+  /* ===== 单色变体 ===== */
+  .mono-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .mono-cell { aspect-ratio: 1; border-radius: 18px; display: grid; place-items: center; padding: 12px; }
+  .mono-cell img { width: 75%; height: 75%; }
+  .mono-cell.white { background: #ffffff; }
+  .mono-cell.tinted { background: linear-gradient(135deg, #22d3ee, #bef264); }
+  .mono-cell.dark { background: #0a0d12; }
+  .mono-cell.lavender { background: linear-gradient(135deg, #c4b5fd, #f0abfc); }
+
+  /* ===== Live animated demo ===== */
+  .hero-anim { display: grid; grid-template-columns: 1.1fr 1fr; gap: 32px; align-items: center; background: linear-gradient(135deg, #0a0d12 0%, #161d26 100%); border: 1px solid var(--line); border-radius: 22px; padding: 48px; margin-bottom: 48px; overflow: hidden; position: relative; }
+  .hero-anim::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 70% 30%, rgba(34, 211, 238, 0.18) 0%, transparent 50%); pointer-events: none; }
+  .hero-anim .anim-stage { display: grid; place-items: center; }
+  .hero-anim .anim-stage object, .hero-anim .anim-stage embed { width: 360px; height: 360px; }
+  .hero-anim .anim-meta { position: relative; z-index: 1; }
+  .hero-anim .anim-meta h2 { margin: 0 0 12px; padding: 0; border: none; font-size: 32px; letter-spacing: -0.02em; color: #fff; }
+  .hero-anim .anim-meta p { color: rgba(255,255,255,0.65); font-size: 15px; line-height: 1.6; margin: 0 0 24px; }
+  .hero-anim .anim-meta ul { margin: 0; padding-left: 0; list-style: none; }
+  .hero-anim .anim-meta li { color: rgba(255,255,255,0.5); font-size: 13px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; font-family: ui-monospace, monospace; }
+  .hero-anim .anim-meta li strong { color: rgba(255,255,255,0.9); font-weight: 500; }
+
+  /* ===== Lockup 展示 ===== */
+  .lockup-row { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .lockup-cell { border-radius: 18px; padding: 56px 48px; display: flex; align-items: center; gap: 48px; overflow: hidden; position: relative; }
+  .lockup-cell.dark { background: linear-gradient(135deg, #0a0d12 0%, #1b1f27 100%); color: #f4f8fb; border: 1px solid var(--line); }
+  .lockup-cell.light { background: linear-gradient(135deg, #f4f5f7 0%, #e6e8eb 100%); color: #0a0d12; border: 1px solid #d8dce3; }
+  .lockup-cell.brand { background: linear-gradient(135deg, #22d3ee 0%, #5eead4 50%, #bef264 100%); color: #0a0d12; }
+  .lockup-cell img { width: 64px; height: 64px; flex-shrink: 0; }
+  .lockup-cell .lockup-text { flex: 1; min-width: 0; }
+  .lockup-cell .lockup-text svg { width: 100%; max-width: 480px; height: auto; display: block; }
+  .lockup-cell .lockup-tag { color: currentColor; opacity: 0.5; font-size: 12px; font-family: ui-monospace, monospace; }
+
+  /* ===== 杂项 ===== */
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--bg-card-2); border: 1px solid var(--line); font-size: 12px; color: var(--ink-2); font-family: ui-monospace, monospace; }
+  .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo"><img src="../../src-tauri/icons/128x128.png" alt="Nexterm"></div>
+  <div class="name">Nexterm · Brand Board v3.1</div>
+  <div class="meta">N × Cursor · 2024 · animated</div>
+</header>
+
+<!-- Live animated hero -->
+<div class="hero-anim">
+  <div class="anim-stage">
+    <object data="./logo-mark-animated.svg" type="image/svg+xml" aria-label="Nexterm animated mark"></object>
+  </div>
+  <div class="anim-meta">
+    <h2>光标会呼吸。</h2>
+    <p>光标方块每 1.4 秒呼吸一次——与终端光标的自然 blink 节奏同频。让 LOGO 不只是一个静态符号，而是一个<strong style="color:#fff">活着</strong>的标志。</p>
+    <ul>
+      <li><span>节奏</span><strong>1.4s ease-in-out infinite</strong></li>
+      <li><span>外发光</span><strong>opacity 0.18 ↔ 0.55</strong></li>
+      <li><span>光标主体</span><strong>scale 0.985 ↔ 1.000 + opacity 0.68 ↔ 1.00</strong></li>
+      <li><span>N 字符</span><strong>scale 1.000 ↔ 1.004 (微)</strong></li>
+      <li><span>无障碍</span><strong>prefers-reduced-motion 时停止</strong></li>
+    </ul>
+  </div>
+</div>
+
+<h1>下一代终端的品牌语言</h1>
+<p class="lede">几何等宽笔画 N · 右柱演化为发光 cyan 光标方块。N 是「Next」，光标是「Terminal」——两个基因合而为一。</p>
+
+<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:48px;">
+  <span class="pill"><span class="dot"></span>v3.1 · electric + acid</span>
+  <span class="pill"><span class="dot" style="background:var(--lime)"></span>含光标呼吸动画</span>
+  <span class="pill"><span class="dot" style="background:var(--mint)"></span>单一事实源 SVG</span>
+  <span class="pill"><span class="dot" style="background:#fff"></span>README / 文档资产</span>
+</div>
+
+<h2><span class="num">01</span>新旧对比</h2>
+<div class="compare">
+  <div class="cell old">
+    <h3>BEFORE · v0.x 占位</h3>
+    <div class="big"><img src="../../src-tauri/icons/_old-icon.png" alt="old icon"></div>
+    <div class="meta">泛用"终端窗口" · 红绿黄按钮 · <strong>无品牌识别度</strong></div>
+  </div>
+  <div class="cell new">
+    <h3>AFTER · v3 设计</h3>
+    <div class="big"><img src="../../src-tauri/icons/icon.png" alt="new icon"></div>
+    <div class="meta">几何 N × 光标 · 唯一几何 · <strong>强品牌锚点</strong></div>
+  </div>
+</div>
+
+<h2><span class="num">02</span>全尺寸缩放（16 → 512）</h2>
+<div class="card">
+  <div class="label">从 favicon 到 macOS dock，每一个尺寸都保持识别度</div>
+  <div class="sizes">
+    <div class="size"><img src="../../src-tauri/icons/32x32.png" width="16" height="16"><div class="px">16</div></div>
+    <div class="size"><img src="../../src-tauri/icons/32x32.png" width="32" height="32"><div class="px">32</div></div>
+    <div class="size"><img src="../../src-tauri/icons/64x64.png" width="64" height="64"><div class="px">64</div></div>
+    <div class="size"><img src="../../src-tauri/icons/128x128.png" width="128" height="128"><div class="px">128</div></div>
+    <div class="size"><img src="../../src-tauri/icons/128x128@2x.png" width="180" height="180"><div class="px">256</div></div>
+    <div class="size"><img src="../../src-tauri/icons/Square310x310Logo.png" width="240" height="240"><div class="px">310</div></div>
+    <div class="size"><img src="../../src-tauri/icons/icon.png" width="280" height="280"><div class="px">512</div></div>
+  </div>
+</div>
+
+<h2><span class="num">03</span>多背景适配</h2>
+<div class="card">
+  <div class="label">同一 mark 在 5 种背景下的视觉一致性</div>
+  <div class="bg-row" style="margin-top:12px;">
+    <div class="bg-cell dark"><img src="../../src-tauri/icons/icon.png"><div class="bg-name">#0A0D12 deep</div></div>
+    <div class="bg-cell mid"><img src="../../src-tauri/icons/icon.png"><div class="bg-name">#1B1F27 mid</div></div>
+    <div class="bg-cell light"><img src="../../src-tauri/icons/icon.png"><div class="bg-name">#F4F5F7 light</div></div>
+    <div class="bg-cell brand"><img src="../../src-tauri/icons/icon.png"><div class="bg-name">brand gradient</div></div>
+    <div class="bg-cell photo"><img src="../../src-tauri/icons/icon.png"><div class="bg-name">noisy surface</div></div>
+  </div>
+  <p class="desc">深色背景表现最佳（光标发光充分）。浅色背景与品牌渐变下，光标的青绿色依然清晰可辨。</p>
+</div>
+
+<h2><span class="num">04</span>应用场景模拟</h2>
+<div class="grid grid-3">
+  <div class="scene">
+    <div class="scene-title">macOS · Dock</div>
+    <div class="dock">
+      <div class="item"><img src="../../src-tauri/icons/icon.png"><div class="name">Finder</div></div>
+      <div class="item active"><img src="../../src-tauri/icons/icon.png"><div class="name">Nexterm</div></div>
+      <div class="item"><img src="../../src-tauri/icons/icon.png"><div class="name">Safari</div></div>
+      <div class="item"><img src="../../src-tauri/icons/icon.png"><div class="name">Mail</div></div>
+      <div class="item"><img src="../../src-tauri/icons/icon.png"><div class="name">Notes</div></div>
+    </div>
+    <p class="desc">macOS 系统圆角处理（≈18%）叠加在设计圆角（22%）之上，dock 中辨识度极高。</p>
+  </div>
+
+  <div class="scene">
+    <div class="scene-title">Windows · Taskbar</div>
+    <div class="taskbar">
+      <div class="win start">⊞</div>
+      <div class="win"><img src="../../src-tauri/icons/32x32.png" width="20" height="20" style="border-radius:4px"></div>
+      <div class="pin"><img src="../../src-tauri/icons/32x32.png"></div>
+      <div class="clock">10:42</div>
+    </div>
+    <p class="desc">Windows 在 16/24/32 三种任务栏尺寸下都清晰。cyan 光标方块是唯一颜色锚点。</p>
+  </div>
+
+  <div class="scene">
+    <div class="scene-title">Android · Launcher</div>
+    <div class="android">
+      <div class="notch"></div>
+      <div class="clock-strip">10:42</div>
+      <div class="apps">
+        <div class="app-wrap"><div class="app"><img src="../../src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_round.png"></div><div class="app-name">Nexterm</div></div>
+        <div class="app-wrap"><div class="app"></div></div>
+        <div class="app-wrap"><div class="app"></div></div>
+        <div class="app-wrap"><div class="app"></div></div>
+        <div class="app-wrap"><div class="app"></div></div>
+        <div class="app-wrap"><div class="app"></div></div>
+        <div class="app-wrap"><div class="app"></div></div>
+        <div class="app-wrap"><div class="app"></div></div>
+      </div>
+    </div>
+    <p class="desc">Android adaptive icon：背景色 #0A0D12 + 前景 mark。系统蒙版（圆形/水滴/圆角矩形）裁剪后，mark 仍在 66dp 安全区内。</p>
+  </div>
+
+  <div class="scene">
+    <div class="scene-title">iOS · Home Screen</div>
+    <div class="ios">
+      <div class="notch"></div>
+      <div class="apps">
+        <div class="app"><img src="../../src-tauri/icons/ios/AppIcon-60x60@3x.png"></div>
+        <div class="app"></div>
+        <div class="app"></div>
+        <div class="app"></div>
+        <div class="app"></div>
+        <div class="app"></div>
+        <div class="app"></div>
+        <div class="app"></div>
+      </div>
+      <div class="dock-area">
+        <div style="width:46px;height:46px;border-radius:12px;background:rgba(255,255,255,0.3)"></div>
+        <div style="width:46px;height:46px;border-radius:12px;background:rgba(255,255,255,0.3)"></div>
+        <div style="width:46px;height:46px;border-radius:12px;background:rgba(255,255,255,0.3)"></div>
+        <div style="width:46px;height:46px;border-radius:12px;background:rgba(255,255,255,0.3)"></div>
+      </div>
+    </div>
+    <p class="desc">iOS 系统圆角（22.37%）+ drop shadow 处理后，与 Apple 原生应用图标视觉一致。</p>
+  </div>
+
+  <div class="scene">
+    <div class="scene-title">Browser · Favicon (16)</div>
+    <div style="display:flex; align-items:center; gap:16px; padding:8px 0;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:#2d2d2d;border-radius:8px;color:#fff;font-size:14px;">
+        <img src="../../src-tauri/icons/32x32.png" width="16" height="16">
+        <span>Nexterm — Terminal Dev Environment</span>
+      </div>
+    </div>
+    <p class="desc">浏览器标签页 16×16 favicon。三段式 N + 异色光标，缩到极限仍可识别。</p>
+  </div>
+
+  <div class="scene">
+    <div class="scene-title">Notification · Toast</div>
+    <div style="background:rgba(255,255,255,0.06);border-radius:12px;padding:14px 16px;display:flex;gap:12px;align-items:center;border:1px solid var(--line-2);">
+      <img src="../../src-tauri/icons/32x32.png" width="36" height="36" style="border-radius:8px">
+      <div>
+        <div style="color:var(--ink);font-size:13px;font-weight:600">Nexterm</div>
+        <div style="color:var(--ink-2);font-size:12px;margin-top:2px">Build completed · 2.3s</div>
+      </div>
+    </div>
+    <p class="desc">系统通知、托盘、任务栏浮窗的典型尺寸（24-48px）。</p>
+  </div>
+</div>
+
+<h2><span class="num">05</span>Android 13+ 单色变体</h2>
+<div class="card">
+  <div class="label">monochrome.svg · 系统按 launcher 主题色自动着色</div>
+  <div class="mono-row" style="margin-top:12px;">
+    <div class="mono-cell white"><img src="../../src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_monochrome.png"></div>
+    <div class="mono-cell tinted"><img src="../../src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_monochrome.png"></div>
+    <div class="mono-cell dark"><img src="../../src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_monochrome.png"></div>
+    <div class="mono-cell lavender"><img src="../../src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_monochrome.png"></div>
+  </div>
+  <p class="desc">Android 13+ Themed Icons API 用法。仅保留几何，去掉渐变/发光/阴影，依靠 launcher 主题色（系统级 Material You 派生色）着色。</p>
+</div>
+
+<h2><span class="num">06</span>几何构造</h2>
+<div class="geometry">
+  <div class="diagram">
+    <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
+      <defs>
+        <linearGradient id="bgG" x1="142" y1="872" x2="894" y2="140" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#0A0D12"/>
+          <stop offset="1" stop-color="#161D26"/>
+        </linearGradient>
+        <linearGradient id="curG" x1="712" y1="512" x2="712" y2="812" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#BEF264"/>
+          <stop offset="0.42" stop-color="#5EEAD4"/>
+          <stop offset="1" stop-color="#22D3EE"/>
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#bgG)"/>
+      <g fill="#F4F8FB">
+        <rect x="262" y="212" width="100" height="600" rx="16"/>
+        <path d="M 362 212 L 462 212 L 662 812 L 562 812 Z"/>
+        <rect x="662" y="212" width="100" height="300" rx="16"/>
+      </g>
+      <rect x="662" y="512" width="100" height="300" rx="16" fill="url(#curG)"/>
+
+      <!-- 标注线 -->
+      <g stroke="#22D3EE" stroke-width="3" fill="none" stroke-dasharray="8 6" opacity="0.6">
+        <line x1="262" y1="1024" x2="262" y2="212"/>
+        <line x1="362" y1="1024" x2="362" y2="212"/>
+        <line x1="262" y1="212" x2="362" y2="212"/>
+      </g>
+      <g font-family="ui-monospace, monospace" font-size="28" fill="#22D3EE" font-weight="600">
+        <text x="290" y="1050" text-anchor="middle">x=262</text>
+        <text x="312" y="200" text-anchor="middle">w=100</text>
+      </g>
+
+      <g stroke="#BEF264" stroke-width="3" fill="none" stroke-dasharray="8 6" opacity="0.7">
+        <line x1="662" y1="512" x2="1024" y2="512"/>
+        <line x1="762" y1="512" x2="762" y2="812"/>
+        <line x1="662" y1="512" x2="762" y2="512"/>
+      </g>
+      <g font-family="ui-monospace, monospace" font-size="28" fill="#BEF264" font-weight="600">
+        <text x="712" y="490" text-anchor="middle">cursor 100×300</text>
+        <text x="800" y="660">光标方块</text>
+      </g>
+
+      <!-- 边框安全区 -->
+      <rect x="64" y="64" width="896" height="896" rx="0" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="4 8" opacity="0.25"/>
+      <text x="512" y="50" text-anchor="middle" font-family="ui-monospace, monospace" font-size="20" fill="#fff" opacity="0.45">12.5% 安全边距</text>
+    </svg>
+  </div>
+  <div class="spec">
+    <table>
+      <tr><td>画布</td><td>1024 × 1024</td></tr>
+      <tr><td>圆角</td><td>rx=224 (≈22%)</td></tr>
+      <tr><td>背景渐变</td><td>#0A0D12 → #161D26 对角</td></tr>
+      <tr><td>N 笔宽</td><td>100 px</td></tr>
+      <tr><td>N 高度</td><td>600 px (212–812)</td></tr>
+      <tr><td>N 颜色</td><td>#F4F8FB terminal white</td></tr>
+      <tr><td>光标位置</td><td>右柱下半 (662,512)–(762,812)</td></tr>
+      <tr><td>光标渐变</td><td>#BEF264 → #5EEAD4 → #22D3EE</td></tr>
+      <tr><td>外发光</td><td>2 层 Gaussian blur (22 + 48)</td></tr>
+      <tr><td>安全边距</td><td>≥ 12.5% (128 px)</td></tr>
+      <tr><td>小尺寸策略</td><td>≥ 16 px 保留三段式 N</td></tr>
+    </table>
+  </div>
+</div>
+
+<h2><span class="num">07</span>设计令牌</h2>
+<div class="card">
+  <div class="label">7 个原子色，覆盖品牌全部场景</div>
+  <div class="swatches" style="margin-top:16px;">
+    <div class="swatch dark-bg" style="background:#0A0D12"><div class="name">bg-deep</div><div class="hex">#0A0D12</div></div>
+    <div class="swatch dark-bg" style="background:#161D26"><div class="name">bg-mid</div><div class="hex">#161D26</div></div>
+    <div class="swatch dark-bg" style="background:#2A3441"><div class="name">gloss-top</div><div class="hex">#2A3441</div></div>
+    <div class="swatch light-bg" style="background:#F4F8FB"><div class="name">ink-white</div><div class="hex">#F4F8FB</div></div>
+    <div class="swatch dark-bg" style="background:#22D3EE"><div class="name">accent-cyan</div><div class="hex">#22D3EE</div></div>
+    <div class="swatch dark-bg" style="background:#5EEAD4"><div class="name">accent-mint</div><div class="hex">#5EEAD4</div></div>
+    <div class="swatch light-bg" style="background:#BEF264"><div class="name">accent-lime</div><div class="hex">#BEF264</div></div>
+  </div>
+</div>
+
+<h2><span class="num">08</span>交付清单</h2>
+<div class="grid grid-2">
+  <div class="card">
+    <div class="label">SVG 源（单一事实源）</div>
+    <ul style="margin:8px 0 0;padding-left:20px;color:var(--ink-2);font-size:13px;line-height:1.8;">
+      <li><code>src-tauri/app-icon.svg</code> · 主图标 1024×1024</li>
+      <li><code>src-tauri/app-icon-fg.svg</code> · Android foreground 108dp</li>
+      <li><code>src-tauri/app-icon-bg.svg</code> · Android 背景 108dp</li>
+      <li><code>src-tauri/app-icon-monochrome.svg</code> · Android 13+ 单色</li>
+      <li><code>src-tauri/app-icon-manifest.json</code> · tauri icon 清单</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="label">派生 PNG/ICO/ICNS（52 个）</div>
+    <ul style="margin:8px 0 0;padding-left:20px;color:var(--ink-2);font-size:13px;line-height:1.8;">
+      <li><code>icons/icon.{png,ico,icns}</code> · 主图标 三平台</li>
+      <li><code>icons/32,64,128,128@2x.png</code> · Tauri bundle</li>
+      <li><code>icons/Square*.png</code> · Windows Store ×9</li>
+      <li><code>icons/android/mipmap-*/</code> · Android ×25</li>
+      <li><code>icons/ios/AppIcon-*.png</code> · iOS ×18</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="label">配置改动</div>
+    <ul style="margin:8px 0 0;padding-left:20px;color:var(--ink-2);font-size:13px;line-height:1.8;">
+      <li><code>tauri.conf.json</code> · <code>windows[0].icon</code> → 运行时窗口图标</li>
+      <li><code>icons/android/values/ic_launcher_background.xml</code> · <code>#fff</code> → <code>#0A0D12</code></li>
+      <li><code>package.json</code> · <code>icon:regen</code> / <code>icon:regen:verbose</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="label">重新生成</div>
+    <pre style="margin:8px 0 0;padding:14px;background:var(--bg-card-2);border-radius:8px;color:var(--cyan);font-size:12px;border:1px solid var(--line);">pnpm icon:regen</pre>
+    <p class="desc">改 SVG → 跑这条命令 → 整套装自动重新生成。</p>
+  </div>
+</div>
+
+<h2><span class="num">09</span>横版 Lockup（README / 文档）</h2>
+<div class="card">
+  <div class="label">logo-lockup.svg · 文字 fill="currentColor"，随容器 color 自适应深/浅背景</div>
+  <div class="lockup-row" style="margin-top:16px;">
+    <div class="lockup-cell dark">
+      <img src="./logo-mark.svg" alt="Nexterm mark">
+      <div class="lockup-text">
+        <object data="./logo-lockup.svg" type="image/svg+xml" style="color:#f4f8fb;display:block;" aria-label="Nexterm lockup on dark"></object>
+      </div>
+      <div class="lockup-tag">dark surface</div>
+    </div>
+    <div class="lockup-cell light">
+      <img src="./logo-mark.svg" alt="Nexterm mark" style="filter: invert(1) hue-rotate(180deg)">
+      <div class="lockup-text">
+        <object data="./logo-lockup.svg" type="image/svg+xml" style="color:#0a0d12;display:block;" aria-label="Nexterm lockup on light"></object>
+      </div>
+      <div class="lockup-tag">light surface</div>
+    </div>
+    <div class="lockup-cell brand">
+      <img src="./logo-mark.svg" alt="Nexterm mark" style="filter: brightness(0)">
+      <div class="lockup-text">
+        <object data="./logo-lockup.svg" type="image/svg+xml" style="color:#0a0d12;display:block;" aria-label="Nexterm lockup on brand gradient"></object>
+      </div>
+      <div class="lockup-tag">brand gradient</div>
+    </div>
+  </div>
+  <p class="desc" style="margin-top:16px;">深色背景用浅色文字，浅色背景用深色文字——单一资产适配任何上下文。光标渐变（cyan/lime）独立保持，永远是品牌色彩销点。</p>
+</div>
+
+<h2><span class="num">10</span>动画 mark</h2>
+<div class="card">
+  <div class="label">logo-mark-animated.svg · 光标呼吸（用于 README / 关于页 / 营销场景）</div>
+  <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+    <div style="background:linear-gradient(135deg, #0a0d12 0%, #161d26 100%);border-radius:18px;aspect-ratio:1;display:grid;place-items:center;">
+      <object data="./logo-mark-animated.svg" type="image/svg+xml" style="width:75%;height:75%;" aria-label="animated mark on dark"></object>
+    </div>
+    <div style="background:linear-gradient(135deg, #f4f5f7 0%, #e6e8eb 100%);border-radius:18px;aspect-ratio:1;display:grid;place-items:center;">
+      <object data="./logo-mark-animated.svg" type="image/svg+xml" style="width:75%;height:75%;" aria-label="animated mark on light"></object>
+    </div>
+    <div style="background:linear-gradient(135deg, #22d3ee 0%, #5eead4 50%, #bef264 100%);border-radius:18px;aspect-ratio:1;display:grid;place-items:center;">
+      <object data="./logo-mark-animated.svg" type="image/svg+xml" style="width:75%;height:75%;" aria-label="animated mark on brand gradient"></object>
+    </div>
+  </div>
+  <p class="desc" style="margin-top:12px;">同一 mark 3 种背景。动画呼吸节奏不受背景影响。</p>
+</div>
+
+<footer style="margin-top:96px;padding-top:32px;border-top:1px solid var(--line);color:var(--ink-3);font-size:12px;font-family:ui-monospace,monospace;display:flex;justify-content:space-between;">
+  <span>Nexterm Brand Board v3.1</span>
+  <span>animated · 4 SVG sources · 52 platforms</span>
+</footer>
+
+</body>
+</html>

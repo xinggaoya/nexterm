@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Nexterm Brand Mark · Animated（光标呼吸）
+  =========================================
+  用途：README badge / 关于页 / 启动画面 / 营销页（任何想"活"起来的场景）。
+  节奏：1.4s 一次呼吸（与终端光标 blink 节奏相近）。
+  与 app-icon.svg 几何完全一致，仅去掉圆角方框背景，加 CSS 动画。
+  静态场景会停在第一帧（呼吸峰值），所以也可以当 logo mark 使用。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Nexterm">
+  <defs>
+    <linearGradient id="inkGrad" x1="512" y1="212" x2="512" y2="812" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.45" stop-color="#F4F8FB"/>
+      <stop offset="1" stop-color="#DDE3EA"/>
+    </linearGradient>
+
+    <linearGradient id="cursorGrad" x1="712" y1="512" x2="712" y2="812" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#BEF264"/>
+      <stop offset="0.42" stop-color="#5EEAD4"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+
+    <linearGradient id="cursorHighlight" x1="712" y1="512" x2="712" y2="580" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <linearGradient id="cursorShadow" x1="712" y1="770" x2="712" y2="812" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0E7490" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0E7490" stop-opacity="0.55"/>
+    </linearGradient>
+
+    <filter id="cursorGlowWide" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="48"/>
+    </filter>
+    <filter id="cursorGlow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+
+    <clipPath id="nClip">
+      <rect x="262" y="212" width="100" height="600" rx="16"/>
+      <path d="M 362 212 L 462 212 L 662 812 L 562 812 Z"/>
+      <rect x="662" y="212" width="100" height="300" rx="16"/>
+    </clipPath>
+  </defs>
+
+  <style>
+    /* 光标主体呼吸（1.4s 周期，模拟终端光标 blink） */
+    .cursor-main {
+      animation: cursor-pulse 1.4s ease-in-out infinite;
+      transform-origin: 712px 662px;
+    }
+    /* 外发光同步呼吸（更强脉冲感） */
+    .cursor-halo {
+      animation: halo-pulse 1.4s ease-in-out infinite;
+    }
+    /* N 字符非常微弱的"活着"感（±0.4% 缩放） */
+    .mark-breath {
+      animation: mark-breath 4s ease-in-out infinite;
+      transform-origin: 512px 512px;
+    }
+
+    @keyframes cursor-pulse {
+      0%, 100% { opacity: 0.68; transform: scale(0.985); }
+      50%      { opacity: 1.00; transform: scale(1.000); }
+    }
+    @keyframes halo-pulse {
+      0%, 100% { opacity: 0.18; }
+      50%      { opacity: 0.55; }
+    }
+    @keyframes mark-breath {
+      0%, 100% { transform: scale(1.000); }
+      50%      { transform: scale(1.004); }
+    }
+
+    /* 尊重 prefers-reduced-motion */
+    @media (prefers-reduced-motion: reduce) {
+      .cursor-main, .cursor-halo, .mark-breath { animation: none; }
+    }
+  </style>
+
+  <g class="mark-breath">
+    <!-- N 字符 -->
+    <g fill="url(#inkGrad)">
+      <rect x="262" y="212" width="100" height="600" rx="16"/>
+      <path d="M 362 212 L 462 212 L 662 812 L 562 812 Z"/>
+      <rect x="662" y="212" width="100" height="300" rx="16"/>
+    </g>
+    <g fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="1.5" clip-path="url(#nClip)">
+      <rect x="262" y="212" width="100" height="600" rx="16"/>
+      <path d="M 362 212 L 462 212 L 662 812 L 562 812 Z"/>
+      <rect x="662" y="212" width="100" height="300" rx="16"/>
+    </g>
+
+    <!-- 光标方块（外发光 + 主体 + 内高光 + 阴影 + 内核反光） -->
+    <g class="cursor-halo">
+      <rect x="620" y="470" width="184" height="384" rx="22" fill="#22D3EE" filter="url(#cursorGlowWide)"/>
+    </g>
+    <g class="cursor-halo" style="animation-delay: 0.1s;">
+      <rect x="640" y="490" width="144" height="344" rx="20" fill="#22D3EE" filter="url(#cursorGlow)"/>
+    </g>
+
+    <g class="cursor-main">
+      <rect x="662" y="512" width="100" height="300" rx="16" fill="url(#cursorGrad)"/>
+      <rect x="666" y="516" width="92" height="68" rx="12" fill="url(#cursorHighlight)"/>
+      <rect x="666" y="770" width="92" height="38" rx="10" fill="url(#cursorShadow)"/>
+      <rect x="685" y="528" width="54" height="24" rx="6" fill="#FFFFFF" opacity="0.45"/>
+    </g>
+  </g>
+</svg>

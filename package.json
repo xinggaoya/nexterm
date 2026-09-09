@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "icon:regen": "tauri icon ./src-tauri/app-icon-manifest.json",
+    "icon:regen:verbose": "tauri icon ./src-tauri/app-icon-manifest.json --verbose"
   },
   "dependencies": {
     "@azurity/pure-nerd-font": "^3.0.5",
