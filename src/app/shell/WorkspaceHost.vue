@@ -8,16 +8,18 @@
  * stack, so inactive workspaces stay mounted (xterm buffers accumulate,
  * PTY processes keep running, watchers keep firing) and are simply hidden.
  *
- * New terminal-first shell layout (v3):
- *   Rail(工作区轨道) | TopBar(工作区身份 + 会话条 + 动作) / Canvas(全幅画布
- *   + 玻璃浮层) / StatusDock(状态坞)。整屏即活动工作区,切换 = v-show 翻转。
+ * v3.1 停靠式布局:
+ *   Sidebar(全局侧栏,可折叠为轨道)
+ *   └ TopBar(工作区身份 + 会话条 + 动作)
+ *     └ WorkspacePanel(停靠:文件树/更改/任务) | Canvas(终端画布)
+ *     └ StatusDock(状态坞)
  *
  * This component owns:
  *   - the env-bound `wsNative` surface (created once from `workspace.env`)
  *   - the WorkspaceContext provided to all descendants via inject
  *   - the per-workspace FS watcher lifecycle
  *   - the per-workspace task console controller
- *   - the per-workspace command wiring forwarded to Canvas
+ *   - the per-workspace command wiring forwarded to Canvas/WorkspacePanel
  */
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { NInput, useDialog } from "naive-ui";
@@ -36,6 +38,7 @@ import { leafIds, type SplitDir } from "@/modules/terminal/lib/layout";
 import { MAX_PANES_PER_TAB } from "@/modules/tabs/tabsTypes";
 import {
   provideWorkspaceContext,
+  tryWorkspaceContext,
 } from "@/app/workspaceContext";
 import { useWorkspaceLifecycle } from "@/app/useWorkspaceLifecycle";
 import { useTaskConsoleController } from "@/app/useTaskConsoleController";
@@ -44,14 +47,17 @@ import { readEditorDocument } from "@/modules/editor/lib/documentService";
 import { isBinaryImagePath } from "@/modules/file-preview/lib/imageFiles";
 import { normalizePreviewUrl } from "@/modules/preview/previewUrl";
 import { t, tLoose } from "@/modules/i18n/translate";
-import Rail, { type RailToolKey } from "./Rail.vue";
+import Sidebar from "./Sidebar.vue";
 import TopBar from "./TopBar.vue";
 import SessionStrip from "./SessionStrip.vue";
+import WorkspacePanel from "./WorkspacePanel.vue";
 import Canvas from "./Canvas.vue";
 import StatusDock from "./StatusDock.vue";
 import { useWorkspacesPiniaStore } from "@/modules/workspace/workspacesPinia";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import type { WorkspacePanelTab } from "@/modules/settings/store";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
+import { hasTauriInternals } from "@/lib/tauriRuntime";
 import type { SettingsTab } from "@/modules/settings/tabs";
 
 const props = defineProps<{
@@ -99,43 +105,42 @@ const activeTab = computed<Tab | null>(
   () => tabs.workspaceTabs(props.workspace.id).find((tab) => tab.id === tabs.activeIdByWorkspace[props.workspace.id]) ?? null,
 );
 const activeRepoRoot = ref<string | null>(null);
-// 源控浮层上抛的 git 角标（path → 变更状态），透传给 Canvas → FileExplorer
-// 渲染文件树角标。浮层 v-show 隐藏时仍保持挂载，数据持续更新。
+// 源控面板上抛的 git 角标（path → 变更状态），透传给 WorkspacePanel →
+// FileExplorer 渲染文件树角标。面板 v-show 隐藏标签时仍保持挂载。
 const gitDecorations = ref<GitDecorationMap>(new Map());
 function onDecorationChange(decorations: GitDecorationMap): void {
   gitDecorations.value = decorations;
 }
-// 分支状态由活动工作区的源控面板上抛,状态坞就地显示(不再上抛 MainApp)。
+// 分支状态由活动工作区的源控面板上抛,面板头部与状态坞就地显示。
 const gitBranch = ref<string | null>(null);
 
-// ── 浮层状态(终端优先:默认全关,画布即终端)──────────────────────────
-const explorerOpen = ref(false);
-const sourceControlOpen = ref(false);
-const explorerWidth = ref(prefs.explorerPanelWidth);
-const sourceControlWidth = ref(prefs.sourceControlPanelWidth);
+// ── 停靠面板状态(标签持久化在偏好;宽度沿用 explorerPanelWidth)────────
+const panelTab = computed(() => prefs.workspacePanelTab);
+const panelWidth = ref(prefs.explorerPanelWidth);
 // 拖拽过程中频繁 emit,持久化做 400ms 防抖;数值本身即时生效。
 let widthSaveTimer: ReturnType<typeof setTimeout> | null = null;
-function persistWidth(kind: "explorer" | "sourceControl", width: number): void {
-  if (kind === "explorer") explorerWidth.value = width;
-  else sourceControlWidth.value = width;
+function persistPanelWidth(width: number): void {
+  panelWidth.value = width;
   if (widthSaveTimer) clearTimeout(widthSaveTimer);
   widthSaveTimer = setTimeout(() => {
     widthSaveTimer = null;
-    if (kind === "explorer") void prefs.updateExplorerPanelWidth(width);
-    else void prefs.updateSourceControlPanelWidth(width);
+    if (hasTauriInternals()) void prefs.updateExplorerPanelWidth(width);
   }, 400);
 }
 onBeforeUnmount(() => {
   if (widthSaveTimer) clearTimeout(widthSaveTimer);
 });
 
-function setExplorerOpen(open: boolean): void {
-  explorerOpen.value = open;
-  if (open) sourceControlOpen.value = false;
+function setPanelTab(tab: WorkspacePanelTab): void {
+  // 乐观更新本地 store,持久化仅在 Tauri 环境执行(与旧布局守卫一致,
+  // 避免纯浏览器/测试环境的未处理拒绝)。
+  prefs.workspacePanelTab = tab;
+  if (hasTauriInternals()) void prefs.updateWorkspacePanelTab(tab);
 }
-function setSourceControlOpen(open: boolean): void {
-  sourceControlOpen.value = open;
-  if (open) explorerOpen.value = false;
+
+function toggleSidebarCollapsed(): void {
+  prefs.sidebarCollapsed = !prefs.sidebarCollapsed;
+  if (hasTauriInternals()) void prefs.updateSidebarCollapsed(prefs.sidebarCollapsed);
 }
 
 const canSplitActiveTab = computed(() => {
@@ -202,10 +207,6 @@ function openFileTab(path: string, pin: boolean): void {
 
 function openMarkdownPreview(path: string): void {
   tabs.newMarkdownTab(path, props.workspace.id);
-}
-
-function openFilePreview(path: string): void {
-  tabs.newFilePreviewTab(path, props.workspace.id);
 }
 
 function openSearchResult(path: string, line: number): void {
@@ -277,6 +278,7 @@ function onHistoryRefChange(input: {
 }
 
 const canvas = ref<InstanceType<typeof Canvas> | null>(null);
+const panel = ref<InstanceType<typeof WorkspacePanel> | null>(null);
 
 async function saveActiveEditor(): Promise<void> {
   await canvas.value?.saveActiveEditor();
@@ -287,9 +289,8 @@ function openGotoLine(): void {
 }
 
 function openFindInFiles(): void {
-  // Find in Files 依托文件树浮层的搜索模式:先展开浮层再进入 content 模式。
-  setExplorerOpen(true);
-  canvas.value?.openFindInFiles?.();
+  // Find in Files 依托停靠面板的文件树搜索模式(内部会先切到 explorer 标签)。
+  panel.value?.openFindInFiles();
 }
 
 async function killActiveTerminal(): Promise<void> {
@@ -299,8 +300,9 @@ async function killActiveTerminal(): Promise<void> {
 }
 
 const showBranchesModal = ref(false);
-// Canvas types this prop as Ref<boolean>; a template binding auto-unwraps
-// refs to plain values, so we bridge via a computed that keeps the ref shape.
+// WorkspacePanel types this prop as Ref<boolean>; a template binding
+// auto-unwraps refs to plain values, so bridge via a computed keeping
+// the ref shape.
 const showBranchesModalProp = computed(() => showBranchesModal);
 
 // useWorkspaceLifecycle 的 fsEvent 类型含 undefined，模板绑定前归一为
@@ -309,24 +311,17 @@ const normalizedFsEvent = computed<WorkspaceFsChangedEvent | null>(
   () => workspaceFsEvent.value ?? null,
 );
 
-// Rail 工具键 → 浮层开关。左列浮层(文件树/源控)互斥,任务浮层独立。
-function handleToggleTool(key: RailToolKey): void {
-  if (key === "explorer") {
-    setExplorerOpen(!explorerOpen.value);
-    return;
-  }
-  if (key === "sourceControl") {
-    setSourceControlOpen(!sourceControlOpen.value);
-    return;
-  }
-  if (taskConsole.taskConsoleOpen.value) {
-    taskConsole.closeTaskConsole();
-  } else {
-    void taskConsole.openTaskConsole();
-  }
+// 切回时让 source-control 立即重跑 git status:通过约定的 custom event
+// 通知 SourceControlPanel(detail.workspaceId 做多工作区过滤)。
+function refreshSourceControlOnActivate(): void {
+  const wsId = tryWorkspaceContext()?.workspace.id;
+  if (!wsId) return;
+  window.dispatchEvent(
+    new CustomEvent("nexterm:workspace-activated", { detail: { workspaceId: wsId } }),
+  );
 }
 
-// Rail 右键菜单:把当前工作区在独立窗口打开。
+// Sidebar 右键菜单:把当前工作区在独立窗口打开。
 async function openThisWorkspaceInNewWindow(id: string): Promise<void> {
   const target = workspaces.workspaces.find((ws) => ws.id === id);
   if (!target) return;
@@ -352,14 +347,14 @@ function requestTabRename(tabId: number): void {
 }
 
 /**
- * Workspace 切回可见时的"立即激活"编排(细节见设计文档/旧实现注释):
- * 直接主动重读 explorer 根+展开节点,forceFlushNow 抛后台补一次,
+ * Workspace 切回可见时的"立即激活"编排:
+ * 直接主动重读文件树根+展开节点,forceFlushNow 抛后台补一次,
  * 源控立即补跑 git status。
  */
 function onWorkspaceActivated(): void {
-  canvas.value?.activateExplorer?.();
+  panel.value?.activate();
   forceFlushNow();
-  void canvas.value?.refreshSourceControlOnActivate?.();
+  refreshSourceControlOnActivate();
 }
 
 watch(
@@ -422,6 +417,17 @@ function requestCloseTab(id: number): void {
   });
 }
 
+// 命令系统的面板语义: leftPanelOpen = 源控("更改")标签可见,
+// rightPanelOpen = 文件树标签可见。写入即切换停靠面板的标签。
+const leftPanelOpen = computed<boolean>({
+  get: () => panelTab.value === "changes",
+  set: (open) => setPanelTab(open ? "changes" : "explorer"),
+});
+const rightPanelOpen = computed<boolean>({
+  get: () => panelTab.value === "explorer",
+  set: (open) => setPanelTab(open ? "explorer" : "changes"),
+});
+
 const commandApi = useWorkbenchCommands({
   t: tLoose,
   keybindings: computed(() => prefs.keybindings ?? {}),
@@ -429,10 +435,8 @@ const commandApi = useWorkbenchCommands({
   workspaceRoot,
   activeRepoRoot,
   activeTab,
-  // 命令系统把 leftPanelOpen 当作"源控面板可见",rightPanelOpen 当作
-  // "文件树面板可见";新壳层里它们就是两个浮层 ref。
-  leftPanelOpen: sourceControlOpen,
-  rightPanelOpen: explorerOpen,
+  leftPanelOpen,
+  rightPanelOpen,
   workspaceFsEvent,
   openBranchesModal: showBranchesModal,
   tabs,
@@ -441,6 +445,7 @@ const commandApi = useWorkbenchCommands({
   openFileTab,
   openSettings: (tab?: SettingsTab) => emit("request-settings", tab),
   openTaskConsole: () => {
+    setPanelTab("tasks");
     void taskConsole.openTaskConsole();
   },
   requestCloseTab,
@@ -494,19 +499,17 @@ defineExpose({
     class="flex h-full min-h-0 bg-shell-bg"
     :data-workspace-id="workspace.id"
   >
-    <Rail
+    <Sidebar
       :workspaces="workspaces.workspaces"
       :active-workspace-id="workspaces.activeWorkspaceId"
-      :explorer-open="explorerOpen"
-      :source-control-open="sourceControlOpen"
-      :tasks-open="taskConsole.taskConsoleOpen.value"
+      :collapsed="prefs.sidebarCollapsed"
       @select-workspace="(id) => workspaces.setActive(id)"
       @close-workspace="(id) => emit('request-remove-workspace', id)"
       @add-workspace="(env) => emit('add-workspace', env)"
       @open-workspace-in-new-window="openThisWorkspaceInNewWindow"
-      @toggle-tool="handleToggleTool"
       @open-settings="() => emit('request-settings')"
       @open-command-palette="() => emit('request-command-palette', 'commands')"
+      @toggle-collapse="toggleSidebarCollapsed"
     />
 
     <div class="flex min-w-0 flex-1 flex-col">
@@ -542,46 +545,49 @@ defineExpose({
         </template>
       </TopBar>
 
-      <Canvas
-        ref="canvas"
-        :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
-        :active-repo-root="activeRepoRoot"
-        :active-tab="activeTab"
-        :git-decorations="gitDecorations"
-        :show-branches-modal="showBranchesModalProp"
-        :tabs="tabs.workspaceTabs(workspace.id)"
-        :tabs-store="{
-          focusPane: (tabId, leafId) => tabs.focusPane(tabId, leafId, workspace.id),
-          openCommitFileDiffTab: (input) => tabs.openCommitFileDiffTab(input, workspace.id),
-          setLeafCwd: (leafId, cwd) => tabs.setLeafCwd(leafId, cwd, workspace.id),
-          setLeafTitle: (leafId, titleVal) => tabs.setLeafTitle(leafId, titleVal, workspace.id),
-          updateTab: (id, patch) => tabs.updateTab(id, patch, workspace.id),
-        }"
-        :task-console="taskConsole"
-        :workspace-fs-event="normalizedFsEvent"
-        :workspace-id="workspace.id"
-        :workspace-root="workspaceRoot"
-        :workspace-scope="workspaceScope"
-        :explorer-open="explorerOpen"
-        :source-control-open="sourceControlOpen"
-        :explorer-width="explorerWidth"
-        :source-control-width="sourceControlWidth"
-        @open-file="openFileTab"
-        @open-markdown-preview="openMarkdownPreview"
-        @open-file-preview="openFilePreview"
-        @open-in-terminal="openTerminalInDir"
-        @open-search-result="openSearchResult"
-        @open-source-diff="openSourceDiff"
-        @open-source-history="openSourceHistory"
-        @history-ref-change="onHistoryRefChange"
-        @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
-        @branch-change="(branch) => gitBranch = branch"
-        @decorations-change="onDecorationChange"
-        @update:explorer-open="setExplorerOpen"
-        @update:source-control-open="setSourceControlOpen"
-        @resize-explorer-width="(w) => persistWidth('explorer', w)"
-        @resize-source-control-width="(w) => persistWidth('sourceControl', w)"
-      />
+      <div class="flex min-h-0 flex-1">
+        <WorkspacePanel
+          ref="panel"
+          :tab="panelTab"
+          :width="panelWidth"
+          :workspace-id="workspace.id"
+          :workspace-root="workspaceRoot"
+          :workspace-scope="workspaceScope"
+          :active-repo-root="activeRepoRoot"
+          :git-decorations="gitDecorations"
+          :git-branch="gitBranch"
+          :show-branches-modal="showBranchesModalProp"
+          :fs-event="normalizedFsEvent"
+          :task-console="taskConsole"
+          @update:tab="setPanelTab"
+          @resize-width="persistPanelWidth"
+          @open-file="openFileTab"
+          @open-markdown-preview="openMarkdownPreview"
+          @open-in-terminal="openTerminalInDir"
+          @open-search-result="openSearchResult"
+          @open-source-diff="openSourceDiff"
+          @open-source-history="openSourceHistory"
+          @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
+          @branch-change="(branch) => gitBranch = branch"
+          @decorations-change="onDecorationChange"
+        />
+
+        <Canvas
+          ref="canvas"
+          :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
+          :active-tab="activeTab"
+          :tabs="tabs.workspaceTabs(workspace.id)"
+          :tabs-store="{
+            focusPane: (tabId, leafId) => tabs.focusPane(tabId, leafId, workspace.id),
+            openCommitFileDiffTab: (input) => tabs.openCommitFileDiffTab(input, workspace.id),
+            setLeafCwd: (leafId, cwd) => tabs.setLeafCwd(leafId, cwd, workspace.id),
+            setLeafTitle: (leafId, titleVal) => tabs.setLeafTitle(leafId, titleVal, workspace.id),
+            updateTab: (id, patch) => tabs.updateTab(id, patch, workspace.id),
+          }"
+          :workspace-fs-event="normalizedFsEvent"
+          @history-ref-change="onHistoryRefChange"
+        />
+      </div>
 
       <StatusDock
         :workspace-name="workspace.name"

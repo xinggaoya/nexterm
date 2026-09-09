@@ -29,9 +29,10 @@ Nexterm 是一个基于 Tauri 2 的终端开发环境，采用 Rust 后端和 Vu
 graph TB
     subgraph "Frontend (Vue 3 Webview)"
         A[MainApp.vue] --> B[WorkspaceHost × N v-show 常驻栈]
-        B --> R[Rail 工作区轨道]
+        B --> R[Sidebar 全局侧栏(可折叠轨道)]
         B --> T2[TopBar + SessionStrip]
-        B --> C[Canvas 全幅画布]
+        B --> WP[WorkspacePanel 停靠面板]
+        B --> C[Canvas 终端画布]
         C --> E[terminal module]
         C --> F[editor module]
         C --> G[explorer module 浮层]

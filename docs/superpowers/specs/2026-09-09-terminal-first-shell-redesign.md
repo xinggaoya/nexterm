@@ -97,3 +97,17 @@ i18n:新增 `app.rail.*`、`app.dashboard.*` 等键(zh-CN/en-US)。
 
 - `pnpm exec vue-tsc --noEmit`、`pnpm test`、`pnpm build` 全绿;边界测试(native/event/vueShell/tauriCapabilities/noReact*)不回退。
 - 行为验收:开多工作区 → 轨道芯片切换、后台终端保活;单终端极简顶栏;文件树/源控浮层开关与命令面板互通;任务浮层;关窗守卫与 PTY 回收链路不变。
+
+## 7. 修订 v3.1 — 停靠式布局(2026-09-09,用户反馈后)
+
+用户反馈:浮层形态不符合预期,终端也不需要独占全部宽度;参考 MonoCode 的双列左侧结构。修订如下:
+
+1. **全部面板从浮层改为停靠**:`OverlayPanel.vue` 删除。新增 `WorkspacePanel.vue`(每工作区一列,默认 300px,右缘可拖宽,持久化沿用 `explorerPanelWidth`),以三个标签组织内容:**文件树 / 更改 / 任务**(标签状态持久化在新偏好 `workspacePanelTab`),内容组件(FileExplorer / SourceControlPanel / TaskConsole)v-show 保活。
+2. **Rail 升级为 `Sidebar.vue`(全局侧栏)**,参考 MonoCode 的信息设计:
+   - 顶部:应用标识 + 搜索位(点击打开命令面板,显示 ⌘K 角标);
+   - "工作区"分区:每行彩色 monogram(id 稳定散列到 chart 色板)+ 名称 + env 图标(WSL=服务器/SSH=终端,info/warning 色),活动行高亮,悬停显 × 关闭,右键菜单(新窗口/关闭);
+   - 底部:设置入口;侧栏可折叠为 52px 轨道(芯片态,偏好 `sidebarCollapsed`)。
+   - 工具切换键职责移交 WorkspacePanel 的三个标签,侧栏不再承担。
+3. **Canvas 回归纯内容层**:终端/编辑器等铺满剩余宽度,不再承载任何浮层;各内容层加 `data-tab-layer` 标记。
+4. 命令系统面板语义:`leftPanelOpen` = 更改标签、`rightPanelOpen` = 文件树标签(写入即切换标签);`openTaskConsole` = 切到任务标签。
+5. 视觉契约(visualSystem.test.ts)同步更新为停靠结构断言。

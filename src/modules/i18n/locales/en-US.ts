@@ -129,8 +129,14 @@ const enUS = {
       tool: {
         explorer: "Files",
         sourceControl: "Source Control",
+        changes: "Changes",
         tasks: "Tasks",
       },
+    },
+    sidebar: {
+      search: "Search",
+      collapse: "Collapse sidebar",
+      expand: "Expand sidebar",
     },
     dashboard: {
       tagline: "A terminal-first development environment",

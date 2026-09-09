@@ -131,8 +131,14 @@ const zhCN = {
       tool: {
         explorer: "文件树",
         sourceControl: "源代码管理",
+        changes: "更改",
         tasks: "任务",
       },
+    },
+    sidebar: {
+      search: "搜索",
+      collapse: "折叠侧栏",
+      expand: "展开侧栏",
     },
     dashboard: {
       tagline: "终端优先的现代化开发环境",

@@ -5,6 +5,7 @@ import { createPinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GitDecorationMap } from "@/modules/source-control";
 import type { WorkspaceEnv, WorkspaceInstance } from "@/modules/workspace";
+import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 
 // ── 重依赖 composable / store / 子组件全部桩化 ────────────────────────────
 
@@ -93,12 +94,20 @@ vi.mock("@/modules/workspace/workspacesPinia", () => ({
   }),
 }));
 
-vi.mock("./Rail.vue", () => ({
+vi.mock("./Sidebar.vue", () => ({
   default: {
-    name: "RailStub",
-    props: ["explorerOpen", "sourceControlOpen", "tasksOpen"],
-    emits: ["toggle-tool", "close-workspace", "add-workspace", "select-workspace"],
-    template: "<nav class='rail-stub' />",
+    name: "SidebarStub",
+    props: ["collapsed", "activeWorkspaceId"],
+    emits: [
+      "select-workspace",
+      "close-workspace",
+      "add-workspace",
+      "open-workspace-in-new-window",
+      "open-settings",
+      "open-command-palette",
+      "toggle-collapse",
+    ],
+    template: "<nav class='sidebar-stub' />",
   },
 }));
 vi.mock("./TopBar.vue", () => ({
@@ -114,11 +123,23 @@ vi.mock("./SessionStrip.vue", () => ({
     template: "<div class='sessionstrip-stub' />",
   },
 }));
+vi.mock("./WorkspacePanel.vue", () => ({
+  default: {
+    name: "WorkspacePanelStub",
+    props: ["tab", "width", "gitDecorations", "gitBranch", "workspaceRoot"],
+    emits: [
+      "update:tab",
+      "resize-width",
+      "branch-change",
+      "decorations-change",
+    ],
+    template: "<aside class='panel-stub' />",
+  },
+}));
 vi.mock("./Canvas.vue", () => ({
   default: {
     name: "CanvasStub",
-    props: ["gitDecorations", "workspaceRoot", "explorerOpen", "sourceControlOpen"],
-    emits: ["branch-change", "decorations-change", "update:explorerOpen"],
+    props: ["tabs"],
     template: "<div class='canvas-stub' />",
   },
 }));
@@ -174,53 +195,47 @@ describe("WorkspaceHost.vue", () => {
     expect(tabsStore.disposeWorkspaceTabs).toHaveBeenCalledWith("w1");
   });
 
-  it("终端优先:浮层默认全关,打开文件树浮层时互斥关闭源控浮层", async () => {
-    const wrapper = mountHost();
+  it("停靠面板标签写入偏好并回传面板(默认文件树)", async () => {
+    const pinia = createPinia();
+    const prefs = usePreferencesPiniaStore(pinia);
+    const wrapper = mount(WorkspaceHost, {
+      props: { workspace },
+      global: { plugins: [pinia] },
+    });
     await nextTick();
-    const rail = wrapper.findComponent({ name: "RailStub" });
-    const canvas = wrapper.findComponent({ name: "CanvasStub" });
-    expect(canvas.props("explorerOpen")).toBe(false);
-    expect(canvas.props("sourceControlOpen")).toBe(false);
+    const panel = wrapper.findComponent({ name: "WorkspacePanelStub" });
+    expect(panel.props("tab")).toBe("explorer");
 
-    await rail.vm.$emit("toggle-tool", "explorer");
+    await panel.vm.$emit("update:tab", "changes");
     await nextTick();
-    expect(canvas.props("explorerOpen")).toBe(true);
-
-    // 源控与文件树互斥(左列浮层单选)。
-    await rail.vm.$emit("toggle-tool", "sourceControl");
-    await nextTick();
-    expect(canvas.props("sourceControlOpen")).toBe(true);
-    expect(canvas.props("explorerOpen")).toBe(false);
-
-    // 再切一次源控 → 关闭。
-    await rail.vm.$emit("toggle-tool", "sourceControl");
-    await nextTick();
-    expect(canvas.props("sourceControlOpen")).toBe(false);
+    expect(prefs.workspacePanelTab).toBe("changes");
+    expect(wrapper.findComponent({ name: "WorkspacePanelStub" }).props("tab")).toBe("changes");
     wrapper.unmount();
   });
 
-  it("Canvas 的 branch-change 就地驱动状态坞,不再上抛顶层", async () => {
+  it("面板的 branch-change 就地驱动面板头部与状态坞,不再上抛顶层", async () => {
     const wrapper = mountHost();
     await nextTick();
-    const canvas = wrapper.findComponent({ name: "CanvasStub" });
-    await canvas.vm.$emit("branch-change", "main");
+    const panel = wrapper.findComponent({ name: "WorkspacePanelStub" });
+    await panel.vm.$emit("branch-change", "main");
     await nextTick();
-    const dock = wrapper.findComponent({ name: "StatusDockStub" });
-    expect(dock.props("gitBranch")).toBe("main");
+    expect(wrapper.findComponent({ name: "StatusDockStub" }).props("gitBranch")).toBe("main");
     expect(wrapper.emitted("branch-change")).toBeUndefined();
     wrapper.unmount();
   });
 
-  it("decoration-change 更新传给 Canvas 的角标", async () => {
+  it("decoration-change 更新传给 WorkspacePanel 的角标", async () => {
     const wrapper = mountHost();
     await nextTick();
-    const canvas = wrapper.findComponent({ name: "CanvasStub" });
+    const panel = wrapper.findComponent({ name: "WorkspacePanelStub" });
     const decorations: GitDecorationMap = new Map([
       ["/repo/a.ts", { status: "modified" } as never],
     ]);
-    await canvas.vm.$emit("decorations-change", decorations);
+    await panel.vm.$emit("decorations-change", decorations);
     await nextTick();
-    const received = wrapper.findComponent({ name: "CanvasStub" }).props("gitDecorations") as GitDecorationMap;
+    const received = wrapper
+      .findComponent({ name: "WorkspacePanelStub" })
+      .props("gitDecorations") as GitDecorationMap;
     expect(received.size).toBe(1);
     expect(received.get("/repo/a.ts")).toEqual({ status: "modified" });
     wrapper.unmount();
@@ -266,11 +281,11 @@ describe("WorkspaceHost.vue", () => {
     wrapper.unmount();
   });
 
-  it("Rail 的 close-workspace 上抛为 request-remove-workspace(由 MainApp 二次确认)", async () => {
+  it("Sidebar 的 close-workspace 上抛为 request-remove-workspace(由 MainApp 二次确认)", async () => {
     const wrapper = mountHost();
     await nextTick();
-    const rail = wrapper.findComponent({ name: "RailStub" });
-    await rail.vm.$emit("close-workspace", "w1");
+    const sidebar = wrapper.findComponent({ name: "SidebarStub" });
+    await sidebar.vm.$emit("close-workspace", "w1");
     expect(wrapper.emitted("request-remove-workspace")).toEqual([["w1"]]);
     wrapper.unmount();
   });

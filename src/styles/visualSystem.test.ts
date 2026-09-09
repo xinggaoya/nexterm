@@ -34,11 +34,14 @@ describe("visual system contract", () => {
     expect(globalsCss).toContain(".nexterm-overlay");
   });
 
-  it("uses the terminal-first shell dimensions (rail / top bar / status dock)", () => {
-    // 终端优先壳层:52px 工作区轨道 + 44px 单一顶栏 + 24px 状态坞。
-    const rail = readSource("../app/shell/Rail.vue");
-    expect(rail).toContain("w-[52px]");
-    expect(rail).toContain("data-workspace-rail");
+  it("uses the terminal-first shell dimensions (sidebar / top bar / status dock)", () => {
+    // 终端优先壳层 v3.1:248px 全局侧栏(可折叠 52px 轨道) + 44px 顶栏
+    // + 停靠工作区面板 + 24px 状态坞。
+    const sidebar = readSource("../app/shell/Sidebar.vue");
+    expect(sidebar).toContain("w-[248px]");
+    expect(sidebar).toContain("w-[52px]");
+    expect(sidebar).toContain("data-sidebar");
+    expect(sidebar).toContain("data-sidebar-search");
 
     const topBar = readSource("../app/shell/TopBar.vue");
     expect(topBar).toContain("h-11");
@@ -54,24 +57,26 @@ describe("visual system contract", () => {
     expect(strip).toContain("data-session-strip");
   });
 
-  it("keeps the terminal canvas full-bleed with floating glass overlays", () => {
+  it("docks the workspace panel instead of floating overlays", () => {
     const host = readSource("../app/shell/WorkspaceHost.vue");
+    const panel = readSource("../app/shell/WorkspacePanel.vue");
     const canvas = readSource("../app/shell/Canvas.vue");
 
-    // Host 组合:轨道 → 顶栏(内嵌会话条) → 画布 → 状态坞。
-    expect(host).toMatch(/<Rail[\s\S]*?<TopBar[\s\S]*?<SessionStrip/);
-    expect(host).toMatch(/<Canvas[\s\S]*?<StatusDock/);
+    // Host 组合:侧栏 → 顶栏(内嵌会话条) → 停靠面板 | 画布 → 状态坞。
+    expect(host).toMatch(/<Sidebar[\s\S]*?<TopBar[\s\S]*?<SessionStrip/);
+    expect(host).toMatch(/<WorkspacePanel[\s\S]*?<Canvas[\s\S]*?<StatusDock/);
 
-    // 画布:终端层铺满,浮层玻璃容器挂在画布内。
+    // 面板是停靠列(非浮层):三标签内容全部挂载在面板内。
+    expect(panel).toContain("data-workspace-panel");
+    expect(panel).toContain("data-panel-resizer");
+    expect(panel).toMatch(/<FileExplorer/);
+    expect(panel).toMatch(/<SourceControlPanel/);
+    expect(panel).toMatch(/<TaskConsole/);
+
+    // 画布是纯内容层:终端铺满,不再承载任何浮层/面板。
     expect(canvas).toMatch(/<TerminalWorkspace/);
-    expect(canvas).toMatch(/<OverlayPanel[\s\S]*?<FileExplorer/);
-    expect(canvas).toMatch(/<OverlayPanel[\s\S]*?<SourceControlPanel/);
-    expect(canvas).toMatch(/<OverlayPanel[\s\S]*?<TaskConsole/);
-
-    // 浮层使用玻璃令牌,而不是实心卡片。
-    const overlay = readSource("../app/shell/OverlayPanel.vue");
-    expect(overlay).toContain("v2-glass");
-    expect(overlay).toContain("nexterm-overlay-panel");
+    expect(canvas).not.toContain("OverlayPanel");
+    expect(canvas).not.toContain("FileExplorer");
   });
 
   it("forces Naive UI settings cards into unframed groups", () => {

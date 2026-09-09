@@ -79,8 +79,8 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 ```
 +------------------------------------------------------+
 |  Vue 3 Webview                                       |
-|  MainApp.vue -> WorkspaceHost(Rail + TopBar/SessionStrip +
-|  Canvas + StatusDock)                                  |
+|  MainApp.vue -> WorkspaceHost(Sidebar + TopBar/SessionStrip |
+|  + WorkspacePanel + Canvas + StatusDock)                 |
 |  Pinia stores <-> native.ts <-> Tauri IPC            |
 +--------------------------+---------------------------+
                            | Tauri IPC + Channel

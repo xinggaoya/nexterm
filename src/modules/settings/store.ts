@@ -189,9 +189,15 @@ export type Preferences = {
   editorWordWrap: boolean;
   leftSidebar: LeftSidebarPref;
   panelVisibility: PanelVisibilityPref;
+  /** v3.1 壳层:全局侧栏折叠为 52px 轨道。 */
+  sidebarCollapsed: boolean;
+  /** v3.1 壳层:停靠工作区面板的当前标签。 */
+  workspacePanelTab: WorkspacePanelTab;
   tabWidthMode: TabWidthMode;
   tabFixedWidth: number;
 };
+
+export type WorkspacePanelTab = "explorer" | "changes" | "tasks";
 
 export type LeftSidebarPref = {
   activity: "workspace" | "sourceControl";
@@ -237,6 +243,18 @@ const ACTIVITY_VALUES: readonly LeftSidebarPref["activity"][] = [
   "workspace",
   "sourceControl",
 ];
+
+const WORKSPACE_PANEL_TAB_VALUES: readonly WorkspacePanelTab[] = [
+  "explorer",
+  "changes",
+  "tasks",
+];
+
+export function normalizeWorkspacePanelTab(value: unknown): WorkspacePanelTab {
+  return WORKSPACE_PANEL_TAB_VALUES.includes(value as WorkspacePanelTab)
+    ? (value as WorkspacePanelTab)
+    : "explorer";
+}
 
 export function clampLeftSidebarWidth(value: number): number {
   if (!Number.isFinite(value)) return LEFT_SIDEBAR_WIDTH_DEFAULT;
@@ -452,6 +470,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
     explorer: true,
     taskConsole: false,
   },
+  sidebarCollapsed: false,
+  workspacePanelTab: "explorer",
   tabWidthMode: "auto",
   tabFixedWidth: TAB_FIXED_WIDTH_DEFAULT,
 };
@@ -695,6 +715,8 @@ export const PREF_SPECS: PrefSpecMap = {
   editorWordWrap: spec("editorWordWrap", boolPref(DEFAULT_PREFERENCES.editorWordWrap)),
   leftSidebar: spec("layout.leftSidebar", normalizeLeftSidebarPref, normalizeLeftSidebarPref),
   panelVisibility: spec("layout.panels", normalizePanelVisibilityPref, normalizePanelVisibilityPref),
+  sidebarCollapsed: spec("sidebarCollapsed", boolPref(DEFAULT_PREFERENCES.sidebarCollapsed)),
+  workspacePanelTab: spec("workspacePanelTab", normalizeWorkspacePanelTab, normalizeWorkspacePanelTab),
   tabWidthMode: spec("tabWidthMode", normalizeTabWidthMode, normalizeTabWidthMode),
   tabFixedWidth: spec("tabFixedWidth", numberPref(DEFAULT_PREFERENCES.tabFixedWidth), clampTabFixedWidth),
 };
