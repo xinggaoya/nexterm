@@ -55,13 +55,13 @@
     --color-pane-handle: var(--pane-handle);
     --color-pane-handle-active: var(--pane-handle-active);
     --color-panel-bg: var(--panel-bg);
-    --radius-sm: 3px;
-    --radius-md: 4px;
-    --radius-lg: 6px;
-    --radius-xl: 8px;
-    --radius-2xl: 8px;
-    --radius-3xl: 8px;
-    --radius-4xl: 8px;
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 10px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+    --radius-3xl: 18px;
+    --radius-4xl: 22px;
 }
 
 :root {
@@ -96,7 +96,7 @@
     --chart-3: var(--success);
     --chart-4: var(--warning);
     --chart-5: var(--destructive);
-    --radius: 8px;
+    --radius: 10px;
     --sidebar: oklch(0.97 0.004 240);
     --sidebar-foreground: var(--foreground);
     --activity-bar: oklch(0.965 0.004 240);
@@ -173,38 +173,40 @@
     --term-bright-white: oklch(0.98 0.005 260);
 }
 .dark {
-    /* v2 — canonical skin: deep charcoal base, single cyan accent, high density. */
+    /* v3 "Graphite" — blue-graphite base, hairline borders, surface steps
+     * instead of frames. The terminal shares the shell base color so a
+     * full-bleed terminal melts into the chrome. */
     color-scheme: dark;
-    --shell-bg: oklch(0.14 0.005 250);
+    --shell-bg: oklch(0.145 0.008 255);
     --background: var(--shell-bg);
-    --foreground: oklch(0.92 0.004 250);
-    --card: oklch(0.18 0.006 250);
+    --foreground: oklch(0.93 0.004 250);
+    --card: oklch(0.185 0.008 255);
     --card-foreground: var(--foreground);
-    --popover: oklch(0.2 0.007 250);
+    --popover: oklch(0.2 0.01 255);
     --popover-foreground: var(--foreground);
     --primary: oklch(0.82 0.13 220);
     --primary-foreground: oklch(0.14 0.01 250);
-    --secondary: oklch(0.2 0.006 250);
+    --secondary: oklch(0.2 0.008 255);
     --secondary-foreground: var(--foreground);
-    --muted: oklch(0.21 0.006 250);
-    --muted-foreground: oklch(0.62 0.006 250);
-    --accent: oklch(0.24 0.008 250);
+    --muted: oklch(0.21 0.008 255);
+    --muted-foreground: oklch(0.64 0.008 250);
+    --accent: oklch(0.25 0.01 255);
     --accent-foreground: var(--foreground);
     --destructive: oklch(0.7 0.19 22);
     --success: oklch(0.78 0.16 152);
     --warning: oklch(0.82 0.15 80);
     --info: oklch(0.74 0.14 280);
-    --border: oklch(0.28 0.007 250 / 0.6);
-    --input: oklch(0.26 0.007 250 / 0.6);
+    --border: oklch(1 0 0 / 0.07);
+    --input: oklch(1 0 0 / 0.09);
     --ring: var(--primary);
-    --surface-subtle: oklch(0.17 0.006 250);
-    --surface-hover: oklch(0.24 0.008 250);
+    --surface-subtle: oklch(0.17 0.008 255);
+    --surface-hover: oklch(0.25 0.01 255);
     --chart-1: var(--primary);
     --chart-2: var(--info);
     --chart-3: var(--success);
     --chart-4: var(--warning);
     --chart-5: var(--destructive);
-    --sidebar: oklch(0.16 0.005 250);
+    --sidebar: oklch(0.165 0.008 255);
     --sidebar-foreground: var(--foreground);
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
@@ -212,12 +214,12 @@
     --sidebar-accent-foreground: var(--accent-foreground);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
-    --activity-bar: oklch(0.15 0.005 250);
-    --title-bar: oklch(0.15 0.005 250);
+    --activity-bar: oklch(0.16 0.008 255);
+    --title-bar: oklch(0.16 0.008 255);
     --terminal-focus: var(--primary);
-    --pane-handle: oklch(0.24 0.006 250);
+    --pane-handle: oklch(0.26 0.008 255);
     --pane-handle-active: var(--primary);
-    --panel-bg: oklch(0.16 0.005 250);
+    --panel-bg: oklch(0.17 0.009 255);
     --overlay-shadow: 0 24px 64px rgb(0 0 0 / 0.6), 0 4px 18px rgb(0 0 0 / 0.4);
     --card-shadow: none;
     --card-header-bg: var(--surface-subtle);
@@ -235,8 +237,8 @@
     --dur-base: 200ms;
     --dur-slow: 320ms;
 
-    /* v2 terminal tokens — dark. */
-    --term-pane-bg: oklch(0.155 0.005 250);
+    /* v2 terminal tokens — dark. Pane surfaces fuse with the shell base. */
+    --term-pane-bg: oklch(0.145 0.008 255);
     --term-pane-header-bg: var(--surface-subtle);
     --term-pane-active-bg: var(--accent);
     --term-pane-hover-bg: var(--surface-hover);
@@ -248,7 +250,7 @@
     --term-pane-footer-bg: var(--surface-subtle);
     --term-pane-fg: var(--foreground);
 
-    --term-bg: oklch(0.155 0.005 250);
+    --term-bg: oklch(0.145 0.008 255);
     --term-fg: oklch(0.9 0.01 240);
     --term-cursor: oklch(0.82 0.13 220);
     --term-cursor-accent: oklch(0.14 0.01 250);
@@ -260,7 +262,7 @@
     --term-state-exited: var(--destructive);
 
     /* v2 ANSI — Tokyo Night inspired modern palette tuned for the cyan accent. */
-    --term-black: oklch(0.155 0.005 250);
+    --term-black: oklch(0.145 0.008 255);
     --term-red: oklch(0.7 0.17 18);
     --term-green: oklch(0.72 0.15 150);
     --term-yellow: oklch(0.8 0.14 85);
