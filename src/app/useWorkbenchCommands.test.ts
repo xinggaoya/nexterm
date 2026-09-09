@@ -49,7 +49,6 @@ function createHarness(activeRepoRoot: string | null) {
     splitActivePane: vi.fn(),
     openFileTab: vi.fn(),
     openSettings: vi.fn(),
-    openTaskConsole: vi.fn(),
     requestCloseTab: vi.fn(),
     saveActiveEditor: vi.fn(),
     openGotoLine: vi.fn(),

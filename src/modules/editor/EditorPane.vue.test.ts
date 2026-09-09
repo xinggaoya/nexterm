@@ -130,6 +130,10 @@ describe("EditorPane.vue", () => {
     expect(wrapper.find("[data-editor-markdown-preview]").text()).toContain(
       "Draft",
     );
+    // 拆分预览正文要可选中复制(应用根节点是 select-none,需显式恢复)。
+    expect(wrapper.find("[data-editor-markdown-preview-scroll]").classes()).toContain(
+      "select-text",
+    );
     wrapper.vm.setContentForTest("# Updated\n\nLive preview");
     await nextTick();
     expect(wrapper.find("[data-editor-markdown-preview]").text()).toContain(

@@ -20,39 +20,8 @@ vi.mock("@/modules/source-control/SourceControlPanel.vue", () => ({
     template: "<div class='source-control-stub' />",
   },
 }));
-vi.mock("@/modules/tasks/TaskConsole.vue", () => ({
-  default: {
-    name: "TaskConsoleStub",
-    props: ["rootPath", "view", "tasks", "runs"],
-    emits: ["close", "run-task"],
-    template: "<div class='task-console-stub' />",
-  },
-}));
 
 import WorkspacePanel from "./WorkspacePanel.vue";
-
-const taskConsole = {
-  activeTaskRun: ref(null),
-  closeTaskConsole: vi.fn(),
-  refreshWorkspaceTasks: vi.fn(),
-  runTaskInTerminal: vi.fn(),
-  runWorkspaceCommand: vi.fn(),
-  runWorkspaceTask: vi.fn(),
-  taskConsoleOpen: ref(false),
-  taskConsoleView: ref("tasks" as const),
-  taskRunList: ref([]),
-  taskRuns: {
-    rerun: vi.fn(),
-    runGroups: ref([]),
-    setActiveRun: vi.fn(),
-    stopRun: vi.fn(),
-    stopRunGroup: vi.fn(),
-  },
-  setTaskConsoleView: vi.fn(),
-  workspaceTasks: ref([]),
-  workspaceTasksError: ref(null),
-  workspaceTasksLoading: ref(false),
-};
 
 function mountPanel(props: Partial<InstanceType<typeof WorkspacePanel>["$props"]> = {}) {
   return mount(WorkspacePanel, {
@@ -67,21 +36,19 @@ function mountPanel(props: Partial<InstanceType<typeof WorkspacePanel>["$props"]
       gitBranch: "main",
       showBranchesModal: ref(false),
       fsEvent: null,
-      taskConsole,
       ...props,
     },
   });
 }
 
 describe("WorkspacePanel.vue", () => {
-  it("渲染三个标签,活动标签 aria-pressed,头部显示分支徽标", async () => {
+  it("渲染两个标签,活动标签 aria-pressed,头部显示分支徽标", async () => {
     const wrapper = mountPanel();
 
     const tabButtons = wrapper.findAll("[data-panel-tab]");
     expect(tabButtons.map((b) => b.attributes("data-panel-tab"))).toEqual([
       "explorer",
       "changes",
-      "tasks",
     ]);
     expect(tabButtons[0]?.attributes("aria-pressed")).toBe("true");
     expect(wrapper.find("[data-panel-branch]").text()).toContain("main");
@@ -111,15 +78,6 @@ describe("WorkspacePanel.vue", () => {
     const decorations = new Map() as GitDecorationMap;
     await panel.vm.$emit("decorations-change", decorations);
     expect(wrapper.emitted("decorations-change")).toEqual([[decorations]]);
-  });
-
-  it("任务运行中时任务标签显示运行圆点", () => {
-    taskConsole.taskRunList.value = [
-      { id: 1, status: "running" },
-    ] as unknown as typeof taskConsole.taskRunList.value;
-    const wrapper = mountPanel({ tab: "tasks" });
-    expect(wrapper.find("[data-panel-tab='tasks'] .bg-primary").exists()).toBe(true);
-    taskConsole.taskRunList.value = [];
   });
 
   it("拖拽左缘手柄调宽:向左拖加宽并发出 resize-width", async () => {

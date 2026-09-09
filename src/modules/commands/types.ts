@@ -3,7 +3,6 @@ export type CommandId =
   | "workbench.quickOpen.open"
   | "workbench.closeActiveTab"
   | `snippet.${string}`
-  | "tasks.run"
   | "terminal.new"
   | "terminal.splitHorizontal"
   | "terminal.splitVertical"
@@ -55,7 +54,6 @@ export type CommandCategory =
   | "terminal"
   | "panel"
   | "settings"
-  | "tasks"
   | "git"
   | "tab";
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { GitBranchOutline, RocketOutline } from "@vicons/ionicons5";
+import { GitBranchOutline } from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
 import { computed } from "vue";
 import { t } from "@/modules/i18n/translate";
@@ -9,7 +9,6 @@ const props = defineProps<{
   workspaceName: string;
   env: WorkspaceEnv;
   gitBranch: string | null;
-  runningTasks: number;
 }>();
 
 const envLabel = computed(() => {
@@ -38,18 +37,6 @@ const envLabel = computed(() => {
       >
         <NIcon :component="GitBranchOutline" :size="11" />
         <span class="max-w-36 truncate">{{ gitBranch }}</span>
-      </span>
-    </div>
-
-    <div class="flex shrink-0 items-center gap-2">
-      <span
-        v-if="runningTasks > 0"
-        class="flex items-center gap-1 text-primary"
-        :title="t('app.status.tasksRunning', { count: runningTasks })"
-        data-running-tasks
-      >
-        <NIcon :component="RocketOutline" :size="11" />
-        {{ runningTasks }}
       </span>
     </div>
   </footer>

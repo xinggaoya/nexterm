@@ -46,14 +46,13 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 
 | Directory | Purpose |
 |-----------|---------|
-| `src/app/` | App shell（终端优先 v3.1 停靠布局）: `MainApp.vue`, `shell/` (WorkspaceHost / Sidebar / TopBar / SessionStrip / WorkspacePanel / Canvas / StatusDock / TabContextMenu), `components/` (WorkspaceDashboard / WorkspaceEnvSelector / UnsavedCloseGuard), composables (`useWorkspaceLifecycle` / `useTaskConsoleController` / `useWorkbenchCommands` / `useWindowChromeState`) |
+| `src/app/` | App shell（终端优先 v3.1 停靠布局）: `MainApp.vue`, `shell/` (WorkspaceHost / Sidebar / TopBar / SessionStrip / WorkspacePanel / Canvas / StatusDock / TabContextMenu), `components/` (WorkspaceDashboard / WorkspaceEnvSelector / UnsavedCloseGuard), composables (`useWorkspaceLifecycle` / `useWorkbenchCommands` / `useWindowChromeState`) |
 | `src/modules/terminal/` | Terminal multiplexing, PTY bridge, pane tree, xterm.js rendering |
 | `src/modules/editor/` | CodeMirror 6 editor, file editing, syntax highlighting, diff views |
 | `src/modules/explorer/` | File tree, file system navigation, search, context menu |
 | `src/modules/tabs/` | Tab management, tab types, pane split, close guards |
 | `src/modules/settings/` | Preferences Pinia store, low-level Tauri store, settings drawer tabs |
 | `src/modules/commands/` | Command registry, keybinding resolution, command specs, command palette |
-| `src/modules/tasks/` | Task discovery, task execution, task run stores |
 | `src/modules/source-control/` | Git panel UI (staging, committing, branching) |
 | `src/modules/git-history/` | Git log, commit inspection, diff views |
 | `src/modules/theme/` | Theme application, Naive UI theme overrides |
@@ -103,7 +102,6 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 - Preferences: `LazyStore` (Rust `@tauri-apps/plugin-store`) -> `src/modules/settings/store.ts` -> `src/modules/settings/preferencesPinia.ts` -> components
 - Tabs: `src/modules/tabs/tabsPinia.ts` -- manages tab array, active tab, pane split operations
 - Workspace: `src/app/useWorkspaceLifecycle.ts` composable -- watcher lifecycle, workspace switching, env management
-- Tasks: Factory pattern via `createTaskRunStore()` in `src/app/useTaskConsoleController.ts`
 - Cross-store reads: only via direct composable/store access. Do not introduce a global event bus for store-to-store sync.
 
 ### Error Handling
@@ -142,7 +140,6 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 | `src/modules/tabs/tabsTypes.ts` | Tab type unions (Terminal, Editor, Preview, Markdown, GitDiff, GitHistory, GitCommitFileDiff) |
 | `src/app/useWorkbenchCommands.ts` | Command registry wiring for workbench actions |
 | `src/app/useWorkspaceLifecycle.ts` | Workspace root lifecycle, FS watcher, env switching |
-| `src/app/useTaskConsoleController.ts` | Task discovery and execution management |
 | `src/lib/native.ts` | Typed Tauri invoke wrappers for all backend commands (THE single IPC exit) |
 | `src/styles/tokens.ts` | Runtime oklch to RGB token resolution |
 | `src-tauri/src/lib.rs` | Rust entry: registers all Tauri commands and state |

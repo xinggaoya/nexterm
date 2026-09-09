@@ -1,40 +1,13 @@
 <script setup lang="ts">
 import { GitBranchOutline } from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
-import { computed, onBeforeUnmount, ref, type ComputedRef, type Ref } from "vue";
+import { computed, onBeforeUnmount, ref, type Ref } from "vue";
 import type { GitCommitResult, WorkspaceFsChangedEvent } from "@/lib/native";
 import { t } from "@/modules/i18n/translate";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
 import type { GitDecorationMap } from "@/modules/source-control";
 import SourceControlPanel from "@/modules/source-control/SourceControlPanel.vue";
-import type { TaskRun, TaskRunGroup } from "@/modules/tasks";
-import TaskConsole from "@/modules/tasks/TaskConsole.vue";
-import type { TaskConsoleView } from "@/modules/tasks/taskConsoleTypes";
-import type { WorkspaceTask } from "@/modules/tasks/taskTypes";
 import type { WorkspacePanelTab } from "@/modules/settings/store";
-
-type TaskConsoleBinding = {
-  activeTaskRun: ComputedRef<TaskRun | null> | Ref<TaskRun | null>;
-  closeTaskConsole: () => void;
-  refreshWorkspaceTasks: () => void | Promise<void>;
-  runTaskInTerminal: (input: { command: string; cwd: string }) => void;
-  runWorkspaceCommand: (command: string) => void | Promise<void>;
-  runWorkspaceTask: (task: WorkspaceTask) => void | Promise<void>;
-  taskConsoleOpen: Ref<boolean>;
-  taskConsoleView: Ref<TaskConsoleView>;
-  taskRunList: ComputedRef<TaskRun[]> | Ref<TaskRun[]>;
-  taskRuns: {
-    rerun: (id: number) => void | Promise<unknown>;
-    runGroups: Ref<TaskRunGroup[]>;
-    setActiveRun: (id: number) => void;
-    stopRun: (id: number) => void | Promise<unknown>;
-    stopRunGroup: (id: number) => void | Promise<unknown>;
-  };
-  setTaskConsoleView: (view: TaskConsoleView) => void;
-  workspaceTasks: Ref<WorkspaceTask[]>;
-  workspaceTasksError: Ref<string | null>;
-  workspaceTasksLoading: Ref<boolean>;
-};
 
 const SIDE_PANEL_MIN = 240;
 const SIDE_PANEL_MAX = 520;
@@ -50,7 +23,6 @@ const props = defineProps<{
   gitBranch: string | null;
   showBranchesModal: Ref<boolean>;
   fsEvent: WorkspaceFsChangedEvent | null;
-  taskConsole: TaskConsoleBinding;
 }>();
 
 const emit = defineEmits<{
@@ -87,12 +59,7 @@ const fileExplorerRef = ref<InstanceType<typeof FileExplorer> | null>(null);
 const tabs = computed(() => [
   { key: "explorer" as const, label: t("app.rail.tool.explorer") },
   { key: "changes" as const, label: t("app.rail.tool.changes") },
-  { key: "tasks" as const, label: t("app.rail.tool.tasks") },
 ]);
-
-const runningTaskCount = computed(
-  () => props.taskConsole.taskRunList.value.filter((run) => run.status === "running").length,
-);
 
 function selectTab(key: WorkspacePanelTab): void {
   if (key !== props.tab) emit("update:tab", key);
@@ -174,10 +141,6 @@ defineExpose({
           @click="selectTab(item.key)"
         >
           <span class="truncate">{{ item.label }}</span>
-          <span
-            v-if="item.key === 'tasks' && runningTaskCount > 0"
-            class="size-1.5 shrink-0 rounded-full bg-primary"
-          />
         </button>
       </div>
       <span
@@ -228,32 +191,6 @@ defineExpose({
           @decorations-change="(d) => emit('decorations-change', d)"
           @branch-change="(branch) => emit('branch-change', branch)"
           @committed="(result) => emit('committed', result)"
-        />
-      </div>
-
-      <div
-        v-show="tab === 'tasks'"
-        class="absolute inset-0 overflow-hidden"
-        data-panel-tab-tasks
-      >
-        <TaskConsole
-          class="h-full"
-          :root-path="workspaceRoot"
-          :view="taskConsole.taskConsoleView.value"
-          :tasks="taskConsole.workspaceTasks.value"
-          :runs="taskConsole.taskRunList.value"
-          :active-run="taskConsole.activeTaskRun.value"
-          :loading-tasks="taskConsole.workspaceTasksLoading.value"
-          :task-error="taskConsole.workspaceTasksError.value"
-          @close="selectTab('explorer')"
-          @update-view="taskConsole.setTaskConsoleView"
-          @refresh-tasks="taskConsole.refreshWorkspaceTasks"
-          @run-task="taskConsole.runWorkspaceTask"
-          @run-command="taskConsole.runWorkspaceCommand"
-          @select-run="taskConsole.taskRuns.setActiveRun"
-          @stop-run="(id) => void taskConsole.taskRuns.stopRun(id)"
-          @rerun="(id) => void taskConsole.taskRuns.rerun(id)"
-          @run-in-terminal="taskConsole.runTaskInTerminal"
         />
       </div>
     </div>

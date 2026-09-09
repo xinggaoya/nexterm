@@ -109,6 +109,6 @@ describe("Preferences 类型形状（编译期契约的运行时抽样）", () =
     };
     expect(typeof sample.terminalScrollback).toBe("number");
     expect(sample.leftSidebar.activity).toBe("sourceControl");
-    expect(sample.panelVisibility.taskConsole).toBe(false);
+    expect(sample.panelVisibility.explorer).toBe(true);
   });
 });

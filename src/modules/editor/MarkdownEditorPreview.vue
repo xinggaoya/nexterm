@@ -10,7 +10,11 @@ const renderedHtml = computed(() => renderMarkdownToHtml(props.content));
 </script>
 
 <template>
-  <div class="h-full overflow-auto bg-background px-6 py-5">
+  <!-- 应用根节点是 select-none,拆分预览正文要显式恢复可选中以便复制。 -->
+  <div
+    class="h-full cursor-text select-text overflow-auto bg-background px-6 py-5"
+    data-editor-markdown-preview-scroll
+  >
     <article
       data-editor-markdown-preview
       class="markdown-editor-preview mx-auto max-w-4xl text-sm leading-7 text-foreground"

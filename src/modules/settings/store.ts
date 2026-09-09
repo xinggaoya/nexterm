@@ -197,7 +197,7 @@ export type Preferences = {
   tabFixedWidth: number;
 };
 
-export type WorkspacePanelTab = "explorer" | "changes" | "tasks";
+export type WorkspacePanelTab = "explorer" | "changes";
 
 export type LeftSidebarPref = {
   activity: "workspace" | "sourceControl";
@@ -209,7 +209,6 @@ export type PanelVisibilityPref = {
   workspace: boolean;
   sourceControl: boolean;
   explorer: boolean;
-  taskConsole: boolean;
 };
 
 export const LEFT_SIDEBAR_WIDTH_DEFAULT = 320;
@@ -247,7 +246,6 @@ const ACTIVITY_VALUES: readonly LeftSidebarPref["activity"][] = [
 const WORKSPACE_PANEL_TAB_VALUES: readonly WorkspacePanelTab[] = [
   "explorer",
   "changes",
-  "tasks",
 ];
 
 export function normalizeWorkspacePanelTab(value: unknown): WorkspacePanelTab {
@@ -291,7 +289,6 @@ export function normalizePanelVisibilityPref(value: unknown): PanelVisibilityPre
       workspace: true,
       sourceControl: true,
       explorer: true,
-      taskConsole: false,
     };
   }
   const record = value as Record<string, unknown>;
@@ -301,7 +298,6 @@ export function normalizePanelVisibilityPref(value: unknown): PanelVisibilityPre
     workspace: bool("workspace", true),
     sourceControl: bool("sourceControl", true),
     explorer: bool("explorer", true),
-    taskConsole: bool("taskConsole", false),
   };
 }
 
@@ -468,7 +464,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
     workspace: true,
     sourceControl: true,
     explorer: true,
-    taskConsole: false,
   },
   sidebarCollapsed: false,
   workspacePanelTab: "explorer",

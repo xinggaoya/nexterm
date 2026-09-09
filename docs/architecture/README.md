@@ -34,7 +34,6 @@
 | 源代码控制 source-control | [source-control/README.md](./source-control/README.md) | [source-control/detailed-design.md](./source-control/detailed-design.md) |
 | Git 历史 git-history | [git-history/README.md](./git-history/README.md) | [git-history/detailed-design.md](./git-history/detailed-design.md) |
 | 标签页 tabs | [tabs/README.md](./tabs/README.md) | [tabs/detailed-design.md](./tabs/detailed-design.md) |
-| 任务管理 tasks | [tasks/README.md](./tasks/README.md) | [tasks/detailed-design.md](./tasks/detailed-design.md) |
 | 设置 settings | [settings/README.md](./settings/README.md) | [settings/detailed-design.md](./settings/detailed-design.md) |
 | 命令 commands | [commands/README.md](./commands/README.md) | [commands/detailed-design.md](./commands/detailed-design.md) |
 | 工作区 workspace | [workspace/README.md](./workspace/README.md) | [workspace/detailed-design.md](./workspace/detailed-design.md) |

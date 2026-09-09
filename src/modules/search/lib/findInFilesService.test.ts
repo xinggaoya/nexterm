@@ -69,4 +69,43 @@ describe("runFindInFiles", () => {
       caseInsensitive: false,
     });
   });
+
+  it("escapes regex metacharacters in plain-text mode (default)", async () => {
+    vi.mocked(wsNative.fsGrep).mockResolvedValue({
+      hits: [],
+      truncated: false,
+      filesScanned: 0,
+    });
+    await runFindInFiles(wsNative, {
+      root: "/repo",
+      pattern: "foo(bar).*",
+      caseInsensitive: false,
+      includeGlobs: [],
+    });
+    // 字面量匹配:元字符转义后交给按正则解析的后端,三条路由行为一致。
+    expect(wsNative.fsGrep).toHaveBeenCalledWith(
+      "foo\\(bar\\)\\.\\*",
+      "/repo",
+      { glob: undefined, caseInsensitive: false },
+    );
+  });
+
+  it("passes the raw pattern through in regex mode", async () => {
+    vi.mocked(wsNative.fsGrep).mockResolvedValue({
+      hits: [],
+      truncated: false,
+      filesScanned: 0,
+    });
+    await runFindInFiles(wsNative, {
+      root: "/repo",
+      pattern: "foo\\d+",
+      regex: true,
+      caseInsensitive: false,
+      includeGlobs: [],
+    });
+    expect(wsNative.fsGrep).toHaveBeenCalledWith("foo\\d+", "/repo", {
+      glob: undefined,
+      caseInsensitive: false,
+    });
+  });
 });

@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import { CloseOutline, DuplicateOutline, TerminalOutline } from "@vicons/ionicons5";
+import {
+  ChevronBackOutline,
+  ChevronForwardOutline,
+  CloseOutline,
+  DuplicateOutline,
+  TerminalOutline,
+} from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
 import { tabLabel } from "@/modules/tabs/tabLabel";
 import { t } from "@/modules/i18n/translate";
@@ -249,6 +255,79 @@ function closeTabContextMenu() {
   tabContextMenu.value = null;
 }
 
+// ── 溢出滚动:滚轮横滚 + 激活标签自动滚入 + 左右翻页按钮 ────────────────
+// 会话条随标签增多必然溢出,而标题栏里不适合出现原生滚动条,
+// 因此提供三条互补的可见/不可见通道,保证后续标签始终可达。
+
+const stripScroller = ref<HTMLElement | null>(null);
+const scrollEdges = ref({ left: false, right: false });
+
+function updateScrollEdges() {
+  const el = stripScroller.value;
+  if (!el) return;
+  const maxScroll = el.scrollWidth - el.clientWidth;
+  scrollEdges.value = {
+    left: el.scrollLeft > 1,
+    right: el.scrollLeft < maxScroll - 1,
+  };
+}
+
+// 鼠标竖向滚轮转为横向滚动(已溢出时才拦截,不劫持无关滚动)。
+// 滚动容器随极简/完整模式挂载卸载,wheel 需非 passive,直接由模板绑定。
+function handleStripWheel(e: WheelEvent) {
+  const el = stripScroller.value;
+  if (!el || el.scrollWidth <= el.clientWidth) return;
+  const delta = Math.abs(e.deltaX) >= Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  if (!delta) return;
+  e.preventDefault();
+  el.scrollLeft += delta;
+}
+
+function scrollStripBy(direction: -1 | 1) {
+  const el = stripScroller.value;
+  if (!el || typeof el.scrollBy !== "function") return;
+  el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: "smooth" });
+}
+
+// 切换/新建/重排标签后把激活标签滚回可视区。
+watch(
+  [() => props.activeId, () => props.tabs.map((tab) => tab.id).join("|")],
+  () => {
+    nextTick(() => {
+      const active = stripScroller.value?.querySelector<HTMLElement>(
+        `[data-tab-id="${props.activeId}"]`,
+      );
+      if (!active || typeof active.scrollIntoView !== "function") return;
+      active.scrollIntoView({ block: "nearest", inline: "nearest" });
+      updateScrollEdges();
+    });
+  },
+  { immediate: true },
+);
+
+// 会话条或标签内容尺寸变化时刷新翻页按钮的可见性。
+let stripResizeObserver: ResizeObserver | null = null;
+
+watch(
+  stripScroller,
+  (el) => {
+    stripResizeObserver?.disconnect();
+    stripResizeObserver = null;
+    updateScrollEdges();
+    if (el && typeof ResizeObserver === "function") {
+      stripResizeObserver = new ResizeObserver(updateScrollEdges);
+      stripResizeObserver.observe(el);
+      if (el.firstElementChild) stripResizeObserver.observe(el.firstElementChild);
+    }
+  },
+  { flush: "post" },
+);
+
+onBeforeUnmount(() => {
+  stripResizeObserver?.disconnect();
+  stripResizeObserver = null;
+});
+
 onBeforeUnmount(removePointerListeners);
 </script>
 
@@ -277,7 +356,24 @@ onBeforeUnmount(removePointerListeners);
 
     <!-- 完整会话条 -->
     <template v-else>
-      <div class="no-scrollbar min-w-0 flex-1 overflow-x-auto">
+      <button
+        v-if="scrollEdges.left"
+        type="button"
+        data-strip-scroll-left
+        :aria-label="t('app.header.scrollTabsLeft')"
+        :title="t('app.header.scrollTabsLeft')"
+        class="flex h-7 w-5 flex-none items-center justify-center rounded-full text-muted-foreground transition-colors duration-[var(--dur-fast)] hover:bg-surface-hover hover:text-foreground"
+        @click="scrollStripBy(-1)"
+      >
+        <NIcon :component="ChevronBackOutline" :size="13" />
+      </button>
+      <div
+        ref="stripScroller"
+        data-strip-scroller
+        class="no-scrollbar min-w-0 flex-[1_1_auto] overflow-x-auto"
+        @scroll.passive="updateScrollEdges"
+        @wheel="handleStripWheel"
+      >
         <div class="flex min-w-full items-center gap-1 px-1">
           <TransitionGroup tag="div" name="v2-tab-move" class="flex min-w-0 items-center gap-1">
             <button
@@ -347,6 +443,17 @@ onBeforeUnmount(removePointerListeners);
           </TransitionGroup>
         </div>
       </div>
+      <button
+        v-if="scrollEdges.right"
+        type="button"
+        data-strip-scroll-right
+        :aria-label="t('app.header.scrollTabsRight')"
+        :title="t('app.header.scrollTabsRight')"
+        class="flex h-7 w-5 flex-none items-center justify-center rounded-full text-muted-foreground transition-colors duration-[var(--dur-fast)] hover:bg-surface-hover hover:text-foreground"
+        @click="scrollStripBy(1)"
+      >
+        <NIcon :component="ChevronForwardOutline" :size="13" />
+      </button>
     </template>
 
     <!-- 拖拽区:会话条之后的空白带 -->

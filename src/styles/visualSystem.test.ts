@@ -66,13 +66,13 @@ describe("visual system contract", () => {
     expect(host).toMatch(/<Sidebar[\s\S]*?<TopBar[\s\S]*?<SessionStrip/);
     expect(host).toMatch(/<Canvas[\s\S]*?<WorkspacePanel[\s\S]*?<StatusDock/);
 
-    // 面板停靠在画布右侧(非浮层):三标签内容全部挂载在面板内,
+    // 面板停靠在画布右侧(非浮层):双标签内容全部挂载在面板内,
     // 拖宽手柄在面板左缘(向左拖加宽)。
     expect(panel).toContain("data-workspace-panel-right");
     expect(panel).toMatch(/data-panel-resizer[\s\S]*?left-0/);
     expect(panel).toMatch(/<FileExplorer/);
     expect(panel).toMatch(/<SourceControlPanel/);
-    expect(panel).toMatch(/<TaskConsole/);
+    expect(panel).not.toContain("<TaskConsole");
 
     // 画布是纯内容层:终端铺满中间区域,不再承载任何浮层/面板。
     expect(canvas).toMatch(/<TerminalWorkspace/);

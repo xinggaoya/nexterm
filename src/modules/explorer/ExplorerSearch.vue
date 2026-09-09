@@ -5,11 +5,15 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
 import { useWorkspaceContext } from "@/app/workspaceContext";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import {
+  buildHighlightSegments,
+  type HighlightSegment,
+} from "@/modules/search/lib/highlight";
 import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
 import { searchFileTree, type SearchHit } from "./lib/fileTreeService";
 
-const MIN_QUERY_LEN = 2;
-const DEBOUNCE_MS = 300;
+const MIN_QUERY_LEN = 1;
+const DEBOUNCE_MS = 200;
 
 const props = defineProps<{
   rootPath: string;
@@ -53,6 +57,13 @@ function resetSearch() {
 
 function selectHit(hit: SearchHit) {
   if (!hit.is_dir) emit("openFile", hit.path, false);
+}
+
+// 命中名高亮:与后端一致按小写子串匹配。
+function nameSegments(hit: SearchHit): HighlightSegment[] | null {
+  return buildHighlightSegments(hit.name, query.value.trim(), {
+    caseInsensitive: true,
+  });
 }
 
 function handleKeydown(event: KeyboardEvent) {
@@ -160,51 +171,73 @@ onBeforeUnmount(clearTimer);
       </button>
     </div>
 
-    <div v-if="active" class="min-h-0 flex-1 overflow-y-auto py-1">
+    <div v-if="active" class="flex min-h-0 flex-1 flex-col">
       <div
-        v-if="searching && results.length === 0"
-        class="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground"
+        v-if="results.length > 0"
+        class="shrink-0 px-3 py-1 text-[10px] text-muted-foreground"
       >
-        <NSpin size="small" />
-        <span>{{ t("explorer.searching") }}</span>
+        {{ t("explorer.resultsCount", { count: results.length }) }}
       </div>
-      <div
-        v-else-if="results.length === 0"
-        class="px-3 py-2 text-[11px] text-muted-foreground"
-      >
-        {{ t("explorer.noMatches") }}
-      </div>
-      <button
-        v-for="(hit, index) in results"
-        v-else
-        :key="hit.path"
-        type="button"
-        :data-search-result="hit.path"
-        :class="[
-          'flex h-7 w-full min-w-0 items-center gap-1.5 px-2 text-left text-[12px] transition-colors',
-          index === selectedIndex
-            ? 'bg-accent text-foreground'
-            : 'text-foreground/80 hover:bg-accent/50',
-        ]"
-        :title="hit.path"
-        @mouseenter="selectedIndex = index"
-        @click="selectHit(hit)"
-      >
-        <img
-          :src="hit.is_dir ? folderIconUrl(hit.name, false) : fileIconUrl(hit.name)"
-          alt=""
-          class="size-3.5 shrink-0"
-        />
-        <span class="min-w-0 truncate">{{ hit.name }}</span>
-        <span class="ml-auto min-w-0 truncate text-[10px] text-muted-foreground">
-          {{ hit.rel }}
-        </span>
-      </button>
-      <div
-        v-if="truncated && results.length > 0"
-        class="px-3 py-1.5 text-[10px] text-muted-foreground"
-      >
-        {{ t("explorer.partialResults") }}
+      <div class="min-h-0 flex-1 overflow-y-auto py-1">
+        <div
+          v-if="searching && results.length === 0"
+          class="flex items-center gap-2 px-3 py-2 text-[11px] text-muted-foreground"
+        >
+          <NSpin size="small" />
+          <span>{{ t("explorer.searching") }}</span>
+        </div>
+        <div
+          v-else-if="results.length === 0"
+          class="px-3 py-2 text-[11px] text-muted-foreground"
+        >
+          {{ t("explorer.noMatches") }}
+        </div>
+        <button
+          v-for="(hit, index) in results"
+          v-else
+          :key="hit.path"
+          type="button"
+          :data-search-result="hit.path"
+          :class="[
+            'flex h-7 w-full min-w-0 items-center gap-1.5 px-2 text-left text-[12px] transition-colors',
+            index === selectedIndex
+              ? 'bg-accent text-foreground'
+              : 'text-foreground/80 hover:bg-accent/50',
+          ]"
+          :title="hit.path"
+          @mouseenter="selectedIndex = index"
+          @click="selectHit(hit)"
+        >
+          <img
+            :src="hit.is_dir ? folderIconUrl(hit.name, false) : fileIconUrl(hit.name)"
+            alt=""
+            class="size-3.5 shrink-0"
+          />
+          <span class="min-w-0 truncate">
+            <template v-if="nameSegments(hit)">
+              <template
+                v-for="(segment, si) in nameSegments(hit)!"
+                :key="`${hit.path}:${si}`"
+              >
+                <mark
+                  v-if="segment.hit"
+                  class="rounded-sm bg-primary/25 text-foreground"
+                >{{ segment.text }}</mark>
+                <template v-else>{{ segment.text }}</template>
+              </template>
+            </template>
+            <template v-else>{{ hit.name }}</template>
+          </span>
+          <span class="ml-auto min-w-0 truncate text-[10px] text-muted-foreground">
+            {{ hit.rel }}
+          </span>
+        </button>
+        <div
+          v-if="truncated && results.length > 0"
+          class="px-3 py-1.5 text-[10px] text-muted-foreground"
+        >
+          {{ t("explorer.partialResults") }}
+        </div>
       </div>
     </div>
   </div>

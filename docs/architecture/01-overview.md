@@ -150,7 +150,6 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 | 标签页 | `tabsPinia` | tab 数组、activeId、pane tree |
 | 工作区根 | `workspaceRootPinia` | 根路径、最近工作区、bootstrap 状态 |
 | 工作区 env | `workspaceEnvPinia` | local / wsl，distro 列表 |
-| 任务运行实例 | `taskRunStore`（工厂） | 日志、状态、退出码 |
 | 文件树 rows | `explorer/lib/fileTreeRows.ts` 内部 ref | 组件内状态（不跨模块共享） |
 | 终端 session | `terminalSessionCore.ts` 内部 ref | 组件内状态 |
 | 编辑器 doc | `editor/lib/documentService.ts` | 跨编辑器 tab 共享最近文件 |

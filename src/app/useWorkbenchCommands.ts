@@ -53,7 +53,6 @@ type WorkbenchCommandOptions = {
   splitActivePane: (dir: SplitDir) => void;
   openFileTab: (path: string, pin: boolean) => void;
   openSettings: (tab?: SettingsTab) => void;
-  openTaskConsole: () => void | Promise<void>;
   requestCloseTab: (id: number) => void;
   saveActiveEditor: () => void | Promise<void>;
   openGotoLine: () => void;
@@ -296,9 +295,6 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
         return;
       case "workbench.closeActiveTab":
         closeActiveTabFromCommand();
-        return;
-      case "tasks.run":
-        await options.openTaskConsole();
         return;
       case "terminal.new":
         options.newTerminalTab();

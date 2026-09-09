@@ -36,7 +36,7 @@ graph TB
         C --> E[terminal module]
         C --> F[editor module]
         C --> G[explorer module 浮层]
-        C --> H[source-control / git-history / tasks / preview / markdown]
+        C --> H[source-control / git-history / preview / markdown]
         B --> SD[StatusDock]
         A --> I[settings drawer]
         I --> J[settings/ sections]
@@ -85,7 +85,6 @@ graph TB
     app --> settings
     app --> commands
     app --> workspace
-    app --> tasks
     app --> preview
     app --> markdown
     app --> notifications
@@ -100,7 +99,6 @@ graph TB
     tabs --> terminal
     commands --> settings_types
     workspace --> lib_native
-    tasks --> lib_native
     settings --> lib_native
 
     lib_native --> tauri_ipc[Tauri IPC]

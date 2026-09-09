@@ -20,35 +20,6 @@ vi.mock("@/app/useWorkspaceLifecycle", () => ({
   useWorkspaceLifecycle: () => lifecycle,
 }));
 
-const taskConsole = {
-  openTaskConsole: vi.fn(),
-  closeTaskConsole: vi.fn(),
-  disposeTaskConsole: vi.fn().mockResolvedValue(undefined),
-  taskConsoleOpen: ref(false),
-  taskConsoleView: ref("tasks" as const),
-  taskRunList: ref([]),
-  activeTaskRun: ref(null),
-  workspaceTasks: ref([]),
-  workspaceTasksError: ref(null),
-  workspaceTasksLoading: ref(false),
-  taskRuns: {
-    rerun: vi.fn(),
-    runGroups: ref([]),
-    setActiveRun: vi.fn(),
-    stopRun: vi.fn(),
-    stopRunGroup: vi.fn(),
-  },
-  setTaskConsoleView: vi.fn(),
-  refreshWorkspaceTasks: vi.fn(),
-  runWorkspaceTask: vi.fn(),
-  runWorkspaceCommand: vi.fn(),
-  runTaskInTerminal: vi.fn(),
-};
-
-vi.mock("@/app/useTaskConsoleController", () => ({
-  useTaskConsoleController: () => taskConsole,
-}));
-
 vi.mock("@/app/useWorkbenchCommands", () => ({
   useWorkbenchCommands: () => ({ commandApi: { stub: true } }),
 }));
@@ -183,7 +154,7 @@ describe("WorkspaceHost.vue", () => {
     wrapper.unmount();
   });
 
-  it("卸载时按序回收：生命周期、任务控制台、tabs", async () => {
+  it("卸载时按序回收：生命周期、tabs", async () => {
     const wrapper = mountHost();
     await nextTick();
     wrapper.unmount();
@@ -191,7 +162,6 @@ describe("WorkspaceHost.vue", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(lifecycle.stopWorkspaceLifecycle).toHaveBeenCalledTimes(1);
-    expect(taskConsole.disposeTaskConsole).toHaveBeenCalledTimes(1);
     expect(tabsStore.disposeWorkspaceTabs).toHaveBeenCalledWith("w1");
   });
 

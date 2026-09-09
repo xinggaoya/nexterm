@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     NextermIconButton: typeof import('./components/NextermIconButton.vue')['default']
+    NIcon: typeof import('naive-ui')['NIcon']
     TooltipTitle: typeof import('./components/TooltipTitle.vue')['default']
     WindowControls: typeof import('./components/WindowControls.vue')['default']
   }

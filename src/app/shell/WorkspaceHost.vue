@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * Per-workspace container that keeps a workspace's tabs, terminal sessions,
- * FS watcher, editor/explorer/source-control state, and task console all
- * alive — even when the workspace is not active (switched away from).
+ * FS watcher, and editor/explorer/source-control state all alive — even when
+ * the workspace is not active (switched away from).
  *
  * MainApp renders one WorkspaceHost per open workspace inside a `v-show`
  * stack, so inactive workspaces stay mounted (xterm buffers accumulate,
@@ -11,14 +11,13 @@
  * v3.1 停靠式布局:
  *   Sidebar(全局侧栏,可折叠为轨道)
  *   └ TopBar(工作区身份 + 会话条 + 动作)
- *     └ WorkspacePanel(停靠:文件树/更改/任务) | Canvas(终端画布)
+ *     └ WorkspacePanel(停靠:文件树/更改) | Canvas(终端画布)
  *     └ StatusDock(状态坞)
  *
  * This component owns:
  *   - the env-bound `wsNative` surface (created once from `workspace.env`)
  *   - the WorkspaceContext provided to all descendants via inject
  *   - the per-workspace FS watcher lifecycle
- *   - the per-workspace task console controller
  *   - the per-workspace command wiring forwarded to Canvas/WorkspacePanel
  */
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -41,9 +40,7 @@ import {
   tryWorkspaceContext,
 } from "@/app/workspaceContext";
 import { useWorkspaceLifecycle } from "@/app/useWorkspaceLifecycle";
-import { useTaskConsoleController } from "@/app/useTaskConsoleController";
 import { useWorkbenchCommands } from "@/app/useWorkbenchCommands";
-import { readEditorDocument } from "@/modules/editor/lib/documentService";
 import { isBinaryImagePath } from "@/modules/file-preview/lib/imageFiles";
 import { normalizePreviewUrl } from "@/modules/preview/previewUrl";
 import { t, tLoose } from "@/modules/i18n/translate";
@@ -175,23 +172,6 @@ function splitActivePane(dir: SplitDir): void {
   if (tab?.kind !== "terminal") return;
   tabs.splitActivePane(tab.id, dir, props.workspace.id);
 }
-
-async function readWorkspaceTextFile(path: string): Promise<string | null> {
-  const result = await readEditorDocument(wsNative, path);
-  return result.status === "ready" ? result.content : null;
-}
-
-const taskConsole = useTaskConsoleController({
-  workspaceRoot,
-  wsNative,
-  readTextFile: readWorkspaceTextFile,
-  openTaskTerminal: (input) =>
-    tabs.newTaskTerminal(input, props.workspace.id),
-});
-
-const runningTaskCount = computed(
-  () => taskConsole.taskRunList.value.filter((run) => run.status === "running").length,
-);
 
 function openFileTab(path: string, pin: boolean): void {
   // 二进制图片在文本编辑器里没有意义,双击直接进图片预览 tab。
@@ -380,11 +360,9 @@ onBeforeUnmount(async () => {
   // (MainApp renders via `v-for` + `:key="ws.id"`). This is the single place
   // that must reclaim this workspace's resources, in order:
   //   1. FS watcher
-  //   2. Background task processes (kill + clear poll timers)
-  //   3. Terminal PTY sessions + tab state (disposeWorkspaceTabs internally
+  //   2. Terminal PTY sessions + tab state (disposeWorkspaceTabs internally
   //      calls disposeWorkspaceSessions(id))
   stopWorkspaceLifecycle();
-  await taskConsole.disposeTaskConsole();
   tabs.disposeWorkspaceTabs(props.workspace.id);
 });
 
@@ -444,10 +422,6 @@ const commandApi = useWorkbenchCommands({
   splitActivePane,
   openFileTab,
   openSettings: (tab?: SettingsTab) => emit("request-settings", tab),
-  openTaskConsole: () => {
-    setPanelTab("tasks");
-    void taskConsole.openTaskConsole();
-  },
   requestCloseTab,
   saveActiveEditor,
   openGotoLine,
@@ -485,12 +459,6 @@ defineExpose({
   killActiveTerminal,
   workspaceId,
   commandApi,
-  // 暴露 taskConsole 控制器,供 MainApp 联动活动工作区。
-  taskConsole: {
-    open: () => void taskConsole.openTaskConsole(),
-    close: () => taskConsole.closeTaskConsole(),
-    isOpen: taskConsole.taskConsoleOpen,
-  },
 });
 </script>
 
@@ -574,7 +542,6 @@ defineExpose({
           :git-branch="gitBranch"
           :show-branches-modal="showBranchesModalProp"
           :fs-event="normalizedFsEvent"
-          :task-console="taskConsole"
           @update:tab="setPanelTab"
           @resize-width="persistPanelWidth"
           @open-file="openFileTab"
@@ -593,7 +560,6 @@ defineExpose({
         :workspace-name="workspace.name"
         :env="workspace.env"
         :git-branch="gitBranch"
-        :running-tasks="runningTaskCount"
       />
     </div>
   </div>
