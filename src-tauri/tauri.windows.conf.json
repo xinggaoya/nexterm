@@ -11,5 +11,11 @@
         "shadow": false
       }
     ]
+  },
+  "bundle": {
+    "resources": {
+      "conpty/conpty.dll": "conpty.dll",
+      "conpty/OpenConsole.exe": "OpenConsole.exe"
+    }
   }
 }
