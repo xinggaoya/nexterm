@@ -25,7 +25,8 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 ```
 +------------------------------------------------------+
 |  Vue 3 Webview                                       |
-|  MainApp.vue -> WorkspaceShell -> TabBar + PaneStack |
+|  MainApp.vue -> WorkspaceHost(Rail + TopBar/SessionStrip |
+|  + Canvas + StatusDock)                                  |
 |  Pinia stores <-> Tauri invoke() <-> Rust commands   |
 +--------------------------+---------------------------+
                            | Tauri IPC
@@ -45,7 +46,7 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 
 | Directory | Purpose |
 |-----------|---------|
-| `src/app/` | App shell: `MainApp.vue`, `shell/` (TitleBar / ActivityBar / TabBar / Workbench / StatusBar), `components/` (WorkspaceWelcome / WorkspaceEnvSelector / UnsavedCloseGuard), composables (`useWorkspaceLifecycle` / `useTaskConsoleController` / `useWorkbenchCommands` / `useWorkbenchLayout` / `useWindowChromeState`) |
+| `src/app/` | App shell（终端优先 v3 布局）: `MainApp.vue`, `shell/` (WorkspaceHost / Rail / TopBar / SessionStrip / Canvas / OverlayPanel / StatusDock / TabContextMenu), `components/` (WorkspaceDashboard / WorkspaceEnvSelector / UnsavedCloseGuard), composables (`useWorkspaceLifecycle` / `useTaskConsoleController` / `useWorkbenchCommands` / `useWindowChromeState`) |
 | `src/modules/terminal/` | Terminal multiplexing, PTY bridge, pane tree, xterm.js rendering |
 | `src/modules/editor/` | CodeMirror 6 editor, file editing, syntax highlighting, diff views |
 | `src/modules/explorer/` | File tree, file system navigation, search, context menu |
