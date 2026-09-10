@@ -1,7 +1,9 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
   buildNaiveThemeOverrides,
   getNaiveTheme,
+  readCurrentNaiveThemeConfig,
   type ResolvedTheme,
 } from "./naiveTheme";
 import type { AppTokens } from "@/styles/tokens";
@@ -99,5 +101,20 @@ describe("naive theme bridge", () => {
       expect(overrides.common?.primaryColorPressed).toMatch(/^rgb\(/);
       expect(overrides.common?.primaryColorSuppl).toMatch(/^rgb\(/);
     }
+  });
+
+  it("reads the current theme from the dark/light class on <html>", () => {
+    const root = document.documentElement;
+    root.classList.add("dark");
+    expect(readCurrentNaiveThemeConfig().theme).toBeTruthy();
+
+    root.classList.remove("dark");
+    expect(readCurrentNaiveThemeConfig().theme).toBeNull();
+  });
+
+  it("resolves detached-dialog overrides to rgb without leaking oklch", () => {
+    const { themeOverrides } = readCurrentNaiveThemeConfig();
+    expect(themeOverrides.common?.primaryColor).toMatch(/^rgb\(/);
+    expect(themeOverrides.common?.bodyColor).not.toContain("oklch");
   });
 });

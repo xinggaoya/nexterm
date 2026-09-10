@@ -6,7 +6,9 @@
  * 该 store 无 UI 上下文,用 Promise 化的 detached mount 注入对话框。
  */
 
-import { createApp } from "vue";
+import { createApp, defineComponent, h } from "vue";
+import { NConfigProvider } from "naive-ui";
+import { readCurrentNaiveThemeConfig } from "@/modules/theme/naiveTheme";
 import SshConnectDialog, { type SshConnectResult } from "./SshConnectDialog.vue";
 
 export type { SshConnectResult };
@@ -23,10 +25,23 @@ export function openSshConnectDialog(): Promise<SshConnectResult | null> {
       app.unmount();
       host.remove();
     };
-    const app = createApp(SshConnectDialog, {
-      onConfirm: (result: SshConnectResult) => finish(result),
-      onCancel: () => finish(null),
-    });
+    const { theme, themeOverrides } = readCurrentNaiveThemeConfig();
+    const app = createApp(
+      defineComponent({
+        setup: () => () =>
+          h(
+            NConfigProvider,
+            { theme, themeOverrides },
+            {
+              default: () =>
+                h(SshConnectDialog, {
+                  onConfirm: (result: SshConnectResult) => finish(result),
+                  onCancel: () => finish(null),
+                }),
+            },
+          ),
+      }),
+    );
     app.mount(host);
   });
 }

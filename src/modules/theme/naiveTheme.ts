@@ -1,11 +1,28 @@
 import type { GlobalTheme, GlobalThemeOverrides } from "naive-ui";
 import { darkTheme } from "naive-ui";
-import { normalizeAppTokens, type AppTokens } from "@/styles/tokens";
+import { normalizeAppTokens, readAppTokens, type AppTokens } from "@/styles/tokens";
 
 export type ResolvedTheme = "dark" | "light";
 
 export function getNaiveTheme(theme: ResolvedTheme): GlobalTheme | null {
   return theme === "dark" ? darkTheme : null;
+}
+
+/**
+ * 读取当前文档实际生效的 Naive 主题,供 createApp 独立挂载的对话框
+ * (如 SshConnectDialog)自带 NConfigProvider 使用——MainApp.vue 的
+ * 主题注入不会跨越独立 app 边界。明暗以 <html> 上由 syncDocumentTheme
+ * 同步的 dark/light class 为准,返回打开瞬间的快照。
+ */
+export function readCurrentNaiveThemeConfig(): {
+  theme: GlobalTheme | null;
+  themeOverrides: GlobalThemeOverrides;
+} {
+  const dark = document.documentElement.classList.contains("dark");
+  return {
+    theme: getNaiveTheme(dark ? "dark" : "light"),
+    themeOverrides: buildNaiveThemeOverrides(readAppTokens()),
+  };
 }
 
 export function buildNaiveThemeOverrides(
