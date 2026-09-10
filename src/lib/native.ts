@@ -727,6 +727,8 @@ export const native = {
   getLaunchDir: () => invoke<string | null>("get_launch_dir"),
   getWslHome: (distro: string) => invoke<string>("wsl_home", { distro }),
   wslListDistros: () => invoke<WslDistro[]>("wsl_list_distros"),
+  /** 本机文件系统根（Windows 盘符 / POSIX 根），picker 的快捷入口。 */
+  listLocalRoots: () => invoke<string[]>("local_list_roots"),
   shellListProfiles: () => invoke<ShellProfileInfo[]>("shell_list_profiles"),
   ptyWrite: (id: number, data: string) =>
     invoke<void>("pty_write", { id, data }),

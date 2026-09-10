@@ -296,6 +296,7 @@ pub fn run() {
             workspace::wsl_list_distros,
             workspace::wsl_home,
             workspace::workspace_authorize,
+            workspace::local_list_roots,
             ssh::ssh_profile_list,
             ssh::ssh_profile_save,
             ssh::ssh_profile_delete,

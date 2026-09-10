@@ -15,11 +15,10 @@
 ```
 src/modules/workspace/
   workspacesPinia.ts           # ★ 多工作区 store（核心：addWorkspace/removeWorkspace/setActive）
-  workspaceRootPinia.ts        # 最近工作区历史 + 目录选择对话框
+  workspaceRootPinia.ts        # 最近工作区历史 + 目录选择（local/wsl 走 picker 模块，ssh 走连接对话框）
   workspaceEnvPinia.ts         # WSL distro 列表 + 添加工作区时的 env 选择状态
   workspaceEnvSnapshot.ts      # WorkspaceEnv 类型 + 纯函数（workspaceScopeKey/sameWorkspaceEnv）
   workspacePath.ts             # 路径规范化工具
-  workspaceDialog.ts           # 文件夹选择对话框
   workspaceNative.ts           # authorizeWorkspace 薄封装
   workspaceWindow.ts           # 多窗口（OS 窗口）打开（保留但非主要方式）
   index.ts

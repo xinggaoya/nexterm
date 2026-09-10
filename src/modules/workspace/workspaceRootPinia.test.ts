@@ -25,8 +25,8 @@ const nativeMock = vi.hoisted(() => ({
   getWslHome: vi.fn(),
 }));
 
-const dialogMock = vi.hoisted(() => ({
-  selectWorkspaceDirectory: vi.fn(),
+const pickerMock = vi.hoisted(() => ({
+  openFilePicker: vi.fn(),
 }));
 
 vi.mock("@/modules/settings/store", () => ({
@@ -48,8 +48,8 @@ vi.mock("./workspaceNative", () => ({
   getWslHome: nativeMock.getWslHome,
 }));
 
-vi.mock("./workspaceDialog", () => ({
-  selectWorkspaceDirectory: dialogMock.selectWorkspaceDirectory,
+vi.mock("@/modules/picker/filePickerDialog", () => ({
+  openFilePicker: pickerMock.openFilePicker,
 }));
 
 describe("workspace root pinia store", () => {
@@ -96,18 +96,23 @@ describe("workspace root pinia store", () => {
   });
 
   it("pickWorkspaceDirectory requires an explicit env and does not open the workspace", async () => {
-    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce("/picked");
+    pickerMock.openFilePicker.mockResolvedValueOnce("/picked");
     const store = useWorkspaceRootPiniaStore();
 
     const selected = await store.pickWorkspaceDirectory(LOCAL_WORKSPACE);
 
     expect(selected).toEqual({ path: "/picked", env: LOCAL_WORKSPACE });
+    expect(pickerMock.openFilePicker).toHaveBeenCalledWith({
+      mode: "directory",
+      workspace: LOCAL_WORKSPACE,
+      initialPath: undefined,
+    });
     expect(store.rootPath).toBeNull();
     expect(nativeMock.authorizeWorkspace).not.toHaveBeenCalled();
   });
 
   it("pickWorkspaceDirectory returns null when the user cancels", async () => {
-    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce(null);
+    pickerMock.openFilePicker.mockResolvedValueOnce(null);
     const store = useWorkspaceRootPiniaStore();
 
     const selected = await store.pickWorkspaceDirectory(LOCAL_WORKSPACE);
@@ -117,7 +122,7 @@ describe("workspace root pinia store", () => {
   });
 
   it("chooseWorkspace(env) adds the picked path to the workspaces store and records recent", async () => {
-    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce("/picked");
+    pickerMock.openFilePicker.mockResolvedValueOnce("/picked");
     const store = useWorkspaceRootPiniaStore();
     const workspaces = useWorkspacesPiniaStore();
 
@@ -139,7 +144,7 @@ describe("workspace root pinia store", () => {
   });
 
   it("chooseWorkspace(env) returns null when the dialog is cancelled", async () => {
-    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce(null);
+    pickerMock.openFilePicker.mockResolvedValueOnce(null);
     const store = useWorkspaceRootPiniaStore();
 
     const opened = await store.chooseWorkspace(LOCAL_WORKSPACE);
@@ -149,19 +154,24 @@ describe("workspace root pinia store", () => {
     expect(nativeMock.authorizeWorkspace).not.toHaveBeenCalled();
   });
 
-  it("picks a directory for an explicit WSL distro using its home as the default path", async () => {
+  it("picks a WSL directory via the in-app picker rooted at the distro home", async () => {
     const env = { kind: "wsl" as const, distro: "Ubuntu" };
     nativeMock.getWslHome.mockResolvedValueOnce("/home/dev");
-    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce("/home/dev/repo");
+    pickerMock.openFilePicker.mockResolvedValueOnce("/home/dev/repo");
     const store = useWorkspaceRootPiniaStore();
 
     const selected = await store.pickWorkspaceDirectoryForEnv(env);
 
+    // WSL 与本机统一走应用内选择器，不再有任何系统对话框路径。
     expect(selected).toEqual({ path: "/home/dev/repo", env });
     expect(nativeMock.getWslHome).toHaveBeenCalledWith("Ubuntu");
-    expect(dialogMock.selectWorkspaceDirectory).toHaveBeenCalledWith(
-      "\\\\wsl.localhost\\Ubuntu\\home\\dev",
-    );
+    expect(pickerMock.openFilePicker).toHaveBeenCalledTimes(1);
+    expect(pickerMock.openFilePicker).toHaveBeenCalledWith({
+      mode: "directory",
+      workspace: env,
+      initialPath: "/home/dev",
+      places: [],
+    });
   });
 
   it("picks a directory for an explicit local env using the current root path as default", async () => {
@@ -169,21 +179,23 @@ describe("workspace root pinia store", () => {
     const workspaces = useWorkspacesPiniaStore();
     await workspaces.addWorkspace("D:/repo", LOCAL_WORKSPACE);
 
-    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce("D:/other");
+    pickerMock.openFilePicker.mockResolvedValueOnce("D:/other");
     const store = useWorkspaceRootPiniaStore();
 
     const selected = await store.pickWorkspaceDirectoryForEnv(LOCAL_WORKSPACE);
 
     expect(selected).toEqual({ path: "D:/other", env: LOCAL_WORKSPACE });
-    expect(dialogMock.selectWorkspaceDirectory).toHaveBeenCalledWith("D:/repo");
+    expect(pickerMock.openFilePicker).toHaveBeenCalledWith({
+      mode: "directory",
+      workspace: LOCAL_WORKSPACE,
+      initialPath: "D:/repo",
+    });
     expect(nativeMock.getWslHome).not.toHaveBeenCalled();
   });
 
-  it("uses the most recent WSL workspace path for the same distro as the default path", async () => {
+  it("uses the most recent WSL workspace path as the picker's initial path and quick place", async () => {
     const env = { kind: "wsl" as const, distro: "Ubuntu" };
-    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce(
-      "\\\\wsl.localhost\\Ubuntu\\home\\dev\\projects\\repo",
-    );
+    pickerMock.openFilePicker.mockResolvedValueOnce("/home/dev/projects/repo");
     const store = useWorkspaceRootPiniaStore();
     // 通过 bootstrap 注入 recent 历史而不是直接改 rootPath。
     settingsMock.loadPreferences.mockResolvedValueOnce({
@@ -197,21 +209,26 @@ describe("workspace root pinia store", () => {
     await store.pickWorkspaceDirectoryForEnv(env);
 
     expect(nativeMock.getWslHome).not.toHaveBeenCalled();
-    expect(dialogMock.selectWorkspaceDirectory).toHaveBeenCalledWith(
-      "\\\\wsl.localhost\\Ubuntu\\home\\dev\\projects\\repo",
-    );
+    expect(pickerMock.openFilePicker).toHaveBeenCalledWith({
+      mode: "directory",
+      workspace: env,
+      initialPath: "/home/dev/projects/repo",
+      places: [{ key: "recent:/home/dev/projects/repo", label: "repo", path: "/home/dev/projects/repo" }],
+    });
   });
 
-  it("falls back to no default path when the WSL home cannot be resolved", async () => {
+  it("falls back to no initial path when the WSL home cannot be resolved", async () => {
     const env = { kind: "wsl" as const, distro: "Debian" };
     nativeMock.getWslHome.mockRejectedValueOnce(new Error("missing"));
-    dialogMock.selectWorkspaceDirectory.mockResolvedValueOnce(null);
+    pickerMock.openFilePicker.mockResolvedValueOnce(null);
     const store = useWorkspaceRootPiniaStore();
 
     const selected = await store.pickWorkspaceDirectoryForEnv(env);
 
     expect(selected).toBeNull();
-    expect(dialogMock.selectWorkspaceDirectory).toHaveBeenCalledWith(undefined);
+    expect(pickerMock.openFilePicker).toHaveBeenCalledWith(
+      expect.objectContaining({ initialPath: undefined }),
+    );
   });
 
   it("recordRecent deduplicates recent workspaces and keeps the newest ten entries", async () => {

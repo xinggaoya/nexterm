@@ -3,6 +3,7 @@ use std::sync::OnceLock;
 
 mod env;
 mod registry;
+mod roots;
 mod wsl;
 
 pub use env::{WorkspaceEnv, reject_ssh_unsupported};
@@ -124,6 +125,12 @@ pub async fn wsl_list_distros() -> Result<Vec<WslDistro>, String> {
             .await
             .map_err(|e| e.to_string())?
     }
+}
+
+/// 本机文件系统根（Windows 盘符 / POSIX 根），应用内文件选择器的快捷入口。
+#[tauri::command]
+pub fn local_list_roots() -> Vec<String> {
+    roots::list_roots()
 }
 
 #[tauri::command]
