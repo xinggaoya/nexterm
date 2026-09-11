@@ -38,6 +38,8 @@ export type BusyAction =
   | "pull"
   | "push"
   | "branch-create"
+  | "tag-create"
+  | "tag-push"
   | "stash-save"
   | "remote-add"
   | "remote-update"
@@ -46,6 +48,7 @@ export type BusyAction =
   | `unstage:${string}`
   | `discard:${string}`
   | `checkout:${string}`
+  | `tag-delete:${string}`
   | `stash-pop:${string}`
   | `stash-drop:${string}`
   | `stash-apply:${string}`;

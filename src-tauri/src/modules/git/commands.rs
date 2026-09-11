@@ -6,7 +6,7 @@ use crate::modules::git::types::{
     GitDiffContentResult, GitDiffResult, GitFetchResult, GitLogOptions, GitLogPage,
     GitPanelSnapshot, GitPullResult, GitPushResult, GitRemoteInfo, GitRemoteInput,
     GitRemoteUrlUpdate, GitRepoInfo, GitRepositoryDiscovery, GitStashEntry, GitStashPushOptions,
-    GitStashResult, GitStatusSnapshot,
+    GitStashResult, GitStatusSnapshot, GitTagCreateOptions, GitTagInfo, GitTagResult,
 };
 use crate::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
 
@@ -136,6 +136,23 @@ git_command!(git_checkout_branch, checkout_branch, GitBranchResult :
 git_command!(git_create_branch, create_branch, GitBranchResult :
     repo_root: String => &repo_root,
     branch: String => &branch);
+
+git_command!(git_tag_list, tag_list, Vec<GitTagInfo> :
+    repo_root: String => &repo_root);
+
+git_command!(git_create_tag, create_tag, GitTagResult :
+    repo_root: String => &repo_root,
+    options: GitTagCreateOptions => &options);
+
+git_command!(git_delete_tag, delete_tag, GitTagResult :
+    repo_root: String => &repo_root,
+    name: String => &name);
+
+// 远端名缺省时由 operations::push_tag 回退(origin → 首个 remote)。
+git_command!(git_push_tag, push_tag, GitPushResult :
+    repo_root: String => &repo_root,
+    name: String => &name,
+    remote: Option<String> => remote.as_deref());
 
 git_command!(git_stash_list, stash_list, Vec<GitStashEntry> :
     repo_root: String => &repo_root);

@@ -6,6 +6,7 @@ mod remote;
 mod stage;
 mod stash;
 mod status;
+mod tag;
 #[cfg(test)]
 pub(crate) mod test_support;
 
@@ -17,6 +18,7 @@ pub use remote::*;
 pub use stage::*;
 pub use stash::*;
 pub use status::*;
+pub use tag::*;
 
 use std::path::Path;
 

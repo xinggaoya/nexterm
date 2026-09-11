@@ -14,6 +14,7 @@ import SourceControlChangeList from "./SourceControlChangeList.vue";
 import SourceControlCommitBox from "./SourceControlCommitBox.vue";
 import SourceControlGitWorkflows from "./SourceControlGitWorkflows.vue";
 import SourceControlRemotes from "./SourceControlRemotes.vue";
+import SourceControlTags from "./SourceControlTags.vue";
 import SourceControlToolbar from "./SourceControlToolbar.vue";
 import type {
   SourceControlFileEntry,
@@ -169,6 +170,13 @@ function openRemotesModal() {
   void gitMetadata.refreshGitMetadata();
 }
 
+const showTagsModal = ref(false);
+function openTagsModal() {
+  showTagsModal.value = true;
+  // 与远程管理一致：打开前补一次元数据刷新，避免展示陈旧的标签快照。
+  void gitMetadata.refreshGitMetadata();
+}
+
 const {
   panelState,
   status,
@@ -202,6 +210,9 @@ const {
   removeRemote,
   checkoutBranch,
   createBranch,
+  createTag,
+  deleteTag,
+  pushTag,
   stashChanges,
   popStash,
   dropStash,
@@ -475,6 +486,7 @@ async function handleCheckoutBranch(branch: GitBranchInfo) {
       @refresh="refresh"
       @open-history="openHistory"
       @open-branches="showBranchesModal = true"
+      @open-tags="openTagsModal"
       @manage-remotes="openRemotesModal"
     />
 
@@ -581,6 +593,17 @@ async function handleCheckoutBranch(branch: GitBranchInfo) {
         @add-remote="addRemote"
         @update-remote="updateRemote"
         @remove-remote="removeRemote"
+      />
+      <SourceControlTags
+        v-if="showTagsModal"
+        :show="showTagsModal"
+        :tags="gitMetadata.tags.value"
+        :loading="gitMetadata.loading.value"
+        :busy-action="busyAction"
+        @close="showTagsModal = false"
+        @create-tag="({ name, message }) => createTag(name, message)"
+        @delete-tag="deleteTag"
+        @push-tag="(name) => pushTag(name)"
       />
     </template>
   </aside>

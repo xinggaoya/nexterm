@@ -346,6 +346,72 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     });
   }
 
+  async function createTag(name: string, message?: string | null) {
+    const root = options.state.repoRoot.value;
+    const trimmed = name.trim();
+    if (!root || !trimmed) return;
+    const trimmedMessage = message?.trim() ?? "";
+    await runWithBusy("tag-create", async () => {
+      const result = await options.wsNative.gitCreateTag(root, {
+        name: trimmed,
+        message: trimmedMessage || null,
+      });
+      const detail = options.t("sourceControl.tagCreateDetail", {
+        name: result.name,
+      });
+      actionMessage.value = detail;
+      notifySuccess(options.t("sourceControl.tagCreateSuccess"), detail);
+      await options.state.reloadCurrent?.();
+      await options.refreshGitMetadata?.();
+    });
+  }
+
+  async function deleteTagExecute(name: string) {
+    const root = options.state.repoRoot.value;
+    if (!root) return;
+    await runWithBusy(`tag-delete:${name}`, async () => {
+      const result = await options.wsNative.gitDeleteTag(root, name);
+      const detail = options.t("sourceControl.tagDeleteDetail", {
+        name: result.name,
+      });
+      actionMessage.value = detail;
+      notifySuccess(options.t("sourceControl.tagDeleteSuccess"), detail);
+      await options.state.reloadCurrent?.();
+      await options.refreshGitMetadata?.();
+    });
+  }
+
+  function deleteTag(name: string) {
+    if (options.state.busyAction.value) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    options.dialog.warning({
+      title: options.t("sourceControl.tagDeleteTitle"),
+      content: options.t("sourceControl.tagDeleteConfirmContent", {
+        name: trimmed,
+      }),
+      positiveText: options.t("sourceControl.tagDelete"),
+      negativeText: options.t("common.cancel"),
+      onPositiveClick: () => deleteTagExecute(trimmed),
+    });
+  }
+
+  async function pushTag(name: string, remote?: string | null) {
+    const root = options.state.repoRoot.value;
+    const trimmed = name.trim();
+    if (!root || !trimmed) return;
+    await runWithBusy("tag-push", async () => {
+      const result = await options.wsNative.gitPushTag(root, trimmed, remote ?? null);
+      const detail = options.t("sourceControl.tagPushedTo", {
+        target: pushedLabel(result.remote, result.branch),
+      });
+      actionMessage.value = detail;
+      notifySuccess(options.t("sourceControl.tagPushSuccess"), detail);
+      await options.state.refreshStatus();
+      await options.refreshGitMetadata?.();
+    });
+  }
+
   type StashActionInput =
     | string
     | { selector: string; fullSha: string };
@@ -523,6 +589,9 @@ export function useSourceControlActions(options: SourceControlActionOptions) {
     listRemotes,
     checkoutBranch,
     createBranch,
+    createTag,
+    deleteTag,
+    pushTag,
     stashChanges,
     popStash,
     dropStash,
@@ -538,6 +607,9 @@ function errorTitleForBusy(busy: BusyAction): string {
   if (busy === "push") return "sourceControl.pushFailed";
   if (busy === "commit") return "sourceControl.commitFailed";
   if (busy === "branch-create") return "sourceControl.branchCreateFailed";
+  if (busy === "tag-create") return "sourceControl.tagCreateFailed";
+  if (busy === "tag-push") return "sourceControl.tagPushFailed";
+  if (busy.startsWith("tag-delete:")) return "sourceControl.tagDeleteFailed";
   if (busy === "remote-add") return "sourceControl.remoteAddFailed";
   if (busy === "remote-update") return "sourceControl.remoteUpdateFailed";
   if (busy === "remote-remove") return "sourceControl.remoteRemoveFailed";

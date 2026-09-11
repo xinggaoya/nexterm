@@ -4,6 +4,7 @@ import {
   ArrowUpOutline,
   GitBranchOutline,
   GitNetworkOutline,
+  PricetagOutline,
   RefreshOutline,
   SettingsOutline,
   SyncOutline,
@@ -31,6 +32,7 @@ const emit = defineEmits<{
   refresh: [];
   openHistory: [];
   openBranches: [];
+  openTags: [];
   manageRemotes: [];
 }>();
 
@@ -109,6 +111,18 @@ function handleRemoteSelect(key: string | number) {
           <template #icon><NIcon :component="GitNetworkOutline" /></template>
         </NButton>
       </NDropdown>
+      <TooltipTitle :label="t('sourceControl.manageTags')">
+        <NButton
+          size="tiny"
+          quaternary
+          data-open-tags
+          :aria-label="t('sourceControl.manageTags')"
+          :disabled="!props.repoRoot"
+          @click="emit('openTags')"
+        >
+          <template #icon><NIcon :component="PricetagOutline" /></template>
+        </NButton>
+      </TooltipTitle>
       <TooltipTitle :label="t('common.refresh')">
         <NButton
           size="tiny"

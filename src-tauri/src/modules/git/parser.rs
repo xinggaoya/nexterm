@@ -1,5 +1,5 @@
 use crate::modules::git::types::{
-    GitBranchInfo, GitChangedFile, GitFetchResult, GitPullResult, GitStashEntry,
+    GitBranchInfo, GitChangedFile, GitFetchResult, GitPullResult, GitStashEntry, GitTagInfo,
 };
 
 #[derive(Default)]
@@ -314,6 +314,35 @@ pub fn parse_stash_lines(output: &str) -> Vec<GitStashEntry> {
         .collect()
 }
 
+pub fn parse_tag_lines(output: &str) -> Vec<GitTagInfo> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split('\x1f');
+            let name = fields.next()?.trim().to_string();
+            let refname = fields.next()?.trim().to_string();
+            let short_sha = fields.next().unwrap_or("").trim().to_string();
+            let subject = fields.next().unwrap_or("").trim().to_string();
+            let timestamp_raw = fields.next().unwrap_or("").trim();
+            let objecttype = fields.next().unwrap_or("").trim();
+            if name.is_empty() || refname.is_empty() {
+                return None;
+            }
+            // `%(objecttype)` 是 `tag`（附注标签对象）或 `commit`（轻量标签
+            // 直接指向提交）；附注标签的 `%(subject)` 取标签信息首行，轻量
+            // 标签则回落到目标提交的 subject。
+            Some(GitTagInfo {
+                name,
+                full_ref: refname,
+                short_sha,
+                subject,
+                timestamp_secs: timestamp_raw.parse::<i64>().unwrap_or(0),
+                is_annotated: objecttype == "tag",
+            })
+        })
+        .collect()
+}
+
 fn first_number(input: &str) -> u32 {
     input
         .split_ascii_whitespace()
@@ -455,7 +484,7 @@ fn classify_unqualified_ref(
 mod tests {
     use super::{
         parse_branch_lines, parse_fetch_summary, parse_log_refs, parse_porcelain_v2,
-        parse_pull_summary, parse_stash_lines,
+        parse_pull_summary, parse_stash_lines, parse_tag_lines,
     };
 
     #[test]
@@ -667,6 +696,34 @@ mod tests {
 
         assert_eq!(stashes[1].full_sha, "ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00");
         assert_eq!(stashes[1].short_sha, "ff00ff0");
+    }
+
+    #[test]
+    fn tag_lines_parse_annotated_and_lightweight_entries() {
+        let tags = parse_tag_lines(
+            "v1.0\x1frefs/tags/v1.0\x1fabcdef1\x1frelease 1.0\x1f1700000000\x1ftag\n\
+             v0.9\x1frefs/tags/v0.9\x1fdeadbe\x1fWIP before release\x1f1699999999\x1fcommit\n",
+        );
+
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].name, "v1.0");
+        assert_eq!(tags[0].full_ref, "refs/tags/v1.0");
+        assert_eq!(tags[0].short_sha, "abcdef1");
+        assert_eq!(tags[0].subject, "release 1.0");
+        assert_eq!(tags[0].timestamp_secs, 1_700_000_000);
+        assert!(tags[0].is_annotated);
+        assert!(!tags[1].is_annotated);
+        assert_eq!(tags[1].short_sha, "deadbe");
+    }
+
+    #[test]
+    fn tag_lines_skip_empty_names_and_unexpanded_escapes() {
+        assert!(parse_tag_lines("").is_empty());
+        assert!(parse_tag_lines("\n").is_empty());
+        // refname 为空(字段不足)的行应被跳过。
+        assert!(parse_tag_lines("v1\x1f\n").is_empty());
+        // 老 git 把 %1f 字面输出的行(格式占位符未展开)应被跳过。
+        assert!(parse_tag_lines("v1%x1frefs/tags/v1%x1fabc\n").is_empty());
     }
 
     #[test]

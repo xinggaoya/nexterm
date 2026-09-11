@@ -168,7 +168,8 @@ fn is_remote_name_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'
 }
 
-fn validate_remote_name(name: &str) -> Result<()> {
+/// `pub(super)` 供 `tag::push_tag` 复用同一套远端名校验。
+pub(super) fn validate_remote_name(name: &str) -> Result<()> {
     if name.is_empty() || name.len() > 64 {
         return Err(GitError::command(
             "git remote",

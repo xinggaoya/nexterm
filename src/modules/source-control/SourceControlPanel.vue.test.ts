@@ -214,6 +214,10 @@ const mockWsNative = {
   gitBranchList: vi.fn(),
   gitCheckoutBranch: vi.fn(),
   gitCreateBranch: vi.fn(),
+  gitTagList: vi.fn(),
+  gitCreateTag: vi.fn(),
+  gitDeleteTag: vi.fn(),
+  gitPushTag: vi.fn(),
   gitStashList: vi.fn(),
   gitStashPush: vi.fn(),
   gitStashPop: vi.fn(),
@@ -382,6 +386,7 @@ describe("SourceControlPanel.vue", () => {
       },
     ]);
     vi.mocked(mockWsNative.gitRemoteList).mockResolvedValue([]);
+    vi.mocked(mockWsNative.gitTagList).mockResolvedValue([]);
     vi.mocked(mockWsNative.gitRemoteAdd).mockResolvedValue({
       name: "origin",
       fetchUrl: "git@github.com:test/test.git",

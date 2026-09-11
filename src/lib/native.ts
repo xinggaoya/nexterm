@@ -115,6 +115,25 @@ export type GitBranchResult = {
   branch: string;
 };
 
+export type GitTagInfo = {
+  name: string;
+  fullRef?: string;
+  shortSha?: string;
+  subject?: string;
+  timestampSecs?: number;
+  isAnnotated?: boolean;
+};
+
+export type GitTagResult = {
+  name: string;
+};
+
+export type GitTagCreateOptions = {
+  name: string;
+  /** 提供时创建附注标签（annotated），否则为轻量标签（lightweight）。 */
+  message?: string | null;
+};
+
 export type GitStashEntry = {
   selector: string;
   fullSha?: string;
@@ -493,6 +512,23 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
       invoke<GitBranchResult>("git_create_branch", {
         repoRoot,
         branch,
+        workspace,
+      }),
+    gitTagList: (repoRoot: string) =>
+      invoke<GitTagInfo[]>("git_tag_list", { repoRoot, workspace }),
+    gitCreateTag: (repoRoot: string, options: GitTagCreateOptions) =>
+      invoke<GitTagResult>("git_create_tag", {
+        repoRoot,
+        options: { ...options, message: options.message ?? null },
+        workspace,
+      }),
+    gitDeleteTag: (repoRoot: string, name: string) =>
+      invoke<GitTagResult>("git_delete_tag", { repoRoot, name, workspace }),
+    gitPushTag: (repoRoot: string, name: string, remote?: string | null) =>
+      invoke<GitPushResult>("git_push_tag", {
+        repoRoot,
+        name,
+        remote: remote ?? null,
         workspace,
       }),
     gitStashList: (repoRoot: string) =>

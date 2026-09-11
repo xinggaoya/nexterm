@@ -148,7 +148,7 @@ pub struct GitLogOptions {
     pub all: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitPushResult {
     pub remote: Option<String>,
@@ -193,6 +193,32 @@ pub struct GitBranchInfo {
 #[serde(rename_all = "camelCase")]
 pub struct GitBranchResult {
     pub branch: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitTagInfo {
+    pub name: String,
+    pub full_ref: String,
+    pub short_sha: String,
+    pub subject: String,
+    pub timestamp_secs: i64,
+    pub is_annotated: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitTagResult {
+    pub name: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitTagCreateOptions {
+    pub name: String,
+    /// 提供时创建附注标签（`git tag -a -m`），否则为轻量标签。
+    #[serde(default)]
+    pub message: Option<String>,
 }
 
 #[derive(Serialize)]
