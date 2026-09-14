@@ -100,6 +100,30 @@ describe("workspaces pinia store", () => {
     expect(workspaces.workspaces[2].id).toBe(a.instance.id);
   });
 
+  it("reorders by drag target placement (before/after)", async () => {
+    const workspaces = useWorkspacesPiniaStore();
+    const a = await workspaces.addWorkspace("/a", { kind: "local" });
+    const b = await workspaces.addWorkspace("/b", { kind: "local" });
+    const c = await workspaces.addWorkspace("/c", { kind: "local" });
+    const ids = () => workspaces.workspaces.map((ws) => ws.id);
+
+    // [a,b,c] 拖 a 到 c 上半区 → 插到 c 前
+    workspaces.reorderByTarget(a.instance.id, c.instance.id, "before");
+    expect(ids()).toEqual([b.instance.id, a.instance.id, c.instance.id]);
+
+    // [b,a,c] 拖 c 到 b 下半区 → 插到 b 后
+    workspaces.reorderByTarget(c.instance.id, b.instance.id, "after");
+    expect(ids()).toEqual([b.instance.id, c.instance.id, a.instance.id]);
+
+    // [b,c,a] c 已在 a 前,再拖 c 到 a 上半区 → no-op
+    workspaces.reorderByTarget(c.instance.id, a.instance.id, "before");
+    expect(ids()).toEqual([b.instance.id, c.instance.id, a.instance.id]);
+
+    // 同 id 落点 → no-op
+    workspaces.reorderByTarget(a.instance.id, a.instance.id, "after");
+    expect(ids()).toEqual([b.instance.id, c.instance.id, a.instance.id]);
+  });
+
   it("finds an open workspace by selection", async () => {
     const workspaces = useWorkspacesPiniaStore();
     await workspaces.addWorkspace("/repo", { kind: "wsl", distro: "Ubuntu" });

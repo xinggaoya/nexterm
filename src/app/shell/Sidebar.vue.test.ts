@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
 import { createPinia } from "pinia";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceInstance } from "@/modules/workspace";
 
 import Sidebar from "./Sidebar.vue";
@@ -21,6 +21,30 @@ function mountSidebar(props: Partial<InstanceType<typeof Sidebar>["$props"]> = {
     global: { plugins: [createPinia()] },
   });
 }
+
+// jsdom 没有实现 document.elementFromPoint,拖拽测试直接挂一个 mock。
+const elementFromPointMock = vi.fn((): Element | null => null);
+const originalElementFromPoint = document.elementFromPoint;
+
+function fakeWorkspaceElement(id: string) {
+  // 组件会对 elementFromPoint 的返回值再调 closest,这里让假元素返回自身。
+  const el = {
+    dataset: { workspaceRow: id },
+    getBoundingClientRect: () => ({ left: 0, width: 200, top: 0, height: 32 }),
+    closest: () => el,
+  };
+  return el as unknown as HTMLElement;
+}
+
+beforeEach(() => {
+  elementFromPointMock.mockReset();
+  elementFromPointMock.mockReturnValue(null);
+  document.elementFromPoint = elementFromPointMock as unknown as typeof document.elementFromPoint;
+});
+
+afterEach(() => {
+  document.elementFromPoint = originalElementFromPoint;
+});
 
 describe("Sidebar.vue", () => {
   it("展开态:为每个工作区渲染一行(monogram + 名称 + env 图标)", () => {
@@ -52,8 +76,83 @@ describe("Sidebar.vue", () => {
     expect(wrapper.emitted("close-workspace")).toEqual([["w1"]]);
   });
 
-  it("搜索位发出 open-command-palette,设置行发出 open-settings", async () => {
-    const wrapper = mountSidebar();
+  it("拖拽工作区行越过阈值后在目标下半区松手 → 发出 reorder-workspace(after)", () => {
+    const wrapper = mountSidebar({
+      workspaces: [workspace("w1", "nexterm"), workspace("w2", "blog")],
+      activeWorkspaceId: "w1",
+    });
+
+    // jsdom 的 MouseEvent 属性只读,trigger 不能带 clientY;改用构造器注入。
+    wrapper.find("[data-workspace-row='w2']").element.dispatchEvent(
+      new MouseEvent("pointerdown", { button: 0, clientX: 20, clientY: 40, bubbles: true }),
+    );
+
+    // 移到 w1 行下半区(假元素 rect: top 0 / height 32,clientY 20 命中 after)。
+    elementFromPointMock.mockReturnValue(fakeWorkspaceElement("w1"));
+    window.dispatchEvent(
+      new MouseEvent("pointermove", { clientX: 24, clientY: 20, bubbles: true }),
+    );
+    window.dispatchEvent(
+      new MouseEvent("pointerup", { clientX: 24, clientY: 20, bubbles: true }),
+    );
+
+    expect(wrapper.emitted("reorder-workspace")).toEqual([["w2", "w1", "after"]]);
+  });
+
+  it("折叠态拖拽芯片同样发出 reorder-workspace(before)", () => {
+    const wrapper = mountSidebar({
+      workspaces: [workspace("w1", "nexterm"), workspace("w2", "blog")],
+      activeWorkspaceId: "w1",
+      collapsed: true,
+    });
+
+    wrapper.find("[data-workspace-chip='w1']").element.dispatchEvent(
+      new MouseEvent("pointerdown", { button: 0, clientX: 20, clientY: 10, bubbles: true }),
+    );
+
+    elementFromPointMock.mockReturnValue(fakeWorkspaceElement("w2"));
+    window.dispatchEvent(
+      new MouseEvent("pointermove", { clientX: 20, clientY: 4, bubbles: true }),
+    );
+    window.dispatchEvent(
+      new MouseEvent("pointerup", { clientX: 20, clientY: 4, bubbles: true }),
+    );
+
+    expect(wrapper.emitted("reorder-workspace")).toEqual([["w1", "w2", "before"]]);
+  });
+
+  it("指针位移小于阈值时不进入拖拽,不发出 reorder-workspace", () => {
+    const wrapper = mountSidebar({
+      workspaces: [workspace("w1", "nexterm"), workspace("w2", "blog")],
+    });
+
+    wrapper.find("[data-workspace-row='w2']").element.dispatchEvent(
+      new MouseEvent("pointerdown", { button: 0, clientX: 20, clientY: 40, bubbles: true }),
+    );
+    window.dispatchEvent(
+      new MouseEvent("pointermove", { clientX: 22, clientY: 41, bubbles: true }),
+    );
+    window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+
+    expect(wrapper.emitted("reorder-workspace")).toBeUndefined();
+  });
+
+  it("仅一个工作区时按下不启动拖拽", () => {
+    const wrapper = mountSidebar({ workspaces: [workspace("w1", "nexterm")] });
+
+    wrapper.find("[data-workspace-row='w1']").element.dispatchEvent(
+      new MouseEvent("pointerdown", { button: 0, clientX: 20, clientY: 40, bubbles: true }),
+    );
+    elementFromPointMock.mockReturnValue(fakeWorkspaceElement("w1"));
+    window.dispatchEvent(
+      new MouseEvent("pointermove", { clientX: 40, clientY: 80, bubbles: true }),
+    );
+    window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+
+    expect(wrapper.emitted("reorder-workspace")).toBeUndefined();
+  });
+
+  it("搜索位发出 open-command-palette,设置行发出 open-settings", async () => {    const wrapper = mountSidebar();
 
     await wrapper.find("[data-sidebar-search]").trigger("click");
     expect(wrapper.emitted("open-command-palette")).toHaveLength(1);

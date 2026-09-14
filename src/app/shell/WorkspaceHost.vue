@@ -475,6 +475,7 @@ defineExpose({
       @close-workspace="(id) => emit('request-remove-workspace', id)"
       @add-workspace="(env) => emit('add-workspace', env)"
       @open-workspace-in-new-window="openThisWorkspaceInNewWindow"
+      @reorder-workspace="(sourceId, targetId, placement) => workspaces.reorderByTarget(sourceId, targetId, placement)"
       @open-settings="() => emit('request-settings')"
       @open-command-palette="() => emit('request-command-palette', 'commands')"
       @toggle-collapse="toggleSidebarCollapsed"

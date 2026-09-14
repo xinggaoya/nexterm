@@ -1,13 +1,14 @@
 export type TabDropPlacement = "before" | "after";
 
+// id 放宽为 string | number:标签页用 number,工作区列表(侧栏拖拽)用 string。
 export type ReorderableTab = {
-  id: number;
+  id: string | number;
 };
 
 export function reorderTabs<T extends ReorderableTab>(
   tabs: T[],
-  sourceId: number,
-  targetId: number,
+  sourceId: T["id"],
+  targetId: T["id"],
   placement: TabDropPlacement,
 ): T[] {
   if (tabs.length <= 1 || sourceId === targetId) return tabs;

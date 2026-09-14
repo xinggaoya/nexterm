@@ -10,6 +10,7 @@ import {
   loadPreferences,
   type StoredWorkspace,
 } from "@/modules/settings/store";
+import { reorderTabs, type TabDropPlacement } from "@/modules/tabs/tabsReorder";
 import { authorizeWorkspace } from "./workspaceNative";
 import {
   LOCAL_WORKSPACE,
@@ -231,6 +232,19 @@ export const useWorkspacesPiniaStore = defineStore("workspaces", () => {
     void persist();
   }
 
+  /** 侧栏拖拽落点排序:source 放到 target 的 before/after 位置。 */
+  function reorderByTarget(
+    sourceId: string,
+    targetId: string,
+    placement: TabDropPlacement,
+  ): void {
+    if (sourceId === targetId) return;
+    const next = reorderTabs(workspaces.value, sourceId, targetId, placement);
+    if (next === workspaces.value) return;
+    workspaces.value = next;
+    void persist();
+  }
+
   /** True when a workspace with the same env+root is already open. */
   function isOpen(path: string, env: WorkspaceEnv): boolean {
     const id = workspaceIdOf(normalizeWorkspacePath(path), env);
@@ -332,6 +346,7 @@ export const useWorkspacesPiniaStore = defineStore("workspaces", () => {
     removeWorkspace,
     setActive,
     reorder,
+    reorderByTarget,
     isOpen,
     findBySelection,
     findSameRoot,
