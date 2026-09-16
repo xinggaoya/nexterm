@@ -194,46 +194,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          VERSION="${TAG_NAME#v}"
-          echo "Extracting CHANGELOG section for ${VERSION}..."
-
-          # 从 CHANGELOG.md 抽取 ## [VERSION] - DATE 段,直到下一个 ## [ 段
-          NOTES=$(awk -v ver="[${VERSION}]" '
-            BEGIN { capturing = 0 }
-            /^## \[/ {
-              if ($0 ~ ver) { capturing = 1; print; next }
-              if (capturing) { exit }
-            }
-            capturing { print }
-          ' CHANGELOG.md)
-
-          if [ -z "$NOTES" ]; then
-            echo "::warning::No CHANGELOG section found for ${VERSION}, falling back to short notes"
-            NOTES="## Nexterm ${TAG_NAME}
-
-自动构建的 Nexterm 桌面安装包,支持应用内自动更新。
-
-完整变更说明参见 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${TAG_NAME}/CHANGELOG.md)。"
-          fi
-
-          # 附加下载表格
-          NOTES="${NOTES}
-
-### 下载
-
-| 平台 | 包 |
-| --- | --- |
-| Windows | \`.exe\` (NSIS) · \`.msi\` |
-| macOS | \`.dmg\` (universal) · \`.app.tar.gz\` |
-| Linux | \`.deb\` · \`.rpm\` · \`.AppImage\` |
-
-所有产物已使用 Tauri 私钥签名,客户端会通过内置公钥验证更新来源。"
-
-          gh release edit "$TAG_NAME" \
-            --draft=false \
-            --notes "$NOTES"
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: ./.github/scripts/publish-release.sh "$TAG_NAME"
 
       # tauri build 可能在 release 过程中接收 crates.io index 中某个 dep
       # 的重新发布 (checksum 变化),导致 Cargo.lock 被自动更新。把更新的
@@ -261,47 +223,11 @@ jobs:
       # 把 latest.json 同步到 main 分支的固定路径,作为 fallback endpoint
       # (tauri.conf.json 已把 raw.githubusercontent.com 列为备用 endpoint)。
       # 收敛到 publish job,保证此时三个平台都已上传完成,latest.json 是完整的。
+      # 实现拆到独立脚本,避免在 yaml block scalar 中出现 markdown 表格的 |
+      # 触发 yaml 解析错误(把 | 误认为 block scalar 开始标记)。
       - name: Sync latest.json to main branch fallback
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          echo "Fetching latest.json content from release asset API..."
-          ASSET_API_URL=$(curl -s \
-            -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG_NAME" \
-            | jq -r '.assets[] | select(.name=="latest.json") | .url')
-          if [ -z "$ASSET_API_URL" ] || [ "$ASSET_API_URL" = "null" ]; then
-            echo "::warning::latest.json asset not found in release $TAG_NAME, skipping sync"
-            exit 0
-          fi
-          CONTENT_BASE64=$(curl -sL \
-            -H "Authorization: token $GH_TOKEN" \
-            -H "Accept: application/octet-stream" \
-            "$ASSET_API_URL" \
-            | base64 -w 0)
-          EXISTING_SHA=$(curl -s \
-            -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/contents/updates/latest.json?ref=main" \
-            | jq -r '.sha // empty')
-          PAYLOAD=$(jq -n \
-            --arg msg "chore(release): sync latest.json for $TAG_NAME [skip ci]" \
-            --arg content "$CONTENT_BASE64" \
-            --arg branch "main" \
-            --arg sha "$EXISTING_SHA" \
-            '{message: $msg, content: $content, branch: $branch}
-             + (if $sha != "" then {sha: $sha} else {} end)')
-          HTTP_STATUS=$(curl -s -o /tmp/sync-response.json -w "%{http_code}" \
-            -X PUT \
-            -H "Authorization: token $GH_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD" \
-            "https://api.github.com/repos/${{ github.repository }}/contents/updates/latest.json")
-          if [ "$HTTP_STATUS" = "200" ] || [ "$HTTP_STATUS" = "201" ]; then
-            echo "latest.json synced to main branch (status $HTTP_STATUS)"
-          else
-            echo "::error::Failed to sync latest.json (status $HTTP_STATUS)"
-            cat /tmp/sync-response.json
-            exit 1
-          fi
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: ./.github/scripts/sync-latest-json.sh "$TAG_NAME"
