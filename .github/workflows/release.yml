@@ -5,6 +5,7 @@ on:
     tags:
       - "v*"
 
+# 同一 tag 的多次 push 不取消正在运行的 workflow(避免 release 半成品状态)
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -20,7 +21,7 @@ jobs:
     name: Build musl agent
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -49,15 +50,52 @@ jobs:
       - name: Verify agent asset
         run: test -f src-tauri/target/x86_64-unknown-linux-musl/release/nexterm-agent
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: nexterm-agent-musl
           path: src-tauri/target/x86_64-unknown-linux-musl/release/nexterm-agent
           if-no-files-found: error
 
+  # 提前创建 draft release,让三平台 build job 都能用 releaseId 模式
+  # 把产物追加到同一 release。tauri-action@v1 在 releaseId 模式下会
+  # 自动跨 jobs 合并 latest.json 的 platforms 段,避免 main 分支
+  # fallback 文件因 ubuntu 先完成而过早写入。
+  create-release:
+    name: Create draft release
+    needs: agent
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG_NAME" \
+            --draft \
+            --title "Nexterm $TAG_NAME" \
+            --notes "Release build in progress. This draft will be published once all platform builds succeed."
+
+      - name: Capture release ID
+        id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          RELEASE_ID=$(gh release view "$TAG_NAME" --json databaseId -q '.databaseId')
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+          echo "Created release $TAG_NAME with id $RELEASE_ID"
+    outputs:
+      release_id: ${{ steps.meta.outputs.release_id }}
+
   build:
     name: Build ${{ matrix.name }}
-    needs: agent
+    needs: [agent, create-release]
     permissions:
       contents: write
     strategy:
@@ -77,7 +115,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: pnpm/action-setup@v6
         with:
@@ -116,7 +154,7 @@ jobs:
 
       # 把 agent job 产出的 musl 静态二进制放到 build.rs 默认探测路径,
       # 这样 build.rs 即使不显式传入 NEXTERM_AGENT 环境变量也能找到。
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: nexterm-agent-musl
           path: src-tauri/target/x86_64-unknown-linux-musl/release/
@@ -124,30 +162,86 @@ jobs:
       - name: Verify agent asset
         run: test -f src-tauri/target/x86_64-unknown-linux-musl/release/nexterm-agent
 
+      # tauri-action@v1:releaseId 模式下,action 会从已有 release 中读出
+      # latest.json,把当前平台的 platforms 段合并进去再上传覆盖,
+      # 跨 jobs 自动汇总所有平台的 updater 元数据。
       - name: Build and upload Tauri bundles
-        uses: tauri-apps/tauri-action@action-v0.5.25
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           NEXTERM_AGENT: ${{ github.workspace }}/src-tauri/target/x86_64-unknown-linux-musl/release/nexterm-agent
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Nexterm ${{ github.ref_name }}
-          releaseBody: "自动构建的 Nexterm 桌面安装包，支持应用内自动更新。"
-          releaseDraft: false
-          prerelease: false
-          includeUpdaterJson: true
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
+
+  # 三平台构建全部成功后,做收尾工作:
+  # 1. 从 CHANGELOG.md 抽取对应版本的说明替换 draft 的 notes
+  # 2. 把 release 从 draft 改为 published
+  # 3. 同步 Cargo.lock 回 main(避免后续 CI 跑 cargo check --locked 假红)
+  # 4. 同步 latest.json 到 main 分支 fallback 路径(覆盖 CDN 边缘节点 404)
+  publish:
+    name: Publish release and sync fallbacks
+    needs: [create-release, build]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Publish release with CHANGELOG notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG_NAME#v}"
+          echo "Extracting CHANGELOG section for ${VERSION}..."
+
+          # 从 CHANGELOG.md 抽取 ## [VERSION] - DATE 段,直到下一个 ## [ 段
+          NOTES=$(awk -v ver="[${VERSION}]" '
+            BEGIN { capturing = 0 }
+            /^## \[/ {
+              if ($0 ~ ver) { capturing = 1; print; next }
+              if (capturing) { exit }
+            }
+            capturing { print }
+          ' CHANGELOG.md)
+
+          if [ -z "$NOTES" ]; then
+            echo "::warning::No CHANGELOG section found for ${VERSION}, falling back to short notes"
+            NOTES="## Nexterm ${TAG_NAME}
+
+自动构建的 Nexterm 桌面安装包,支持应用内自动更新。
+
+完整变更说明参见 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${TAG_NAME}/CHANGELOG.md)。"
+          fi
+
+          # 附加下载表格
+          NOTES="${NOTES}
+
+### 下载
+
+| 平台 | 包 |
+| --- | --- |
+| Windows | \`.exe\` (NSIS) · \`.msi\` |
+| macOS | \`.dmg\` (universal) · \`.app.tar.gz\` |
+| Linux | \`.deb\` · \`.rpm\` · \`.AppImage\` |
+
+所有产物已使用 Tauri 私钥签名,客户端会通过内置公钥验证更新来源。"
+
+          gh release edit "$TAG_NAME" \
+            --draft=false \
+            --notes "$NOTES"
 
       # tauri build 可能在 release 过程中接收 crates.io index 中某个 dep
       # 的重新发布 (checksum 变化),导致 Cargo.lock 被自动更新。把更新的
       # Cargo.lock 提交到 main,避免后续 push 触发的 CI 跑 cargo check
       # --locked 时遇到 stale lock file 假红。
       # commit message 含 [skip ci] 不重复触发 ci.yml。
-      # 只在 ubuntu 上执行,避免三平台并发 push 冲突。
+      # 收敛到 publish job,避免三平台并发 push 冲突。
       - name: Commit Cargo.lock refresh
-        if: matrix.platform == 'ubuntu-22.04'
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
@@ -166,10 +260,8 @@ jobs:
       # "Could not fetch a valid release JSON from the remote" 错误。
       # 把 latest.json 同步到 main 分支的固定路径,作为 fallback endpoint
       # (tauri.conf.json 已把 raw.githubusercontent.com 列为备用 endpoint)。
-      # 只在 ubuntu job 上执行,避免三个平台并发 push 冲突。
-      # commit message 含 [skip ci] 避免触发 ci.yml 的 push 工作流。
+      # 收敛到 publish job,保证此时三个平台都已上传完成,latest.json 是完整的。
       - name: Sync latest.json to main branch fallback
-        if: matrix.platform == 'ubuntu-22.04'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
