@@ -7,6 +7,18 @@ Nexterm 所有值得注意的变更都记录在本文件中。版本遵循 [语�
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-16
+
+### 工程 🔧
+
+- **CI Actions 升级到 Node 24** — `actions/checkout` v5、`actions/upload-artifact` v6、`actions/download-artifact` v7,消除 Node 20 deprecation warning
+- **tauri-action 升级到 v1** — `includeUpdaterJson` 重命名为 `uploadUpdaterJson`,跨 jobs 自动合并 `latest.json`
+- **Release workflow 分层重构**:
+  - 新增 `create-release` job: agent 完成后创建 draft release
+  - `build` job 改用 `releaseId` 模式,三平台并发追加资产
+  - 新增 `publish` job: 三平台完成后从 CHANGELOG 自动生成 release notes、发布 draft、commit Cargo.lock 刷新、sync latest.json fallback
+- **`latest.json` 跨平台汇总** — 之前只有 linux,现在 linux + windows + macOS 三个平台的 updater 签名都包含
+
 ## [0.2.0] - 2026-09-16
 
 ### 新增 ✨
@@ -75,7 +87,8 @@ Nexterm 所有值得注意的变更都记录在本文件中。版本遵循 [语�
 - 基于 Tauri 2 的终端开发环境基础架构
 - 多标签终端、文件浏览器、代码编辑器、Git 集成
 
-[Unreleased]: https://github.com/xinggaoya/nexterm/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/xinggaoya/nexterm/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/xinggaoya/nexterm/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/xinggaoya/nexterm/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/xinggaoya/nexterm/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/xinggaoya/nexterm/compare/v0.1.1...v0.1.3

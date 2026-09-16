@@ -1,6 +1,6 @@
 [package]
 name = "nexterm"
-version = "0.2.0"
+version = "0.2.1"
 description = "Terminal-centric development environment built with Tauri 2 + Vue 3."
 authors = ["xinggaoya"]
 license = "Apache-2.0"
