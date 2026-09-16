@@ -79,7 +79,7 @@
       }
     },
     "category": "DeveloperTool",
-    "shortDescription": "Terminal development environment",
-    "longDescription": "Nexterm is a private terminal development environment with multi-tab terminals, file explorer, code editor, web preview, and Git tools."
+    "shortDescription": "Terminal-centric development environment",
+    "longDescription": "Nexterm is a terminal-centric development environment that bundles multi-tab terminals, file explorer, code editor, web preview, and Git tooling into a single native Tauri 2 desktop app."
   }
 }

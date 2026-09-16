@@ -4,7 +4,7 @@
 
 Nexterm is a terminal-centric development environment built as a Tauri 2 desktop app. It provides an integrated workspace with terminal multiplexing, file explorer, code editor, Git integration, and task runner -- all within a single native window. The Rust backend owns all system access; the Vue 3 webview is a pure presentation layer.
 
-Identifiers: npm package `nexterm`, Rust crate `nexterm` (lib `nexterm_lib`), helper binary `nexterm-wsl-watcher`, Tauri product `Nexterm`, bundle id `app.xinggaoya.nexterm`. Current version: `0.1.2` (kept in sync between `package.json` and `src-tauri/Cargo.toml`).
+Identifiers: npm package `nexterm`, Rust crate `nexterm` (lib `nexterm_lib`), helper binary `nexterm-agent` (musl) and `nexterm-wsl-watcher`, Tauri product `Nexterm`, bundle id `app.xinggaoya.nexterm`. Current version: `0.2.0` (kept in sync between `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`). Licensed under Apache-2.0.
 
 ## Development Commands
 

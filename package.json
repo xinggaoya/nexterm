@@ -1,7 +1,17 @@
 {
   "name": "nexterm",
-  "private": true,
   "version": "0.2.0",
+  "description": "Terminal-centric development environment built with Tauri 2 + Vue 3.",
+  "license": "Apache-2.0",
+  "author": "xinggaoya",
+  "homepage": "https://github.com/xinggaoya/nexterm#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xinggaoya/nexterm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xinggaoya/nexterm/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

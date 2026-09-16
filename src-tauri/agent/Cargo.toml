@@ -3,7 +3,9 @@ name = "nexterm-agent"
 version = "0.1.2"
 edition = "2021"
 publish = false
-description = "Nexterm 常驻代理:在 WSL/远端执行 fs 读操作与 exec,经 stdio JSON-lines 与宿主通信"
+license = "Apache-2.0"
+description = "Nexterm resident agent for WSL/remote fs and exec via stdio JSON-lines."
+repository = "https://github.com/xinggaoya/nexterm"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

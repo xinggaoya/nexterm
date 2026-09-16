@@ -1,9 +1,13 @@
 [package]
 name = "nexterm"
 version = "0.2.0"
-description = "Nexterm - terminal development environment"
+description = "Terminal-centric development environment built with Tauri 2 + Vue 3."
 authors = ["xinggaoya"]
+license = "Apache-2.0"
+homepage = "https://github.com/xinggaoya/nexterm"
+repository = "https://github.com/xinggaoya/nexterm"
 edition = "2021"
+rust-version = "1.77"
 
 [workspace]
 members = [".", "agent"]
