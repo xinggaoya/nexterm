@@ -1,39 +1,23 @@
 {
-  "version": "0.1.4",
+  "version": "0.2.0",
   "notes": "自动构建的 Nexterm 桌面安装包，支持应用内自动更新。",
-  "pub_date": "2026-09-08T04:47:57.197Z",
+  "pub_date": "2026-09-16T07:21:56.758Z",
   "platforms": {
-    "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0pjVXBnMTNYSldaQVJ6eXlaMTlqT2xSZHZnK0MwZmxKRGdKbTViR3YwRGtwT3FjdWNGcHNHMHhHV0FoK3daUEIzVktNL1JTYzlYa2NTRkhpclZBOWdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODQyNjAyCWZpbGU6TmV4dGVybS5hcHAudGFyLmd6Ckc1dzhjYjRPeE44UGhVV1ZYcTRuV3E0ODg5SkR6Q0RGSnNlM1VlTnBtTXFtUEgraFpwL29ZNE9BajBnSkJ1NjFGZ2w5V1pKOFF1dUFLYStCRXMvT0NnPT0K",
-      "url": "https://github.com/xinggaoya/nexterm/releases/download/v0.1.4/Nexterm_universal.app.tar.gz"
-    },
-    "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0pjVXBnMTNYSldaQVJ6eXlaMTlqT2xSZHZnK0MwZmxKRGdKbTViR3YwRGtwT3FjdWNGcHNHMHhHV0FoK3daUEIzVktNL1JTYzlYa2NTRkhpclZBOWdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODQyNjAyCWZpbGU6TmV4dGVybS5hcHAudGFyLmd6Ckc1dzhjYjRPeE44UGhVV1ZYcTRuV3E0ODg5SkR6Q0RGSnNlM1VlTnBtTXFtUEgraFpwL29ZNE9BajBnSkJ1NjFGZ2w5V1pKOFF1dUFLYStCRXMvT0NnPT0K",
-      "url": "https://github.com/xinggaoya/nexterm/releases/download/v0.1.4/Nexterm_universal.app.tar.gz"
-    },
-    "darwin-aarch64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0pjVXBnMTNYSldaQVJ6eXlaMTlqT2xSZHZnK0MwZmxKRGdKbTViR3YwRGtwT3FjdWNGcHNHMHhHV0FoK3daUEIzVktNL1JTYzlYa2NTRkhpclZBOWdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODQyNjAyCWZpbGU6TmV4dGVybS5hcHAudGFyLmd6Ckc1dzhjYjRPeE44UGhVV1ZYcTRuV3E0ODg5SkR6Q0RGSnNlM1VlTnBtTXFtUEgraFpwL29ZNE9BajBnSkJ1NjFGZ2w5V1pKOFF1dUFLYStCRXMvT0NnPT0K",
-      "url": "https://github.com/xinggaoya/nexterm/releases/download/v0.1.4/Nexterm_universal.app.tar.gz"
-    },
-    "darwin-x86_64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0pjVXBnMTNYSldaQVJ6eXlaMTlqT2xSZHZnK0MwZmxKRGdKbTViR3YwRGtwT3FjdWNGcHNHMHhHV0FoK3daUEIzVktNL1JTYzlYa2NTRkhpclZBOWdVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODQyNjAyCWZpbGU6TmV4dGVybS5hcHAudGFyLmd6Ckc1dzhjYjRPeE44UGhVV1ZYcTRuV3E0ODg5SkR6Q0RGSnNlM1VlTnBtTXFtUEgraFpwL29ZNE9BajBnSkJ1NjFGZ2w5V1pKOFF1dUFLYStCRXMvT0NnPT0K",
-      "url": "https://github.com/xinggaoya/nexterm/releases/download/v0.1.4/Nexterm_universal.app.tar.gz"
-    },
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0VWcDRiQ2pRcFl6RHUzUURWYTRWbkE2STBNVC8zaWNVM1VpNS9Pck1zSWtTV0UwcThGU1N6K2JJYU1TTVdjK0srV05TM1NqcWtaZ1VWcGNKNjZqb0FvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODQyODcwCWZpbGU6TmV4dGVybV8wLjEuNF9hbWQ2NC5BcHBJbWFnZQo3ZzlUUHMyWDh0NDZxcUk5WklreXg0UGd0ckpXdGlMNHVycWQwVTZWZk5VNTlTUEhaTHo5eXNlZXZHdjFhNUxmRGsrYjBVaGE3VXpzMDQ1aHM3U0REQT09Cg==",
-      "url": "https://github.com/xinggaoya/nexterm/releases/download/v0.1.4/Nexterm_0.1.4_amd64.AppImage"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0NiYW9lUTBZZzZkVTFzWE82UWprVEhFanBlYXdPT2owMzlocVhyQ3dwdXovL3oyMzU3MWF4STh5My9JRys4MTVCaFdLQXRzeGRJNDR2aFFTMXZoMlEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NTQzMzA2CWZpbGU6TmV4dGVybV8wLjIuMF9hbWQ2NC5BcHBJbWFnZQplSE1nSzRiVktHWjEwbG9GWXNmWWprb1BnRWNZS2loVlllamh1TTl0SEZvOXBmYncwU3ZXcVZmT0dSLytjazhOUDk2MmlEQlVOZ2pRMUloMytGaThEQT09Cg==",
+      "url": "https://github.com/xinggaoya/nexterm/releases/download/v0.2.0/Nexterm_0.2.0_amd64.AppImage"
     },
     "linux-x86_64-appimage": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0VWcDRiQ2pRcFl6RHUzUURWYTRWbkE2STBNVC8zaWNVM1VpNS9Pck1zSWtTV0UwcThGU1N6K2JJYU1TTVdjK0srV05TM1NqcWtaZ1VWcGNKNjZqb0FvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODQyODcwCWZpbGU6TmV4dGVybV8wLjEuNF9hbWQ2NC5BcHBJbWFnZQo3ZzlUUHMyWDh0NDZxcUk5WklreXg0UGd0ckpXdGlMNHVycWQwVTZWZk5VNTlTUEhaTHo5eXNlZXZHdjFhNUxmRGsrYjBVaGE3VXpzMDQ1aHM3U0REQT09Cg==",
-      "url": "https://github.com/xinggaoya/nexterm/releases/download/v0.1.4/Nexterm_0.1.4_amd64.AppImage"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0NiYW9lUTBZZzZkVTFzWE82UWprVEhFanBlYXdPT2owMzlocVhyQ3dwdXovL3oyMzU3MWF4STh5My9JRys4MTVCaFdLQXRzeGRJNDR2aFFTMXZoMlEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NTQzMzA2CWZpbGU6TmV4dGVybV8wLjIuMF9hbWQ2NC5BcHBJbWFnZQplSE1nSzRiVktHWjEwbG9GWXNmWWprb1BnRWNZS2loVlllamh1TTl0SEZvOXBmYncwU3ZXcVZmT0dSLytjazhOUDk2MmlEQlVOZ2pRMUloMytGaThEQT09Cg==",
+      "url": "https://github.com/xinggaoya/nexterm/releases/download/v0.2.0/Nexterm_0.2.0_amd64.AppImage"
     },
     "linux-x86_64-deb": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0NhZ3dsenVlK3FsR2RNTkFTbU1ZN1JOUk9EREVmUXpWUHlrRjloS0pRYWJwODlPMDQydW5ORGhZbFBJbzl6M2I4QjM1SkllL2pVb3ZIZlNrczVldGdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODQyODcwCWZpbGU6TmV4dGVybV8wLjEuNF9hbWQ2NC5kZWIKdUhjUmRreDkvSXhiTVlIdlpMa2N4RWJHUnBoYWR4dFlaOG4remNqSVFVTVRJQmJCcTdTSE9WSkFMY2JxM3dFQlZ5RWdES3IvNWxDZFZQdXQxdjMyQ1E9PQo=",
-      "url": "https://github.com/xinggaoya/nexterm/releases/download/v0.1.4/Nexterm_0.1.4_amd64.deb"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb1B6L1lFZGhUbDRObFg2UFI3MFpWSUhySkwrSjdpOHNSaDFlNlErdjF0OS9HYjVPNWVrdzdZNC9CbVJqK3RhVktKZStlMldpSGgxOXIxMU1PVHZ6WFFNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NTQzMzA2CWZpbGU6TmV4dGVybV8wLjIuMF9hbWQ2NC5kZWIKY0JkbzAxcGs4anVLdXBJbmtFQS8zTE5YUmQxS1FOVEF1NUhncUZOWHh4SFRDcGxPVjd1NWl0UkhVNnNmN3Bhc0JDNWpJeSthY2hqUHY2Q3Y3OUtrQmc9PQo=",
+      "url": "https://github.com/xinggaoya/nexterm/releases/download/v0.2.0/Nexterm_0.2.0_amd64.deb"
     },
     "linux-x86_64-rpm": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0M1UEtjZ1lkWkJWMk9rOUxWbWRHWnU0b3pnaHlpZUx2YUxqbGRpUDltbnBlZkxzcVUxdlhBNVEvL21wbzlSdkdhb0ZrMmhoZGQwVnpSS2lyMmV0bFEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODQyODcwCWZpbGU6TmV4dGVybS0wLjEuNC0xLng4Nl82NC5ycG0KT3ljTXRmUlNudGpBRmVVbEljdVRST1VVdEdwdllYZ29IUEJ0SzlIWmk2WE9sSlBLMW5pNERWbmtHSGVYemFUK0YwQkZTTUVISnFyNWIyQ3FYTUc4Qmc9PQo=",
-      "url": "https://github.com/xinggaoya/nexterm/releases/download/v0.1.4/Nexterm-0.1.4-1.x86_64.rpm"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0g3bitDRm5YZTM4SkNPMERxeDFQVmtxRjVPY0s3S0hRLzNSeE9ZR2RUL1VPUisxMUhXOG15T1FZRk05S0FzSHZiTzMvUWM1WFNBRGFFTHJ0YUFsZndJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5NTQzMzA2CWZpbGU6TmV4dGVybS0wLjIuMC0xLng4Nl82NC5ycG0Ka2FCVk1Wb3c3YWdidDJHK1NTbTVGTWdwdjhQZ0VtUWd4THZ6UTFaTllySFlvTHNYdlNKRHBYMHhTYk04TmdLb1phd1NRN1owb3E0NjZzamN2MmFoQUE9PQo=",
+      "url": "https://github.com/xinggaoya/nexterm/releases/download/v0.2.0/Nexterm-0.2.0-1.x86_64.rpm"
     }
   }
 }
