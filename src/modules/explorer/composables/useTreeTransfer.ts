@@ -305,11 +305,23 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     notifySuccess(t("explorer.moveUndone", { name: basename(last.from) }));
   }
 
-  /** 用户点“取消”：协作式中止，后端在下一个检查点停下。 */
-  function cancelTransfer(): void {
+  /**
+   * 用户点“取消”：协作式中止，后端在下一个检查点停下。
+   *
+   * 用 async + try/catch 而不是 `void x().catch()`：后者在返回值不是 Promise
+   * 时会直接抛 "Cannot read properties of undefined (reading 'catch')"，
+   * 而且这个异常发生在 Vue 的事件处理器里 —— 用户看到的是"点了没反应"，
+   * 日志里只有一条无关的堆栈。
+   */
+  async function cancelTransfer(): Promise<void> {
     const active = transferProgress.value;
     if (!active) return;
-    void options.wsNative.fsCancelTransfer(active.operationId).catch(() => undefined);
+    try {
+      await options.wsNative.fsCancelTransfer(active.operationId);
+    } catch {
+      // 取消失败（operation 已结束 / 后端已断开）无需打扰用户：搬运本身
+      // 仍会自己结束。
+    }
   }
 
   /** 逐条汇报，而不是只报成功：多选搬运经常是“一部分成功一部分失败”。 */

@@ -296,6 +296,10 @@ function resetExplorerMocks(): void {
   });
   mockWsNative.fsMoveMany.mockResolvedValue(EMPTY_TRANSFER_RESULT);
   mockWsNative.fsCopyMany.mockResolvedValue(EMPTY_TRANSFER_RESULT);
+  // 必须给实现：cancelTransfer 会链式调 .catch，裸 vi.fn() 返回 undefined
+  // 会在点击时抛 "Cannot read properties of undefined (reading 'catch')"。
+  mockWsNative.fsCancelTransfer.mockResolvedValue(true);
+  progressHandlers.length = 0;
 }
 
 describe("FileExplorer.vue", () => {
