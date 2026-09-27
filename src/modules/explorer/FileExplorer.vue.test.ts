@@ -19,6 +19,7 @@ import {
 const mockWsNative = {
   fsMoveMany: vi.fn(),
   fsCopyMany: vi.fn(),
+  fsCancelTransfer: vi.fn(),
 };
 vi.mock("@/app/workspaceContext", () => ({
   useWorkspaceContext: () => ({
@@ -47,6 +48,26 @@ vi.mock("./lib/fileTreeService", async () => {
     searchFileTree: vi.fn(),
   };
 });
+
+// 搬运进度事件通道。
+const progressHandlers: Array<(event: unknown) => void> = [];
+vi.mock("@tauri-apps/api/event", async () => {
+  const actual = await vi.importActual<typeof import("@tauri-apps/api/event")>("@tauri-apps/api/event");
+  return {
+    ...actual,
+    listen: async (_event: string, handler: (e: unknown) => void) => {
+      progressHandlers.push(handler);
+      return () => {
+        const index = progressHandlers.indexOf(handler);
+        if (index >= 0) progressHandlers.splice(index, 1);
+      };
+    },
+  };
+});
+
+function fireProgress(payload: Record<string, unknown>): void {
+  for (const handler of [...progressHandlers]) handler({ payload });
+}
 
 // OS 拖入走 webview 事件通道（getCurrentWebview().onDragDropEvent）。
 // 组件在 mount 时订阅，这里用可手动触发的 handler 替身。
@@ -1162,6 +1183,7 @@ describe("FileExplorer.vue", () => {
     expect(mockWsNative.fsCopyMany).toHaveBeenCalledWith(
       [{ from: "/repo/README.md", to: "/repo/README copy.md" }],
       "rename",
+      1,
     );
     // 不再走单条 fs_copy —— 那条命令在 WSL/SSH 下的符号链接处理与新引擎不一致
     expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
@@ -1188,6 +1210,7 @@ describe("FileExplorer.vue", () => {
     expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
       [{ from: "/repo/src/main.ts", to: "/repo/main.ts" }],
       "rename",
+      1,
     );
     expect(mockWsNative.fsCopyMany).not.toHaveBeenCalled();
     // 重命名后必须让编辑器标签跟着走，否则保存会写回不存在的旧路径。
@@ -1240,6 +1263,7 @@ describe("FileExplorer.vue", () => {
     expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
       [{ from: "/repo/src/README.md", to: "/repo/README copy.md" }],
       "rename",
+      1,
     );
   });
 
@@ -1255,6 +1279,7 @@ describe("FileExplorer.vue", () => {
     expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
       [{ from: "/repo/src/README.md", to: "/repo/README copy.md" }],
       "skip",
+      1,
     );
   });
 
@@ -1270,6 +1295,7 @@ describe("FileExplorer.vue", () => {
     expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
       [{ from: "/repo/src/README.md", to: "/repo/README copy.md" }],
       "overwrite",
+      1,
     );
   });
 
@@ -1320,6 +1346,7 @@ describe("FileExplorer.vue", () => {
     expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
       [{ from: "/repo/src/assets", to: "/repo/assets copy" }],
       "overwrite",
+      1,
     );
   });
 
@@ -1456,6 +1483,7 @@ describe("FileExplorer drag-to-transfer", () => {
     expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
       [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
       "rename",
+      1,
     );
   });
 
@@ -1474,6 +1502,7 @@ describe("FileExplorer drag-to-transfer", () => {
     expect(mockWsNative.fsCopyMany).toHaveBeenCalledWith(
       [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
       "rename",
+      1,
     );
     expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
   });
@@ -1534,6 +1563,7 @@ describe("FileExplorer drag-to-transfer", () => {
         { from: "/repo/package.json", to: "/repo/src/package.json" },
       ],
       "rename",
+      1,
     );
   });
 
@@ -1710,6 +1740,7 @@ describe("FileExplorer clipboard (cut / copy / paste)", () => {
         { from: "/repo/package.json", to: "/repo/src/package.json" },
       ],
       "rename",
+      1,
     );
     expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
   });
@@ -1743,6 +1774,7 @@ describe("FileExplorer clipboard (cut / copy / paste)", () => {
     expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
       [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
       "rename",
+      1,
     );
     expect(mockWsNative.fsCopyMany).not.toHaveBeenCalled();
   });
@@ -1852,6 +1884,7 @@ describe("FileExplorer OS file drop", () => {
     expect(mockWsNative.fsCopyMany).toHaveBeenCalledWith(
       [{ from: "/home/dev/pic.png", to: "/repo/src/pic.png" }],
       "rename",
+      1,
     );
     expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
   });
@@ -1914,6 +1947,7 @@ describe("FileExplorer OS file drop", () => {
     expect(mockWsNative.fsCopyMany).toHaveBeenCalledWith(
       [{ from: "/home/dev/pic.png", to: "/repo/pic.png" }],
       "rename",
+      1,
     );
   });
 
@@ -2123,5 +2157,103 @@ describe("FileExplorer filter + expand/collapse", () => {
       expect(rowOf("/repo/README.md").classes()).not.toContain("opacity-45"),
     );
     expect(mockWsNative.fsMoveMany).toHaveBeenCalledTimes(1);
+  });
+  it("搬运时展示进度条，进度事件驱动百分比", async () => {
+    let release: (value: unknown) => void = () => undefined;
+    mockWsNative.fsMoveMany.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }) as never,
+    );
+    const wrapper = mountExplorer();
+    await flush();
+    // 等 native 里的 onFsTransferProgress 订阅建立
+    await vi.waitFor(() => expect(progressHandlers.length).toBeGreaterThan(0));
+
+    void wrapper.vm.runTransfer(["/repo/README.md"], "/repo/src", "move");
+    await flush();
+
+    const bar = wrapper.find("[data-transfer-progress]");
+    expect(bar.exists()).toBe(true);
+    // 总条目数在开始时就已知，不必等后端的第一个进度事件
+    expect(bar.text()).toContain("0 / 1");
+
+    fireProgress({
+      operationId: 1,
+      done: 0,
+      total: 1,
+      current: "/repo/README.md",
+      bytesDone: 5 * 1024 * 1024,
+      bytesTotal: 10 * 1024 * 1024,
+    });
+    await nextTick();
+    expect(wrapper.find("[data-transfer-progress]").text()).toContain("50%");
+    expect(wrapper.find("[data-transfer-progress]").text()).toContain("MB");
+
+    release({ completed: [], skipped: [], failed: [], crossDevice: [], warnings: [] });
+    await vi.waitFor(() =>
+      expect(wrapper.find("[data-transfer-progress]").exists()).toBe(false),
+    );
+  });
+
+  it("忽略其它搬运的进度事件（operationId 分流）", async () => {
+    let release: (value: unknown) => void = () => undefined;
+    mockWsNative.fsMoveMany.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }) as never,
+    );
+    const wrapper = mountExplorer();
+    await flush();
+    await vi.waitFor(() => expect(progressHandlers.length).toBeGreaterThan(0));
+    void wrapper.vm.runTransfer(["/repo/README.md"], "/repo/src", "move");
+    await flush();
+
+    // operationId 对不上 → 不应影响当前进度条
+    fireProgress({
+      operationId: 999,
+      done: 9,
+      total: 10,
+      current: "/other",
+      bytesDone: 0,
+      bytesTotal: 0,
+    });
+    await nextTick();
+    expect(wrapper.find("[data-transfer-progress]").text()).not.toContain("9 / 10");
+
+    release({ completed: [], skipped: [], failed: [], crossDevice: [], warnings: [] });
+    await flush();
+  });
+
+  it("点取消按钮调 fsCancelTransfer 并带上当前 operationId", async () => {
+    let release: (value: unknown) => void = () => undefined;
+    mockWsNative.fsMoveMany.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }) as never,
+    );
+    const wrapper = mountExplorer();
+    await flush();
+    await vi.waitFor(() => expect(progressHandlers.length).toBeGreaterThan(0));
+    void wrapper.vm.runTransfer(["/repo/README.md"], "/repo/src", "move");
+    await flush();
+
+    await wrapper.find("[data-transfer-cancel]").trigger("click");
+    expect(mockWsNative.fsCancelTransfer).toHaveBeenCalledWith(1);
+
+    release({ completed: [], skipped: [], failed: [], crossDevice: [], warnings: [] });
+    await flush();
+  });
+
+  it("搬运把 operationId 传给后端（没有它就没有进度与取消能力）", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await wrapper.vm.runTransfer(["/repo/src/main.ts"], "/repo", "move");
+    await flush();
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
+      [{ from: "/repo/src/main.ts", to: "/repo/main.ts" }],
+      "rename",
+      1,
+    );
   });
 });

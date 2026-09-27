@@ -2,6 +2,7 @@ pub mod file;
 pub mod grep;
 pub mod mutate;
 pub mod search;
+pub mod transfer_state;
 pub mod tree;
 pub mod watcher;
 pub mod wsl_ops;

@@ -401,6 +401,9 @@ const enUS = {
     transferRejectedSubtree: "A folder cannot be moved into its own subfolder",
     transferRejectedSameDir: "Item is already in that folder",
     transferRejectedSelf: "A folder cannot be moved into itself",
+    transferProgressBytes: "{verb}ing {done} / {total}",
+    transferProgressItems: "{verb}ing {done} / {total} items",
+    transferCancel: "Cancel",
     transferBusy: "Transferring {count} item(s)…",
     // ── Drag-to-transfer ──
     dragMove: "Move",

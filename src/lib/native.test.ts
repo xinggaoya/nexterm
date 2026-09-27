@@ -264,8 +264,9 @@ describe("native filesystem wrappers", () => {
       .mockResolvedValueOnce({ ...empty, skipped: [{ from: "/a", to: "/b" }] });
 
     const items = [{ from: "/repo/a.ts", to: "/repo/lib/a.ts" }];
-    await expect(wsNative.fsMoveMany(items, "overwrite")).resolves.toEqual(empty);
-    // 不显式传策略时后端默认 rename（自动改名，不丢数据）。
+    await expect(wsNative.fsMoveMany(items, "overwrite", 7)).resolves.toEqual(empty);
+    // 不显式传策略时后端默认 rename（自动改名，不丢数据），
+    // 不传 operationId 时没有进度与取消能力（后端按 null 收）。
     await expect(wsNative.fsCopyMany(items)).resolves.toMatchObject({
       skipped: [{ from: "/a", to: "/b" }],
     });
@@ -273,13 +274,23 @@ describe("native filesystem wrappers", () => {
     expect(invoke).toHaveBeenNthCalledWith(1, "fs_move_many", {
       items,
       conflict: "overwrite",
+      operationId: 7,
       workspace: LOCAL_WORKSPACE,
     });
     expect(invoke).toHaveBeenNthCalledWith(2, "fs_copy_many", {
       items,
       conflict: "rename",
+      operationId: null,
       workspace: LOCAL_WORKSPACE,
     });
+  });
+
+  it("取消搬运走 fs_cancel_transfer", async () => {
+    const wsNative = createNativeForEnv(LOCAL_WORKSPACE);
+    vi.mocked(invoke).mockResolvedValueOnce(true);
+
+    await expect(wsNative.fsCancelTransfer(9)).resolves.toBe(true);
+    expect(invoke).toHaveBeenCalledWith("fs_cancel_transfer", { operationId: 9 });
   });
 
   it("looks up the launch dir and WSL home through native", async () => {

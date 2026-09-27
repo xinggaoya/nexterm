@@ -2,9 +2,10 @@ import { basename } from "@/lib/path";
 import { useEventListener } from "@/lib/useEventListener";
 import { usePointerDragReorder } from "@/lib/usePointerDragReorder";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
-import { onOsFileDragDrop } from "@/lib/native";
+import { onFsTransferProgress, onOsFileDragDrop } from "@/lib/native";
 import type {
   FsConflictPolicy,
+  FsTransferProgress,
   FsTransferResult,
   OsFileDragEvent,
   WorkspaceNative,
@@ -78,12 +79,33 @@ type PendingTransfer = {
 
 type DragGhost = { path: string; count: number; names: string[] };
 
+/** 一次进行中的搬运：operationId 用于订阅进度与发起取消。 */
+export type ActiveTransfer = {
+  operationId: number;
+  mode: TransferMode;
+  /** 总条目数，进度条未收到事件前也有值。 */
+  total: number;
+  progress: FsTransferProgress;
+};
+
 /** 悬停折叠目录多久自动展开。 */
 const HOVER_EXPAND_DELAY_MS = 600;
 /** 距容器上下边缘多少像素开始自动滚动。 */
 const EDGE_SCROLL_ZONE = 28;
 /** 单帧最大滚动量。 */
 const EDGE_SCROLL_SPEED = 12;
+
+/** 字节数的人类可读形式（与 i18n 的单位无关，数字部分仍走 i18n）。 */
+function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"] as const;
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 100 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
 
 const REJECTION_MESSAGE: Record<RejectReason, MessageKey> = {
   self: "explorer.transferRejectedSelf",
@@ -95,6 +117,11 @@ const REJECTION_MESSAGE: Record<RejectReason, MessageKey> = {
 export function useTreeTransfer(options: TreeTransferOptions) {
   const clipboard = useFileClipboard();
   const transferBusy = ref(false);
+  /**
+   * 正在进行的搬运的进度（大目录复制几 GB 时没有反馈 = 用户以为卡死）。
+   * 为 null 表示当前没有搬运。
+   */
+  const transferProgress = ref<ActiveTransfer | null>(null);
   const pendingConflict = ref<ConflictRequest | null>(null);
   let pendingTransfer: PendingTransfer | null = null;
 
@@ -186,18 +213,34 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     pendingConflict.value = null;
   }
 
+  /** operationId 自增：同一窗口内多次搬运互不串扰。 */
+  let nextOperationId = 1;
+
   async function executeTransfer(
     pending: PendingTransfer,
     policy: FsConflictPolicy,
   ): Promise<void> {
     const plan = buildTransferPlan(pending, policy);
     if (plan.items.length === 0) return;
+    const operationId = nextOperationId++;
     transferBusy.value = true;
+    transferProgress.value = {
+      operationId,
+      mode: pending.mode,
+      total: plan.items.length,
+      progress: {
+        done: 0,
+        total: plan.items.length,
+        current: plan.items[0]?.from ?? null,
+        bytesDone: 0,
+        bytesTotal: 0,
+      },
+    };
     try {
       const result =
         pending.mode === "move"
-          ? await options.wsNative.fsMoveMany(plan.items, policy)
-          : await options.wsNative.fsCopyMany(plan.items, policy);
+          ? await options.wsNative.fsMoveMany(plan.items, policy, operationId)
+          : await options.wsNative.fsCopyMany(plan.items, policy, operationId);
       reportTransferResult(result, pending.mode);
       await settleAfterTransfer(result, pending);
     } catch (error) {
@@ -207,7 +250,15 @@ export function useTreeTransfer(options: TreeTransferOptions) {
       );
     } finally {
       transferBusy.value = false;
+      transferProgress.value = null;
     }
+  }
+
+  /** 用户点“取消”：协作式中止，后端在下一个检查点停下。 */
+  function cancelTransfer(): void {
+    const active = transferProgress.value;
+    if (!active) return;
+    void options.wsNative.fsCancelTransfer(active.operationId).catch(() => undefined);
   }
 
   /** 逐条汇报，而不是只报成功：多选搬运经常是“一部分成功一部分失败”。 */
@@ -496,6 +547,24 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     dropAllowed.value = false;
   }
 
+  // 搬运进度订阅。事件按 operationId 分流，别的搬运（含另一个工作区的）进度
+  // 一律忽略。
+  if (hasTauriInternals()) {
+    void onFsTransferProgress((event) => {
+      const active = transferProgress.value;
+      if (!active || active.operationId !== event.operationId) return;
+      active.progress = {
+        done: event.done,
+        total: event.total,
+        current: event.current,
+        bytesDone: event.bytesDone,
+        bytesTotal: event.bytesTotal,
+      };
+    }).catch((error) => {
+      console.warn("[explorer] transfer progress unavailable:", error);
+    });
+  }
+
   // 部分 Linux Wayland 组合不支持 drag-drop：订阅失败就降级为“不支持拖入”，
   // 而不是让整棵文件树挂掉。
   if (hasTauriInternals()) {
@@ -559,6 +628,39 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     return dropTargetDir.value === path && !dropAllowed.value;
   }
 
+  /** 进度百分比：优先用字节（更细），退化到条目数。总量未知时为 null。 */
+  const transferPercent = computed<number | null>(() => {
+    const active = transferProgress.value;
+    if (!active) return null;
+    const { progress } = active;
+    if (progress.bytesTotal > 0) {
+      return Math.min(100, Math.round((progress.bytesDone * 100) / progress.bytesTotal));
+    }
+    if (progress.total > 0) {
+      return Math.min(100, Math.round((progress.done * 100) / progress.total));
+    }
+    return null;
+  });
+
+  /** 进度文案：条目级 vs 字节级，取决于后端能否算出总量。 */
+  const transferProgressLabel = computed<string | null>(() => {
+    const active = transferProgress.value;
+    if (!active) return null;
+    const verb = active.mode === "move" ? t("explorer.dragMove") : t("explorer.dragCopy");
+    if (active.progress.bytesTotal > 0) {
+      return t("explorer.transferProgressBytes", {
+        verb,
+        done: formatBytes(active.progress.bytesDone),
+        total: formatBytes(active.progress.bytesTotal),
+      });
+    }
+    return t("explorer.transferProgressItems", {
+      verb,
+      done: active.progress.done,
+      total: active.progress.total,
+    });
+  });
+
   /** ghost 文案：跟随修饰键在「移动 / 复制」之间实时切换。 */
   const dragGhostLabel = computed(() => {
     const ghost = dragGhost.value;
@@ -588,6 +690,10 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     // 状态
     clipboard,
     transferBusy,
+    transferProgress,
+    transferPercent,
+    transferProgressLabel,
+    cancelTransfer,
     pendingConflict,
     dragSources,
     dragMode,

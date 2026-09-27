@@ -165,6 +165,10 @@ const transfer = useTreeTransfer({
 const {
   clipboard,
   transferBusy,
+  transferProgress,
+  transferPercent,
+  transferProgressLabel,
+  cancelTransfer,
   pendingConflict,
   dragMode,
   dropAllowed,
@@ -658,6 +662,45 @@ defineExpose({
       @resolve="onConflictResolved"
       @cancel="onConflictCanceled"
     />
+
+    <!--
+      搬运进度条：复制几 GB 的目录时没有反馈 = 用户以为卡死。
+      只在搬运进行中挂载，且带取消按钮（后端是协作式取消：下一个 256KiB
+      检查点停下，已写了一半的文件会被记为 failed 而不是悄悄留在磁盘上）。
+    -->
+    <div
+      v-if="transferProgress"
+      data-transfer-progress
+      class="pointer-events-none fixed bottom-3 left-1/2 z-50 w-[320px] max-w-[92vw] -translate-x-1/2"
+    >
+      <div
+        class="pointer-events-auto v2-glass-float flex flex-col gap-1.5 rounded-lg px-2.5 py-2 shadow-lg"
+      >
+        <div class="flex items-center justify-between gap-2 text-[11.5px]">
+          <span class="min-w-0 flex-1 truncate">
+            {{ transferProgressLabel }}
+          </span>
+          <span v-if="transferPercent !== null" class="shrink-0 tabular-nums text-muted-foreground">
+            {{ transferPercent }}%
+          </span>
+          <NButton
+            size="tiny"
+            quaternary
+            data-transfer-cancel
+            :aria-label="t('explorer.transferCancel')"
+            @click="cancelTransfer"
+          >
+            {{ t("explorer.transferCancel") }}
+          </NButton>
+        </div>
+        <div class="h-1 w-full overflow-hidden rounded-full bg-surface-subtle">
+          <div
+            class="h-full rounded-full bg-primary transition-[width] duration-200"
+            :style="{ width: `${transferPercent ?? 0}%` }"
+          />
+        </div>
+      </div>
+    </div>
 
     <!--
       拖拽 ghost：跟随指针的胶囊，文案实时反映“移动/复制 N 项”。

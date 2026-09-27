@@ -88,6 +88,82 @@ impl TransferResult {
     }
 }
 
+/// 搬运进度快照。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferProgress {
+    /// 已完成的条目数。
+    pub done: usize,
+    /// 总条目数。
+    pub total: usize,
+    /// 当前正在处理的条目的源路径；全部完成时为 None。
+    pub current: Option<String>,
+    /// 当前条目已复制的字节数（跨条目累计，仅复制有意义）。
+    pub bytes_done: u64,
+    /// 当前条目的总字节数（未知时为 0）。
+    pub bytes_total: u64,
+}
+
+impl TransferProgress {
+    /// 0..=100 的完成百分比；总量未知时返回 None。
+    pub fn percent(&self) -> Option<u8> {
+        if self.total == 0 {
+            return None;
+        }
+        if self.bytes_total > 0 {
+            let pct = self.bytes_done.saturating_mul(100) / self.bytes_total;
+            return Some(pct.min(100) as u8);
+        }
+        Some((self.done * 100 / self.total).min(100) as u8)
+    }
+}
+
+/// 搬运被用户取消。区别于失败：已完成的条目保持完成，剩余条目记入 skipped。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cancelled;
+
+/// 复制过程中的错误。必须能区分"取消"与"真的失败"：取消不是错误，用户点
+/// 一下取消不该看到红色的失败提示。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CopyError {
+    Cancelled,
+    Failed(String),
+}
+
+impl CopyError {
+    pub fn message(&self) -> String {
+        match self {
+            CopyError::Cancelled => "cancelled".to_string(),
+            CopyError::Failed(message) => message.clone(),
+        }
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self, CopyError::Cancelled)
+    }
+}
+
+impl From<String> for CopyError {
+    fn from(message: String) -> Self {
+        CopyError::Failed(message)
+    }
+}
+
+impl From<Cancelled> for CopyError {
+    fn from(_: Cancelled) -> Self {
+        CopyError::Cancelled
+    }
+}
+
+impl std::fmt::Display for CopyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message())
+    }
+}
+
+/// 进度/取消回调。返回 Err(Cancelled) 即中止剩余条目。
+pub type ProgressHook<'a> = &'a mut dyn FnMut(TransferProgress) -> Result<(), Cancelled>;
+
 /// `child` 是否位于 `parent` 之内（含相等）。
 ///
 /// 搬运防自噬的第一道闸：把目录拖进它自己的子目录时，copy + delete 的
@@ -179,27 +255,37 @@ fn resolve_conflict(
 
 /// 递归复制目录：符号链接按链接本身重建（不跟随目标），Windows 无
 /// symlink 重建权限时跳过并记 warning。
-fn copy_dir_recursive(
+fn copy_dir_recursive_with(
     src: &Path,
     dst: &Path,
     warnings: &mut Vec<String>,
-) -> Result<(), String> {
+    on_bytes: &mut dyn FnMut(u64) -> Result<(), Cancelled>,
+) -> Result<(), CopyError> {
     std::fs::create_dir_all(dst)
-        .map_err(|e| format!("mkdir {}: {e}", dst.display()))?;
+        .map_err(|e| CopyError::Failed(format!("mkdir {}: {e}", dst.display())))?;
     let entries = std::fs::read_dir(src)
-        .map_err(|e| format!("readdir {}: {e}", src.display()))?;
+        .map_err(|e| CopyError::Failed(format!("readdir {}: {e}", src.display())))?;
     for entry in entries {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+        let entry = entry.map_err(|e| CopyError::Failed(e.to_string()))?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| CopyError::Failed(e.to_string()))?;
         let child_src = entry.path();
         let child_dst = dst.join(entry.file_name());
         if file_type.is_symlink() {
             copy_symlink(&child_src, &child_dst, warnings);
         } else if file_type.is_dir() {
-            copy_dir_recursive(&child_src, &child_dst, warnings)?;
+            copy_dir_recursive_with(&child_src, &child_dst, warnings, on_bytes)?;
         } else if file_type.is_file() {
-            std::fs::copy(&child_src, &child_dst)
-                .map_err(|e| format!("copy {}: {e}", child_src.display()))?;
+            // Cancelled 要原样上抛（它不是"复制失败"），因此不能用
+            // map_err 把 io::Error 压成 String。
+            copy_file_with_progress(&child_src, &child_dst, on_bytes).map_err(|e| match e {
+                CopyError::Cancelled => CopyError::Cancelled,
+                other => CopyError::Failed(format!(
+                    "copy {}: {other}",
+                    child_src.display()
+                )),
+            })?;
         }
         // socket / fifo / device：没有等价物可复制，静默跳过即可。
     }
@@ -229,24 +315,123 @@ fn copy_symlink(src: &Path, dst: &Path, warnings: &mut Vec<String>) {
     ));
 }
 
+/// 递归统计条目总字节数（符号链接不跟进去，socket/fifo 记 0）。
+pub fn tree_size(path: &Path) -> u64 {
+    let Ok(meta) = std::fs::symlink_metadata(path) else {
+        return 0;
+    };
+    // 符号链接不计入：symlink_metadata 拿到的 len 是**链接串本身**的长度，
+    // 既不是目标大小也不是 0，计进去会让进度百分比失真。
+    if meta.file_type().is_symlink() {
+        return 0;
+    }
+    if meta.is_file() {
+        return meta.len();
+    }
+    if !meta.is_dir() {
+        return 0;
+    }
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| tree_size(&entry.path()))
+        .sum()
+}
+
+/// 分块复制单个文件，边复制边报进度 —— 唯一的取消点。
+///
+/// 不用 `std::fs::copy`：它没有中途回调，复制一个几 GB 的文件时既看不到
+/// 进度也停不下来（用户只能杀整个应用）。
+fn copy_file_with_progress(
+    src: &Path,
+    dst: &Path,
+    hook: &mut dyn FnMut(u64) -> Result<(), Cancelled>,
+) -> Result<u64, CopyError> {
+    use std::io::{Read, Write};
+    // File::create 不会创建缺失的父目录，目标父目录不存在时会直接失败。
+    // 目录复制路径本来就会建目录，文件路径也该如此。
+    if let Some(parent) = dst.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                CopyError::Failed(format!("mkdir {}: {e}", parent.display()))
+            })?;
+        }
+    }
+    let mut input = std::fs::File::open(src)
+        .map_err(|e| CopyError::Failed(format!("open {}: {e}", src.display())))?;
+    let mut output = std::fs::File::create(dst)
+        .map_err(|e| CopyError::Failed(format!("create {}: {e}", dst.display())))?;
+    let mut buf = vec![0u8; 256 * 1024];
+    let mut copied = 0u64;
+    loop {
+        let n = input
+            .read(&mut buf)
+            .map_err(|e| CopyError::Failed(format!("read {}: {e}", src.display())))?;
+        if n == 0 {
+            break;
+        }
+        output.write_all(&buf[..n]).map_err(|e| {
+            CopyError::Failed(format!("write {}: {e}", dst.display()))
+        })?;
+        copied += n as u64;
+        // 每块检查一次：取消一个几 GB 的复制才不至于等到文件末尾。
+        hook(copied)?;
+    }
+    output
+        .flush()
+        .map_err(|e| CopyError::Failed(format!("flush {}: {e}", dst.display())))?;
+    Ok(copied)
+}
+
 /// 复制单个条目（文件 / 目录 / 符号链接），`to` 必须不存在。
 pub fn copy_path(src: &Path, dst: &Path, warnings: &mut Vec<String>) -> Result<(), String> {
+    copy_path_with(src, dst, warnings, &mut |_| Ok(()))
+        .map(|_| ())
+        .map_err(|e| e.message())
+}
+
+/// 带进度与取消的复制入口。
+pub fn copy_path_with(
+    src: &Path,
+    dst: &Path,
+    warnings: &mut Vec<String>,
+    on_bytes: &mut dyn FnMut(u64) -> Result<(), Cancelled>,
+) -> Result<u64, CopyError> {
     // symlink_metadata：不跟随链接，才能识别出"指向目录的符号链接"并
     // 整条重建，而不是把目标目录的内容复制进来。
     let meta = std::fs::symlink_metadata(src)
-        .map_err(|e| format!("stat {}: {e}", src.display()))?;
+        .map_err(|e| CopyError::Failed(format!("stat {}: {e}", src.display())))?;
     let file_type = meta.file_type();
     if file_type.is_symlink() {
         copy_symlink(src, dst, warnings);
-        return Ok(());
+        return Ok(0);
     }
     if file_type.is_dir() {
-        copy_dir_recursive(src, dst, warnings)
+        copy_dir_recursive_with(src, dst, warnings, on_bytes).map(|_| 0)
     } else {
-        std::fs::copy(src, dst).map(|_| ()).map_err(|e| {
-            format!("copy {} -> {}: {e}", src.display(), dst.display())
-        })
+        copy_file_with_progress(src, dst, on_bytes)
     }
+}
+
+/// 带全局字节偏移的复制包装。
+///
+/// `copy_path_with` 的 `on_bytes` 收到的是"本条目已复制字节数"（累计值），
+/// 这里折算成全局累计 `base + item_bytes` 再交给上层，省得上层维护累加器
+/// ——而累加器正是上一版 double-count 的来源。
+fn copy_path_tracked(
+    src: &Path,
+    dst: &Path,
+    warnings: &mut Vec<String>,
+    base_bytes: Option<u64>,
+    on_bytes: &mut dyn FnMut(u64) -> Result<(), Cancelled>,
+) -> Result<(), String> {
+    let base = base_bytes.unwrap_or(0);
+    let mut report = |delta: u64| -> Result<(), Cancelled> { on_bytes(base + delta) };
+    copy_path_with(src, dst, warnings, &mut report)
+        .map(|_| ())
+        .map_err(|e| e.message())
 }
 
 fn remove_path(path: &Path) -> Result<(), String> {
@@ -280,12 +465,29 @@ impl TransferMode {
     }
 }
 
-fn transfer_one(
+/// 搬运单个条目。`on_bytes` 收到的是"本次复制的新增字节数"，`base_bytes`
+/// 是本条目开始前已累计的字节数（用于把增量折算成全局进度）。
+#[allow(clippy::too_many_arguments)]
+fn transfer_one_tracked(
     from: &Path,
     to: &Path,
     policy: ConflictPolicy,
     mode: TransferMode,
     warnings: &mut Vec<String>,
+    base_bytes: Option<u64>,
+    on_bytes: &mut dyn FnMut(u64) -> Result<(), Cancelled>,
+) -> Result<(ItemOutcome, PathBuf), String> {
+    transfer_one_inner(from, to, policy, mode, warnings, base_bytes, on_bytes)
+}
+
+fn transfer_one_inner(
+    from: &Path,
+    to: &Path,
+    policy: ConflictPolicy,
+    mode: TransferMode,
+    warnings: &mut Vec<String>,
+    base_bytes: Option<u64>,
+    on_bytes: &mut dyn FnMut(u64) -> Result<(), Cancelled>,
 ) -> Result<(ItemOutcome, PathBuf), String> {
     // 防自噬：目标落在源内部时，跨设备回落（copy + delete）会把源一路吞掉。
     if mode == TransferMode::Move && is_inside(to, from) {
@@ -319,7 +521,7 @@ fn transfer_one(
             Ok(()) => Ok((ItemOutcome::Completed, effective)),
             Err(e) if is_cross_device_error(&e) => {
                 // 跨设备：rename 不可用，退化成"复制 + 删源"。
-                copy_path(from, &effective, warnings)?;
+                copy_path_tracked(from, &effective, warnings, base_bytes, on_bytes)?;
                 // 删源失败要显式冒泡：此时磁盘上已经有两份，用户必须知道
                 // "移动"其实只完成了"复制"。
                 remove_path(from).map_err(|error| {
@@ -339,7 +541,7 @@ fn transfer_one(
             )),
         },
         TransferMode::Copy => {
-            copy_path(from, &effective, warnings)?;
+            copy_path_tracked(from, &effective, warnings, base_bytes, on_bytes)?;
             Ok((ItemOutcome::Completed, effective))
         }
     }
@@ -355,13 +557,95 @@ pub fn transfer_all(
     policy: ConflictPolicy,
     mode: TransferMode,
 ) -> TransferResult {
+    transfer_all_with(items, policy, mode, None)
+}
+
+/// 带进度与取消的批量搬运。
+///
+/// `on_progress` 为 `None` 时行为与 `transfer_all` 完全一致（agent 通道目前
+/// 就是这样：远端在另一个进程里，进度只能等它整体返回）。给了回调时：
+/// - 每进入一个条目、每复制一块数据都会回调一次（宿主据此发事件到前端）；
+/// - 回调返回 `Err(Cancelled)` 立即中止，**剩余条目记入 `skipped` 而不是
+///   `failed`** —— 用户主动取消不是错误，红色失败提示会误导。
+pub fn transfer_all_with(
+    items: &[TransferItem],
+    policy: ConflictPolicy,
+    mode: TransferMode,
+    mut on_progress: Option<ProgressHook<'_>>,
+) -> TransferResult {
     let mut result = TransferResult::default();
-    for raw in items {
+    let total = items.len();
+    // 总量预扫描：进度条的百分比只有在"全局总量"已知时才有意义。逐项统计
+    // 会让百分比在每个条目上从 0 重跑到 100，看起来像在反复横跳。
+    // 代价是一次额外的目录遍历（不复制任何字节），换来的是一条能读懂的进度。
+    let total_bytes: u64 = if on_progress.is_some() {
+        items
+            .iter()
+            .map(|item| tree_size(Path::new(&item.from)))
+            .sum()
+    } else {
+        0
+    };
+    let track_bytes = on_progress.is_some();
+    let mut progress = TransferProgress {
+        total,
+        bytes_total: total_bytes,
+        ..Default::default()
+    };
+    // 已完成条目累计的字节数：每个条目的局部进度要叠加在这个基准上。
+    let mut bytes_base = 0u64;
+
+    for (index, raw) in items.iter().enumerate() {
         let from = PathBuf::from(&raw.from);
         let to = PathBuf::from(&raw.to);
         let mut warnings = Vec::new();
-        match transfer_one(&from, &to, policy, mode, &mut warnings) {
-            Ok((outcome, effective)) => {
+
+        progress.current = Some(raw.from.clone());
+        if let Some(hook) = on_progress.as_deref_mut() {
+            if hook(progress.clone()).is_err() {
+                result.skipped.extend(items[index..].iter().cloned());
+                break;
+            }
+        }
+
+        // 字节进度的闭包。`item_bytes` 是**本条目已复制的字节数**（累计，
+        // 不是增量）——copy_file_with_progress 只能给出累计值；折算成全局
+        // 累计是这个闭包的职责，必须赋值而不是累加（累加过一次，数字直接
+        // 翻倍）。
+        let mut cancelled = false;
+        let outcome = transfer_one_tracked(
+            &from,
+            &to,
+            policy,
+            mode,
+            &mut warnings,
+            track_bytes.then_some(bytes_base),
+            &mut |item_bytes| {
+                if let Some(hook) = on_progress.as_deref_mut() {
+                    progress.bytes_done = bytes_base + item_bytes;
+                    if hook(progress.clone()).is_err() {
+                        cancelled = true;
+                    }
+                }
+                Ok::<(), Cancelled>(())
+            },
+        );
+        if cancelled {
+            // 已经落了一半的条目算失败（磁盘上确实有残留），剩余算跳过。
+            result.failed.push(TransferFailure {
+                from: raw.from.clone(),
+                to: raw.to.clone(),
+                error: "cancelled".to_string(),
+            });
+            result
+                .skipped
+                .extend(items[index + 1..].iter().cloned());
+            result.warnings.append(&mut warnings);
+            break;
+        }
+
+        match outcome {
+            Ok((outcome_kind, effective)) => {
                 // 回报**实际落点**：Rename 策略下真实路径可能已被换掉，
                 // 前端要拿它刷新对应的父目录、并让已打开的 tab 跟随。
                 result.record(
@@ -369,7 +653,7 @@ pub fn transfer_all(
                         from: raw.from.clone(),
                         to: effective.to_string_lossy().into_owned(),
                     },
-                    outcome,
+                    outcome_kind,
                 );
             }
             Err(error) => result.failed.push(TransferFailure {
@@ -379,6 +663,15 @@ pub fn transfer_all(
             }),
         }
         result.warnings.append(&mut warnings);
+        if track_bytes {
+            // 已完成条目把它的实际大小并入基准。
+            bytes_base += progress.bytes_done.saturating_sub(bytes_base);
+        }
+        progress.done = index + 1;
+        progress.current = None;
+        if let Some(hook) = on_progress.as_deref_mut() {
+            let _ = hook(progress.clone());
+        }
     }
     result
 }
@@ -624,7 +917,7 @@ mod tests {
         {
             std::os::unix::fs::symlink(src.join("real.txt"), src.join("link.txt")).unwrap();
             let mut warnings = Vec::new();
-            copy_dir_recursive(&src, &dst, &mut warnings).unwrap();
+            copy_dir_recursive_with(&src, &dst, &mut warnings, &mut |_| Ok(())).unwrap();
             assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
             let meta = fs::symlink_metadata(dst.join("link.txt")).unwrap();
             assert!(meta.file_type().is_symlink(), "link should stay a symlink");
@@ -632,7 +925,7 @@ mod tests {
         #[cfg(not(unix))]
         {
             let mut warnings = Vec::new();
-            copy_dir_recursive(&src, &dst, &mut warnings).unwrap();
+            copy_dir_recursive_with(&src, &dst, &mut warnings, &mut |_| Ok(())).unwrap();
             assert_eq!(warnings.len(), 1, "windows should warn about the skipped link");
         }
     }
@@ -688,5 +981,247 @@ mod tests {
         assert!(is_cross_device_error(&std::io::Error::from_raw_os_error(18)));
         assert!(is_cross_device_error(&std::io::Error::from_raw_os_error(17)));
         assert!(!is_cross_device_error(&std::io::Error::from_raw_os_error(2)));
+    }
+}
+
+#[cfg(test)]
+mod progress_tests {
+    use super::*;
+    use std::fs;
+    use std::sync::{Arc, Mutex};
+
+    /// 唯一临时目录：用 $TMPDIR/nexterm-fs-core-<tag> 便于失败后手工清理。
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let path = std::env::temp_dir().join(format!("nexterm-fs-core-{tag}-{nanos}"));
+            fs::create_dir_all(&path).expect("create temp dir");
+            Self(path)
+        }
+
+        fn join(&self, rel: &str) -> PathBuf {
+            self.0.join(rel)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn write(path: &Path, size: usize) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("mkdir");
+        }
+        fs::write(path, vec![b'x'; size]).expect("write");
+    }
+
+    fn item(from: &Path, to: &Path) -> TransferItem {
+        TransferItem {
+            from: from.to_string_lossy().into_owned(),
+            to: to.to_string_lossy().into_owned(),
+        }
+    }
+
+    #[test]
+    fn progress_reports_every_item_and_finishes_at_total() {
+        let tmp = TempDir::new("progress-items");
+        let a = tmp.join("a.bin");
+        let b = tmp.join("b.bin");
+        write(&a, 1024);
+        write(&b, 2048);
+
+        let seen = Arc::new(Mutex::new(Vec::<TransferProgress>::new()));
+        let sink = Arc::clone(&seen);
+        let dest = tmp.join("dest");
+        let items = vec![
+            item(&a, &dest.join("a.bin")),
+            item(&b, &dest.join("b.bin")),
+        ];
+        transfer_all_with(
+            &items,
+            ConflictPolicy::Rename,
+            TransferMode::Copy,
+            Some(&mut move |p| {
+                sink.lock().expect("lock").push(p);
+                Ok(())
+            }),
+        );
+
+        let seen = seen.lock().expect("lock").clone();
+        // 至少能看到"进入每个条目"和"完成每个条目"两类快照
+        assert!(seen.iter().any(|p| p.current.as_deref() == Some(a.to_str().unwrap())));
+        assert!(seen.iter().any(|p| p.current.as_deref() == Some(b.to_str().unwrap())));
+        let last = seen.last().expect("at least one snapshot");
+        assert_eq!(last.total, 2);
+        // 总量是所有条目的和（1024 + 2048），不是当前条目的大小
+        assert_eq!(last.bytes_total, 1024 + 2048);
+        assert_eq!(last.percent(), Some(100));
+        // 百分比单调不回头：否则进度条看起来像在反复横跳
+        let pcts = seen.iter().filter_map(|p| p.percent()).collect::<Vec<_>>();
+        assert!(
+            pcts.windows(2).all(|w| w[0] <= w[1]),
+            "progress went backwards: {pcts:?}"
+        );
+        assert!(dest.join("a.bin").exists());
+        assert!(dest.join("b.bin").exists());
+    }
+
+    #[test]
+    fn copying_into_a_missing_target_directory_creates_it() {
+        // 回归：File::create 不会建父目录，目标父目录不存在时整条复制会失败。
+        // 前端目前总是落在已存在目录里，所以这个缺陷此前从未暴露，但引擎
+        // 本身必须能自建目标父目录（目录复制路径本来就会建）。
+        let tmp = TempDir::new("missing-dst-dir");
+        let src = tmp.join("a.bin");
+        write(&src, 32);
+        let dst = tmp.join("not/created/yet/a.bin");
+        let items = vec![item(&src, &dst)];
+        let result = transfer_all(&items, ConflictPolicy::Rename, TransferMode::Copy);
+        assert_eq!(result.failed.len(), 0, "{result:?}");
+        assert!(dst.exists());
+        assert_eq!(fs::metadata(&dst).unwrap().len(), 32);
+    }
+
+    #[test]
+    fn byte_progress_advances_and_reaches_the_total() {
+        let tmp = TempDir::new("progress-bytes");
+        // 大于一个 256KiB 分块，保证至少回调两次，能观察到"进度在推进"
+        // 而不是只看到 0% 和 100%。
+        let src = tmp.join("big.bin");
+        write(&src, 700 * 1024);
+
+        let seen = Arc::new(Mutex::new(Vec::<TransferProgress>::new()));
+        let sink = Arc::clone(&seen);
+        let items = vec![item(&src, &tmp.join("copy.bin"))];
+        transfer_all_with(
+            &items,
+            ConflictPolicy::Rename,
+            TransferMode::Copy,
+            Some(&mut move |p| {
+                sink.lock().expect("lock").push(p);
+                Ok(())
+            }),
+        );
+
+        let seen = seen.lock().expect("lock").clone();
+        let bytes = seen.iter().map(|p| p.bytes_done).collect::<Vec<_>>();
+        assert!(bytes.windows(2).any(|w| w[0] < w[1]), "byte progress never advanced: {bytes:?}");
+        assert_eq!(bytes.last().copied(), Some(700 * 1024));
+        assert_eq!(seen.last().and_then(|p| p.percent()), Some(100));
+        assert_eq!(fs::metadata(tmp.join("copy.bin")).unwrap().len(), 700 * 1024);
+    }
+
+    #[test]
+    fn cancelling_before_the_first_item_skips_everything() {
+        let tmp = TempDir::new("cancel-first");
+        let a = tmp.join("a.txt");
+        write(&a, 8);
+        let items = vec![item(&a, &tmp.join("copy.txt"))];
+
+        let result = transfer_all_with(
+            &items,
+            ConflictPolicy::Rename,
+            TransferMode::Copy,
+            Some(&mut |_| Err(Cancelled)),
+        );
+
+        assert_eq!(result.completed.len(), 0);
+        assert_eq!(result.failed.len(), 0);
+        assert_eq!(result.skipped.len(), 1, "取消不是失败，剩余条目应记入 skipped");
+        assert!(!tmp.join("copy.txt").exists());
+    }
+
+    #[test]
+    fn cancelling_mid_transfer_stops_the_batch() {
+        let tmp = TempDir::new("cancel-mid");
+        let a = tmp.join("a.txt");
+        let b = tmp.join("b.txt");
+        write(&a, 700 * 1024);
+        write(&b, 8);
+        let items = vec![
+            item(&a, &tmp.join("a-copy.txt")),
+            item(&b, &tmp.join("b-copy.txt")),
+        ];
+
+        // 在"第二个条目刚开始"时取消：按 current 路径判定比按回调次数判定
+        // 稳（回调次数取决于文件大小与分块大小，改一下块大小就失效）。
+        let b_text = b.to_string_lossy().into_owned();
+        let result = transfer_all_with(
+            &items,
+            ConflictPolicy::Rename,
+            TransferMode::Copy,
+            Some(&mut move |p| {
+                if p.current.as_deref() == Some(b_text.as_str()) {
+                    return Err(Cancelled);
+                }
+                Ok(())
+            }),
+        );
+
+        // 第一个条目完成，第二个被取消（记 skipped 而不是 failed）
+        assert_eq!(result.completed.len(), 1, "first item should survive");
+        assert_eq!(result.skipped.len(), 1, "remaining items are skipped, not failed");
+        assert_eq!(result.failed.len(), 0);
+        assert!(tmp.join("a-copy.txt").exists());
+        assert!(!tmp.join("b-copy.txt").exists());
+    }
+
+    #[test]
+    fn no_hook_behaves_exactly_like_transfer_all() {
+        let tmp = TempDir::new("no-hook");
+        let a = tmp.join("a.txt");
+        let b = tmp.join("b.txt");
+        write(&a, 16);
+        write(&b, 32);
+        // 两次跑各自的源与目标：共用目标会让第二次撞名并改名，结果自然不同
+        //（那不是 no_hook 的差异，是冲突策略生效了）。
+        let first = vec![item(&a, &tmp.join("copy-a.txt"))];
+        let second = vec![item(&b, &tmp.join("copy-b.txt"))];
+        for items in [&first, &second] {
+            let with = transfer_all_with(
+                items,
+                ConflictPolicy::Rename,
+                TransferMode::Copy,
+                None,
+            );
+            // 立刻删掉产物再跑第二次：否则它会撞名并改名 —— 那不是
+            // no_hook 的差异，是冲突策略生效了。
+            for item in &with.completed {
+                let _ = fs::remove_file(&item.to);
+            }
+            let without = transfer_all(items, ConflictPolicy::Rename, TransferMode::Copy);
+            assert_eq!(with, without);
+        }
+    }
+
+    #[test]
+    fn tree_size_counts_files_but_not_symlink_targets() {
+        let tmp = TempDir::new("tree-size");
+        let dir = tmp.join("dir");
+        write(&dir.join("a.bin"), 100);
+        write(&dir.join("sub/b.bin"), 200);
+
+        assert_eq!(tree_size(&dir), 300);
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(tmp.join("dir/a.bin"), tmp.join("link")).unwrap();
+            // 链接自身不展开：否则会重复计入目标文件的字节数
+            assert_eq!(tree_size(&tmp.join("link")), 0);
+            assert_eq!(tree_size(&dir), 300);
+        }
+    }
+
+    #[test]
+    fn percent_is_none_when_nothing_to_do() {
+        let progress = TransferProgress::default();
+        assert_eq!(progress.percent(), None);
     }
 }

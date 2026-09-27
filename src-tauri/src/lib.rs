@@ -223,6 +223,7 @@ pub fn run() {
         .manage(pty::PtyState::default())
         .manage(shell::ShellState::default())
         .manage(fs::watcher::FsWatcherState::default())
+        .manage(fs::transfer_state::FsTransferState::default())
         .manage({
             let registry = workspace::WorkspaceRegistry::default();
             workspace::bootstrap_registry_with_launch_dir(
@@ -250,6 +251,7 @@ pub fn run() {
             fs::mutate::fs_copy,
             fs::mutate::fs_move_many,
             fs::mutate::fs_copy_many,
+            fs::mutate::fs_cancel_transfer,
             fs::search::fs_search,
             fs::search::fs_list_files,
             fs::grep::fs_grep,

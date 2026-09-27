@@ -399,6 +399,9 @@ const zhCN = {
     transferRejectedSubtree: "不能把文件夹移动到它自己的子目录里",
     transferRejectedSameDir: "项目已经在该目录中",
     transferRejectedSelf: "不能把文件夹移动到它自己",
+    transferProgressBytes: "{verb}中 {done} / {total}",
+    transferProgressItems: "{verb}中 {done} / {total} 项",
+    transferCancel: "取消",
     transferBusy: "正在搬运 {count} 项…",
     // ── 拖拽搬运 ──
     dragMove: "移动",

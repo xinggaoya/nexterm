@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::modules::fs::watcher::{
     emit_workspace_fs_changed_with_kinds, events::FsChangeKind, FsWatcherState,
+};
+use crate::modules::fs::transfer_state::{
+    emit_progress, FsTransferState, TransferCancellation,
 };
 use crate::modules::fs::wsl_ops;
 use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
@@ -377,17 +380,23 @@ fn copy_blocking(
 pub async fn fs_move_many(
     items: Vec<TransferItem>,
     conflict: Option<ConflictPolicy>,
+    operation_id: Option<u64>,
     workspace: Option<WorkspaceEnv>,
     registry: State<'_, WorkspaceRegistry>,
     watcher: State<'_, FsWatcherState>,
+    transfers: State<'_, FsTransferState>,
+    app: AppHandle,
 ) -> Result<TransferResult, String> {
     dispatch_transfer(
         items,
         conflict.unwrap_or_default(),
         TransferMode::Move,
+        operation_id,
         workspace,
         registry,
         watcher,
+        transfers,
+        app,
     )
     .await
 }
@@ -397,43 +406,96 @@ pub async fn fs_move_many(
 pub async fn fs_copy_many(
     items: Vec<TransferItem>,
     conflict: Option<ConflictPolicy>,
+    operation_id: Option<u64>,
     workspace: Option<WorkspaceEnv>,
     registry: State<'_, WorkspaceRegistry>,
     watcher: State<'_, FsWatcherState>,
+    transfers: State<'_, FsTransferState>,
+    app: AppHandle,
 ) -> Result<TransferResult, String> {
     dispatch_transfer(
         items,
         conflict.unwrap_or_default(),
         TransferMode::Copy,
+        operation_id,
         workspace,
         registry,
         watcher,
+        transfers,
+        app,
     )
     .await
+}
+
+/// 请求取消一次搬运。
+///
+/// 协作式取消：只置标志，实际中止发生在 fs-core 的下一个进度检查点（每
+/// 256KiB 一跳，或每个文件之间）。正在写的半个文件会被记为 failed 而不是
+/// 悄悄留在磁盘上。
+#[tauri::command]
+pub async fn fs_cancel_transfer(
+    operation_id: u64,
+    transfers: State<'_, FsTransferState>,
+) -> Result<bool, String> {
+    Ok(transfers.cancel(operation_id))
 }
 
 async fn dispatch_transfer(
     items: Vec<TransferItem>,
     policy: ConflictPolicy,
     mode: TransferMode,
+    operation_id: Option<u64>,
     workspace: Option<WorkspaceEnv>,
     registry: State<'_, WorkspaceRegistry>,
     watcher: State<'_, FsWatcherState>,
+    transfers: State<'_, FsTransferState>,
+    app: AppHandle,
 ) -> Result<TransferResult, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     let watcher = watcher.inner().clone();
     if items.is_empty() {
         return Ok(TransferResult::default());
     }
-    let (result, intent) = tauri::async_runtime::spawn_blocking(move || {
-        transfer_blocking(items, policy, mode, workspace)
+    let cancellation = transfers.begin(operation_id);
+    let reporter = ProgressReporter {
+        app: app.clone(),
+        operation_id,
+        cancellation: cancellation.clone(),
+    };
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        transfer_blocking(items, policy, mode, workspace, reporter)
     })
     .await
-    .map_err(|error| format!("fs transfer background task failed: {error}"))??;
+    .map_err(|error| format!("fs transfer background task failed: {error}"))?;
+    transfers.finish(operation_id);
+    let (result, intent) = outcome?;
     if let Some(intent) = intent {
         notify_workspace_fs_changed(registry.inner(), &watcher, &intent);
     }
     Ok(result)
+}
+
+/// 把 fs-core 的进度回调接到 Tauri 事件总线上，并在每次回调时检查取消标志。
+struct ProgressReporter {
+    app: AppHandle,
+    operation_id: Option<u64>,
+    cancellation: TransferCancellation,
+}
+
+impl ProgressReporter {
+    /// 造一个给 fs-core 用的闭包。`false` 表示本次调用点应中止。
+    fn hook(&self) -> impl FnMut(nexterm_fs_core::TransferProgress) -> bool + '_ {
+        move |progress| {
+            // 先判取消：已经取消的搬运不该再刷进度事件。
+            if self.cancellation.is_cancelled() {
+                return false;
+            }
+            if let Some(id) = self.operation_id {
+                emit_progress(&self.app, id, progress);
+            }
+            true
+        }
+    }
 }
 
 type TransferOutcome = (TransferResult, Option<FsNotifyIntent>);
@@ -443,6 +505,7 @@ fn transfer_blocking(
     policy: ConflictPolicy,
     mode: TransferMode,
     workspace: WorkspaceEnv,
+    reporter: ProgressReporter,
 ) -> Result<TransferOutcome, String> {
     // SSH: 整批交给远端 agent，远端写入不走本地 watcher。
     //
@@ -511,7 +574,21 @@ fn transfer_blocking(
             }
         })
         .collect();
-    let result = nexterm_fs_core::transfer_all(&resolved, policy, mode);
+    // 进度与取消只在本地执行路径可用：agent 通道（WSL / SSH）在另一个进程
+    // 里完成整批搬运，中途取消无从下手，因此那里不挂回调。
+    let mut hook = reporter.hook();
+    let result = nexterm_fs_core::transfer_all_with(
+        &resolved,
+        policy,
+        mode,
+        Some(&mut |progress| {
+            if hook(progress) {
+                Ok(())
+            } else {
+                Err(nexterm_fs_core::Cancelled)
+            }
+        }),
+    );
     for failure in &result.failed {
         log::warn!(
             "fs transfer failed {} -> {}: {}",

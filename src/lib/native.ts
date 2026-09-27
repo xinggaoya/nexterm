@@ -340,6 +340,25 @@ export type FsGlobHit = {
   rel: string;
 };
 
+// ── 搬运进度 ──────────────────────────────────────────────────────────
+
+/** 搬运进度（与 Rust `nexterm_fs_core::TransferProgress` 对齐）。 */
+export type FsTransferProgress = {
+  /** 已完成的条目数。 */
+  done: number;
+  /** 总条目数。 */
+  total: number;
+  /** 当前正在处理的条目源路径；全部完成时为 null。 */
+  current: string | null;
+  bytesDone: number;
+  bytesTotal: number;
+};
+
+/** 进度事件：`operationId` 对应某一次具体的搬运。 */
+export type FsTransferProgressEvent = FsTransferProgress & {
+  operationId: number;
+};
+
 // ── 从操作系统拖入文件 ────────────────────────────────────────────────
 
 /** OS 拖拽事件。`position` 已换算为 CSS 像素，可直接用于 elementFromPoint。 */
@@ -706,11 +725,36 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
      * 逐条结算：一条失败不影响其余条目，结果里区分 completed / skipped /
      * failed / crossDevice。
      */
-    fsMoveMany: (items: FsTransferItem[], conflict: FsConflictPolicy = "rename") =>
-      invoke<FsTransferResult>("fs_move_many", { items, conflict, workspace }),
+    /**
+     * 批量移动。`operationId` 用于订阅进度与发起取消 —— 不传则没有进度与
+     * 取消能力（agent 通道本来就不支持中途取消）。
+     */
+    fsMoveMany: (
+      items: FsTransferItem[],
+      conflict: FsConflictPolicy = "rename",
+      operationId?: number,
+    ) =>
+      invoke<FsTransferResult>("fs_move_many", {
+        items,
+        conflict,
+        operationId: operationId ?? null,
+        workspace,
+      }),
     /** 批量复制，语义与 `fsMoveMany` 一致，只是不删源。 */
-    fsCopyMany: (items: FsTransferItem[], conflict: FsConflictPolicy = "rename") =>
-      invoke<FsTransferResult>("fs_copy_many", { items, conflict, workspace }),
+    fsCopyMany: (
+      items: FsTransferItem[],
+      conflict: FsConflictPolicy = "rename",
+      operationId?: number,
+    ) =>
+      invoke<FsTransferResult>("fs_copy_many", {
+        items,
+        conflict,
+        operationId: operationId ?? null,
+        workspace,
+      }),
+    /** 协作式取消一次搬运；返回 false 表示该次搬运已结束。 */
+    fsCancelTransfer: (operationId: number) =>
+      invoke<boolean>("fs_cancel_transfer", { operationId }),
     fsGrep: (
       pattern: string,
       root: string,
@@ -901,5 +945,19 @@ export async function onOsFileDragDrop(
       return;
     }
     handler({ kind: "leave" });
+  });
+}
+
+/**
+ * 订阅搬运进度事件。
+ *
+ * 事件按 `operationId` 分流：同一个窗口里可能同时有多次搬运（多选拖拽 +
+ * 另一个工作区），调用方据此只订阅自己关心的那一次。
+ */
+export async function onFsTransferProgress(
+  handler: (event: FsTransferProgressEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<FsTransferProgressEvent>("nexterm://fs-transfer-progress", (event) => {
+    handler(event.payload);
   });
 }
