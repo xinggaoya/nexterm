@@ -66,6 +66,8 @@ nexterm/
 |  |     +- shell/            # 一次性命令 / 持久 session / 后台进程 / ringbuffer
 |  |     +- fs/               # tree / file / mutate / search / grep / watcher
 |  |     +- git/              # commands / operations/(status/stage/commit/branch/stash/log/remote/discover) / parser / process / types / errors / utils
+|  +- agent/                   # nexterm-agent：发行版/远端内的常驻代理（stdio JSON-lines）
+|  +- fs-core/                 # nexterm-fs-core：搬运语义共享 crate（宿主 + agent 共用）
 |  +- wsl-watcher-helper/       # 独立二进制，监控 WSL 工作区并以 JSON 行输出事件
 |  +- Cargo.toml                # 顶层 crate + workspace
 |  +- tauri.conf.json
@@ -134,6 +136,7 @@ nexterm/
 | `normalizeError.ts` | 把任意 thrown value 规整为带 `message` 的对象 |
 | `refs.ts` | `ReadonlyRef` / `MaybeRef` 等轻量类型 |
 | `useEventListener.ts` | 自动配对 add/remove 的事件订阅 composable |
+| `onOsFileDragDrop`（在 `native.ts`） | 订阅"从系统拖文件进窗口"（Tauri webview drag-drop 事件；物理像素已换算为 CSS 像素） |
 | `launchDir.ts` | 启动目录读取与 bootstrap |
 | `clipboard.ts` | 剪贴板封装（Naive UI/tauri 失败时回退到 `navigator.clipboard`） |
 | `platform.ts` | 平台/操作系统检测（`USE_CUSTOM_WINDOW_CONTROLS` 等） |
@@ -145,6 +148,8 @@ nexterm/
 | `types.ts` | 共享类型 |
 | `gitStatus.ts` | git 状态的轻量本地判定 |
 | `touchDevice.ts` | 触屏/笔触能力检测 |
+| `useVirtualWindow.ts` | 定高行虚拟滚动（FileExplorer / GitHistoryPane 共用） |
+| `usePointerDragReorder.ts` | 指针拖拽重排的公共实现（标签 / 工作区 / 文件搬运共用） |
 
 ### 4.4 Pinia Store 一览
 
@@ -191,6 +196,7 @@ nexterm/
 | `git` | `mod.rs` / `commands.rs` / `operations/`（`mod`+`status`+`stage`+`commit`+`branch`+`stash`+`log`+`remote`+`discover`+`test_support`）/ `parser.rs` / `process.rs` / `types.rs` / `errors.rs` / `utils.rs` | Git 命令封装、输出解析、错误码归一 |
 | `workspace` | `mod.rs` / `registry.rs` / `env.rs` / `wsl.rs` | Tauri 命令与 launch dir、`WorkspaceRegistry` 授权与 canonical 缓存、WorkspaceEnv 与 SSH 守卫、WSL 路径换算与进程助手 |
 | `lock` | `lock.rs` | `mutex_lock` / `rwlock_read` / `rwlock_write` / `condvar_wait_timeout`，统一毒化错误 |
+| 共享 crate | `fs-core/`（`nexterm-fs-core`） | **搬运语义的唯一实现**（移动 / 复制 / 冲突三策略 / 跨设备回落 / 防自噬 / 符号链接）；宿主与 agent 共同依赖，保证本地 / WSL / SSH 行为一致 |
 | `process` | `process.rs` | Windows 下隐藏子进程控制台窗口 |
 
 ### 5.2 Tauri 命令完整清单
@@ -235,12 +241,13 @@ nexterm/
 
 | 命令 | 用途 |
 |------|------|
-| `fs_read_dir` / `list_subdirs` | 目录读取 |
-| `fs_read_file` / `fs_write_file` / `fs_stat` / `fs_canonicalize` | 文件 IO |
-| `fs_create_file` / `fs_create_dir` / `fs_rename` / `fs_delete` | 文件操作 |
+| `fs_read_dir` | 目录读取（`DirEntry[]`，目录优先 + 不区分大小写排序） |
+| `fs_read_file` / `fs_read_file_base64` / `fs_write_file` | 文件 IO |
+| `fs_create_file` / `fs_create_dir` / `fs_rename` / `fs_delete` / `fs_copy` | 单条文件操作（撞名即失败） |
+| `fs_move_many` / `fs_copy_many` | **批量搬运**：拖拽 / 剪切粘贴共用，逐条结算（`completed` / `skipped` / `failed` / `crossDevice` / `warnings`），冲突策略 `overwrite` / `skip` / `rename` |
 | `fs_search` / `fs_list_files` | 文件名搜索（`ignore` crate 尊重 `.gitignore`） |
 | `fs_grep` / `fs_glob` | 内容/glob |
-| `fs_watch_workspace` / `fs_unwatch_workspace` | 切换工作区 watcher |
+| `fs_watch_workspace` / `fs_unwatch_workspace` / `fs_force_flush_workspace` | 切换工作区 watcher / 强制立即 emit 累积 batch |
 
 #### Git
 
@@ -255,6 +262,7 @@ nexterm/
 | `git_fetch` / `git_pull_ff_only` / `git_push` | 远程操作 |
 | `git_branch_list` / `git_checkout_branch` / `git_create_branch` | 分支 |
 | `git_stash_list` / `git_stash_push` / `git_stash_pop` / `git_stash_drop` | Stash |
+| `git_tag_list` / `git_tag_create` / `git_tag_delete` / `git_push_tag` | 标签 |
 | `git_log` | 提交历史（分页） |
 | `git_show_commit` / `git_commit_files` / `git_commit_file_diff` | 提交详情 |
 | `git_remote_url` | 远程 URL（用于 web 跳转） |

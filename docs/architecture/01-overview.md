@@ -64,6 +64,7 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 - `src/lib/nativeBoundary.test.ts` -- IPC 收口
 - `src/lib/eventBoundary.test.ts` -- 事件总线收口
 - `src/lib/noOptionsApiBoundary.test.ts` -- 无 Options API
+- `src/lib/pointerDragBoundary.test.ts` -- 指针拖拽重排只有一份实现（`usePointerDragReorder`）
 - `src/lib/translationTraces.test.ts` -- 无 React 命名
 - `src/app/noAiFeaturesBoundary.test.ts` -- 无 AI 功能
 - `src/app/noReactPackageBoundary.test.ts` -- 无 React 依赖
