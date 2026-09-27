@@ -401,6 +401,8 @@ const enUS = {
     transferRejectedSubtree: "A folder cannot be moved into its own subfolder",
     transferRejectedSameDir: "Item is already in that folder",
     transferRejectedSelf: "A folder cannot be moved into itself",
+    transferTargetUnloaded: "Target folder not loaded yet; same-name items will be renamed",
+    transferTargetUnloadedDetail: "To avoid loading the whole path for a single drag, name collisions are not asked about — the backend renames them, so nothing is overwritten.",
     transferProgressBytes: "{verb}ing {done} / {total}",
     transferProgressItems: "{verb}ing {done} / {total} items",
     transferCancel: "Cancel",

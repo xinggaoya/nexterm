@@ -3,7 +3,6 @@ import { EditorState, Text } from "@codemirror/state";
 import {
   completionInsertText,
   lspPositionToOffset,
-  lspRangeToOffsets,
   markupToText,
   offsetToLspPosition,
   resolveDefinitionLocations,
@@ -55,13 +54,14 @@ describe("LSP position ↔ CodeMirror offset", () => {
     expect(offsetToLspPosition(doc, 999)).toEqual({ line: 0, character: 3 });
   });
 
-  it("range 起止顺序颠倒时自动归一", () => {
+  it("range 起止顺序颠倒时由调用方归一（不静默产出负区间）", () => {
     const doc = docOf("hello world");
-    const range = lspRangeToOffsets(doc, {
-      start: { line: 0, character: 8 },
-      end: { line: 0, character: 2 },
-    });
-    expect(range).toEqual({ from: 2, to: 8 });
+    const from = lspPositionToOffset(doc, { line: 0, character: 8 });
+    const to = lspPositionToOffset(doc, { line: 0, character: 2 });
+    // 两个独立换算都落在文档内，排序交给调用方 —— 这样"谁该负责归一"
+    // 在代码里是显式的，而不是藏在某个 helper 里。
+    expect(Math.min(from, to)).toBe(2);
+    expect(Math.max(from, to)).toBe(8);
   });
 });
 

@@ -399,6 +399,8 @@ const zhCN = {
     transferRejectedSubtree: "不能把文件夹移动到它自己的子目录里",
     transferRejectedSameDir: "项目已经在该目录中",
     transferRejectedSelf: "不能把文件夹移动到它自己",
+    transferTargetUnloaded: "目标目录尚未加载，同名项将自动改名",
+    transferTargetUnloadedDetail: "为避免为了一次拖拽拉起整条路径，同名冲突不会弹窗询问；后端按“自动改名”处理，不会丢数据。",
     transferProgressBytes: "{verb}中 {done} / {total}",
     transferProgressItems: "{verb}中 {done} / {total} 项",
     transferCancel: "取消",

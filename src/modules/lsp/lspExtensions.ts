@@ -22,7 +22,7 @@ import {
  */
 
 /** 补全源：CodeMirror 判定该弹补全面板时同步发起一次请求。 */
-export const lspCompletionSource: CompletionSource = (context) => {
+const lspCompletionSource: CompletionSource = (context) => {
   const view = context.view as EditorView;
   const client = getLspClient(view);
   if (!client) return null;

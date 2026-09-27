@@ -8,7 +8,6 @@ import type {
   LspLocationLink,
   LspMarkupContent,
   LspPosition,
-  LspRange,
 } from "./types";
 
 /**
@@ -37,14 +36,6 @@ export function offsetToLspPosition(doc: Text, offset: number): LspPosition {
   return { line: line.number - 1, character: clamped - line.from };
 }
 
-export function lspRangeToOffsets(
-  doc: Text,
-  range: LspRange,
-): { from: number; to: number } {
-  const from = lspPositionToOffset(doc, range.start);
-  const to = lspPositionToOffset(doc, range.end);
-  return { from: Math.min(from, to), to: Math.max(from, to) };
-}
 
 /**
  * 把 LSP 的文档偏移对齐到当前"词"上。

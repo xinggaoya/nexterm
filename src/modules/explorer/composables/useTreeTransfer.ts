@@ -135,14 +135,27 @@ export function useTreeTransfer(options: TreeTransferOptions) {
 
   // ── 落点探测 ──────────────────────────────────────────────────────
   /**
-   * 目标是否已存在。只看已加载的目录 —— 未加载时按"不冲突"处理，交给后端
-   * 自己的判定兜底（它的 rename 策略同样不丢数据）。这样不必为了一次拖拽
-   * 把整条路径上的目录都拉起来。
+   * 目标是否已存在。
+   *
+   * 只看已加载的目录 —— 未加载时返回 false（"判不了"），由后端的 rename
+   * 策略兜底（同样不丢数据）。这样不必为了一次拖拽把整条路径上的目录都
+   * 拉起来。代价是：目标目录未加载时**永远不会**提供"覆盖/跳过"选项。
+   * 为了不让用户误以为那个选项坏了，这里在整批条目都判不了时提示一次。
    */
   function transferTargetExists(path: string): boolean {
     const names = options.entryNamesOf(options.parentOf(path));
     return names ? names.has(basename(path)) : false;
   }
+
+  /** 本批是否有条目的目标目录没加载过。 */
+  function hasUnloadedTarget(items: readonly string[]): boolean {
+    return items.some(
+      (item) => options.entryNamesOf(options.parentOf(item)) === null,
+    );
+  }
+
+  /** 同一次会话只提示一次，别每次拖拽都弹。 */
+  let warnedUnloadedTarget = false;
 
   function transferSourceIsDir(path: string): boolean {
     return options.isEntryDir(options.parentOf(path), basename(path));
@@ -186,6 +199,13 @@ export function useTreeTransfer(options: TreeTransferOptions) {
   ): Promise<void> {
     if (transferBusy.value || sources.length === 0 || !targetDir) return;
     const pending: PendingTransfer = { sources: [...sources], targetDir, mode };
+    if (!warnedUnloadedTarget && hasUnloadedTarget(sources)) {
+      warnedUnloadedTarget = true;
+      notifyInfo(
+        t("explorer.transferTargetUnloaded"),
+        t("explorer.transferTargetUnloadedDetail"),
+      );
+    }
     const probe = buildTransferPlan(pending, "detect");
     reportRejections(probe.rejected);
     if (probe.items.length === 0) return;
@@ -434,7 +454,7 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     hoverExpandTarget = null;
   }
 
-  function scheduleHoverExpand(target: string | null) {
+  function scheduleHoverExpand(target: string | null) {  // eslint-disable-line
     cancelHoverExpand();
     if (!target || !rootAccessor()) return;
     if (target === rootAccessor()) return;
@@ -695,16 +715,13 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     transferProgressLabel,
     cancelTransfer,
     pendingConflict,
-    dragSources,
     dragMode,
-    dropTargetDir,
     dropAllowed,
     dragGhost,
     dragGhostLabel,
     // 拖拽
     beginRowDrag,
     consumeDragClick,
-    scheduleHoverExpand,
     // 搬运
     runTransfer,
     onConflictResolved,

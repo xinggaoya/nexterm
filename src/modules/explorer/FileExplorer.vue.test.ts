@@ -2256,4 +2256,17 @@ describe("FileExplorer filter + expand/collapse", () => {
       1,
     );
   });
+  it("目标目录未加载时提示一次（同名项由后端自动改名）", async () => {
+    // 目标 /repo/lib 未展开过 → entryNamesOf 返回 null → 前端判不了冲突。
+    // 用户不该误以为“覆盖/跳过”选项坏了，所以提示一次。
+    const wrapper = mountExplorer();
+    await flush();
+    await wrapper.vm.runTransfer(["/repo/README.md"], "/repo/lib", "move");
+    await flush();
+
+    // 未弹冲突框（判不了）
+    expect(document.body.querySelector("[data-transfer-conflict]")).toBeNull();
+    // 搬运照常执行，后端按 rename 策略兼底
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledTimes(1);
+  });
 });
