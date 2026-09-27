@@ -76,7 +76,8 @@ describe("pointer drag reorder boundary", () => {
     const consumers = [
       "app/shell/SessionStrip.vue",
       "app/shell/Sidebar.vue",
-      "modules/explorer/FileExplorer.vue",
+      // explorer 的文件搬运拖拽：手势在 composable 里，组件只转发事件。
+      "modules/explorer/composables/useTreeTransfer.ts",
     ];
     for (const rel of consumers) {
       const source = readFileSync(join(REPO_SRC, rel), "utf8");
