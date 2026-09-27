@@ -22,6 +22,11 @@ const props = defineProps<{
   dropTarget?: boolean;
   /** 落点非法：整行变禁用色，松手也不执行。 */
   dropForbidden?: boolean;
+  /**
+   * 同级插入线的位置：拖到行的上/下缘时出现一条横线，而不是高亮整行
+   * （后者语义是"放进这个目录"）。null 表示不画插入线。
+   */
+  dropLine?: "before" | "after" | null;
 }>();
 
 const emit = defineEmits<{
@@ -85,8 +90,15 @@ function dragClass(): string {
   if (props.dropForbidden) {
     return "bg-destructive/10 text-destructive/80 ring-1 ring-inset ring-destructive/50";
   }
-  if (props.dropTarget) {
+  // 有插入线时不高亮整行：两者语义不同（"放到这一行前面" vs "进这个目录"）
+  if (props.dropTarget && !props.dropLine) {
     return "bg-accent text-foreground before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:rounded-full before:bg-primary";
+  }
+  if (props.dropLine) {
+    // 缩进跟随行层级：插入线的左边界与该行图标对齐，视觉上表达"会落在哪一层"
+    return props.dropLine === "before"
+      ? "before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded-full before:bg-primary"
+      : "after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary";
   }
   if (props.dragging) return "opacity-50";
   if (props.cut) return "opacity-45";
@@ -156,6 +168,7 @@ function statusDotClass(statusKind: SourceControlStatusKind): string {
     type="button"
     :data-explorer-row-path="row.path"
     :data-is-dir="row.isDir ? 'true' : undefined"
+    :data-depth="row.depth"
     :class="[
       'group relative flex h-6 w-full min-w-0 cursor-pointer items-center gap-2 rounded-sm px-1.5 text-left text-[13px] transition-colors hover:bg-accent/70',
       selected ? 'bg-accent text-foreground' : 'text-foreground/85',

@@ -55,6 +55,14 @@ function fire(target: EventTarget, type: string, x = 0, y = 0, button = 0): void
   );
 }
 
+/** dropTarget 带上了命中的 DOM 元素，比较时只看语义字段。 */
+function dropTargetOf(
+  api: ReturnType<typeof usePointerDragReorder<Row, number>>,
+): { id: number; placement: string } | null {
+  const target = api.dropTarget.value;
+  return target ? { id: target.id, placement: target.placement } : null;
+}
+
 const pressSourceRow = (id = 1, x = 10, y = 5): void => {
   lastProbeX = x;
   fire(rowElement(id), "pointerdown", x, y);
@@ -146,10 +154,10 @@ describe("usePointerDragReorder", () => {
     pressSourceRow(1, 10, 5);
     dragTo(120, 5); // 第 2 行左半区 [100,150)
     expect(api().draggingId.value).toBe(1);
-    expect(api().dropTarget.value).toEqual({ id: 2, placement: "before" });
+    expect(dropTargetOf(api())).toMatchObject({ id: 2, placement: "before" });
 
     dragTo(210, 5); // 第 3 行左半区 [200,250)
-    expect(api().dropTarget.value).toEqual({ id: 3, placement: "before" });
+    expect(dropTargetOf(api())).toMatchObject({ id: 3, placement: "before" });
 
     release(210, 5);
     expect(onDrop).toHaveBeenCalledWith(1, 3, "before");
@@ -160,7 +168,7 @@ describe("usePointerDragReorder", () => {
     const { onDrop, api } = setup();
     pressSourceRow(1, 10, 5);
     dragTo(260, 5); // 第 3 行右半区 [250,300)
-    expect(api().dropTarget.value).toEqual({ id: 3, placement: "after" });
+    expect(dropTargetOf(api())).toMatchObject({ id: 3, placement: "after" });
     release(260, 5);
     expect(onDrop).toHaveBeenCalledWith(1, 3, "after");
     await nextTick();

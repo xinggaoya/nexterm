@@ -184,6 +184,7 @@ const {
   paste,
   isRowDragSource,
   isRowCut,
+  isRowDropLine,
   isRowDropTarget,
   isRowDropForbidden,
 } = transfer;
@@ -228,6 +229,10 @@ function onRowCut(row: VisibleTreeRow): boolean {
 
 function onRowDropTarget(row: VisibleTreeRow): boolean {
   return row.kind === "entry" && isRowDropTarget(row.path);
+}
+
+function onRowDropLine(row: VisibleTreeRow): "before" | "after" | null {
+  return row.kind === "entry" ? isRowDropLine(row.path) : null;
 }
 
 function onRowDropForbidden(row: VisibleTreeRow): boolean {
@@ -617,6 +622,7 @@ defineExpose({
               :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPaths.has(row.path)"
               :dragging="onRowDragSource(row)"
               :cut="onRowCut(row)"
+              :drop-line="onRowDropLine(row)"
               :drop-target="onRowDropTarget(row)"
               :drop-forbidden="onRowDropForbidden(row)"
               @entry-click="handleEntryClickForDrag"
@@ -641,6 +647,7 @@ defineExpose({
               :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPaths.has(row.path)"
               :dragging="onRowDragSource(row)"
               :cut="onRowCut(row)"
+              :drop-line="onRowDropLine(row)"
               :drop-target="onRowDropTarget(row)"
               :drop-forbidden="onRowDropForbidden(row)"
               @entry-click="handleEntryClickForDrag"

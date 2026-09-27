@@ -12,6 +12,12 @@ export type DragTarget<TId extends string | number> = {
   id: TId;
   /** 命中的 DOM 元素：调用方要用它算中线、画指示线或读尺寸。 */
   el: HTMLElement;
+  /**
+   * 命中测试已经算出落点方位时直接给出，省得 `placementOf` 再算一遍。
+   * 适用于"落点由纵向位置决定"的场景（文件树的行内插入线：上缘=插到前面，
+   * 中间=放进目录）；水平中线二分的场景留空即可。
+   */
+  placement?: DragPlacement;
 };
 
 export type PointerDragReorderOptions<T, TId extends string | number> = {
@@ -26,7 +32,10 @@ export type PointerDragReorderOptions<T, TId extends string | number> = {
    * 典型实现是 `document.elementFromPoint(x, y)?.closest(selector)`。
    */
   resolveTarget: (clientX: number, clientY: number) => DragTarget<TId> | null;
-  /** 把指针位置映射成落点方位。默认按元素的水平中线二分。 */
+  /**
+   * 把指针位置映射成落点方位。默认：`target.placement` 优先，否则按元素的
+   * 水平中线二分。
+   */
   placementOf?: (
     target: DragTarget<TId>,
     clientX: number,
@@ -52,8 +61,11 @@ export type PointerDragReorderOptions<T, TId extends string | number> = {
 export type PointerDragReorder<T, TId extends string | number> = {
   /** 正在被拖动的条目 id（未拖动时为 null）。 */
   draggingId: Readonly<Ref<TId | null>>;
-  /** 当前落点；指针不在任何可放置元素上时为 null。 */
-  dropTarget: Readonly<Ref<{ id: TId; placement: DragPlacement } | null>>;
+  /**
+   * 当前落点；指针不在任何可放置元素上时为 null。
+   * `el` 是被命中的元素，调用方要画指示线 / 高亮具体节点时需要它。
+   */
+  dropTarget: Readonly<Ref<{ id: TId; placement: DragPlacement; el: HTMLElement | null } | null>>;
   /** 跟随指针的 ghost 负载与位置。 */
   ghost: Readonly<Ref<{ item: T; x: number; y: number; width: number } | null>>;
   /**
@@ -111,6 +123,7 @@ export function usePointerDragReorder<T, TId extends string | number = number>(
   const dropTarget = shallowRef(null) as ShallowRef<{
     id: TId;
     placement: DragPlacement;
+    el: HTMLElement | null;
   } | null>;
   const ghost = shallowRef(null) as ShallowRef<{
     item: T;
@@ -152,7 +165,9 @@ export function usePointerDragReorder<T, TId extends string | number = number>(
     const placementOf = options.placementOf ?? defaultPlacementOf;
     dropTarget.value = {
       id: target.id,
-      placement: placementOf(target, e.clientX, e.clientY),
+      placement:
+        target.placement ?? placementOf(target, e.clientX, e.clientY),
+      el: target.el,
     };
   }
 

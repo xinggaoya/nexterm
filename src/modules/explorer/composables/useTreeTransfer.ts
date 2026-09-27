@@ -132,6 +132,11 @@ export function useTreeTransfer(options: TreeTransferOptions) {
   /** 当前落点目录；null 表示无落点。 */
   const dropTargetDir = ref<string | null>(null);
   const dropAllowed = ref(false);
+  /**
+   * 同级插入线落在哪一行、哪一侧。null 表示当前是"放进目录"（高亮整行），
+   * 而不是"插到某一行前面/后面"。
+   */
+  const dropLine = ref<{ path: string; side: "before" | "after" } | null>(null);
 
   // ── 落点探测 ──────────────────────────────────────────────────────
   /**
@@ -354,16 +359,44 @@ export function useTreeTransfer(options: TreeTransferOptions) {
   const rootAccessor = (): string => options.rootPath.value ?? "";
 
   /**
-   * 命中测试：目录行 = 放入该目录；树的空白区 = 放入工作区根。文件行不接收。
+   * 行内"上/下缘带"占行高的比例：落在带内 = 同级插入，落在中间 = 放进目录。
+   *
+   * 25% 不是随手取的：行高只有 24px，带太窄几乎命中不到；太宽则"想放进
+   * 目录"的操作会被误判成插入。
+   */
+  const ROW_EDGE_RATIO = 0.25;
+
+  /**
+   * 命中测试，三种落点：
+   * - 行的上/下缘带 → **同级插入**（落到该行的父目录里，插在它前/后）
+   * - 目录行的中间 → **放进该目录**（既有行为）
+   * - 文件行的中间 → 不是合法落点（不能把东西放进文件里）
+   * - 树的空白区 → 放进工作区根
+   *
+   * 同级插入的 `id` 是**父目录**而不是该行本身：搬运引擎只认
+   * "源 + 目标目录"，位置信息由前端在计划里保留。
    */
   function treeDropTarget(clientX: number, clientY: number) {
     const hit = document.elementFromPoint(clientX, clientY);
     if (!hit) return null;
     const row = hit.closest<HTMLElement>("[data-explorer-row-path]");
     if (row) {
-      if (row.dataset.isDir !== "true") return null;
       const path = row.dataset.explorerRowPath;
-      return path ? { id: path, el: row } : null;
+      if (!path) return null;
+      const isDir = row.dataset.isDir === "true";
+      const rect = row.getBoundingClientRect();
+      const ratio = rect.height > 0 ? (clientY - rect.top) / rect.height : 0.5;
+      const atTop = ratio <= ROW_EDGE_RATIO;
+      const atBottom = ratio >= 1 - ROW_EDGE_RATIO;
+      if (atTop || atBottom) {
+        return {
+          id: options.parentOf(path),
+          el: row,
+          placement: atTop ? ("before" as const) : ("after" as const),
+        };
+      }
+      if (isDir) return { id: path, el: row, placement: "after" as const };
+      return null;
     }
     const container = hit.closest<HTMLElement>("[data-explorer-drop-root]");
     if (container) {
@@ -375,9 +408,9 @@ export function useTreeTransfer(options: TreeTransferOptions) {
 
   const treeDrag = usePointerDragReorder<DragGhost, string>({
     enabled: () => !options.isDragBlocked(),
+    // 方位由命中测试按纵向位置算出（行的上/下缘带 = 同级插入），
+    // 因此不需要默认的水平中线二分。
     resolveTarget: (x, y) => treeDropTarget(x, y),
-    // 本阶段只有 drop-into 语义，before/after 不参与判断；固定返回 after
-    // 以避免默认的水平中线二分给出一个无意义的方向。
     placementOf: () => "after",
     resolveGhost: (path) => ({
       path,
@@ -389,6 +422,7 @@ export function useTreeTransfer(options: TreeTransferOptions) {
       // 结束或取消：清掉所有拖拽态，避免 ghost / 落点高亮残留。
       dropTargetDir.value = null;
       dropAllowed.value = false;
+      dropLine.value = null;
       cancelHoverExpand();
     },
     onDrop: (sourceId, targetId) => {
@@ -427,13 +461,19 @@ export function useTreeTransfer(options: TreeTransferOptions) {
   useEventListener(window, "keyup", syncDragMode);
 
   watch(
-    () => treeDrag.dropTarget.value?.id ?? null,
+    () => treeDrag.dropTarget.value ?? null,
     (target) => {
-      dropTargetDir.value = target;
-      dropAllowed.value = target
-        ? canTransferInto(dragSources.value, target, dragMode.value)
+      dropTargetDir.value = target?.id ?? null;
+      dropAllowed.value = target?.id
+        ? canTransferInto(dragSources.value, target.id, dragMode.value)
         : false;
-      scheduleHoverExpand(target);
+      // 命中的是行且方位是 before/after → 画插入线；命中目录 → 高亮整行。
+      dropLine.value = target?.el?.dataset?.explorerRowPath
+        ? target.placement === "before"
+          ? { path: target.el.dataset.explorerRowPath, side: "before" }
+          : { path: target.el.dataset.explorerRowPath, side: "after" }
+        : null;
+      scheduleHoverExpand(target?.id ?? null);
     },
   );
 
@@ -644,6 +684,11 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     return dropTargetDir.value === path;
   }
 
+  /** 该行是否要画同级插入线（`side` 为 null 表示不画）。 */
+  function isRowDropLine(path: string): "before" | "after" | null {
+    return dropLine.value?.path === path ? dropLine.value.side : null;
+  }
+
   function isRowDropForbidden(path: string): boolean {
     return dropTargetDir.value === path && !dropAllowed.value;
   }
@@ -733,6 +778,7 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     // 行级视觉
     isRowDragSource,
     isRowCut,
+    isRowDropLine,
     isRowDropTarget,
     isRowDropForbidden,
   };

@@ -1420,6 +1420,13 @@ function pointAt(wrapper: ReturnType<typeof mount>, selector: string): void {
   elementFromPointMock.mockImplementation(() => el);
 }
 
+/** 给行一个 24px 的真实矩形（jsdom 默认全 0，边缘带判定会失效）。 */
+function giveRowHeight(wrapper: ReturnType<typeof mount>, selector: string): void {
+  const el = wrapper.find(selector).element;
+  el.getBoundingClientRect = () =>
+    ({ top: 0, bottom: 24, height: 24, left: 0, right: 200, width: 200 }) as DOMRect;
+}
+
 function pointNowhere(): void {
   elementFromPointMock.mockImplementation(() => null);
 }
@@ -1662,6 +1669,113 @@ describe("FileExplorer drag-to-transfer", () => {
         .map((row) => row.attributes("aria-pressed"))
         .filter((value) => value === "true"),
     ).toEqual([]);
+  });
+
+  it("拖到文件行的下缘 → 同级插入到它的父目录（而不是放进文件）", async () => {
+    mockWsNative.fsMoveMany.mockResolvedValueOnce({
+      completed: [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+    // 源必须在别的目录里：把 /repo 下的文件拖到 /repo 根是"同目录移动"，
+    // 会被守卫正确拦下（那样就测不到落点语义了）。
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+    giveRowHeight(wrapper, "[data-explorer-row-path='/repo/README.md']");
+    const source = wrapper.find("[data-explorer-row-path='/repo/src/main.ts']");
+    source.element.dispatchEvent(
+      new MouseEvent("pointerdown", { button: 0, clientX: 10, clientY: 10, bubbles: true }),
+    );
+    pointAt(wrapper, "[data-explorer-row-path='/repo/README.md']");
+    // y=22 落在 24px 行的下缘带（>= 75%）
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 60, clientY: 22, bubbles: true }));
+    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 60, clientY: 22, bubbles: true }));
+    await flush();
+
+    // 目标是该行的**父目录**（/repo），不是文件本身
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
+      [{ from: "/repo/src/main.ts", to: "/repo/main.ts" }],
+      "rename",
+      expect.any(Number),
+    );
+  });
+
+  it("拖到文件行的中间 → 非法落点（不能把东西放进文件里）", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    giveRowHeight(wrapper, "[data-explorer-row-path='/repo/README.md']");
+    const source = wrapper.find("[data-explorer-row-path='/repo/package.json']");
+    source.element.dispatchEvent(
+      new MouseEvent("pointerdown", { button: 0, clientX: 10, clientY: 10, bubbles: true }),
+    );
+    pointAt(wrapper, "[data-explorer-row-path='/repo/README.md']");
+    // y=12 是行的正中（既不在上缘带也不在下缘带）
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 60, clientY: 12, bubbles: true }));
+    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 60, clientY: 12, bubbles: true }));
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+  });
+
+  it("拖到目录行的上缘 → 同级插到它前面（缩进由行层级决定）", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+    giveRowHeight(wrapper, "[data-explorer-row-path='/repo/README.md']");
+    const source = wrapper.find("[data-explorer-row-path='/repo/src/main.ts']");
+    source.element.dispatchEvent(
+      new MouseEvent("pointerdown", { button: 0, clientX: 10, clientY: 10, bubbles: true }),
+    );
+    pointAt(wrapper, "[data-explorer-row-path='/repo/README.md']");
+    // y=2 落在上缘带
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 60, clientY: 2, bubbles: true }));
+
+    const row = wrapper.find("[data-explorer-row-path='/repo/README.md']");
+    expect(row.attributes("data-depth")).toBe("0");
+    await nextTick();
+    // 插入线用 before 伪元素，且**不高亮整行**（两者语义不同）
+    expect(row.classes().join(" ")).toContain("before:absolute");
+
+    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 60, clientY: 2, bubbles: true }));
+    await flush();
+    // 插到 /repo/README.md 前面 = 落到 /repo 根下（而不是放进 src）
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
+      [{ from: "/repo/src/main.ts", to: "/repo/main.ts" }],
+      "rename",
+      expect.any(Number),
+    );
+  });
+
+  it("拖到目录行中间仍是“放进该目录”（不回归 drop-into）", async () => {
+    mockWsNative.fsMoveMany.mockResolvedValueOnce({
+      completed: [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+    giveRowHeight(wrapper, "[data-explorer-row-path='/repo/src']");
+    const source = wrapper.find("[data-explorer-row-path='/repo/README.md']");
+    source.element.dispatchEvent(
+      new MouseEvent("pointerdown", { button: 0, clientX: 10, clientY: 10, bubbles: true }),
+    );
+    pointAt(wrapper, "[data-explorer-row-path='/repo/src']");
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 60, clientY: 12, bubbles: true }));
+    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 60, clientY: 12, bubbles: true }));
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
+      [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
+      "rename",
+      expect.any(Number),
+    );
   });
 
   it("位移小于阈值只是普通点击，不触发搬运", async () => {
