@@ -139,9 +139,8 @@ WorkspaceHost 里各有一份，所以剪贴板天然按工作区隔离、组件
 
 | 事件 | 消费方 | 语义 |
 |------|--------|------|
-| `pathRenamed` | WorkspaceHost → `tabs.followPath` | 重命名 / 移动后让已打开的编辑器 tab 跟随新路径。不跟随的话脏缓冲保存会写回不存在的路径 |
+| `pathRenamed` | WorkspaceHost → `tabs.followPath` | 重命名 / 移动后让已打开的编辑器 tab 跟随新路径。**按前缀匹配**（`from` 是目录时其内部 tab 一并搬），不跟随的话脏缓冲保存会写回不存在的路径 |
 | `pathDeleted` | WorkspaceHost → `tabs.dropPath` | 目录删除按前缀批量关 tab；**脏编辑器保留**并提示用户（缓冲只在内存里） |
-| `pathDuplicated` | 目前无消费方 | 纯通知型事件；树刷新与源控刷新已由 fsEvent 覆盖。待统一搬运事件 `pathsTransferred` 落地后由那条链路取代 |
 | `openFilePreview` | WorkspaceHost → `tabs.newFilePreviewTab` | 图片 / 大文件走专用预览 tab，不进 CodeMirror |
 
 ## 6. 错误处理

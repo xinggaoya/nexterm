@@ -138,8 +138,13 @@ export function planTransfer(input: PlanTransferInput): TransferPlan {
     }
     const desired = joinPath(targetDir, basename(from));
     let to = desired;
-    if (exists(desired) || claimed.has(desired)) {
-      if (policy === "detect") {
+    // `desired === from` 不是冲突：那就是“把文件复制到它自己所在的目录”，
+    // 按定义必然同名（右键“复制副本”与 Cmd+V 到同目录都走这条路），需要的是
+    // 一个空闲的副本名。与其弹框问用户怎么处理一个必然撞名的操作，不如直接
+    // 自动改名 —— 与 VS Code 行为一致。
+    const collides = desired !== from && (exists(desired) || claimed.has(desired));
+    if (collides || desired === from) {
+      if (collides && policy === "detect") {
         conflicts.push({
           from,
           existingTo: desired,

@@ -5,7 +5,6 @@ import { nextTick, type VNode } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FileExplorer from "./FileExplorer.vue";
 import {
-  copyFileTreePath,
   createFileTreeEntry,
   deleteFileTreePath,
   readFileTreeDir,
@@ -45,7 +44,6 @@ vi.mock("./lib/fileTreeService", async () => {
     createFileTreeEntry: vi.fn(),
     deleteFileTreePath: vi.fn(),
     renameFileTreePath: vi.fn(),
-    copyFileTreePath: vi.fn(),
     searchFileTree: vi.fn(),
   };
 });
@@ -244,7 +242,6 @@ function resetExplorerMocks(): void {
   vi.mocked(createFileTreeEntry).mockResolvedValue(undefined);
   vi.mocked(renameFileTreePath).mockResolvedValue(undefined);
   vi.mocked(deleteFileTreePath).mockResolvedValue(undefined);
-  vi.mocked(copyFileTreePath).mockResolvedValue(undefined);
   vi.mocked(searchFileTree).mockResolvedValue({
     hits: [
       {
@@ -1122,55 +1119,34 @@ describe("FileExplorer.vue", () => {
     vi.useRealTimers();
   });
 
-  it("duplicates a file via the context menu and emits pathDuplicated", async () => {
-    const wrapper = mount(FileExplorer, {
-      global: { plugins: [createPinia()] },
-      props: { rootPath: "/repo" },
+  // "复制副本"现在与拖拽 / 粘贴共用搬运链路：命名避让交给后端 fs-core，
+  // 前端不再自己 try 100 次 catch "already exists"。
+  it("复制副本走统一的搬运链路（fsCopyMany + 自动改名）", async () => {
+    mockWsNative.fsCopyMany.mockResolvedValueOnce({
+      completed: [{ from: "/repo/README.md", to: "/repo/README copy.md" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
     });
+    const wrapper = mountExplorer();
     await flush();
 
     await wrapper
       .find("[data-explorer-row-path='/repo/README.md']")
       .trigger("contextmenu", { clientX: 10, clientY: 20 });
     await flush();
-
     await wrapper.find("[data-menu-action='duplicate']").trigger("click");
     await flush();
 
-    expect(copyFileTreePath).toHaveBeenCalledWith(
-      WS_NATIVE_MATCHER,
-      "/repo/README.md",
-      "/repo/README copy.md",
+    expect(mockWsNative.fsCopyMany).toHaveBeenCalledWith(
+      [{ from: "/repo/README.md", to: "/repo/README copy.md" }],
+      "rename",
     );
-    expect(wrapper.emitted("pathDuplicated")).toEqual([
-      ["/repo/README.md", "/repo/README copy.md"],
-    ]);
+    // 不再走单条 fs_copy —— 那条命令在 WSL/SSH 下的符号链接处理与新引擎不一致
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
   });
 
-  it("walks the copy counter series when the first candidate collides", async () => {
-    vi.mocked(copyFileTreePath)
-      .mockRejectedValueOnce("already exists: /repo/README copy.md")
-      .mockResolvedValueOnce(undefined);
-    const wrapper = mount(FileExplorer, {
-      global: { plugins: [createPinia()] },
-      props: { rootPath: "/repo" },
-    });
-    await flush();
-
-    await wrapper
-      .find("[data-explorer-row-path='/repo/README.md']")
-      .trigger("contextmenu", { clientX: 10, clientY: 20 });
-    await flush();
-
-    await wrapper.find("[data-menu-action='duplicate']").trigger("click");
-    await flush();
-
-    expect(copyFileTreePath).toHaveBeenCalledTimes(2);
-    expect(wrapper.emitted("pathDuplicated")?.[0]).toEqual([
-      "/repo/README.md",
-      "/repo/README copy 2.md",
-    ]);
-  });
   // ── 搬运（拖拽 / 粘贴共用入口）─────────────────────────────────────
   // /repo 根目录已加载：条目为 src(dir) / README.md / package.json，
   // 因此目标为 /repo 时 exists 探测是真实生效的。

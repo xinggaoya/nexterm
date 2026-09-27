@@ -1,4 +1,3 @@
-import { basename } from "@/lib/path";
 import type { WorkspaceNative } from "@/lib/native";
 
 export type DirEntry = {
@@ -59,37 +58,9 @@ export function deleteFileTreePath(
   return wsNative.fsDelete(path);
 }
 
-export function copyFileTreePath(
-  wsNative: WorkspaceNative,
-  from: string,
-  to: string,
-): Promise<void> {
-  return wsNative.fsCopy(from, to);
-}
-
-/**
- * Generate a "copy" target name next to `source` that doesn't already
- * exist. `foo.txt` → `foo copy.txt` → `foo copy 2.txt` → ... Up to 100
- * attempts to avoid infinite loops on pathological inputs.
- */
-export function generateCopyTarget(source: string): string {
-  const parent = dirname(source);
-  const baseName = basename(source);
-  const dot = baseName.lastIndexOf(".");
-  const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
-  const ext = dot > 0 ? baseName.slice(dot) : "";
-  for (let n = 0; n < 100; n++) {
-    const candidate =
-      n === 0
-        ? joinPath(parent, `${stem} copy${ext}`)
-        : joinPath(parent, `${stem} copy ${n + 1}${ext}`);
-    return candidate; // Server-side fsCopy will reject collisions; we
-                      // only need a sensible first guess. The caller is
-                      // expected to retry on "already exists" if it
-                      // cares about collision-free naming.
-  }
-  return joinPath(parent, `${stem} copy${ext}`);
-}
+// 复制 / 改名目标名的生成已收敛到 lib/fileTransfer.ts（与后端 fs-core 的
+// next_free_target 同一套规则）。单条 fs_copy 也不再包一层：重复操作与
+// 拖拽 / 粘贴共用 fs_copy_many，符号链接处理只有后端一处实现。
 
 export function searchFileTree(
   wsNative: WorkspaceNative,

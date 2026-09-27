@@ -23,7 +23,7 @@ src/modules/explorer/
     useTreeSelection.ts               # 选择层：多选、键盘光标、Shift 锚点、键盘导航
     useTreeTransfer.ts                # 搬运层：拖拽 / 剪贴板 / OS 拖入共用编排
   lib/
-    fileTreeService.ts                # 树数据源（薄封装 fs_*）
+    fileTreeService.ts                # 树数据源（薄封装 fs_*；复制/改名目标名已收敛到 fileTransfer.ts）
     fileTreeRows.ts                   # 行集构建 / 增量 patch / 树过滤
     fileTreeRows.test.ts
     fileTreeRowsUpdate.test.ts
@@ -65,7 +65,7 @@ src/modules/explorer/
 | `fs_read_dir` | 读目录条目 |
 | `fs_search` / `fs_list_files` | 按名字搜索 |
 | `fs_grep` / `fs_glob` | 按内容 / glob 搜索（Find in Files 面板） |
-| `fs_create_file` / `fs_create_dir` / `fs_rename` / `fs_delete` / `fs_copy` | 单条文件操作（撞名即失败） |
+| `fs_create_file` / `fs_create_dir` / `fs_rename` / `fs_delete` | 单条文件操作（撞名即失败） |
 | `fs_move_many` / `fs_copy_many` | **批量搬运**：逐条结算 + 冲突三策略；本地 / WSL / SSH 共用 `nexterm-fs-core` 的同一份实现 |
 
 ### 4.2 事件
@@ -77,9 +77,8 @@ src/modules/explorer/
 
 | 事件 | 消费方 |
 |------|--------|
-| `pathRenamed` | WorkspaceHost → `tabs.followPath`：重命名/移动后让已打开的 tab 跟随 |
+| `pathRenamed` | WorkspaceHost → `tabs.followPath`：重命名/移动后让已打开的 tab 跟随（按前缀匹配，目录移动会带上内部文件） |
 | `pathDeleted` | WorkspaceHost → `tabs.dropPath`：按前缀批量关 tab，脏编辑器保留 |
-| `pathDuplicated` | 目前无消费方（通知型，见详细设计 §5） |
 | `openFile` / `openFilePreview` / `openMarkdownPreview` / `openInTerminal` / `openSearchResult` | WorkspaceHost |
 
 ## 5. Pinia 状态

@@ -157,6 +157,40 @@ describe("fileTransfer planTransfer", () => {
     expect(result.items[0]?.to).toBe("/repo/lib/a.ts");
   });
 
+  it("复制到源自己所在目录：自动改名，不算冲突", () => {
+    // 右键"复制副本"与 Cmd+V 到同目录都走这条：desired 必然等于 from，
+    // 那不是冲突（弹框问用户怎么处理一个必然撞名的操作毫无意义），
+    // 只需要一个空闲的副本名。
+    const result = plan(
+      ["/repo/a.ts"],
+      "/repo",
+      "copy",
+      makeTree({ "/repo": ["a.ts"] }),
+    );
+    expect(result.conflicts).toEqual([]);
+    expect(result.items).toEqual([{ from: "/repo/a.ts", to: "/repo/a copy.ts" }]);
+  });
+
+  it("复制到源自己所在目录时副本名继续往后避让", () => {
+    const result = plan(
+      ["/repo/a.ts"],
+      "/repo",
+      "copy",
+      makeTree({ "/repo": ["a.ts", "a copy.ts"] }),
+    );
+    expect(result.items[0]?.to).toBe("/repo/a copy 2.ts");
+  });
+
+  it("复制到**别的**目录且同名：仍然是冲突，要问用户", () => {
+    const result = plan(
+      ["/repo/src/a.ts"],
+      "/repo",
+      "copy",
+      makeTree({ "/repo": ["a.ts"] }),
+    );
+    expect(result.conflicts).toHaveLength(1);
+  });
+
   it("冲突项的 isDir 来自注入的探测，用于“覆盖会递归删除”的提示", () => {
     const result = plan(
       ["/repo/src/lib"],

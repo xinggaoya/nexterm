@@ -30,11 +30,7 @@ import { useFileTreeData } from "./composables/useFileTreeData";
 import { useTreeSelection } from "./composables/useTreeSelection";
 import { useTreeTransfer } from "./composables/useTreeTransfer";
 import type { FileTreeRow as VisibleTreeRow } from "./lib/fileTreeRows";
-import {
-  copyFileTreePath,
-  deleteFileTreePath,
-  generateCopyTarget,
-} from "./lib/fileTreeService";
+import { deleteFileTreePath } from "./lib/fileTreeService";
 import { folderIconUrl } from "./lib/iconResolver";
 
 type EntryRow = Extract<VisibleTreeRow, { kind: "entry" }>;
@@ -50,7 +46,6 @@ const emit = defineEmits<{
   openFile: [path: string, pin: boolean];
   pathRenamed: [from: string, to: string];
   pathDeleted: [path: string];
-  pathDuplicated: [from: string, to: string];
   openMarkdownPreview: [path: string];
   openFilePreview: [path: string];
   openInTerminal: [path: string];
@@ -334,29 +329,16 @@ async function deletePaths(paths: string[]) {
   await Promise.all(parents.map((parent) => loadChildren(parent)));
 }
 
+/**
+ * "复制副本"：在同级目录造一份 `foo copy.ext` / `foo copy 2.ext`。
+ *
+ * 走与拖拽 / 粘贴同一条搬运链路（runTransfer → fs_copy_many）：命名避让由
+ * 后端 fs-core 负责。此前这里是自己 try 100 次 catch "already exists"，
+ * 是最后一条没迁移的搬运路径，而且它依赖一条已被废弃的 fs_copy 命令
+ * （WSL/SSH 下那条命令与新引擎的符号链接处理并不一致）。
+ */
 async function duplicatePath(path: string) {
-  let target = generateCopyTarget(path);
-  // If the candidate collides, walk the counter series to find a free
-  // name. fs_copy rejects "already exists" so we keep the user's intent
-  // ("give me a copy with a unique name") even when several copies exist.
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try {
-      await copyFileTreePath(wsCtx.wsNative, path, target);
-      emit("pathDuplicated", path, target);
-      await loadChildren(dirnameOf(path));
-      return;
-    } catch (error) {
-      const message = typeof error === "string" ? error : String(error);
-      if (!message.toLowerCase().includes("already exists")) throw error;
-      const base = generateCopyTarget(path);
-      const dot = base.lastIndexOf(".");
-      const parent = base.slice(0, base.lastIndexOf("/") + 1);
-      const stem = dot > 0 ? base.slice(parent.length, dot) : base.slice(parent.length);
-      const ext = dot > 0 ? base.slice(dot) : "";
-      const next = attempt + 2;
-      target = `${parent}${stem.replace(/ copy( \d+)?$/, "")} copy ${next}${ext}`;
-    }
-  }
+  await runTransfer([path], dirnameOf(path), "copy");
 }
 
 function handleRowContext(payload: { row: MenuRow; x: number; y: number }) {
