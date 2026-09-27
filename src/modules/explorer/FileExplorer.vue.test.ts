@@ -17,7 +17,10 @@ import {
 // 多工作区重构后，FileExplorer 通过 useWorkspaceContext() 获取 wsNative。
 // 测试不挂载 WorkspaceHost，因此直接 mock 该 composable 返回固定值，
 // 让组件拿到一个占位的 wsNative（文件树服务函数本身已被单独 mock，不会真正调用 wsNative 的方法）。
-const mockWsNative = {};
+const mockWsNative = {
+  fsMoveMany: vi.fn(),
+  fsCopyMany: vi.fn(),
+};
 vi.mock("@/app/workspaceContext", () => ({
   useWorkspaceContext: () => ({
     workspace: {
@@ -154,6 +157,22 @@ async function flush() {
   await nextTick();
 }
 
+/** 冲突对话框挂在 body 上（teleport），因此按 DOM 查询而不是 wrapper 作用域。 */
+function clickInBody(selector: string): void {
+  const el = document.body.querySelector<HTMLElement>(selector);
+  if (!el) throw new Error(`dialog element not found: ${selector}`);
+  el.click();
+}
+
+// NModal 走 teleport 挂到 body 且退出时保留 DOM，所以每个用例后必须清场，
+// 否则上一个用例的残留对话框会被下一个用例查到。
+const transferWrappers: Array<ReturnType<typeof mount>> = [];
+
+afterEach(() => {
+  while (transferWrappers.length) transferWrappers.pop()?.unmount();
+  document.body.innerHTML = "";
+});
+
 // 服务函数现在以 wsNative 为首参；断言时忽略该参数，只校验 path/showHidden。
 const WS_NATIVE_MATCHER = expect.anything();
 
@@ -187,6 +206,20 @@ describe("FileExplorer.vue", () => {
         },
       ],
       truncated: false,
+    });
+    mockWsNative.fsMoveMany.mockResolvedValue({
+      completed: [],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    mockWsNative.fsCopyMany.mockResolvedValue({
+      completed: [],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
     });
   });
 
@@ -1095,5 +1128,220 @@ describe("FileExplorer.vue", () => {
       "/repo/README.md",
       "/repo/README copy 2.md",
     ]);
+  });
+  // ── 搬运（拖拽 / 粘贴共用入口）─────────────────────────────────────
+  // /repo 根目录已加载：条目为 src(dir) / README.md / package.json，
+  // 因此目标为 /repo 时 exists 探测是真实生效的。
+
+  function mountExplorer() {
+    const wrapper = mount(FileExplorer, {
+      global: { plugins: [createPinia()] },
+      props: { rootPath: "/repo" },
+    });
+    transferWrappers.push(wrapper);
+    return wrapper;
+  }
+
+  it("无冲突时直接搬运，并让已打开的 tab 跟随新路径", async () => {
+    mockWsNative.fsMoveMany.mockResolvedValueOnce({
+      completed: [{ from: "/repo/src/main.ts", to: "/repo/main.ts" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+
+    await wrapper.vm.runTransfer(["/repo/src/main.ts"], "/repo", "move");
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
+      [{ from: "/repo/src/main.ts", to: "/repo/main.ts" }],
+      "rename",
+    );
+    expect(mockWsNative.fsCopyMany).not.toHaveBeenCalled();
+    // 重命名后必须让编辑器标签跟着走，否则保存会写回不存在的旧路径。
+    expect(wrapper.emitted("pathRenamed")).toEqual([
+      ["/repo/src/main.ts", "/repo/main.ts"],
+    ]);
+  });
+
+  it("复制模式走 fsCopyMany 且不发 pathRenamed", async () => {
+    mockWsNative.fsCopyMany.mockResolvedValueOnce({
+      completed: [{ from: "/repo/src/main.ts", to: "/repo/main.ts" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+
+    await wrapper.vm.runTransfer(["/repo/src/main.ts"], "/repo", "copy");
+    await flush();
+
+    expect(mockWsNative.fsCopyMany).toHaveBeenCalledTimes(1);
+    expect(wrapper.emitted("pathRenamed")).toBeUndefined();
+  });
+
+  it("目标已有同名项时先弹冲突对话框，确认前不发请求", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+
+    await wrapper.vm.runTransfer(["/repo/src/README.md"], "/repo", "move");
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+    // NModal 走 teleport 挂到 body，wrapper.find 看不到。
+    const dialog = document.body.querySelector("[data-transfer-conflict]");
+    expect(dialog).not.toBeNull();
+    expect(dialog?.textContent).toContain("1");
+  });
+
+  it("冲突对话框的“全部改名”以 rename 策略执行", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await wrapper.vm.runTransfer(["/repo/src/README.md"], "/repo", "move");
+    await flush();
+
+    clickInBody("[data-conflict-rename]");
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
+      [{ from: "/repo/src/README.md", to: "/repo/README copy.md" }],
+      "rename",
+    );
+  });
+
+  it("冲突对话框的“跳过”以 skip 策略执行", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await wrapper.vm.runTransfer(["/repo/src/README.md"], "/repo", "move");
+    await flush();
+
+    clickInBody("[data-conflict-skip]");
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
+      [{ from: "/repo/src/README.md", to: "/repo/README copy.md" }],
+      "skip",
+    );
+  });
+
+  it("冲突对话框的“覆盖”以 overwrite 策略执行", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await wrapper.vm.runTransfer(["/repo/src/README.md"], "/repo", "move");
+    await flush();
+
+    clickInBody("[data-conflict-overwrite]");
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
+      [{ from: "/repo/src/README.md", to: "/repo/README copy.md" }],
+      "overwrite",
+    );
+  });
+
+  it("同名项目标是目录时，覆盖必须先勾选确认才能点", async () => {
+    // 局部覆写目录内容：造出 src/assets 与根下 assets 同名的场景。
+    // （/repo/src 直接搬到 /repo 会被“同目录”守卫生拦下，不能用。）
+    vi.mocked(readFileTreeDir).mockImplementation(async (_ws, path) => {
+      if (path === "/repo") {
+        return [
+          { name: "src", kind: "dir", size: 0, mtime: 1 },
+          { name: "assets", kind: "dir", size: 0, mtime: 5 },
+        ];
+      }
+      if (path === "/repo/src") {
+        return [{ name: "assets", kind: "dir", size: 0, mtime: 5 }];
+      }
+      return [];
+    });
+    const wrapper = mountExplorer();
+    await flush();
+    // 源目录要真实存在于树里（对话框要判断"覆盖的是不是文件夹"），
+    // 所以先展开 src 让它被加载。
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+
+    await wrapper.vm.runTransfer(["/repo/src/assets"], "/repo", "move");
+    await flush();
+
+    const overwrite = document.body.querySelector("[data-conflict-overwrite]");
+    expect(overwrite).not.toBeNull();
+    // 不可逆操作默认禁用，必须显式确认。
+    expect(overwrite?.hasAttribute("disabled")).toBe(true);
+
+    // NCheckbox 把真实 input 藏在根节点下，点根节点才走它的 onUpdate。
+    const checkbox = document.body.querySelector<HTMLElement>(
+      "[data-confirm-overwrite-dirs]",
+    );
+    checkbox?.click();
+    await flush();
+    expect(
+      document.body
+        .querySelector("[data-conflict-overwrite]")
+        ?.hasAttribute("disabled"),
+    ).toBe(false);
+    clickInBody("[data-conflict-overwrite]");
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
+      [{ from: "/repo/src/assets", to: "/repo/assets copy" }],
+      "overwrite",
+    );
+  });
+
+  it("拖进自身子目录被守卫生拦下，不发任何请求", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+
+    await wrapper.vm.runTransfer(["/repo/src"], "/repo/src/nested", "move");
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+    expect(document.body.querySelector("[data-transfer-conflict]")).toBeNull();
+  });
+
+  it("搬运进行中拒绝重复提交", async () => {
+    let release: (value: unknown) => void = () => undefined;
+    mockWsNative.fsMoveMany.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }) as never,
+    );
+    const wrapper = mountExplorer();
+    await flush();
+
+    const first = wrapper.vm.runTransfer(["/repo/src/main.ts"], "/repo", "move");
+    await flush();
+    await wrapper.vm.runTransfer(["/repo/src/main.ts"], "/repo", "move");
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledTimes(1);
+    release({ completed: [], skipped: [], failed: [], crossDevice: [], warnings: [] });
+    await first;
+    await flush();
+  });
+
+  it("部分失败时按 failed 逐条汇报", async () => {
+    mockWsNative.fsMoveMany.mockResolvedValueOnce({
+      completed: [],
+      skipped: [],
+      failed: [
+        { from: "/repo/src/main.ts", to: "/repo/main.ts", error: "permission denied" },
+      ],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+
+    await wrapper.vm.runTransfer(["/repo/src/main.ts"], "/repo", "move");
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledTimes(1);
   });
 });

@@ -11,10 +11,14 @@ import {
 import { NButton, NIcon } from "naive-ui";
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
-import { t } from "@/modules/i18n/translate";
+import { t, type MessageKey } from "@/modules/i18n/translate";
 import { useWorkspaceContext } from "@/app/workspaceContext";
-import type { WorkspaceFsChangedEvent } from "@/lib/native";
-import { notifyError } from "@/modules/notifications/notificationCenter";
+import type {
+  FsConflictPolicy,
+  FsTransferResult,
+  WorkspaceFsChangedEvent,
+} from "@/lib/native";
+import { notifyError, notifyInfo, notifySuccess } from "@/modules/notifications/notificationCenter";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { isSameWorkspaceRoot, normalizeWorkspacePath } from "@/modules/workspace";
 import type { GitDecorationMap } from "@/modules/source-control";
@@ -24,6 +28,18 @@ import ExplorerContextMenu, {
 import ExplorerSearch from "./ExplorerSearch.vue";
 import { FindInFilesPanel } from "@/modules/search";
 import FileTreeRow from "./FileTreeRow.vue";
+import FileTransferConflictDialog, {
+  type ConflictRequest,
+} from "./FileTransferConflictDialog.vue";
+import {
+  describeRejections,
+  isInsideDir,
+  planTransfer,
+  summarizeTransfer,
+  type PlanPolicy,
+  type RejectReason,
+  type TransferMode,
+} from "./lib/fileTransfer";
 import {
   buildFileTreeRows,
   updateFileTreeRows,
@@ -42,8 +58,7 @@ import {
   readFileTreeDir,
   renameFileTreePath,
   type DirEntry,
-} from "./lib/fileTreeService";
-import { folderIconUrl } from "./lib/iconResolver";
+} from "./lib/fileTreeService";import { folderIconUrl } from "./lib/iconResolver";
 
 type EntryRow = Extract<VisibleTreeRow, { kind: "entry" }>;
 type MenuRow = Extract<VisibleTreeRow, { kind: "entry" | "rename" }>;
@@ -663,6 +678,208 @@ function closeMenu() {
   menu.value = null;
 }
 
+// ── 搬运编排（拖拽 / 剪贴板 / OS 拖入共用同一入口）──────────────────
+//
+// 三条入口的差异只在"什么时候触发"，计划解析、冲突征询、执行、刷新
+// 全在这里，因此不会出现"拖拽能搬、粘贴不能搬"的行为分叉。
+
+type PendingTransfer = {
+  sources: string[];
+  targetDir: string;
+  mode: TransferMode;
+};
+
+const transferBusy = ref(false);
+const pendingConflict = ref<ConflictRequest | null>(null);
+let pendingTransfer: PendingTransfer | null = null;
+
+/** 已加载目录的条目名集合；未加载时返回 null（表示"判不了"）。 */
+function loadedEntryNames(dir: string): Set<string> | null {
+  const state = nodes[dir];
+  if (state?.status !== "loaded") return null;
+  return new Set(state.entries.map((entry) => entry.name));
+}
+
+/**
+ * 目标是否已存在。只看已加载的目录 —— 未加载时按"不冲突"处理，让后端
+ * 自己的冲突判定兼底（它的 rename 策略同样不会丢数据）。这样避免为了
+ * 一次拖拽先把整条路径上的目录都拉起来。
+ */
+function transferTargetExists(path: string): boolean {
+  const names = loadedEntryNames(dirname(path));
+  return names ? names.has(basename(path)) : false;
+}
+
+/** 源是否为目录（用于冲突对话框的"覆盖会递归删除"提示）。 */
+function transferSourceIsDir(path: string): boolean {
+  const state = nodes[dirname(path)];
+  if (state?.status !== "loaded") return false;
+  const name = basename(path);
+  return state.entries.some((entry) => entry.name === name && entry.kind === "dir");
+}
+
+function buildTransferPlan(
+  pending: PendingTransfer,
+  policy: PlanPolicy,
+) {
+  return planTransfer({
+    sources: pending.sources,
+    targetDir: pending.targetDir,
+    mode: pending.mode,
+    policy,
+    exists: transferTargetExists,
+    isDir: transferSourceIsDir,
+  });
+}
+
+// 严格版的 `t`（key 必须是 MessageKey 字面量）能接住这个联合：
+// 把拒绝原因映射到文案，拼错 key 会在编译期暴露。
+const REJECTION_MESSAGE: Record<RejectReason, MessageKey> = {
+  self: "explorer.transferRejectedSelf",
+  "own-subtree": "explorer.transferRejectedSubtree",
+  "same-directory": "explorer.transferRejectedSameDir",
+  "missing-source": "explorer.transferRejected",
+};
+
+function reportRejections(rejected: Array<{ from: string; reason: RejectReason }>): void {
+  if (rejected.length === 0) return;
+  // 单一原因时给出具体说法（“不能把文件夹移动到自己的子目录里”）比
+  // “3 个项目无法移动”有用得多；原因混杂时退回到通用标题。
+  const reasons = Array.from(new Set(rejected.map((entry) => entry.reason)));
+  const title =
+    reasons.length === 1
+      ? t(REJECTION_MESSAGE[reasons[0]!])
+      : t("explorer.transferRejected");
+  notifyInfo(title, describeRejections(rejected));
+}
+
+/**
+ * 搬运入口。拖拽、粘贴、OS 拖入都调它。
+ *
+ * 有同名冲突时先弹对话框拿到策略，再真正执行 —— 覆盖不可逆，而多选拖拽
+ * 很容易撞名，默认策略必须是安全的“全部改名”。
+ */
+async function runTransfer(
+  sources: readonly string[],
+  targetDir: string,
+  mode: TransferMode,
+): Promise<void> {
+  if (!props.rootPath || transferBusy.value || sources.length === 0) return;
+  const pending: PendingTransfer = { sources: [...sources], targetDir, mode };
+  const probe = buildTransferPlan(pending, "detect");
+  reportRejections(probe.rejected);
+  if (probe.items.length === 0) return;
+  if (probe.conflicts.length > 0) {
+    pendingTransfer = pending;
+    pendingConflict.value = {
+      targetDir,
+      conflicts: probe.conflicts,
+      dirCount: probe.conflicts.filter((conflict) => conflict.isDir).length,
+    };
+    return;
+  }
+  await executeTransfer(pending, "rename");
+}
+
+function onConflictResolved(policy: FsConflictPolicy): void {
+  const pending = pendingTransfer;
+  pendingTransfer = null;
+  pendingConflict.value = null;
+  if (pending) void executeTransfer(pending, policy);
+}
+
+function onConflictCanceled(): void {
+  pendingTransfer = null;
+  pendingConflict.value = null;
+}
+
+async function executeTransfer(
+  pending: PendingTransfer,
+  policy: FsConflictPolicy,
+): Promise<void> {
+  const plan = buildTransferPlan(pending, policy);
+  if (plan.items.length === 0) return;
+  transferBusy.value = true;
+  try {
+    const result =
+      pending.mode === "move"
+        ? await wsCtx.wsNative.fsMoveMany(plan.items, policy)
+        : await wsCtx.wsNative.fsCopyMany(plan.items, policy);
+    reportTransferResult(result, pending.mode);
+    await settleAfterTransfer(result, pending);
+  } catch (error) {
+    notifyError(t("explorer.transferFailed", { failed: pending.sources.length }), error);
+  } finally {
+    transferBusy.value = false;
+  }
+}
+
+/** 逐条汇报，而不是只报成功：多选搬运经常是“一部分成功一部分失败”。 */
+function reportTransferResult(result: FsTransferResult, mode: TransferMode): void {
+  const summary = summarizeTransfer(result);
+  if (summary.moved === 0) {
+    if (summary.failed > 0) {
+      notifyError(
+        t("explorer.transferFailed", { failed: summary.failed }),
+        result.failed[0]?.error ?? null,
+      );
+    } else if (summary.skipped > 0) {
+      notifyInfo(
+        t("explorer.transferSkipped", { skipped: summary.skipped }),
+        t("explorer.conflictSkipAll"),
+      );
+    }
+    return;
+  }
+  const verbKey = mode === "move" ? "explorer.transferDoneMove" : "explorer.transferDoneCopy";
+  notifySuccess(t(verbKey, { count: summary.moved }));
+  if (summary.skipped > 0) {
+    notifyInfo(t("explorer.transferSkipped", { skipped: summary.skipped }));
+  }
+  if (summary.failed > 0) {
+    notifyError(
+      t("explorer.transferFailed", { failed: summary.failed }),
+      result.failed[0]?.error ?? null,
+    );
+  }
+  if (summary.crossDevice > 0) {
+    // 跨设备移动实际是 copy + delete：中途失败会在磁盘上留下两份，
+    // 必须区别提示，不能混进普通成功里。
+    notifyInfo(t("explorer.transferCrossDevice", { count: summary.crossDevice }));
+  }
+  for (const warning of summary.warnings) {
+    notifyInfo(t("explorer.transferFailed", { failed: 0 }), warning);
+  }
+}
+
+/** 搬运后收尾：让已打开的 tab 跟随新路径、刷新受影响目录、展开目标目录。 */
+async function settleAfterTransfer(
+  result: FsTransferResult,
+  pending: PendingTransfer,
+): Promise<void> {
+  const moved = [...result.completed, ...result.crossDevice];
+  if (pending.mode === "move") {
+    for (const item of moved) {
+      if (item.from !== item.to) emit("pathRenamed", item.from, item.to);
+    }
+  }
+  if (
+    props.rootPath &&
+    isInsideDir(pending.targetDir, props.rootPath) &&
+    !expanded.has(pending.targetDir)
+  ) {
+    // 展开目标目录：搬运完成后直接看到结果，否则用户得自己展开找。
+    expanded.add(pending.targetDir);
+    rebuildTreeSnapshot();
+  }
+  const dirs = new Set<string>();
+  for (const item of [...moved, ...result.skipped]) {
+    dirs.add(dirname(item.from));
+    dirs.add(dirname(item.to));
+  }
+  for (const dir of dirs) void loadChildren(dir, { silent: true });
+}
+
 function openTerminalInDir(path: string) {
   closeMenu();
   emit("openInTerminal", path);
@@ -813,6 +1030,13 @@ function setMode(next: "files" | "content") {
 
 defineExpose({
   setMode,
+  /**
+   * 搬运入口。拖拽、剪贴板粘贴、OS 文件拖入都走它，保证三条入口的
+   * 冲突征询与结果汇报完全一致。
+   */
+  runTransfer,
+  /** 搬运进行中（用于禁用重复提交与展示 busy 态）。 */
+  isTransferring: () => transferBusy.value,
   /**
    * 同步 flush 待执行的 tree refresh(取消 180ms 防抖)。
    * 父组件在 workspace 切回时调,保证切回 explorer 立即是最新状态。
@@ -1025,6 +1249,12 @@ defineExpose({
         </div>
       </div>
     </template>
+
+    <FileTransferConflictDialog
+      :request="pendingConflict"
+      @resolve="onConflictResolved"
+      @cancel="onConflictCanceled"
+    />
 
     <ExplorerContextMenu
       :target="menu"
