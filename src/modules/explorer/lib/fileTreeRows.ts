@@ -48,6 +48,62 @@ export type FileTreeRow =
       message: string;
     };
 
+/**
+ * 过滤已构建的行：保留名字命中查询词的条目、它们的**祖先链**（否则命中项
+ * 会因为父目录没显示而不可达），以及命中**目录**的全部可见后代（否则
+ * 过滤 "src" 只会得到一个点开是空的目录）。
+ *
+ * 纯函数、不碰 IO：输入是 buildFileTreeRows 的输出，因此能在不重新拉
+ * 目录的前提下过滤 —— 保持懒加载语义。真正的全量搜索走 ExplorerSearch /
+ * Find in Files，不是这个。
+ *
+ * `status` / `pending` 行不参与过滤：错误提示与新建输入框属于结构而非
+ * 内容，隐藏它们会让"新建文件"的输入框凭空消失。
+ */
+export function filterFileTreeRows<
+  T extends { kind: string; name?: string; path?: string; isDir?: boolean },
+>(rows: readonly T[], query: string): T[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [...rows];
+  const isEntry = (row: T): boolean => row.kind === "entry" || row.kind === "rename";
+
+  const nameMatched = new Set<string>();
+  const matchedDirs = new Set<string>();
+  for (const row of rows) {
+    if (!isEntry(row)) continue;
+    if (!row.name || !row.name.toLowerCase().includes(needle)) continue;
+    nameMatched.add(row.path!);
+    if (row.isDir) matchedDirs.add(row.path!);
+  }
+
+  // 命中项的祖先链：没有它们，深层命中的文件会因为父目录被隐藏而不可达。
+  const ancestors = new Set<string>();
+  for (const path of nameMatched) {
+    let slash = path.lastIndexOf("/");
+    while (slash > 0) {
+      const parent = path.slice(0, slash);
+      if (ancestors.has(parent)) break;
+      ancestors.add(parent);
+      slash = parent.lastIndexOf("/");
+    }
+  }
+
+  return rows.filter((row) => {
+    if (!isEntry(row)) return true;
+    const path = row.path!;
+    if (nameMatched.has(path) || ancestors.has(path)) return true;
+    // 该行是否位于某个命中目录内部（向上走查，避免逐行与每个命中目录比对）。
+    let parent = path.slice(0, path.lastIndexOf("/"));
+    while (parent) {
+      if (matchedDirs.has(parent)) return true;
+      const slash = parent.lastIndexOf("/");
+      if (slash <= 0) break;
+      parent = parent.slice(0, slash);
+    }
+    return false;
+  });
+}
+
 export function buildFileTreeRows({
   rootPath,
   nodes,

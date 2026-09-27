@@ -1976,3 +1976,106 @@ describe("FileExplorer OS file drop", () => {
     expect(requested.every((path) => path.startsWith("/repo"))).toBe(true);
   });
 });
+
+describe("FileExplorer filter + expand/collapse", () => {
+  beforeEach(() => {
+    resetExplorerMocks();
+  });
+
+  it("过滤只保留命中项与祖先链", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    // 展开 src 让子项可见
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+
+    const input = wrapper.find("[data-tree-filter-input] input");
+    await input.setValue("main");
+    await flush();
+
+    const rows = wrapper
+      .findAll("[data-explorer-row-path]")
+      .map((row) => row.attributes("data-explorer-row-path"));
+    expect(rows).toEqual(["/repo/src", "/repo/src/main.ts"]);
+  });
+
+  it("清空过滤后恢复全部行", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    const input = wrapper.find("[data-tree-filter-input] input");
+    await input.setValue("zzz");
+    await flush();
+    expect(wrapper.findAll("[data-explorer-row-path]")).toHaveLength(0);
+
+    await input.setValue("");
+    await flush();
+    expect(wrapper.findAll("[data-explorer-row-path]").length).toBeGreaterThan(0);
+  });
+
+  it("展开全部只铺开已加载的目录，不触发额外读请求", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    const before = vi.mocked(readFileTreeDir).mock.calls.length;
+
+    await wrapper.find("[data-collapse-all]").trigger("click");
+    await flush();
+
+    // src 是根的子目录且已加载（根已加载），所以 src 出现在行里；
+    // 但它的子目录没有被请求。
+    expect(
+      wrapper.find("[data-explorer-row-path='/repo/src']").exists(),
+    ).toBe(true);
+    expect(vi.mocked(readFileTreeDir).mock.calls.length).toBe(before);
+  });
+
+  it("有展开项时按钮变为折叠全部，点击后收起", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+    expect(
+      wrapper.find("[data-explorer-row-path='/repo/src/main.ts']").exists(),
+    ).toBe(true);
+
+    const toggle = wrapper.find("[data-collapse-all]");
+    expect(toggle.attributes("data-collapse-all")).toBe("collapse");
+    await toggle.trigger("click");
+    await flush();
+
+    expect(
+      wrapper.find("[data-explorer-row-path='/repo/src/main.ts']").exists(),
+    ).toBe(false);
+    // 再点一次回到展开
+    expect(
+      wrapper.find("[data-collapse-all]").attributes("data-collapse-all"),
+    ).toBe("expand");
+    await wrapper.find("[data-collapse-all]").trigger("click");
+    await flush();
+    expect(
+      wrapper.find("[data-explorer-row-path='/repo/src/main.ts']").exists(),
+    ).toBe(true);
+  });
+
+  it("过滤状态下选择集与键盘导航只看可见行", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    const input = wrapper.find("[data-tree-filter-input] input");
+    await input.setValue("README");
+    await flush();
+
+    // 只剩 README.md 一行可见：Ctrl+A 只能选它
+    const tree = wrapper.find("[data-file-explorer]");
+    tree.element.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "a", ctrlKey: true, bubbles: true, cancelable: true }),
+    );
+    await flush();
+    await input.setValue("");
+    await flush();
+
+    const selected = wrapper
+      .findAll("[data-explorer-row-path]")
+      .filter((row) => row.classes().includes("bg-accent"))
+      .map((row) => row.attributes("data-explorer-row-path"));
+    expect(selected).toEqual(["/repo/README.md"]);
+  });
+});

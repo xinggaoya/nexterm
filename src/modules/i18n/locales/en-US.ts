@@ -363,6 +363,9 @@ const enUS = {
     },
   },
   explorer: {
+    collapseAll: "Collapse All",
+    expandAll: "Expand All",
+    filterTreePlaceholder: "Filter view",
     clearSearch: "Clear search",
     clickAgainToConfirm: "Click again to confirm",
     copyPath: "Copy Path",

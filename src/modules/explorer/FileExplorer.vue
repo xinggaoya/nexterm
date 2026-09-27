@@ -5,14 +5,16 @@ import { usePointerDragReorder } from "@/lib/usePointerDragReorder";
 import { basename } from "@/lib/path";
 import { normalizeErrorMessage } from "@/lib/error";
 import {
+  ContractOutline,
   CopyOutline,
   DocumentOutline,
+  ExpandOutline,
   FolderOutline,
   MoveOutline,
   RefreshOutline,
   SearchOutline,
 } from "@vicons/ionicons5";
-import { NButton, NIcon } from "naive-ui";
+import { NButton, NIcon, NInput } from "naive-ui";
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t, type MessageKey } from "@/modules/i18n/translate";
@@ -51,6 +53,7 @@ import {
 import { useFileClipboard } from "./lib/fileClipboard";
 import {
   buildFileTreeRows,
+  filterFileTreeRows,
   updateFileTreeRows,
   type FileTreeRow as VisibleTreeRow,
   type FileTreeSnapshot,
@@ -111,6 +114,13 @@ const focusedPath = ref<string | null>(null);
 const anchorPath = ref<string | null>(null);
 const isSearchOpen = ref(false);
 const isSearchActive = ref(false);
+// 折叠/展开全部与树过滤共用"文件树"模式下的工具条，不引入新的模式值。
+const collapseQuery = ref("");
+/** 树过滤：只在已加载的行上做子串匹配（保持懒加载语义）。 */
+const filteredRows = computed(() =>
+  filterFileTreeRows(rows.value, collapseQuery.value),
+);
+const hasTreeFilter = computed(() => collapseQuery.value.trim().length > 0);
 // 每个工作区的文件树各持一份剪贴板：组件卸载即丢弃，切工作区自然隔离。
 const clipboard = useFileClipboard();
 const mode = ref<"files" | "content">("files");
@@ -131,7 +141,7 @@ const {
   bottomPadding: virtualBottomPadding,
   onScroll: onTreeScroll,
 } = useVirtualWindow(treeScroll, {
-  total: () => rows.value.length,
+  total: () => visibleRows.value.length,
   rowHeight: ROW_HEIGHT,
   onScroll: () => closeMenu(),
 });
@@ -206,9 +216,20 @@ function visibleDirectoryPaths(): string[] {
 }
 
 const rows = computed(() => treeSnapshot.value.rows);
-const entryIndexByPath = computed(() => treeSnapshot.value.entryIndexByPath);
+// 渲染与交互都走过滤后的行集：选择集 / 键盘导航 / 拖拽都只能看到这些行。
+const visibleRows = computed(() =>
+  hasTreeFilter.value ? filteredRows.value : rows.value,
+);
+const entryIndexByPath = computed(() => {
+  if (!hasTreeFilter.value) return treeSnapshot.value.entryIndexByPath;
+  const index = new Map<string, number>();
+  for (const [i, row] of visibleRows.value.entries()) {
+    if (row.kind === "entry" || row.kind === "rename") index.set(row.path, i);
+  }
+  return index;
+});
 const entryPaths = computed(() =>
-  rows.value.flatMap((row) => (row.kind === "entry" ? [row.path] : [])),
+  visibleRows.value.flatMap((row) => (row.kind === "entry" ? [row.path] : [])),
 );
 const pendingAtRoot = computed<VisibleTreeRow | null>(() => {
   if (!props.rootPath || pendingCreate.value?.parentPath !== props.rootPath) {
@@ -507,6 +528,45 @@ function toggleDir(path: string) {
   if (!isOpen && (!nodes[path] || nodes[path].status === "error")) {
     void loadChildren(path);
   }
+}
+
+// ── 折叠 / 展开全部 ────────────────────────────────────────────────
+//
+// 只处理**已加载**的目录：展开全部不应该为了铺开整棵树去把每个子目录都
+// 拉一遍（这正是文件树在大仓里卡顿的主因）。未展开的目录仍然可以在点开
+// 时懒加载。
+
+const expandedCount = computed(() => {
+  if (!props.rootPath) return 0;
+  let count = 0;
+  for (const dir of expanded) {
+    if (dir !== props.rootPath && dir.startsWith(`${props.rootPath}/`)) count += 1;
+  }
+  return count;
+});
+
+/** 已加载且为目录的路径（可展开集合）。 */
+function loadedDirectories(): string[] {
+  const out: string[] = [];
+  for (const [path, state] of Object.entries(nodes)) {
+    if (state.status === "loaded" && path !== props.rootPath) out.push(path);
+  }
+  return out;
+}
+
+function collapseAll(): void {
+  expanded.clear();
+  rebuildTreeSnapshot();
+}
+
+function expandAllLoaded(): void {
+  for (const dir of loadedDirectories()) expanded.add(dir);
+  rebuildTreeSnapshot();
+}
+
+function toggleExpandAll(): void {
+  if (expandedCount.value > 0) collapseAll();
+  else expandAllLoaded();
 }
 
 function handleEntryClick(row: EntryRow, event?: MouseEvent) {
@@ -1362,7 +1422,7 @@ watch(() => props.gitDecorations, () => {
 
 // 行集合变化（目录折叠、刷新、重命名中）后剔除已不可见的选中项，
 // 避免选择集里残留"幽灵路径"参与批量删除。
-watch(rows, () => {
+watch(visibleRows, () => {
   const index = entryIndexByPath.value;
   const selected = selectedPaths.value;
   if (selected.size > 0) {
@@ -1506,6 +1566,20 @@ defineExpose({
           <template #icon><NIcon :component="FolderOutline" /></template>
         </NButton>
       </TooltipTitle>
+      <TooltipTitle :label="expandedCount > 0 ? t('explorer.collapseAll') : t('explorer.expandAll')">
+        <NButton
+          size="tiny"
+          quaternary
+          :data-collapse-all="expandedCount > 0 ? 'collapse' : 'expand'"
+          :aria-label="expandedCount > 0 ? t('explorer.collapseAll') : t('explorer.expandAll')"
+          :disabled="!rootPath"
+          @click="toggleExpandAll"
+        >
+          <template #icon>
+            <NIcon :component="expandedCount > 0 ? ContractOutline : ExpandOutline" />
+          </template>
+        </NButton>
+      </TooltipTitle>
       <TooltipTitle :label="t('common.refresh')">
         <NButton
           size="tiny"
@@ -1517,6 +1591,20 @@ defineExpose({
           <template #icon><NIcon :component="RefreshOutline" /></template>
         </NButton>
       </TooltipTitle>
+      <div
+        v-if="rootPath"
+        class="relative ml-0.5 flex min-w-0 flex-1 items-center"
+        data-tree-filter
+      >
+        <NInput
+          v-model:value="collapseQuery"
+          size="tiny"
+          clearable
+          :placeholder="t('explorer.filterTreePlaceholder')"
+          data-tree-filter-input
+          class="max-w-40"
+        />
+      </div>
     </div>
 
     <div v-if="!rootPath" class="grid min-h-0 flex-1 place-items-center p-4 text-center">
@@ -1583,7 +1671,7 @@ defineExpose({
             单独渲染以保留焦点（行高可能略大于 24px）。
           -->
           <div
-            v-if="rows.length > VIRTUAL_THRESHOLD"
+            v-if="visibleRows.length > VIRTUAL_THRESHOLD"
             class="relative px-1"
           >
             <div
@@ -1614,7 +1702,7 @@ defineExpose({
           </div>
           <div v-else class="space-y-0.5 px-1">
             <FileTreeRow
-              v-for="row in rows"
+              v-for="row in visibleRows"
               :key="row.key"
               :row="row"
               :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPaths.has(row.path)"

@@ -361,6 +361,9 @@ const zhCN = {
     },
   },
   explorer: {
+    collapseAll: "全部折叠",
+    expandAll: "全部展开",
+    filterTreePlaceholder: "过滤当前视图",
     clearSearch: "清除搜索",
     clickAgainToConfirm: "再次点击确认",
     copyPath: "复制路径",
