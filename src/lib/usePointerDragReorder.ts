@@ -1,4 +1,5 @@
 import { onBeforeUnmount, shallowRef, type ShallowRef } from "vue";
+import { useEventListener } from "@/lib/useEventListener";
 
 /**
  * 拖拽落点方位：`before` = 目标元素的前半（上缘 / 左缘），
@@ -266,6 +267,20 @@ export function usePointerDragReorder<T, TId extends string | number = number>(
     suppressedClickId.value = null;
     return true;
   }
+
+  /**
+   * Esc 取消拖拽。
+   *
+   * 不做的话用户一旦开始拖就只能"放到某处"或"按原路松手"才能结束 ——
+   * 拖到一半发现拖错了地方，只能先扔到目标再撤销。三处拖拽共用这一个实现，
+   * 所以这个行为也三处一致。
+   */
+  useEventListener(window, "keydown", (event: KeyboardEvent) => {
+    if (event.key !== "Escape" || !pointerDrag.value) return;
+    event.preventDefault();
+    removePointerListeners();
+    clear();
+  });
 
   onBeforeUnmount(() => {
     removePointerListeners();

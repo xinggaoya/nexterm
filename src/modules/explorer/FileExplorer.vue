@@ -179,6 +179,7 @@ const {
   cutSelection,
   paste,
   isRowDragSource,
+  isRowCut,
   isRowDropTarget,
   isRowDropForbidden,
 } = transfer;
@@ -215,6 +216,10 @@ function handleRowPointerDown(row: EntryRow, event: PointerEvent) {
 // ── 行级视觉判定（模板用不到 v-for 之外的东西，直接转发）────────────
 function onRowDragSource(row: VisibleTreeRow): boolean {
   return row.kind === "entry" && isRowDragSource(row.path);
+}
+
+function onRowCut(row: VisibleTreeRow): boolean {
+  return row.kind === "entry" && isRowCut(row.path);
 }
 
 function onRowDropTarget(row: VisibleTreeRow): boolean {
@@ -607,6 +612,7 @@ defineExpose({
               :row="row"
               :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPaths.has(row.path)"
               :dragging="onRowDragSource(row)"
+              :cut="onRowCut(row)"
               :drop-target="onRowDropTarget(row)"
               :drop-forbidden="onRowDropForbidden(row)"
               @entry-click="handleEntryClickForDrag"
@@ -630,6 +636,7 @@ defineExpose({
               :row="row"
               :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPaths.has(row.path)"
               :dragging="onRowDragSource(row)"
+              :cut="onRowCut(row)"
               :drop-target="onRowDropTarget(row)"
               :drop-forbidden="onRowDropForbidden(row)"
               @entry-click="handleEntryClickForDrag"

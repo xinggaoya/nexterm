@@ -16,6 +16,8 @@ const props = defineProps<{
   selected: boolean;
   /** 正在被拖动（源）行：降低不透明度让用户知道拖的是哪几行。 */
   dragging?: boolean;
+  /** 已剪切、等待粘贴的行：变淡（VS Code 行为）。 */
+  cut?: boolean;
   /** 悬停中的落点行（仅目录行有意义）。 */
   dropTarget?: boolean;
   /** 落点非法：整行变禁用色，松手也不执行。 */
@@ -87,6 +89,7 @@ function dragClass(): string {
     return "bg-accent text-foreground before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:rounded-full before:bg-primary";
   }
   if (props.dragging) return "opacity-50";
+  if (props.cut) return "opacity-45";
   return "";
 }
 

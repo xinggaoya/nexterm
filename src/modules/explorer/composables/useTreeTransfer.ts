@@ -541,6 +541,16 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     return dragSources.value.includes(path);
   }
 
+  /**
+   * 该行是否处于"已剪切、等待粘贴"状态。
+   *
+   * 没有这个提示的话，用户剪切完就看不出哪些条目在被"悬着"——他得自己记住，
+   * 或者去别处粘贴一次才发现。VS Code 把待剪切行变淡，这里同理。
+   */
+  function isRowCut(path: string): boolean {
+    return clipboard.isCut.value && clipboard.state.value.paths.includes(path);
+  }
+
   function isRowDropTarget(path: string): boolean {
     return dropTargetDir.value === path;
   }
@@ -599,6 +609,7 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     paste,
     // 行级视觉
     isRowDragSource,
+    isRowCut,
     isRowDropTarget,
     isRowDropForbidden,
   };

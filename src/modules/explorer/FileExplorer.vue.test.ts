@@ -184,6 +184,26 @@ async function flush() {
   await nextTick();
 }
 
+/**
+ * 直接在元素上派发 KeyboardEvent：vue-test-utils 的 trigger 会尝试给事件
+ * 写 isTrusted（只读属性），传构造器实例会抛错。放在模块级供多个 describe
+ * 复用。
+ */
+function pressKey(
+  wrapper: ReturnType<typeof mount>,
+  key: string,
+  init: { ctrlKey?: boolean } = {},
+): void {
+  wrapper.find("[data-file-explorer]").element.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key,
+      ctrlKey: init.ctrlKey ?? true,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+}
+
 /** 冲突对话框挂在 body 上（teleport），因此按 DOM 查询而不是 wrapper 作用域。 */
 function clickInBody(selector: string): void {
   const el = document.body.querySelector<HTMLElement>(selector);
@@ -2053,5 +2073,55 @@ describe("FileExplorer filter + expand/collapse", () => {
       .filter((row) => row.classes().includes("bg-accent"))
       .map((row) => row.attributes("data-explorer-row-path"));
     expect(selected).toEqual(["/repo/README.md"]);
+  });
+  it("剪切后待粘贴的行变淡，复制则不变", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    const rowOf = (path: string) =>
+      wrapper.find(`[data-explorer-row-path='${path}']`);
+
+    await rowOf("/repo/README.md").trigger("click");
+    await flush();
+    pressKey(wrapper, "x");
+    await flush();
+    // 已剪切 → 变淡
+    expect(rowOf("/repo/README.md").classes()).toContain("opacity-45");
+
+    // 改成复制 → 不再是"待粘贴"
+    pressKey(wrapper, "c");
+    await flush();
+    expect(rowOf("/repo/README.md").classes()).not.toContain("opacity-45");
+  });
+
+  it("粘贴（剪切）完成后剪贴板失效，行不再变淡", async () => {
+    mockWsNative.fsMoveMany.mockResolvedValueOnce({
+      completed: [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+    const rowOf = (path: string) =>
+      wrapper.find(`[data-explorer-row-path='${path}']`);
+
+    await rowOf("/repo/README.md").trigger("click");
+    await flush();
+    pressKey(wrapper, "x");
+    await flush();
+    expect(rowOf("/repo/README.md").classes()).toContain("opacity-45");
+
+    // 粘到 src 目录
+    await rowOf("/repo/src").trigger("click");
+    await flush();
+    pressKey(wrapper, "v");
+
+    // 粘贴是 fire-and-forget 的异步链（planTransfer → fsMoveMany →
+    // settleAfterTransfer → clipboard.clear），单次 flush 走不完。
+    await vi.waitFor(() =>
+      expect(rowOf("/repo/README.md").classes()).not.toContain("opacity-45"),
+    );
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledTimes(1);
   });
 });

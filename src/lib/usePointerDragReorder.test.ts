@@ -217,6 +217,39 @@ describe("usePointerDragReorder", () => {
     await nextTick();
   });
 
+  it("Esc 取消拖拽：清状态且不触发 onDrop", async () => {
+    const { onDrop, api, onDraggingChange } = setup();
+    pressSourceRow(1, 10, 5);
+    dragTo(160, 5);
+    expect(api().draggingId.value).toBe(1);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+    expect(api().draggingId.value).toBeNull();
+    expect(api().dropTarget.value).toBeNull();
+    expect(api().ghost.value).toBeNull();
+    expect(onDraggingChange).toHaveBeenLastCalledWith(false, 1);
+
+    // 之后的 pointerup 不该再落 drop
+    release(160, 5);
+    expect(onDrop).not.toHaveBeenCalled();
+    await nextTick();
+  });
+
+  it("Esc 在没有拖拽时不拦截按键", async () => {
+    const { onDrop } = setup();
+    const event = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(onDrop).not.toHaveBeenCalled();
+    await nextTick();
+  });
+
   it("pointercancel 取消拖拽并回调 onDraggingChange(false)", async () => {
     const { api, onDraggingChange } = setup();
     pressSourceRow(1, 10, 5);
