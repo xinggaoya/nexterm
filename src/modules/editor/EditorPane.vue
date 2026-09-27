@@ -65,6 +65,8 @@ import {
 } from "@/modules/lsp/lspExtensions";
 import type { PendingEdit, ReferenceGroup } from "@/modules/lsp/lspLanguageSupport";
 import type { LspDocumentSymbol } from "@/modules/lsp/types";
+import { containerPathForOffset } from "@/modules/lsp/lspLanguageSupport";
+import EditorBreadcrumb from "./EditorBreadcrumb.vue";
 import { notifyInfo } from "@/modules/notifications/notificationCenter";
 import type { LspEditorHooks } from "./lib/editorPaneLsp";
 import {
@@ -237,6 +239,7 @@ function editorBaseExtensions(): Extension[] {
       }
       if (update.docChanged || update.selectionSet) {
         updateCursorInfo(update.state);
+        if (update.selectionSet) recomputeBreadcrumb();
       }
     }),
     keymap.of([
@@ -463,12 +466,20 @@ async function refreshSymbols(): Promise<void> {
   emit("symbols-changed", symbols ?? []);
 }
 
-/** 符号位置偏移 → 行号（1-based），供宿主跳转。 */
+/** 符号位置偏移 → 跳转。 */
 async function gotoSymbol(pos: number): Promise<void> {
   const current = view.value;
   if (!current) return;
   current.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
   current.focus();
+}
+
+/** 行号（1-based）→ 文档偏移。面包屑点击走这条。 */
+function offsetOfLine(line: number): number {
+  const current = view.value;
+  if (!current) return 0;
+  const clamped = Math.min(Math.max(Math.round(line), 1), current.state.doc.lines);
+  return current.state.doc.line(clamped).from;
 }
 
 function openGotoLine(): void {
@@ -499,7 +510,49 @@ function setContentForTest(content: string) {
   safeReplaceValue(current, content);
 }
 
-watch(() => props.path, () => void load(), { immediate: true });
+/**
+ * 面包屑：光标所在的符号容器链。
+ *
+ * 符号树从 LSP 拿（只有 LSP 模式下才有），容器链由光标偏移现算 —— 光标一动
+ * 就重算，比"订阅光标变化重新请求 server"快得多（server 根本不需要知道）。
+ */
+const documentSymbols = ref<LspDocumentSymbol[]>([]);
+const breadcrumbPath = ref<string[]>([]);
+
+async function loadDocumentSymbols(): Promise<void> {
+  const current = view.value;
+  if (!current) {
+    documentSymbols.value = [];
+    return;
+  }
+  const symbols = await resolveDocumentSymbols(current);
+  documentSymbols.value = symbols ?? [];
+  recomputeBreadcrumb();
+}
+
+function recomputeBreadcrumb(): void {
+  const current = view.value;
+  if (!current || documentSymbols.value.length === 0) {
+    breadcrumbPath.value = [];
+    return;
+  }
+  breadcrumbPath.value = containerPathForOffset(
+    current.state.doc,
+    documentSymbols.value,
+    current.state.selection.main.head,
+  );
+}
+
+watch(
+  () => props.path,
+  () => {
+    // 换文件 → 符号与面包屑立即失效（不能拿上一个文件的符号树渲染新文件）
+    documentSymbols.value = [];
+    breadcrumbPath.value = [];
+    void load();
+  },
+  { immediate: true },
+);
 
 watch(
   () => props.fsEvent,
@@ -587,7 +640,7 @@ watch(
       props.path,
       prefs.editorLspTypescriptMode,
       lspHooks,
-    );
+    ).then(() => loadDocumentSymbols());
   },
 );
 
@@ -627,6 +680,7 @@ defineExpose({
   renameSymbol,
   findReferences,
   refreshSymbols,
+  loadDocumentSymbols,
   gotoSymbol,
   revealLine,
   reload: () => reloadExternalChange(true),
@@ -654,6 +708,14 @@ defineExpose({
       @reload-external-change="() => void reloadExternalChange(true)"
       @save="() => void save()"
       @mode-change="setMode"
+    />
+
+    <EditorBreadcrumb
+      v-if="doc.status === 'ready'"
+      :file-name="fileName"
+      :container-path="breadcrumbPath"
+      :symbols="documentSymbols"
+      @go-to-symbol="(line) => gotoSymbol(offsetOfLine(line))"
     />
 
     <div
