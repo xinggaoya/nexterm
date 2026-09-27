@@ -10,7 +10,7 @@ edition = "2021"
 rust-version = "1.77"
 
 [workspace]
-members = [".", "agent"]
+members = [".", "agent", "fs-core"]
 resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -52,6 +52,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-notification = "2"
 russh = { version = "0.63.1", default-features = false, features = ["ring", "flate2", "rsa"] }
+# 搬运语义（移动/复制/冲突策略）在本地、WSL agent、SSH 远端 agent 三处共用同一份实现。
+nexterm-fs-core = { path = "fs-core" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

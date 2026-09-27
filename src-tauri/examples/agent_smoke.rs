@@ -25,7 +25,7 @@ fn main() {
     };
     let work = format!("{path}/nexterm-smoke-{}", std::process::id());
 
-    println!("[1/9] exec: mkdir 工作目录 {work}");
+    println!("[1/10] exec: mkdir 工作目录 {work}");
     let outcome = exec(
         &distro,
         vec!["sh".into(), "-c".into(), format!("rm -rf {work} && mkdir -p {work}")],
@@ -33,7 +33,7 @@ fn main() {
     );
     assert_exit(&outcome, "mkdir");
 
-    println!("[2/9] fs.createFile + fs.writeFile + fs.readFile 回读");
+    println!("[2/10] fs.createFile + fs.writeFile + fs.readFile 回读");
     nexterm_lib::modules::agent::create_file(&distro, &format!("{work}/empty.txt"))
         .unwrap_or_else(|error| die("createFile", &error));
     let content = BASE64_STANDARD.encode("hello nexterm phase-0b");
@@ -43,23 +43,73 @@ fn main() {
         .unwrap_or_else(|error| die("readFile", &error));
     assert_eq!(String::from_utf8_lossy(&bytes), "hello nexterm phase-0b", "roundtrip content");
 
-    println!("[3/9] fs.stat");
+    println!("[3/10] fs.stat");
     let stat = nexterm_lib::modules::agent::stat(&distro, &format!("{work}/note.txt"))
         .unwrap_or_else(|error| die("fs.stat", &error));
     assert_eq!(stat.size, "hello nexterm phase-0b".len() as u64, "stat size");
 
-    println!("[4/9] fs.readDir");
+    println!("[4/10] fs.readDir");
     let entries = nexterm_lib::modules::agent::read_dir(&distro, &work)
         .unwrap_or_else(|error| die("fs.readDir", &error));
     assert!(entries.iter().any(|entry| entry.name == "empty.txt"));
 
-    println!("[5/9] fs.rename + fs.copy");
+    println!("[5/10] fs.rename + fs.copy");
     nexterm_lib::modules::agent::rename(&distro, &format!("{work}/empty.txt"), &format!("{work}/renamed.txt"))
         .unwrap_or_else(|error| die("rename", &error));
     nexterm_lib::modules::agent::copy(&distro, &format!("{work}/note.txt"), &format!("{work}/note-copy.txt"))
         .unwrap_or_else(|error| die("copy", &error));
 
-    println!("[6/9] fs.search / fs.listFiles");
+    println!("[6/10] fs.copyMany + fs.moveMany（冲突策略 / 自动改名）");
+    let transfer_items = vec![
+        nexterm_fs_core::TransferItem {
+            from: format!("{work}/note.txt"),
+            to: format!("{work}/note-copy.txt"),
+        },
+        nexterm_fs_core::TransferItem {
+            from: format!("{work}/note-copy.txt"),
+            to: format!("{work}/moved/note-copy.txt"),
+        },
+    ];
+    let copied = nexterm_lib::modules::agent::copy_many(
+        &distro,
+        &transfer_items,
+        nexterm_fs_core::ConflictPolicy::Rename,
+    )
+    .unwrap_or_else(|error| die("fs.copyMany", &error));
+    // 第一条撞上已存在的 note-copy.txt，必须自动改名而不是失败。
+    assert!(
+        copied.completed.len() == 2,
+        "copyMany completed: {:?}",
+        copied.completed
+    );
+    assert!(
+        copied.failed.is_empty(),
+        "copyMany failed: {:?}",
+        copied.failed
+    );
+    assert!(
+        copied.completed[0].to.ends_with("note-copy copy.txt"),
+        "rename policy expected, got {}",
+        copied.completed[0].to
+    );
+
+    let moved = nexterm_lib::modules::agent::move_many(
+        &distro,
+        &[nexterm_fs_core::TransferItem {
+            from: format!("{work}/moved/note-copy.txt"),
+            to: format!("{work}/renamed/note-copy.txt"),
+        }],
+        nexterm_fs_core::ConflictPolicy::Rename,
+    )
+    .unwrap_or_else(|error| die("fs.moveMany", &error));
+    assert!(
+        moved.failed.is_empty(),
+        "moveMany failed: {:?}",
+        moved.failed
+    );
+    assert_eq!(moved.completed.len(), 1);
+
+    println!("[7/10] fs.search / fs.listFiles");
     let hits = nexterm_lib::modules::agent::search(&distro, &work, "note", Some(10), true, &work)
         .unwrap_or_else(|error| die("fs.search", &error));
     assert_eq!(hits.hits.len(), 2, "expect note.txt + note-copy.txt");
@@ -67,7 +117,7 @@ fn main() {
         .unwrap_or_else(|error| die("fs.listFiles", &error));
     assert!(files.contains(&"note.txt".to_string()));
 
-    println!("[7/9] fs.grep / fs.glob");
+    println!("[8/10] fs.grep / fs.glob");
     let grep = nexterm_lib::modules::agent::grep(
         &distro,
         "phase-0b",
@@ -84,7 +134,7 @@ fn main() {
     // renamed.txt 也是 .txt(内容为空,glob 不看内容)→ 共 3 个
     assert_eq!(glob_hits.len(), 3);
 
-    println!("[8/9] exec git init + status(经 agent 通道)");
+    println!("[9/10] exec git init + status(经 agent 通道)");
     let outcome = exec(
         &distro,
         vec![
@@ -104,7 +154,7 @@ fn main() {
     let status = String::from_utf8_lossy(&outcome.stdout);
     assert!(status.contains("A  note.txt"), "staged note expected, got: {status}");
 
-    println!("[9/9] fs.delete 清理");
+    println!("[10/10] fs.delete 清理");
     nexterm_lib::modules::agent::delete(&distro, &work)
         .unwrap_or_else(|error| die("fs.delete", &error));
 

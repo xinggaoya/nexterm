@@ -545,6 +545,43 @@ pub(crate) async fn remote_copy(profile_id: &str, from: &str, to: &str) -> Resul
     .await
 }
 
+/// 远端批量搬运。规则在远端 agent 的 `nexterm-fs-core` 里执行，与本地 / WSL
+/// 通道逐字节一致：同样的冲突策略、同样的跨设备回落、同样的符号链接处理。
+pub(crate) async fn remote_move_many(
+    profile_id: &str,
+    items: &[nexterm_fs_core::TransferItem],
+    conflict: nexterm_fs_core::ConflictPolicy,
+) -> Result<nexterm_fs_core::TransferResult, String> {
+    with_remote_agent(
+        profile_id,
+        protocol::METHOD_FS_MOVE_MANY,
+        protocol::transfer_many_params(items, conflict),
+        parse_transfer_result,
+    )
+    .await
+}
+
+pub(crate) async fn remote_copy_many(
+    profile_id: &str,
+    items: &[nexterm_fs_core::TransferItem],
+    conflict: nexterm_fs_core::ConflictPolicy,
+) -> Result<nexterm_fs_core::TransferResult, String> {
+    with_remote_agent(
+        profile_id,
+        protocol::METHOD_FS_COPY_MANY,
+        protocol::transfer_many_params(items, conflict),
+        parse_transfer_result,
+    )
+    .await
+}
+
+/// 远端 agent 回传搬运结果。serde 形状由共享 crate 定义，宿主不重新声明
+/// DTO —— 声明两份就会在某次协议演进时静默错位。
+fn parse_transfer_result(value: Value) -> Result<nexterm_fs_core::TransferResult, String> {
+    serde_json::from_value(value)
+        .map_err(|error| format!("invalid fs transfer result from agent: {error}"))
+}
+
 pub(crate) async fn remote_write_file(
     profile_id: &str,
     path: &str,

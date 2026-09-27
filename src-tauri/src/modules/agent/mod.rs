@@ -19,6 +19,9 @@ use crate::modules::fs::wsl_ops::{WslDirEntry, WslEntryKind, WslFileStat};
 
 /// fs 读操作的整体超时(含 WSL 冷启动余量)。
 const FS_TIMEOUT: Duration = Duration::from_secs(30);
+/// 批量搬运（可能跨设备 copy 整个目录树）比单次 fs 操作慢得多，
+/// 超时不能复用 FS_TIMEOUT，否则大目录拖拽会收到假失败。
+const TRANSFER_TIMEOUT: Duration = Duration::from_secs(180);
 /// exec 的业务超时由调用方给定;传输层在此之上再多等一段。
 const TRANSPORT_GRACE: Duration = Duration::from_secs(5);
 
@@ -220,6 +223,45 @@ pub fn copy(distro: &str, from: &str, to: &str) -> Result<(), String> {
         FS_TIMEOUT,
     )
     .map(|_| ())
+}
+
+/// 批量搬运的 WSL 通道入口。搬运规则（冲突策略 / 跨设备回落 / 符号链接）
+/// 全部在 agent 内的 `nexterm-fs-core` 执行，宿主只负责拼参数与解码结果，
+/// 因此本地 / WSL / SSH 三条路径的行为逐字节一致。
+pub fn move_many(
+    distro: &str,
+    items: &[nexterm_fs_core::TransferItem],
+    conflict: nexterm_fs_core::ConflictPolicy,
+) -> Result<nexterm_fs_core::TransferResult, String> {
+    let value = manager::request(
+        distro,
+        protocol::METHOD_FS_MOVE_MANY,
+        protocol::transfer_many_params(items, conflict),
+        // 批量搬运可能跨设备 copy 整个子树，给足超时而不是让 UI 干等。
+        TRANSFER_TIMEOUT,
+    )?;
+    parse_transfer_result(&value)
+}
+
+pub fn copy_many(
+    distro: &str,
+    items: &[nexterm_fs_core::TransferItem],
+    conflict: nexterm_fs_core::ConflictPolicy,
+) -> Result<nexterm_fs_core::TransferResult, String> {
+    let value = manager::request(
+        distro,
+        protocol::METHOD_FS_COPY_MANY,
+        protocol::transfer_many_params(items, conflict),
+        TRANSFER_TIMEOUT,
+    )?;
+    parse_transfer_result(&value)
+}
+
+/// 解码 agent 回传的搬运结果。DTO 由共享 crate 定义，宿主不重新声明
+/// 一份 —— 声明两份就会在某次协议演进时静默错位。
+fn parse_transfer_result(value: &Value) -> Result<nexterm_fs_core::TransferResult, String> {
+    serde_json::from_value(value.clone())
+        .map_err(|error| format!("invalid fs transfer result from agent: {error}"))
 }
 
 fn get_str(value: &Value, key: &str) -> String {

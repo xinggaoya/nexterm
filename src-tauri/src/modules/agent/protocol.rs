@@ -127,6 +127,10 @@ pub(crate) const METHOD_FS_RENAME: &str = "fs.rename";
 pub(crate) const METHOD_FS_DELETE: &str = "fs.delete";
 /// fs.copy
 pub(crate) const METHOD_FS_COPY: &str = "fs.copy";
+/// fs.moveMany:批量移动（跨设备自动回落 copy+delete）
+pub(crate) const METHOD_FS_MOVE_MANY: &str = "fs.moveMany";
+/// fs.copyMany:批量复制
+pub(crate) const METHOD_FS_COPY_MANY: &str = "fs.copyMany";
 /// fs.search
 pub(crate) const METHOD_FS_SEARCH: &str = "fs.search";
 /// fs.listFiles
@@ -172,6 +176,15 @@ pub(crate) fn fs_delete_params(path: &str) -> Value {
 
 pub(crate) fn fs_copy_params(from: &str, to: &str) -> Value {
     serde_json::json!({ "from": from, "to": to })
+}
+
+/// 批量搬运参数。`items` 直接用 `nexterm_fs_core::TransferItem` 的 serde
+/// 形状（camelCase），宿主与 agent 不会各自序列化出两种形状。
+pub(crate) fn transfer_many_params(
+    items: &[nexterm_fs_core::TransferItem],
+    conflict: nexterm_fs_core::ConflictPolicy,
+) -> Value {
+    serde_json::json!({ "items": items, "conflict": conflict })
 }
 
 pub(crate) fn fs_search_params(
@@ -304,5 +317,18 @@ mod params_tests {
     fn fs_write_file_params_shape() {
         let value = fs_write_file_params("/a", "QUJD");
         assert_eq!(value, json!({ "path": "/a", "contentBase64": "QUJD" }));
+    }
+
+    #[test]
+    fn transfer_many_params_shape_matches_agent_deserializer() {
+        use nexterm_fs_core::{ConflictPolicy, TransferItem};
+        let items = vec![TransferItem {
+            from: "/a/x".into(),
+            to: "/b/x".into(),
+        }];
+        let value = transfer_many_params(&items, ConflictPolicy::Rename);
+        assert_eq!(value["conflict"], "rename");
+        assert_eq!(value["items"][0]["from"], "/a/x");
+        assert_eq!(value["items"][0]["to"], "/b/x");
     }
 }

@@ -1,4 +1,5 @@
-use std::path::{Path, PathBuf};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 use tauri::State;
 
@@ -7,6 +8,7 @@ use crate::modules::fs::watcher::{
 };
 use crate::modules::fs::wsl_ops;
 use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
+use nexterm_fs_core::{ConflictPolicy, TransferItem, TransferMode, TransferResult};
 
 /// 写操作完成后的 watcher 通知意图:`host_path` 用于解析授权根,
 /// `paths`/`kinds` 原样转发给事件 batcher。
@@ -339,11 +341,18 @@ fn copy_blocking(
     if to_p.exists() {
         return Err(format!("already exists: {}", to_p.display()));
     }
-    let meta = std::fs::symlink_metadata(&from_p).map_err(|e| e.to_string())?;
-    if meta.is_dir() {
-        copy_dir_recursive(&from_p, &to_p)?;
-    } else {
-        std::fs::copy(&from_p, &to_p).map_err(|e| e.to_string())?;
+    // 复制语义（目录 / 文件 / 符号链接）统一交给 nexterm-fs-core：
+    // 旧的本地 copy_dir_recursive 用 file_type() 同时判 is_dir/is_file，
+    // 两头都不匹配时**静默跳过符号链接**（仓库里的 node_modules 符号链接
+    // 复制后会凭空消失）。共享实现按链接本身重建，并在 Windows 上给出
+    // 无法重建的告警。
+    let mut warnings = Vec::new();
+    nexterm_fs_core::copy_path(&from_p, &to_p, &mut warnings).map_err(|e| {
+        log::debug!("fs_copy({} -> {}) failed: {e}", from_p.display(), to_p.display());
+        e
+    })?;
+    for warning in &warnings {
+        log::warn!("fs_copy warning: {warning}");
     }
     // Copying introduces new paths on the destination side. Treat them
     // as Creates so the explorer never confuses a duplicate with a
@@ -357,21 +366,239 @@ fn copy_blocking(
     )))
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(dst).map_err(|e| format!("mkdir {}: {e}", dst.display()))?;
-    for entry in std::fs::read_dir(src).map_err(|e| format!("readdir {}: {e}", src.display()))? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let ft = entry.file_type().map_err(|e| e.to_string())?;
-        let child_src = entry.path();
-        let child_dst = dst.join(entry.file_name());
-        if ft.is_dir() {
-            copy_dir_recursive(&child_src, &child_dst)?;
-        } else if ft.is_file() {
-            std::fs::copy(&child_src, &child_dst)
-                .map_err(|e| format!("copy {}: {e}", child_src.display()))?;
+// ── 批量搬运（拖拽移动 / 复制、剪贴板粘贴共用）─────────────────────────
+//
+// 搬运规则（冲突三策略、跨设备回落、防自疍、符号链接）全在 nexterm-fs-core，
+// 本地直接调用，WSL / SSH 转给 agent —— 三条路径执行的是同一份代码。
+
+/// 批量移动。`items` 里的 from/to 都是**用户视角路径**（WSL 侧是 Linux
+/// 路径），解析与执行位置由 `workspace` 决定。
+#[tauri::command]
+pub async fn fs_move_many(
+    items: Vec<TransferItem>,
+    conflict: Option<ConflictPolicy>,
+    workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
+    watcher: State<'_, FsWatcherState>,
+) -> Result<TransferResult, String> {
+    dispatch_transfer(
+        items,
+        conflict.unwrap_or_default(),
+        TransferMode::Move,
+        workspace,
+        registry,
+        watcher,
+    )
+    .await
+}
+
+/// 批量复制。语义与 `fs_move_many` 一致，只是不删源。
+#[tauri::command]
+pub async fn fs_copy_many(
+    items: Vec<TransferItem>,
+    conflict: Option<ConflictPolicy>,
+    workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
+    watcher: State<'_, FsWatcherState>,
+) -> Result<TransferResult, String> {
+    dispatch_transfer(
+        items,
+        conflict.unwrap_or_default(),
+        TransferMode::Copy,
+        workspace,
+        registry,
+        watcher,
+    )
+    .await
+}
+
+async fn dispatch_transfer(
+    items: Vec<TransferItem>,
+    policy: ConflictPolicy,
+    mode: TransferMode,
+    workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
+    watcher: State<'_, FsWatcherState>,
+) -> Result<TransferResult, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    let watcher = watcher.inner().clone();
+    if items.is_empty() {
+        return Ok(TransferResult::default());
+    }
+    let (result, intent) = tauri::async_runtime::spawn_blocking(move || {
+        transfer_blocking(items, policy, mode, workspace)
+    })
+    .await
+    .map_err(|error| format!("fs transfer background task failed: {error}"))??;
+    if let Some(intent) = intent {
+        notify_workspace_fs_changed(registry.inner(), &watcher, &intent);
+    }
+    Ok(result)
+}
+
+type TransferOutcome = (TransferResult, Option<FsNotifyIntent>);
+
+fn transfer_blocking(
+    items: Vec<TransferItem>,
+    policy: ConflictPolicy,
+    mode: TransferMode,
+    workspace: WorkspaceEnv,
+) -> Result<TransferOutcome, String> {
+    // SSH: 整批交给远端 agent，远端写入不走本地 watcher。
+    //
+    // 远端链路是 async（通道内交 tokio），但本函数已经跑在 spawn_blocking
+    // 的阻塞线程上，所以这里 block_on 是安全的 —— 与同文件既有的
+    // remote_create_file / remote_rename 写法一致。
+    if let WorkspaceEnv::Ssh { profile_id } = &workspace {
+        let result = tauri::async_runtime::block_on(async {
+            match mode {
+                TransferMode::Move => {
+                    crate::modules::ssh::remote::remote_move_many(profile_id, &items, policy).await
+                }
+                TransferMode::Copy => {
+                    crate::modules::ssh::remote::remote_copy_many(profile_id, &items, policy).await
+                }
+            }
+        })?;
+        return Ok((result, None));
+    }
+
+    // WSL 非 drvfs 路径：agent 常驻在发行版内，比 UNC 直读快且不受
+    // Windows 侧缓存影响。失败则回退到 UNC 路径本地执行。
+    if let WorkspaceEnv::Wsl { distro } = &workspace {
+        if items
+            .iter()
+            .all(|item| wsl_ops::should_use_wsl_ops(&item.from, &workspace))
+        {
+            let via_agent = match mode {
+                TransferMode::Move => crate::modules::agent::move_many(distro, &items, policy),
+                TransferMode::Copy => crate::modules::agent::copy_many(distro, &items, policy),
+            };
+            if let Ok(result) = via_agent {
+                // agent 内的写入本地 watcher 看不到，按既有约定发一次
+                // 显式通知让 explorer 重读（host_path 用 UNC 解析授权根，
+                // 事件里的 paths 仍是用户可见的 Linux 路径）。
+                let intent = transfer_intent(&items, &result, &workspace);
+                return Ok((result, intent));
+            }
         }
     }
-    Ok(())
+
+    // 本地执行：先把用户视角路径翻成本机路径。
+    //
+    // `display_of` 记下「本机路径 → 用户可见路径」的反查表：只有 Windows
+    // 上的 WSL UNC 回退路径会真的发生形变，本地/非 Windows 是恒等映射。
+    // 搬运结果里的路径要原样回传给前端去刷新目录与跟随 tab，所以必须还原。
+    let mut display_of: HashMap<String, String> = HashMap::new();
+    let resolved: Vec<TransferItem> = items
+        .iter()
+        .map(|item| {
+            let from_resolved = resolve_path(&item.from, &workspace);
+            let to_resolved = resolve_path(&item.to, &workspace);
+            let from_text = from_resolved.to_string_lossy().into_owned();
+            let to_text = to_resolved.to_string_lossy().into_owned();
+            // 先到先得：链式操作里同一个路径可能既是上一条的落点又是下一条的
+            // 源，保持先写入的映射以保证确定性。
+            display_of
+                .entry(from_text.clone())
+                .or_insert_with(|| item.from.clone());
+            display_of
+                .entry(to_text.clone())
+                .or_insert_with(|| item.to.clone());
+            TransferItem {
+                from: from_text,
+                to: to_text,
+            }
+        })
+        .collect();
+    let result = nexterm_fs_core::transfer_all(&resolved, policy, mode);
+    for failure in &result.failed {
+        log::warn!(
+            "fs transfer failed {} -> {}: {}",
+            failure.from,
+            failure.to,
+            failure.error
+        );
+    }
+    let result = TransferResult {
+        completed: to_display_paths(&result.completed, &display_of),
+        skipped: to_display_paths(&result.skipped, &display_of),
+        cross_device: to_display_paths(&result.cross_device, &display_of),
+        failed: result
+            .failed
+            .iter()
+            .map(|failure| nexterm_fs_core::TransferFailure {
+                from: display_of
+                    .get(&failure.from)
+                    .cloned()
+                    .unwrap_or_else(|| failure.from.clone()),
+                to: display_of
+                    .get(&failure.to)
+                    .cloned()
+                    .unwrap_or_else(|| failure.to.clone()),
+                error: failure.error.clone(),
+            })
+            .collect(),
+        warnings: result.warnings.clone(),
+    };
+    let intent = transfer_intent(&items, &result, &workspace);
+    Ok((result, intent))
+}
+
+/// 把本机路径形态的结果映射回用户可见路径（WSL 侧 UNC → Linux 路径）。
+fn to_display_paths(
+    items: &[TransferItem],
+    display_of: &HashMap<String, String>,
+) -> Vec<TransferItem> {
+    items
+        .iter()
+        .map(|item| TransferItem {
+            from: display_of
+                .get(&item.from)
+                .cloned()
+                .unwrap_or_else(|| item.from.clone()),
+            to: display_of
+                .get(&item.to)
+                .cloned()
+                .unwrap_or_else(|| item.to.clone()),
+        })
+        .collect()
+}
+
+/// 汇总一次批量搬运的 watcher 通知意图。
+///
+/// 源侧 Delete、目标侧 Create：explorer 靠 kind 区分"这一项没了"与
+/// "那一项新出现"，两者缺一都会让树停留在半旧半新的状态。
+fn transfer_intent(
+    items: &[TransferItem],
+    result: &TransferResult,
+    workspace: &WorkspaceEnv,
+) -> Option<FsNotifyIntent> {
+    let mut paths = Vec::new();
+    let mut kinds = Vec::new();
+    for moved in result
+        .completed
+        .iter()
+        .chain(result.cross_device.iter())
+        .chain(result.skipped.iter())
+    {
+        paths.push(moved.from.clone());
+        kinds.push(FsChangeKind::Delete);
+        paths.push(moved.to.clone());
+        kinds.push(FsChangeKind::Create);
+    }
+    if paths.is_empty() {
+        return None;
+    }
+    // host_path 只用来解析授权根，整批都在同一工作区下，取任一目标父目录即可。
+    let anchor = result
+        .cross_device
+        .first()
+        .or(result.completed.first())
+        .or(result.skipped.first())
+        .unwrap_or(items.first()?);
+    let host_path = resolve_path(&anchor.to, workspace);
+    Some(FsNotifyIntent::new(host_path, paths, kinds))
 }
 
 /// 把通知意图转发给活跃 watcher。找不到授权根时静默跳过 —— 与旧

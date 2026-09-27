@@ -197,6 +197,16 @@ pub struct CopyParams {
     pub to: String,
 }
 
+/// `fs.moveMany` / `fs.copyMany` 的参数。与 `nexterm_fs_core::TransferItem`
+/// 同形，直接转给共享实现，不在 agent 侧重新定义一套。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferManyParams {
+    pub items: Vec<nexterm_fs_core::TransferItem>,
+    #[serde(default)]
+    pub conflict: nexterm_fs_core::ConflictPolicy,
+}
+
 // ---- fs search / listFiles / grep / glob ----
 // 响应形状与主程序 `fs/search.rs`、`fs/grep.rs` 的 serde 结构逐字段对齐,
 // 保证前端无需感知执行位置。path 展示串由 rootDisplay(工作区根的展示

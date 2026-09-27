@@ -250,6 +250,38 @@ describe("native filesystem wrappers", () => {
     expect(result).toEqual({ hits: [], truncated: false });
   });
 
+  it("batch transfers go through fs_move_many / fs_copy_many with the conflict policy", async () => {
+    const wsNative = createNativeForEnv(LOCAL_WORKSPACE);
+    const empty = {
+      completed: [],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    };
+    vi.mocked(invoke)
+      .mockResolvedValueOnce(empty)
+      .mockResolvedValueOnce({ ...empty, skipped: [{ from: "/a", to: "/b" }] });
+
+    const items = [{ from: "/repo/a.ts", to: "/repo/lib/a.ts" }];
+    await expect(wsNative.fsMoveMany(items, "overwrite")).resolves.toEqual(empty);
+    // 不显式传策略时后端默认 rename（自动改名，不丢数据）。
+    await expect(wsNative.fsCopyMany(items)).resolves.toMatchObject({
+      skipped: [{ from: "/a", to: "/b" }],
+    });
+
+    expect(invoke).toHaveBeenNthCalledWith(1, "fs_move_many", {
+      items,
+      conflict: "overwrite",
+      workspace: LOCAL_WORKSPACE,
+    });
+    expect(invoke).toHaveBeenNthCalledWith(2, "fs_copy_many", {
+      items,
+      conflict: "rename",
+      workspace: LOCAL_WORKSPACE,
+    });
+  });
+
   it("looks up the launch dir and WSL home through native", async () => {
     // getLaunchDir / getWslHome 是 workspace-agnostic 全局方法，仍在 native 上。
     vi.mocked(invoke)

@@ -3345,7 +3345,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexterm"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
@@ -3356,6 +3356,7 @@ dependencies = [
  "ignore",
  "libc",
  "log",
+ "nexterm-fs-core",
  "notify",
  "portable-pty",
  "russh",
@@ -3385,17 +3386,25 @@ dependencies = [
 
 [[package]]
 name = "nexterm-agent"
-version = "0.1.2"
+version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
  "globset",
  "grep-regex",
  "grep-searcher",
  "ignore",
+ "nexterm-fs-core",
  "notify",
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "nexterm-fs-core"
+version = "0.2.1"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

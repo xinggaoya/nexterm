@@ -340,6 +340,43 @@ export type FsGlobHit = {
   rel: string;
 };
 
+// ── 文件搬运（拖拽移动/复制、剪贴板粘贴）─────────────────────────────
+// 逐字段对齐 Rust `nexterm_fs_core` 的 serde 模型。**不要在前端另定义一份
+// 形状**：后端声明两份就会在某次协议演进时静默错位。
+
+/** 单条搬运任务。`from` / `to` 均为用户可见路径（WSL 工作区是 Linux 路径）。 */
+export type FsTransferItem = {
+  from: string;
+  to: string;
+};
+
+/**
+ * 目标已存在时的处理策略。
+ * - `overwrite` 先删后写（目标为目录时递归删除，不可逆）
+ * - `skip` 该条跳过
+ * - `rename` 自动改名：`foo.ext` → `foo copy.ext` → `foo copy 2.ext`
+ */
+export type FsConflictPolicy = "overwrite" | "skip" | "rename";
+
+export type FsTransferFailure = {
+  from: string;
+  to: string;
+  error: string;
+};
+
+export type FsTransferResult = {
+  completed: FsTransferItem[];
+  skipped: FsTransferItem[];
+  failed: FsTransferFailure[];
+  /**
+   * 跨设备回落（copy + delete）完成的项。语义上仍是"移动"，但中途失败会
+   * 在磁盘上留下两份，UI 要区别提示而不是当成普通成功。
+   */
+  crossDevice: FsTransferItem[];
+  /** 非致命告警：无法重建的符号链接等。 */
+  warnings: string[];
+};
+
 export type PtyHandlers = {
   onData: (chunk: string) => void;
   onExit?: (code: number) => void;
@@ -654,6 +691,18 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
       invoke<void>("fs_delete", { path, workspace }),
     fsCopy: (from: string, to: string) =>
       invoke<void>("fs_copy", { from, to, workspace }),
+    /**
+     * 批量移动。`items` 里的路径是用户可见形态，跨 WSL/SSH 时由后端解析成
+     * 发行版内路径交给 agent 执行（本地 / WSL / SSH 跑的是同一份搬运规则）。
+     *
+     * 逐条结算：一条失败不影响其余条目，结果里区分 completed / skipped /
+     * failed / crossDevice。
+     */
+    fsMoveMany: (items: FsTransferItem[], conflict: FsConflictPolicy = "rename") =>
+      invoke<FsTransferResult>("fs_move_many", { items, conflict, workspace }),
+    /** 批量复制，语义与 `fsMoveMany` 一致，只是不删源。 */
+    fsCopyMany: (items: FsTransferItem[], conflict: FsConflictPolicy = "rename") =>
+      invoke<FsTransferResult>("fs_copy_many", { items, conflict, workspace }),
     fsGrep: (
       pattern: string,
       root: string,

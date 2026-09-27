@@ -1,6 +1,6 @@
 [package]
 name = "nexterm-agent"
-version = "0.1.2"
+version = "0.2.1"
 edition = "2021"
 publish = false
 license = "Apache-2.0"
@@ -17,6 +17,8 @@ ignore = "0.4"
 grep-regex = "0.1"
 grep-searcher = "0.1"
 globset = "0.4"
+# 与宿主共用搬运语义，避免第三次 copy_dir_recursive 漂移。
+nexterm-fs-core = { path = "../fs-core" }
 
 [lib]
 name = "nexterm_agent"

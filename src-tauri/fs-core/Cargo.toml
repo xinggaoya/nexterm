@@ -1,0 +1,11 @@
+[package]
+name = "nexterm-fs-core"
+version = "0.2.1"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+description = "Shared filesystem transfer semantics (move/copy/conflict policy) for the Nexterm host and its WSL/remote agent."
+repository = "https://github.com/xinggaoya/nexterm"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

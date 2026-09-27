@@ -248,6 +248,8 @@ pub fn run() {
             fs::mutate::fs_rename,
             fs::mutate::fs_delete,
             fs::mutate::fs_copy,
+            fs::mutate::fs_move_many,
+            fs::mutate::fs_copy_many,
             fs::search::fs_search,
             fs::search::fs_list_files,
             fs::grep::fs_grep,

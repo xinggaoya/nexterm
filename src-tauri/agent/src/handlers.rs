@@ -18,8 +18,9 @@ use crate::protocol::{
     CopyParams, CreateDirParams, CreateFileParams, DeleteParams, DirEntry, EntryKind, ExecParams,
     ExecResult, GlobParams, GrepParams, ListFilesParams, PingResult, ReadDirParams, ReadDirResult,
     ReadFileParams, ReadFileResult, RenameParams, Request, Response, SearchParams, StatParams,
-    StatResult, WriteFileParams,
+    StatResult, TransferManyParams, WriteFileParams,
 };
+use nexterm_fs_core::TransferMode;
 
 /// fs.readFile 的默认上限。主程序在调用前已用 stat 过滤 10 MiB 以上的文件,
 /// 这里留出余量,仅作防 OOM 的最后防线。
@@ -99,6 +100,16 @@ fn dispatch(method: &str, params: Value) -> Result<Value, String> {
             let params: CopyParams = parse_params(params)?;
             fs_copy(params)?;
             Ok(json!({}))
+        }
+        "fs.moveMany" => {
+            let params: TransferManyParams = parse_params(params)?;
+            Ok(serde_json::to_value(fs_move_many(params)?)
+                .map_err(|error| error.to_string())?)
+        }
+        "fs.copyMany" => {
+            let params: TransferManyParams = parse_params(params)?;
+            Ok(serde_json::to_value(fs_copy_many(params)?)
+                .map_err(|error| error.to_string())?)
         }
         "fs.search" => {
             let params: SearchParams = parse_params(params)?;
@@ -369,30 +380,44 @@ pub fn fs_copy(params: CopyParams) -> Result<(), String> {
     if to.exists() {
         return Err(format!("already exists: {}", to.display()));
     }
-    let meta = std::fs::symlink_metadata(from).map_err(|error| error.to_string())?;
-    if meta.is_dir() {
-        copy_dir_recursive(from, to)?;
-    } else {
-        std::fs::copy(from, to).map_err(|error| error.to_string())?;
+    // 复制语义（含符号链接处理）统一由 nexterm-fs-core 提供，避免
+    // agent 与宿主各自维护一份 copy_dir_recursive 而行为漂移。
+    let mut warnings = Vec::new();
+    nexterm_fs_core::copy_path(from, to, &mut warnings)?;
+    if !warnings.is_empty() {
+        log_line(&warnings.join("; "));
     }
     Ok(())
 }
 
-fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
-    std::fs::create_dir_all(dst).map_err(|e| format!("mkdir {}: {e}", dst.display()))?;
-    for entry in std::fs::read_dir(src).map_err(|e| format!("readdir {}: {e}", src.display()))? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let ft = entry.file_type().map_err(|e| e.to_string())?;
-        let child_src = entry.path();
-        let child_dst = dst.join(entry.file_name());
-        if ft.is_dir() {
-            copy_dir_recursive(&child_src, &child_dst)?;
-        } else if ft.is_file() {
-            std::fs::copy(&child_src, &child_dst)
-                .map_err(|e| format!("copy {}: {e}", child_src.display()))?;
-        }
-    }
-    Ok(())
+/// `fs.moveMany` / `fs.copyMany` 共用的实现：批量搬运 + 逐条结算。
+fn transfer_many(
+    params: TransferManyParams,
+    mode: TransferMode,
+) -> Result<nexterm_fs_core::TransferResult, String> {
+    Ok(nexterm_fs_core::transfer_all(
+        &params.items,
+        params.conflict,
+        mode,
+    ))
+}
+
+pub fn fs_move_many(
+    params: TransferManyParams,
+) -> Result<nexterm_fs_core::TransferResult, String> {
+    transfer_many(params, TransferMode::Move)
+}
+
+pub fn fs_copy_many(
+    params: TransferManyParams,
+) -> Result<nexterm_fs_core::TransferResult, String> {
+    transfer_many(params, TransferMode::Copy)
+}
+
+/// 把告警写到 stderr：stdout 是 JSON-lines 协议通道，混入非协议内容会
+/// 破坏主程序的行解析。
+fn log_line(message: &str) {
+    eprintln!("[nexterm-agent] {message}");
 }
 
 #[cfg(unix)]
