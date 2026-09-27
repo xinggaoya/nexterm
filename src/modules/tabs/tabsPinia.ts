@@ -614,11 +614,16 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
   }
 
   /**
-   * 文件被重命名 / 移动（explorer 内联重命名、拖拽搬运、OS 内 mv）后，让
-   * 所有指向旧路径的 tab 跟随到新路径。
+   * 文件 / 目录被重命名或移动（explorer 内联重命名、拖拽搬运、OS 内 mv）后，
+   * 让所有指向旧路径的 tab 跟随到新路径。
    *
    * 为什么必须跟：编辑器 tab 的身份就是 `path`，脏缓冲只活在内存里。不跟随
    * 的话用户下一次保存会把内容写回已经不存在的旧路径 —— 静默丢改动。
+   *
+   * **按前缀匹配**（`to` 是目录时，其内部的 tab 一并搬到新位置下的对应路径），
+   * 与 `dropPath` 的匹配规则对称。拖拽把整个 `src/` 搬走是常用操作，只做
+   * 精确匹配会让 `src/main.ts` 的标签留在旧路径，脏缓冲保存到那里就把文件
+   * 在原位置重建了出来 —— 数据放错位置且全程无提示。
    *
    * 覆盖范围：editor / markdown / file-preview 的 `path`；git-diff 与
    * git-commit-file 额外把 `originalPath` 命中旧路径的也算进来（git 视角的
@@ -630,38 +635,51 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     const wsId = resolveWorkspaceId(workspaceId);
     const list = workspaceTabs(wsId);
     if (list.length === 0) return 0;
-    const newName = basename(to);
+    const fromPrefix = `${from}/`;
+    /** `path` 命中 `from` 本身，或位于 `from` 之内（`from` 是目录）。 */
+    const remap = (path: string): string | null => {
+      if (path === from) return to;
+      if (path.startsWith(fromPrefix)) return `${to}/${path.slice(fromPrefix.length)}`;
+      return null;
+    };
     let changed = 0;
     const next = list.map((tab): Tab => {
       switch (tab.kind) {
         case "editor":
         case "markdown":
         case "file-preview": {
-          if (tab.path !== from) return tab;
+          const moved = remap(tab.path);
+          if (!moved) return tab;
           changed += 1;
           // 脏缓冲与 preview 标记都原样保留 —— 只换身份，不改内容状态。
-          return { ...tab, path: to, title: newName };
+          return { ...tab, path: moved, title: basename(moved) };
         }
         case "git-diff": {
-          if (tab.path !== from && tab.originalPath !== from) return tab;
+          const moved = remap(tab.path);
+          const originalMoved = tab.originalPath ? remap(tab.originalPath) : null;
+          if (!moved && !originalMoved) return tab;
           changed += 1;
           return {
             ...tab,
-            path: to,
-            title: newName,
-            // originalPath 只有在它自己也被搬走时才失效；否则保留，diff
-            // 仍需拿 HEAD 侧的旧名做对比。
-            originalPath: tab.originalPath === from ? null : tab.originalPath,
+            path: moved ?? tab.path,
+            title: basename(moved ?? tab.path),
+            // 跟着 from 一起搬走的 originalPath 映射到新位置；留在原地的保留
+            // 原值 —— 那正是"HEAD 侧旧名 vs 工作区侧新名"的重命名 diff，不该
+            // 被抹成 null（null 表示"没有历史版本"，即新增文件）。
+            originalPath: originalMoved ?? tab.originalPath,
           };
         }
         case "git-commit-file": {
-          if (tab.path !== from && tab.originalPath !== from) return tab;
+          const moved = remap(tab.path);
+          const originalMoved = tab.originalPath ? remap(tab.originalPath) : null;
+          if (!moved && !originalMoved) return tab;
           changed += 1;
+          const nextPath = moved ?? tab.path;
           return {
             ...tab,
-            path: to,
-            title: `${newName} @ ${tab.shortSha}`,
-            originalPath: tab.originalPath === from ? null : tab.originalPath,
+            path: nextPath,
+            title: `${basename(nextPath)} @ ${tab.shortSha}`,
+            originalPath: originalMoved ?? tab.originalPath,
           };
         }
         default:

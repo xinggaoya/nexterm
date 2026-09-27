@@ -246,23 +246,24 @@ describe("tabs pinia store (workspace-scoped)", () => {
       WORKSPACE_ID,
     );
 
-    // 第一个 tab 的 originalPath 为 null，只有 path 命中 → 走 path 分支
     expect(tabs.followPath("/repo/a.ts", "/repo/lib/a.ts", WORKSPACE_ID)).toBe(1);
-    // 第二个 tab 的 originalPath 命中 → 工作区侧新路径是 to
     expect(tabs.followPath("/repo/b.ts", "/repo/lib/b.ts", WORKSPACE_ID)).toBe(1);
 
     const diffs = tabs
       .workspaceTabs(WORKSPACE_ID)
       .filter((t) => t.kind === "git-diff");
+    // originalPath 一直是 null（新增文件）→ 保持 null
     expect(diffs[0]).toMatchObject({
       path: "/repo/lib/a.ts",
       title: "a.ts",
       originalPath: null,
     });
-    // originalPath 与 from 相同时随重命名失效 → 置 null
+    // originalPath 原本与 path 相同：diff 的两侧引用的是同一个文件，文件被
+    // 搬走时两侧一起搬（不猜测 git 会把它判成重命名还是新增 —— 那是用户
+    // 打开新 diff 时 git 的判断，不是 tab 该替它做的决定）。
     expect(diffs[1]).toMatchObject({
       path: "/repo/lib/b.ts",
-      originalPath: null,
+      originalPath: "/repo/lib/b.ts",
     });
   });
 
@@ -344,5 +345,103 @@ describe("tabs pinia store (workspace-scoped)", () => {
     expect(
       tabs.workspaceTabs(WORKSPACE_ID).some((t) => t.kind === "file-preview"),
     ).toBe(true);
+  });
+  it("目录被搬走时，其内部已打开的 tab 按前缀跟随", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    const mainId = tabs.openFileTab("/repo/src/main.ts", WORKSPACE_ID, true)!;
+    tabs.openFileTab("/repo/src/lib/util.ts", WORKSPACE_ID, true);
+    // 前缀相似但不同目录 —— 不能被误伤
+    tabs.openFileTab("/repo/src2/other.ts", WORKSPACE_ID, true);
+
+    const changed = tabs.followPath("/repo/src", "/repo/lib", WORKSPACE_ID);
+
+    expect(changed).toBe(2);
+    const paths = tabs
+      .workspaceTabs(WORKSPACE_ID)
+      .flatMap((t) => ("path" in t ? [t.path] : []));
+    expect(paths).toContain("/repo/lib/main.ts");
+    expect(paths).toContain("/repo/lib/lib/util.ts");
+    // /repo/src2 不是 /repo/src 的子目录（没有那个斜杠）
+    expect(paths).toContain("/repo/src2/other.ts");
+    const moved = tabs.workspaceTabs(WORKSPACE_ID).find((t) => t.id === mainId);
+    expect(moved).toMatchObject({ path: "/repo/lib/main.ts", title: "main.ts" });
+  });
+
+  it("目录搬走时脏缓冲的 tab 也跟随（否则保存会在旧位置重建文件）", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    const id = tabs.openFileTab("/repo/src/dirty.ts", WORKSPACE_ID, true)!;
+    tabs.updateTab(id, { dirty: true }, WORKSPACE_ID);
+
+    tabs.followPath("/repo/src", "/repo/lib", WORKSPACE_ID);
+
+    expect(tabs.workspaceTabs(WORKSPACE_ID).find((t) => t.id === id)).toMatchObject({
+      path: "/repo/lib/dirty.ts",
+      dirty: true,
+    });
+  });
+
+  it("目录搬走时 git diff tab 的 originalPath 落在同一棵树里的也一并跟随", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    tabs.openGitDiffTab(
+      {
+        repoRoot: "/repo",
+        path: "/repo/src/a.ts",
+        mode: "-",
+        originalPath: "/repo/src/old-a.ts",
+      },
+      WORKSPACE_ID,
+    );
+
+    tabs.followPath("/repo/src", "/repo/lib", WORKSPACE_ID);
+
+    expect(
+      tabs.workspaceTabs(WORKSPACE_ID).find((t) => t.kind === "git-diff"),
+    ).toMatchObject({
+      path: "/repo/lib/a.ts",
+      originalPath: "/repo/lib/old-a.ts",
+      title: "a.ts",
+    });
+  });
+
+  it("目录搬走时 originalPath 在树外则原样保留（引用的是别处的文件）", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    tabs.openGitDiffTab(
+      {
+        repoRoot: "/repo",
+        path: "/repo/src/a.ts",
+        mode: "-",
+        originalPath: "/repo/legacy/a.ts",
+      },
+      WORKSPACE_ID,
+    );
+
+    tabs.followPath("/repo/src", "/repo/lib", WORKSPACE_ID);
+
+    expect(
+      tabs.workspaceTabs(WORKSPACE_ID).find((t) => t.kind === "git-diff"),
+    ).toMatchObject({
+      path: "/repo/lib/a.ts",
+      originalPath: "/repo/legacy/a.ts",
+    });
+  });
+
+  it("from 是文件时不会误伤同前缀的其它路径", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    tabs.openFileTab("/repo/src", WORKSPACE_ID, true);
+    tabs.openFileTab("/repo/src/main.ts", WORKSPACE_ID, true);
+
+    // 重命名目录 /repo/src → /repo/lib
+    const changed = tabs.followPath("/repo/src", "/repo/lib", WORKSPACE_ID);
+    // 两者都该搬：目录本身 + 其内部文件
+    expect(changed).toBe(2);
+    const paths = tabs
+      .workspaceTabs(WORKSPACE_ID)
+      .flatMap((t) => ("path" in t ? [t.path] : []));
+    expect(paths).toEqual(["/repo/lib", "/repo/lib/main.ts"]);
   });
 });
