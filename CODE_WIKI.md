@@ -18,7 +18,7 @@ Nexterm 是一个基于 **Tauri 2 + Rust 后端 + Vue 3 + TypeScript 前端** �
 - Rust crate：`nexterm`（lib：`nexterm_lib`），辅助二进制 `nexterm-wsl-watcher`
 - Tauri product name：`Nexterm`
 - Bundle id：`app.xinggaoya.nexterm`
-- 当前版本：与 `package.json` / `src-tauri/Cargo.toml` 同步（`0.1.2`）
+- 当前版本：与 `package.json` / `src-tauri/Cargo.toml` 同步（`0.2.2`）
 
 ## 2. 技术栈
 
