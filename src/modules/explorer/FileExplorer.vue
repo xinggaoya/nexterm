@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { basename } from "@/lib/path";
 import {
+  ArrowUndoOutline,
   ContractOutline,
   CopyOutline,
   DocumentOutline,
@@ -164,6 +165,8 @@ const transfer = useTreeTransfer({
 
 const {
   clipboard,
+  canUndoMove,
+  undoLastMove,
   transferBusy,
   transferProgress,
   transferPercent,
@@ -501,6 +504,18 @@ defineExpose({
           @click="beginCreate(rootPath, 'dir')"
         >
           <template #icon><NIcon :component="FolderOutline" /></template>
+        </NButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('explorer.undoMove')">
+        <NButton
+          size="tiny"
+          quaternary
+          data-undo-move
+          :aria-label="t('explorer.undoMove')"
+          :disabled="!canUndoMove"
+          @click="undoLastMove"
+        >
+          <template #icon><NIcon :component="ArrowUndoOutline" /></template>
         </NButton>
       </TooltipTitle>
       <TooltipTitle :label="expandedCount > 0 ? t('explorer.collapseAll') : t('explorer.expandAll')">

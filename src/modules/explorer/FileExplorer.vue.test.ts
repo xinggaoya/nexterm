@@ -1778,6 +1778,126 @@ describe("FileExplorer drag-to-transfer", () => {
     );
   });
 
+  it("移动后可以撤销一次（把文件搬回原处）", async () => {
+    // 夹具必须反映"移动之后"的真实状态，否则撤销会被正确地判成冲突
+    // （规划器看到 /repo/src/main.ts 还存在 —— 而它此时已经不在了）。
+    let moved = false;
+    vi.mocked(readFileTreeDir).mockImplementation(async (_ws, path) => {
+      if (path === "/repo") {
+        return moved
+          ? [
+              { name: "src", kind: "dir", size: 0, mtime: 1 },
+              { name: "main.ts", kind: "file", size: 100, mtime: 9 },
+            ]
+          : [{ name: "src", kind: "dir", size: 0, mtime: 1 }];
+      }
+      if (path === "/repo/src") {
+        return moved ? [] : [{ name: "main.ts", kind: "file", size: 100, mtime: 3 }];
+      }
+      return [];
+    });
+    mockWsNative.fsMoveMany
+      .mockImplementationOnce(async () => {
+        moved = true;
+        return {
+          completed: [{ from: "/repo/src/main.ts", to: "/repo/main.ts" }],
+          skipped: [],
+          failed: [],
+          crossDevice: [],
+          warnings: [],
+        };
+      })
+      .mockImplementationOnce(async () => {
+        moved = false;
+        return {
+          completed: [{ from: "/repo/main.ts", to: "/repo/src/main.ts" }],
+          skipped: [],
+          failed: [],
+          crossDevice: [],
+          warnings: [],
+        };
+      });
+    const wrapper = mountExplorer();
+    await flush();
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+
+    // 撤销按钮在还没有移动过之前是禁用的
+    expect(wrapper.find("[data-undo-move]").attributes("disabled")).toBeDefined();
+
+    dragRowTo(
+      wrapper,
+      "[data-explorer-row-path='/repo/src/main.ts']",
+      "[data-explorer-drop-root]",
+    );
+    // 按钮启用发生在 settleAfterTransfer 里，而 transferBusy 要到 finally
+    // 才清 —— 等它真的可点，否则点下去会被"搬运中"守卫吞掉。
+    await vi.waitFor(() =>
+      expect(wrapper.find("[data-undo-move]").attributes("disabled")).toBeUndefined(),
+    );
+
+    await wrapper.find("[data-undo-move]").trigger("click");
+    await flush();
+
+    // 撤销 = 一次新的 move，把落点搬回原目录
+    expect(mockWsNative.fsMoveMany).toHaveBeenLastCalledWith(
+      [{ from: "/repo/main.ts", to: "/repo/src/main.ts" }],
+      "rename",
+      expect.any(Number),
+    );
+  });
+
+  it("复制后不提供移动撤销（撤销到与当前状态无关的位置更困惑）", async () => {
+    mockWsNative.fsCopyMany.mockResolvedValue({
+      completed: [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+    dragRowTo(
+      wrapper,
+      "[data-explorer-row-path='/repo/README.md']",
+      "[data-explorer-row-path='/repo/src']",
+      { altKey: true },
+    );
+    await flush();
+
+    expect(wrapper.find("[data-undo-move]").attributes("disabled")).toBeDefined();
+  });
+
+  it("撤销是一次性的：撤销后按钮重新禁用", async () => {
+    mockWsNative.fsMoveMany.mockResolvedValue({
+      completed: [{ from: "/repo/src/main.ts", to: "/repo/main.ts" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    // 只断言按钮状态，不校验撤销本身发起的搬运（上面已覆盖），
+    // 因此不需要同步"移动后"的目录夹具。
+    const wrapper = mountExplorer();
+    await flush();
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+    dragRowTo(
+      wrapper,
+      "[data-explorer-row-path='/repo/src/main.ts']",
+      "[data-explorer-drop-root]",
+    );
+    await vi.waitFor(() =>
+      expect(wrapper.find("[data-undo-move]").attributes("disabled")).toBeUndefined(),
+    );
+    await wrapper.find("[data-undo-move]").trigger("click");
+    await flush();
+
+    expect(wrapper.find("[data-undo-move]").attributes("disabled")).toBeDefined();
+  });
+
   it("位移小于阈值只是普通点击，不触发搬运", async () => {
     const wrapper = mountExplorer();
     await flush();

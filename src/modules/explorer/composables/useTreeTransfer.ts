@@ -1,4 +1,4 @@
-import { basename } from "@/lib/path";
+import { basename, dirname } from "@/lib/path";
 import { useEventListener } from "@/lib/useEventListener";
 import { usePointerDragReorder } from "@/lib/usePointerDragReorder";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
@@ -96,6 +96,11 @@ const EDGE_SCROLL_ZONE = 28;
 const EDGE_SCROLL_SPEED = 12;
 
 /** 字节数的人类可读形式（与 i18n 的单位无关，数字部分仍走 i18n）。 */
+/** 路径的父目录（搬运层要用它算撤销的目标目录）。 */
+function dirnameOfPath(path: string): string {
+  return dirname(path);
+}
+
 function formatBytes(bytes: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"] as const;
   let value = bytes;
@@ -122,6 +127,13 @@ export function useTreeTransfer(options: TreeTransferOptions) {
    * 为 null 表示当前没有搬运。
    */
   const transferProgress = ref<ActiveTransfer | null>(null);
+  /**
+   * 最近一次**移动**的撤销栈（复制不可撤销 —— 复制出来的副本删掉就够了，
+   * 而移动一旦撤销就是"东西回不去了"，所以只记 move）。
+   * 栈深 1：VS Code 的文件移动撤销也是单步，避免"撤销到用户记不清的状态"。
+   */
+  const lastMoveUndo = ref<{ from: string; to: string } | null>(null);
+  const canUndoMove = computed(() => lastMoveUndo.value !== null);
   const pendingConflict = ref<ConflictRequest | null>(null);
   let pendingTransfer: PendingTransfer | null = null;
 
@@ -279,6 +291,20 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     }
   }
 
+  /**
+   * 撤销上一次移动：把落点搬回原处。
+   *
+   * 走的是同一套搬运链路，因此目标位置被占时自动改名而不是失败或覆盖，
+   * 同样有进度与取消，同样把已打开的 tab 跟着搬回去。
+   */
+  async function undoLastMove(): Promise<void> {
+    const last = lastMoveUndo.value;
+    if (!last) return;
+    lastMoveUndo.value = null;
+    await runTransfer([last.to], dirnameOfPath(last.from), "move");
+    notifySuccess(t("explorer.moveUndone", { name: basename(last.from) }));
+  }
+
   /** 用户点“取消”：协作式中止，后端在下一个检查点停下。 */
   function cancelTransfer(): void {
     const active = transferProgress.value;
@@ -335,9 +361,24 @@ export function useTreeTransfer(options: TreeTransferOptions) {
   ): Promise<void> {
     const moved = [...result.completed, ...result.crossDevice];
     if (pending.mode === "move") {
+      const undone: Array<{ from: string; to: string }> = [];
       for (const item of moved) {
-        if (item.from !== item.to) options.onPathRenamed(item.from, item.to);
+        if (item.from === item.to) continue;
+        options.onPathRenamed(item.from, item.to);
+        // 跨设备回落（copy + delete）也在列：它的"移动"同样是删除 + 重建，
+        // 撤销回去要同时考虑两边都能不存在。
+        undone.push({ from: item.from, to: item.to });
       }
+      if (undone.length === 1) {
+        lastMoveUndo.value = undone[0]!;
+      } else {
+        // 批量移动的撤销要么全做要么不做，逐条撤销会让用户算不清状态。
+        lastMoveUndo.value = null;
+      }
+    } else {
+      // 一次复制会作废上一次移动的撤销：用户看到"可撤销"却撤销到与当前
+      // 状态无关的位置，比不给撤销更困惑。
+      lastMoveUndo.value = null;
     }
     if (!options.expanded.has(pending.targetDir)) {
       options.expanded.add(pending.targetDir);
@@ -756,6 +797,8 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     clipboard,
     transferBusy,
     transferProgress,
+    canUndoMove,
+    undoLastMove,
     transferPercent,
     transferProgressLabel,
     cancelTransfer,
