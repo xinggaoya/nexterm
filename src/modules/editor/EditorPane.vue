@@ -62,7 +62,10 @@ import {
 } from "@/modules/lsp/lspExtensions";
 import { notifyInfo } from "@/modules/notifications/notificationCenter";
 import type { LspEditorHooks } from "./lib/editorPaneLsp";
-import { notifyLspDocumentChanged } from "@/modules/lsp/manager";
+import {
+  notifyLspDocumentChanged,
+  notifyLspDocumentSaved,
+} from "@/modules/lsp/manager";
 
 const props = defineProps<{
   path: string;
@@ -211,6 +214,11 @@ function editorBaseExtensions(): Extension[] {
         const next = update.state.doc.toString();
         buffer.value = next;
         setDirty(next !== savedContent.value);
+        // 每次编辑后都要把新文本推给 server：只靠"保存时推"的话，server
+        // 手里的文档会停留在上次保存的内容，补全/悬浮全在旧文本上算。
+        // 逐击键都发一次太吵（一次击键 = 一次全量文本 + 一次重新分析），
+        // 因此防抖到用户停手。
+        scheduleLspSync(next);
       }
       if (update.docChanged || update.selectionSet) {
         updateCursorInfo(update.state);
@@ -335,8 +343,11 @@ async function saveConfirmed() {
   lastSavedPath.value = props.path;
   lastSavedAt.value = Date.now();
   setDirty(false);
-  // LSP 模式下把保存后的全文推给 server，触发 publishDiagnostics 刷新。
-  if (view.value) notifyLspDocumentChanged(view.value, buffer.value);
+  // 先 flush 掉还挂在防抖窗口里的那次推送（否则会有两次内容相同的
+  // didChange），再发 didSave —— capabilities 里声明了 didSave: true，
+  // rust-analyzer / gopls 依赖它触发重算。
+  flushLspSync();
+  if (view.value) notifyLspDocumentSaved(view.value, buffer.value);
   emit("saved");
 }
 
@@ -462,6 +473,31 @@ watch(
   },
 );
 
+/**
+ * 把编辑内容防抖推给 LSP server。
+ *
+ * 停手 LSP_SYNC_DEBOUNCE_MS 后推一次全量文本。逐击键推送会让 server 每次都
+ * 重新分析整个文件（rust-analyzer 会做增量分析，但全量文本传输 + 重新
+ * 请求的开销仍在），而完全不发则 server 看到的是过期文档。
+ */
+const LSP_SYNC_DEBOUNCE_MS = 300;
+let lspSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleLspSync(text: string): void {
+  if (lspSyncTimer) clearTimeout(lspSyncTimer);
+  lspSyncTimer = setTimeout(() => {
+    lspSyncTimer = null;
+    if (view.value) notifyLspDocumentChanged(view.value, text);
+  }, LSP_SYNC_DEBOUNCE_MS);
+}
+
+function flushLspSync(): void {
+  if (!lspSyncTimer) return;
+  clearTimeout(lspSyncTimer);
+  lspSyncTimer = null;
+  if (view.value) notifyLspDocumentChanged(view.value, buffer.value);
+}
+
 const lspHooks: LspEditorHooks = {
   workspaceRoot: wsCtx.workspace.rootPath,
   getDocumentText: () => view.value?.state.doc.toString() ?? "",
@@ -491,6 +527,10 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  if (lspSyncTimer) {
+    clearTimeout(lspSyncTimer);
+    lspSyncTimer = null;
+  }
   if (view.value) {
     void attachOrDetachLsp(view.value, props.path, "builtin").catch(
       () => undefined,

@@ -38,6 +38,29 @@ vi.mock("./lib/documentService", () => ({
   writeEditorDocument: vi.fn(),
 }));
 
+// 观察推给 LSP server 的通知：didChange（编辑，防抖）/ didSave（保存）。
+// 用 partial mock 透传其余导出：editorPaneLsp 依赖 manager 里的
+// attach/detach，只留两个通知函数会让那些调用变成 undefined。
+const lspSync = vi.hoisted(() => ({
+  changed: [] as string[],
+  saved: [] as string[],
+}));
+vi.mock("@/modules/lsp/manager", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/modules/lsp/manager")>(
+      "@/modules/lsp/manager",
+    );
+  return {
+    ...actual,
+    notifyLspDocumentChanged: (_view: unknown, text: string) => {
+      lspSync.changed.push(text);
+    },
+    notifyLspDocumentSaved: (_view: unknown, text: string) => {
+      lspSync.saved.push(text);
+    },
+  };
+});
+
 // 语言解析走独立测试，这里 mock 成空扩展以隔离真实语言包的加载。
 vi.mock("./lib/languageResolver", () => ({
   isMarkdownPath: (path: string) => /\.(md|markdown|mdx)$/i.test(path),
@@ -71,6 +94,8 @@ describe("EditorPane.vue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dialogWarningMock.mockReset();
+    lspSync.changed.length = 0;
+    lspSync.saved.length = 0;
     vi.mocked(readEditorDocument).mockResolvedValue({
       status: "ready",
       content: "const value = 1;",
@@ -194,5 +219,88 @@ describe("EditorPane.vue", () => {
       "/repo/src/main.ts",
       "const local = true;",
     );
+  });
+  // ── LSP 同步：server 必须看到未保存的内容 ──────────────────────────
+  // 回归：此前 didChange 只在保存时发，server 手里的文档停留在上次保存的
+  // 文本 —— 补全/悬浮全在旧内容上算，新建未保存文件时 server 更是什么都
+  // 不知道。逐击键全量推送又会拖慢分析，所以防抖到停手。
+
+  it("编辑后把新内容防抖推给 LSP（不必等保存）", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(EditorPane, {
+      global: { plugins: [createPinia()] },
+      props: { path: "/repo/src/main.ts" },
+    });
+    await flush();
+    // 首帧未编辑 → 不该有任何推送
+    expect(lspSync.changed).toEqual([]);
+
+    wrapper.vm.setContentForTest("const value = 2;");
+    await nextTick();
+    // 仍在防抖窗口内
+    expect(lspSync.changed).toEqual([]);
+
+    vi.advanceTimersByTime(300);
+    expect(lspSync.changed).toEqual(["const value = 2;"]);
+    vi.useRealTimers();
+    wrapper.unmount();
+  });
+
+  it("连续编辑合并成最后一次推送", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(EditorPane, {
+      global: { plugins: [createPinia()] },
+      props: { path: "/repo/src/main.ts" },
+    });
+    await flush();
+
+    wrapper.vm.setContentForTest("a");
+    await nextTick();
+    vi.advanceTimersByTime(100);
+    wrapper.vm.setContentForTest("ab");
+    await nextTick();
+    vi.advanceTimersByTime(100);
+    wrapper.vm.setContentForTest("abc");
+    await nextTick();
+    vi.advanceTimersByTime(300);
+
+    expect(lspSync.changed).toEqual(["abc"]);
+    vi.useRealTimers();
+    wrapper.unmount();
+  });
+
+  it("保存时 flush 掉挂起的推送并发 didSave（不重复推两次相同内容）", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(EditorPane, {
+      global: { plugins: [createPinia()] },
+      props: { path: "/repo/src/main.ts" },
+    });
+    await flush();
+
+    wrapper.vm.setContentForTest("const value = 2;");
+    await nextTick();
+    await wrapper.vm.save();
+    // didChange 立刻发出（防抖窗口被 flush），didSave 也发出
+    expect(lspSync.changed).toEqual(["const value = 2;"]);
+    expect(lspSync.saved).toEqual(["const value = 2;"]);
+
+    // 防抖窗口过后不应再有第二次 didChange
+    vi.advanceTimersByTime(300);
+    expect(lspSync.changed).toEqual(["const value = 2;"]);
+    vi.useRealTimers();
+    wrapper.unmount();
+  });
+
+  it("没有编辑过就不发 didSave（不制造空通知）", async () => {
+    const wrapper = mount(EditorPane, {
+      global: { plugins: [createPinia()] },
+      props: { path: "/repo/src/main.ts" },
+    });
+    await flush();
+    // 未 dirty → save() 直接返回
+    await wrapper.vm.save();
+    expect(lspSync.saved).toEqual([]);
+    expect(lspSync.changed).toEqual([]);
+    wrapper.unmount();
   });
 });

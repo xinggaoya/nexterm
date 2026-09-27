@@ -107,6 +107,13 @@ export class EditorView {
   static contentAttributes = { of: () => [] };
 
   static instances = new Set<EditorView>();
+  /**
+   * DOM 事件处理器（LSP 的 Ctrl+点击跳转、编辑器自身的 mousedown 都用它）。
+   * 桩里只需要能被注册：真实行为由 jsdom 的真实事件流验证，桩只保证
+   * "组装扩展时不会因为缺这个静态方法而抛错"——缺了它整棵编辑器就挂不上，
+   * 后面的用例会全部退化成兜底路径而假绿。
+   */
+  static domEventHandlers = (_handlers: unknown): unknown[] => [];
 
   state: EditorState;
   hasFocus = false;
@@ -169,6 +176,8 @@ export const drawSelection = () => [];
 export const rectangularSelection = () => [];
 export const crosshairCursor = () => [];
 export const dropCursor = () => [];
+export const hoverTooltip = () => [];
+export const showPanel = () => {};
 export const ViewPlugin = {
   define: (create: unknown) => ({ __viewPlugin: create }),
 };

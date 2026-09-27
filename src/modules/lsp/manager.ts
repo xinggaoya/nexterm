@@ -52,8 +52,16 @@ export type LspEditorClient = {
   language: SupportedLanguage;
   /** 文档 URI（`file://` 形式），didOpen/didChange/publishDiagnostics 共用。 */
   documentUri: string;
-  /** 保存后调用：把当前全文作为 didChange 推给 server，触发重新诊断。 */
+  /**
+   * 编辑中调用：把当前全文作为 didChange 推给 server。
+   *
+   * **必须在每次编辑后调用**，否则 server 手里的文档会停留在 attach 那一刻
+   * （或上次保存时）的文本 —— 补全与悬浮会拿旧内容算，而且新建未保存的文件
+   * server 根本不知道内容。调用方负责防抖。
+   */
   notifyDocumentChanged: (text: string) => void;
+  /** 保存后调用：发 didSave（rust-analyzer / gopls 靠它触发重算）。 */
+  notifyDocumentSaved: (text: string) => void;
   /**
    * 请求补全。`position` 用 LSP 的 0-based line + UTF-16 character。
    * server 不可用 / 超时 / 协议不符时返回 null，调用方降级为无补全。
@@ -178,6 +186,8 @@ export async function attachLspToEditor(
   }
 
   let version = 1;
+  const bumpVersion = (): number => (version += 1);
+
   /**
    * 统一的请求入口：带上文档定位 + 超时，并给出“错了也不能拖死编辑器”的
    * 降级策略。补全失败就当没有补全，hover 失败就没有悬浮 —— 任何情况下
@@ -207,10 +217,17 @@ export async function attachLspToEditor(
     documentUri,
     connection,
     notifyDocumentChanged: (text) => {
-      version += 1;
       connection.sendNotification("textDocument/didChange", {
-        textDocument: { uri: documentUri, version },
+        textDocument: { uri: documentUri, version: bumpVersion() },
         contentChanges: [{ text }],
+      });
+    },
+    notifyDocumentSaved: (text) => {
+      // didSave 也要带最新文本：server 收到它时会用内存里的版本重算，
+      // 若与 didChange 的内容不一致就会出现"存了但诊断没更新"。
+      connection.sendNotification("textDocument/didSave", {
+        textDocument: { uri: documentUri, version: bumpVersion() },
+        text,
       });
     },
     requestCompletion: (position) =>
@@ -266,12 +283,24 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/** 保存后调用（仅当该编辑器处于 LSP 模式时有实际效果）。 */
+/**
+ * 编辑后调用（仅当该编辑器处于 LSP 模式时有实际效果）。
+ *
+ * 调用方负责防抖：逐击键推送会让 server 每次都重新分析整个文件。
+ */
 export function notifyLspDocumentChanged(
   editor: EditorView,
   text: string,
 ): void {
   clients.get(editor)?.notifyDocumentChanged(text);
+}
+
+/** 保存后调用：发 didSave。 */
+export function notifyLspDocumentSaved(
+  editor: EditorView,
+  text: string,
+): void {
+  clients.get(editor)?.notifyDocumentSaved(text);
 }
 
 export async function detachLspFromEditor(
