@@ -8,7 +8,15 @@ vi.mock("@/modules/explorer/FileExplorer.vue", () => ({
   default: {
     name: "FileExplorerStub",
     props: ["rootPath", "fsEvent", "gitDecorations"],
-    emits: ["open-file", "open-markdown-preview", "open-in-terminal", "open-search-result"],
+    emits: [
+      "open-file",
+      "open-file-preview",
+      "open-markdown-preview",
+      "open-in-terminal",
+      "open-search-result",
+      "path-renamed",
+      "path-deleted",
+    ],
     template: "<div class='file-explorer-stub' />",
   },
 }));
@@ -65,6 +73,23 @@ describe("WorkspacePanel.vue", () => {
 
     await explorer.vm.$emit("open-file", "/repo/a.ts", false);
     expect(wrapper.emitted("open-file")).toEqual([["/repo/a.ts", false]]);
+  });
+
+  // 回归：这三类事件曾经只声明不转发，导致重命名后编辑器标签指向失效路径、
+  // 图片预览从文件树完全打不开。
+  it("转发 open-file-preview / path-renamed / path-deleted", async () => {
+    const wrapper = mountPanel({ tab: "explorer" });
+    const explorer = wrapper.findComponent({ name: "FileExplorerStub" });
+
+    await explorer.vm.$emit("open-file-preview", "/repo/logo.png");
+    await explorer.vm.$emit("path-renamed", "/repo/a.ts", "/repo/b.ts");
+    await explorer.vm.$emit("path-deleted", "/repo/c.ts");
+
+    expect(wrapper.emitted("open-file-preview")).toEqual([["/repo/logo.png"]]);
+    expect(wrapper.emitted("path-renamed")).toEqual([
+      ["/repo/a.ts", "/repo/b.ts"],
+    ]);
+    expect(wrapper.emitted("path-deleted")).toEqual([["/repo/c.ts"]]);
   });
 
   it("更改标签的 branch-change / decorations-change 逐层上抛", async () => {

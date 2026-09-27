@@ -370,6 +370,8 @@ const enUS = {
     delete: "Delete",
     deleteFailed: "Delete failed",
     deleteSelected: "Delete {count} items",
+    deletedWithUnsaved: "Deleted, unsaved edits kept",
+    deletedWithUnsavedDetail: "{count} unsaved file(s) stay open — save to write them back to disk.",
     duplicate: "Duplicate",
     loading: "Loading...",
     newFile: "New file",

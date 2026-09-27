@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GitDecorationMap } from "@/modules/source-control";
 import type { WorkspaceEnv, WorkspaceInstance } from "@/modules/workspace";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import { t } from "@/modules/i18n/translate";
 
 // ── 重依赖 composable / store / 子组件全部桩化 ────────────────────────────
 
@@ -27,6 +28,12 @@ vi.mock("@/app/useWorkbenchCommands", () => ({
 vi.mock("@/lib/native", () => ({
   createNativeForEnv: vi.fn(() => ({ __nativeStub: true })),
 }));
+
+const notifications = vi.hoisted(() => ({
+  notifyInfo: vi.fn(),
+  notifyError: vi.fn(),
+}));
+vi.mock("@/modules/notifications/notificationCenter", () => notifications);
 
 vi.mock("naive-ui", async (importOriginal) => {
   const mod = await importOriginal<typeof import("naive-ui")>();
@@ -50,6 +57,14 @@ const tabsStore = {
   setLeafTitle: vi.fn(),
   updateTab: vi.fn(),
   newPreviewTab: vi.fn(),
+  newMarkdownTab: vi.fn(),
+  newFilePreviewTab: vi.fn(),
+  openFileTab: vi.fn(),
+  followPath: vi.fn(),
+  dropPath: vi.fn((): { closed: number; keptDirty: number } => ({
+    closed: 0,
+    keptDirty: 0,
+  })),
 };
 
 vi.mock("@/modules/tabs/tabsPinia", () => ({
@@ -103,6 +118,13 @@ vi.mock("./WorkspacePanel.vue", () => ({
       "resize-width",
       "branch-change",
       "decorations-change",
+      "open-file",
+      "open-file-preview",
+      "open-markdown-preview",
+      "open-in-terminal",
+      "open-search-result",
+      "path-renamed",
+      "path-deleted",
     ],
     template: "<aside class='panel-stub' />",
   },
@@ -257,6 +279,49 @@ describe("WorkspaceHost.vue", () => {
     const sidebar = wrapper.findComponent({ name: "SidebarStub" });
     await sidebar.vm.$emit("close-workspace", "w1");
     expect(wrapper.emitted("request-remove-workspace")).toEqual([["w1"]]);
+    wrapper.unmount();
+  });
+
+  // 回归：这三类事件曾经只声明不转发 —— 重命名后已打开的标签指向失效路径，
+  // 保存会把改动写到磁盘上不存在的文件；图片预览从文件树完全打不开。
+  it("文件重命名后让已打开的 tab 跟随新路径", async () => {
+    const wrapper = mountHost();
+    await nextTick();
+    await wrapper
+      .findComponent({ name: "WorkspacePanelStub" })
+      .vm.$emit("path-renamed", "/repo/a.ts", "/repo/lib/a.ts");
+    expect(tabsStore.followPath).toHaveBeenCalledWith(
+      "/repo/a.ts",
+      "/repo/lib/a.ts",
+      "w1",
+    );
+    wrapper.unmount();
+  });
+
+  it("文件删除后关掉对应 tab，并提示保留的未保存改动", async () => {
+    const wrapper = mountHost();
+    await nextTick();
+    const panel = wrapper.findComponent({ name: "WorkspacePanelStub" });
+    tabsStore.dropPath.mockReturnValueOnce({ closed: 1, keptDirty: 0 });
+    await panel.vm.$emit("path-deleted", "/repo/a.ts");
+    expect(tabsStore.dropPath).toHaveBeenCalledWith("/repo/a.ts", "w1");
+
+    tabsStore.dropPath.mockReturnValueOnce({ closed: 0, keptDirty: 1 });
+    await panel.vm.$emit("path-deleted", "/repo/dirty.ts");
+    const calls = notifications.notifyInfo.mock.calls;
+    const infoTitle = calls[calls.length - 1]?.[0];
+    expect(infoTitle).toBe(t("explorer.deletedWithUnsaved"));
+    wrapper.unmount();
+  });
+
+  it("图片预览走专用预览 tab，不进编辑器", async () => {
+    const wrapper = mountHost();
+    await nextTick();
+    await wrapper
+      .findComponent({ name: "WorkspacePanelStub" })
+      .vm.$emit("open-file-preview", "/repo/logo.png");
+    expect(tabsStore.newFilePreviewTab).toHaveBeenCalledWith("/repo/logo.png", "w1");
+    expect(tabsStore.openFileTab).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });

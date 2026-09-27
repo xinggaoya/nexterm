@@ -184,4 +184,165 @@ describe("tabs pinia store (workspace-scoped)", () => {
     expect(sessionFns.disposeWorkspaceSessions).toHaveBeenCalledWith(WORKSPACE_ID);
     expect(tabs.workspaceTabs(WORKSPACE_ID)).toEqual([]);
   });
+
+  // ── followPath: 重命名/搬运后让已打开的 tab 跟着走 ────────────────────
+  it("follows editor / markdown / file-preview tabs through a rename", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    const editorId = tabs.openFileTab("/repo/a.ts", WORKSPACE_ID, true)!;
+    tabs.newMarkdownTab("/repo/a.ts", WORKSPACE_ID);
+    tabs.newFilePreviewTab("/repo/a.png", WORKSPACE_ID);
+
+    const changed = tabs.followPath("/repo/a.ts", "/repo/lib/a.ts", WORKSPACE_ID);
+    tabs.followPath("/repo/a.png", "/repo/assets/a.png", WORKSPACE_ID);
+
+    expect(changed).toBe(2);
+    const byId = new Map(tabs.workspaceTabs(WORKSPACE_ID).map((t) => [t.id, t]));
+    expect(byId.get(editorId)).toMatchObject({
+      kind: "editor",
+      path: "/repo/lib/a.ts",
+      title: "a.ts",
+    });
+    expect(tabs.workspaceTabs(WORKSPACE_ID).find((t) => t.kind === "markdown")).toMatchObject({
+      path: "/repo/lib/a.ts",
+      title: "a.ts",
+    });
+    expect(tabs.workspaceTabs(WORKSPACE_ID).find((t) => t.kind === "file-preview")).toMatchObject({
+      path: "/repo/assets/a.png",
+      title: "a.png",
+    });
+  });
+
+  it("keeps the dirty flag and preview marker while following a rename", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    const id = tabs.openFileTab("/repo/dirty.ts", WORKSPACE_ID, true)!;
+    tabs.updateTab(id, { dirty: true }, WORKSPACE_ID);
+
+    tabs.followPath("/repo/dirty.ts", "/repo/renamed.ts", WORKSPACE_ID);
+
+    const tab = tabs.workspaceTabs(WORKSPACE_ID).find((t) => t.id === id);
+    expect(tab).toMatchObject({
+      kind: "editor",
+      path: "/repo/renamed.ts",
+      dirty: true,
+    });
+  });
+
+  it("repoints a git diff tab whose originalPath was renamed, keeping other originals", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    tabs.openGitDiffTab(
+      { repoRoot: "/repo", path: "/repo/a.ts", mode: "-", originalPath: null },
+      WORKSPACE_ID,
+    );
+    tabs.openGitDiffTab(
+      {
+        repoRoot: "/repo",
+        path: "/repo/b.ts",
+        mode: "-",
+        originalPath: "/repo/b.ts",
+      },
+      WORKSPACE_ID,
+    );
+
+    // 第一个 tab 的 originalPath 为 null，只有 path 命中 → 走 path 分支
+    expect(tabs.followPath("/repo/a.ts", "/repo/lib/a.ts", WORKSPACE_ID)).toBe(1);
+    // 第二个 tab 的 originalPath 命中 → 工作区侧新路径是 to
+    expect(tabs.followPath("/repo/b.ts", "/repo/lib/b.ts", WORKSPACE_ID)).toBe(1);
+
+    const diffs = tabs
+      .workspaceTabs(WORKSPACE_ID)
+      .filter((t) => t.kind === "git-diff");
+    expect(diffs[0]).toMatchObject({
+      path: "/repo/lib/a.ts",
+      title: "a.ts",
+      originalPath: null,
+    });
+    // originalPath 与 from 相同时随重命名失效 → 置 null
+    expect(diffs[1]).toMatchObject({
+      path: "/repo/lib/b.ts",
+      originalPath: null,
+    });
+  });
+
+  it("reports zero when no tab references the renamed path", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    tabs.openFileTab("/repo/a.ts", WORKSPACE_ID, true);
+
+    expect(tabs.followPath("/repo/other.ts", "/repo/x.ts", WORKSPACE_ID)).toBe(0);
+    expect(tabs.workspaceTabs(WORKSPACE_ID)).toHaveLength(2);
+  });
+
+  // ── dropPath: 删除后关掉指向它的 tab ─────────────────────────────────
+  it("closes tabs referencing a deleted file and re-points active id", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    const keptId = tabs.openFileTab("/repo/keep.ts", WORKSPACE_ID, true)!;
+    const goneId = tabs.openFileTab("/repo/gone.ts", WORKSPACE_ID, true)!;
+    expect(tabs.activeIdByWorkspace[WORKSPACE_ID]).toBe(goneId);
+
+    const result = tabs.dropPath("/repo/gone.ts", WORKSPACE_ID);
+
+    expect(result).toEqual({ closed: 1, keptDirty: 0 });
+    const remaining = tabs.workspaceTabs(WORKSPACE_ID);
+    expect(remaining.some((t) => t.id === keptId)).toBe(true);
+    expect(remaining.some((t) => t.id === goneId)).toBe(false);
+    expect(tabs.activeIdByWorkspace[WORKSPACE_ID]).toBe(keptId);
+  });
+
+  it("closes every tab under a deleted directory by path prefix", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    tabs.openFileTab("/repo/src/a.ts", WORKSPACE_ID, true);
+    tabs.newFilePreviewTab("/repo/src/img/logo.png", WORKSPACE_ID);
+    // 前缀相似但不同目录 —— 不能被误伤
+    tabs.openFileTab("/repo/src2/b.ts", WORKSPACE_ID, true);
+
+    const result = tabs.dropPath("/repo/src", WORKSPACE_ID);
+
+    expect(result.closed).toBe(2);
+    const paths = tabs
+      .workspaceTabs(WORKSPACE_ID)
+      .flatMap((t) => ("path" in t ? [t.path] : []));
+    expect(paths).toContain("/repo/src2/b.ts");
+    expect(paths.some((p) => p.startsWith("/repo/src/"))).toBe(false);
+  });
+
+  it("keeps unsaved editor tabs when the file is deleted", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    const dirtyId = tabs.openFileTab("/repo/dirty.ts", WORKSPACE_ID, true)!;
+    tabs.updateTab(dirtyId, { dirty: true }, WORKSPACE_ID);
+    const cleanId = tabs.openFileTab("/repo/clean.ts", WORKSPACE_ID, true)!;
+
+    const result = tabs.dropPath("/repo/dirty.ts", WORKSPACE_ID);
+
+    expect(result).toEqual({ closed: 0, keptDirty: 1 });
+    const kept = tabs.workspaceTabs(WORKSPACE_ID);
+    expect(kept.some((t) => t.id === dirtyId)).toBe(true);
+    expect(kept.some((t) => t.id === cleanId)).toBe(true);
+  });
+
+  it("drops without polluting the closed-tab undo stack", () => {
+    const tabs = useTabsPiniaStore();
+    tabs.initWorkspace(WORKSPACE_ID);
+    tabs.openFileTab("/repo/a.ts", WORKSPACE_ID, true);
+    tabs.newFilePreviewTab("/repo/a.png", WORKSPACE_ID);
+
+    // 文件已经不在磁盘上，放回关闭栈只会让「恢复关闭的标签」拿到 ENOENT。
+    const result = tabs.dropPath("/repo/a.ts", WORKSPACE_ID);
+    expect(result.closed).toBe(1);
+    expect(tabs.restoreClosed(WORKSPACE_ID)).toBeNull();
+
+    // 未被删除的 tab 不受影响
+    expect(tabs.dropPath("/repo/none.ts", WORKSPACE_ID)).toEqual({
+      closed: 0,
+      keptDirty: 0,
+    });
+    expect(
+      tabs.workspaceTabs(WORKSPACE_ID).some((t) => t.kind === "file-preview"),
+    ).toBe(true);
+  });
 });

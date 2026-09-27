@@ -29,8 +29,11 @@ const emit = defineEmits<{
   "update:tab": [tab: WorkspacePanelTab];
   "resize-width": [width: number];
   "open-file": [path: string, pin: boolean];
+  "open-file-preview": [path: string];
   "open-markdown-preview": [path: string];
   "open-in-terminal": [path: string];
+  "path-renamed": [from: string, to: string];
+  "path-deleted": [path: string];
   "open-search-result": [path: string, line: number];
   "open-source-diff": [
     input: {
@@ -167,9 +170,12 @@ defineExpose({
           :fs-event="fsEvent"
           :git-decorations="gitDecorations"
           @open-file="(path, pin) => emit('open-file', path, pin)"
+          @open-file-preview="(path) => emit('open-file-preview', path)"
           @open-markdown-preview="(path) => emit('open-markdown-preview', path)"
           @open-in-terminal="(path) => emit('open-in-terminal', path)"
           @open-search-result="(path, line) => emit('open-search-result', path, line)"
+          @path-renamed="(from, to) => emit('path-renamed', from, to)"
+          @path-deleted="(path) => emit('path-deleted', path)"
         />
       </div>
 

@@ -19,6 +19,7 @@ import {
   disposeSession as disposeTerminalSession,
   disposeWorkspaceSessions,
 } from "@/modules/terminal/lib/sessions";
+import { isDirtyEditorTab } from "./closeGuards";
 import { reorderTabs, type TabDropPlacement } from "./tabsReorder";
 import {
   MAX_PANES_PER_TAB,
@@ -612,6 +613,138 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     }
   }
 
+  /**
+   * 文件被重命名 / 移动（explorer 内联重命名、拖拽搬运、OS 内 mv）后，让
+   * 所有指向旧路径的 tab 跟随到新路径。
+   *
+   * 为什么必须跟：编辑器 tab 的身份就是 `path`，脏缓冲只活在内存里。不跟随
+   * 的话用户下一次保存会把内容写回已经不存在的旧路径 —— 静默丢改动。
+   *
+   * 覆盖范围：editor / markdown / file-preview 的 `path`；git-diff 与
+   * git-commit-file 额外把 `originalPath` 命中旧路径的也算进来（git 视角的
+   * "重命名"），此时工作区侧的新路径就是 `to`。标题一律按新 basename 重算。
+   *
+   * 返回被更新的 tab 数量，供调用方判断是否需要额外编排。
+   */
+  function followPath(from: string, to: string, workspaceId?: string): number {
+    const wsId = resolveWorkspaceId(workspaceId);
+    const list = workspaceTabs(wsId);
+    if (list.length === 0) return 0;
+    const newName = basename(to);
+    let changed = 0;
+    const next = list.map((tab): Tab => {
+      switch (tab.kind) {
+        case "editor":
+        case "markdown":
+        case "file-preview": {
+          if (tab.path !== from) return tab;
+          changed += 1;
+          // 脏缓冲与 preview 标记都原样保留 —— 只换身份，不改内容状态。
+          return { ...tab, path: to, title: newName };
+        }
+        case "git-diff": {
+          if (tab.path !== from && tab.originalPath !== from) return tab;
+          changed += 1;
+          return {
+            ...tab,
+            path: to,
+            title: newName,
+            // originalPath 只有在它自己也被搬走时才失效；否则保留，diff
+            // 仍需拿 HEAD 侧的旧名做对比。
+            originalPath: tab.originalPath === from ? null : tab.originalPath,
+          };
+        }
+        case "git-commit-file": {
+          if (tab.path !== from && tab.originalPath !== from) return tab;
+          changed += 1;
+          return {
+            ...tab,
+            path: to,
+            title: `${newName} @ ${tab.shortSha}`,
+            originalPath: tab.originalPath === from ? null : tab.originalPath,
+          };
+        }
+        default:
+          return tab;
+      }
+    });
+    if (changed === 0) return 0;
+    setWorkspaceTabs(wsId, next);
+    return changed;
+  }
+
+  /**
+   * 文件 / 目录被删除后关闭指向它的 tab。
+   *
+   * 与 `closeTab` 的三点差异：
+   * 1. 不受"至少留一个 tab"约束 —— 删到 0 个是合法结果（画布回到空态）。
+   * 2. 不进关闭栈 —— 恢复一个已删除的文件只会拿到 ENOENT。
+   * 3. **脏编辑器保留不关**：缓冲只存在内存里，静默关掉等于丢用户没保存的
+   *    内容。保留的 tab 之后保存会由 `fs_write_file` 把文件重新写出来。
+   *
+   * 目录删除按 `path + "/"` 前缀匹配，目录内的文件 tab 一并关闭。
+   */
+  function dropPath(
+    path: string,
+    workspaceId?: string,
+  ): { closed: number; keptDirty: number } {
+    const wsId = resolveWorkspaceId(workspaceId);
+    const list = workspaceTabs(wsId);
+    if (list.length === 0) return { closed: 0, keptDirty: 0 };
+    const isGone = (candidate: string): boolean =>
+      candidate === path || candidate.startsWith(`${path}/`);
+    const next: Tab[] = [];
+    let closed = 0;
+    let keptDirty = 0;
+    let firstDroppedIndex = -1;
+    for (let i = 0; i < list.length; i += 1) {
+      const tab = list[i]!;
+      if (!tabPathMatches(tab, isGone)) {
+        next.push(tab);
+        continue;
+      }
+      if (isDirtyEditorTab(tab)) {
+        next.push(tab);
+        keptDirty += 1;
+        continue;
+      }
+      if (firstDroppedIndex < 0) firstDroppedIndex = i;
+      closed += 1;
+    }
+    if (closed === 0) return { closed: 0, keptDirty };
+    setWorkspaceTabs(wsId, next);
+    const activeId = activeIdByWorkspace.value[wsId];
+    if (next.length === 0) {
+      setActiveIdRaw(wsId, 0);
+    } else if (!next.some((tab) => tab.id === activeId)) {
+      // 与 closeTab 同一取位逻辑：落到「第一个被删项的前一个」，
+      // 而不是列表首位，避免活动标签在多选删除后无端跳回最左。
+      const fallback = next[Math.min(firstDroppedIndex, next.length - 1)];
+      if (fallback) setActiveIdRaw(wsId, fallback.id);
+    }
+    return { closed, keptDirty };
+  }
+
+  function tabPathMatches(
+    tab: Tab,
+    isGone: (candidate: string) => boolean,
+  ): boolean {
+    switch (tab.kind) {
+      case "editor":
+      case "markdown":
+      case "file-preview":
+        return isGone(tab.path);
+      case "git-diff":
+      case "git-commit-file":
+        return (
+          isGone(tab.path) ||
+          (tab.originalPath !== null && isGone(tab.originalPath))
+        );
+      default:
+        return false;
+    }
+  }
+
   function closeOthers(id: number, workspaceId?: string): void {
     const wsId = resolveWorkspaceId(workspaceId);
     const list = workspaceTabs(wsId);
@@ -995,6 +1128,8 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     updateGitHistoryTabRef,
     openCommitFileDiffTab,
     closeTab,
+    followPath,
+    dropPath,
     closeOthers,
     closeToRight,
     closeAll,

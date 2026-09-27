@@ -23,7 +23,7 @@
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { NInput, useDialog } from "naive-ui";
 import { createNativeForEnv, type WorkspaceFsChangedEvent } from "@/lib/native";
-import { notifyError } from "@/modules/notifications/notificationCenter";
+import { notifyError, notifyInfo } from "@/modules/notifications/notificationCenter";
 import { workspaceScopeKey } from "@/modules/workspace";
 import type { GitDecorationMap } from "@/modules/source-control";
 import type {
@@ -187,6 +187,29 @@ function openFileTab(path: string, pin: boolean): void {
 
 function openMarkdownPreview(path: string): void {
   tabs.newMarkdownTab(path, props.workspace.id);
+}
+
+// 图片 / 大文件走专用预览 tab，不进 CodeMirror。
+function openFilePreview(path: string): void {
+  tabs.newFilePreviewTab(path, props.workspace.id);
+}
+
+// 文件在 explorer 里被重命名或拖拽搬走后，让已经打开的 tab 跟着走 ——
+// 否则脏缓冲下次保存会写回已经不存在的旧路径，静默丢改动。
+function onPathRenamed(from: string, to: string): void {
+  tabs.followPath(from, to, props.workspace.id);
+}
+
+function onPathDeleted(path: string): void {
+  const result = tabs.dropPath(path, props.workspace.id);
+  if (result.keptDirty > 0) {
+    // 脏缓冲不能跟着文件一起消失：保留 tab（再次保存会把文件写回来），
+    // 但用户得知道这个文件的磁盘副本已经没了。
+    notifyInfo(
+      t("explorer.deletedWithUnsaved"),
+      t("explorer.deletedWithUnsavedDetail", { count: result.keptDirty }),
+    );
+  }
 }
 
 function openSearchResult(path: string, line: number): void {
@@ -546,9 +569,12 @@ defineExpose({
           @update:tab="setPanelTab"
           @resize-width="persistPanelWidth"
           @open-file="openFileTab"
+          @open-file-preview="openFilePreview"
           @open-markdown-preview="openMarkdownPreview"
           @open-in-terminal="openTerminalInDir"
           @open-search-result="openSearchResult"
+          @path-renamed="onPathRenamed"
+          @path-deleted="onPathDeleted"
           @open-source-diff="openSourceDiff"
           @open-source-history="openSourceHistory"
           @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"

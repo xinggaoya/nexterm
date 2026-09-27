@@ -368,6 +368,8 @@ const zhCN = {
     delete: "删除",
     deleteFailed: "删除失败",
     deleteSelected: "删除 {count} 项",
+    deletedWithUnsaved: "已删除，未保存的改动已保留",
+    deletedWithUnsavedDetail: "{count} 个未保存的文件仍开着标签，保存即可重新写回磁盘。",
     duplicate: "复制副本",
     loading: "加载中...",
     newFile: "新建文件",
