@@ -7,6 +7,8 @@ import {
   findLeafTitle,
   hasLeaf,
   leafIds,
+  type PaneLeaf,
+  type PaneNode,
   nextLeafInDir,
   removeLeaf,
   setLeafCwd as setLeafCwdInTree,
@@ -19,6 +21,13 @@ import {
   disposeSession as disposeTerminalSession,
   disposeWorkspaceSessions,
 } from "@/modules/terminal/lib/sessions";
+import {
+  deserializeTerminals,
+  isWorthPersisting,
+  serializeTerminal,
+  type PersistedTerminalLayout,
+} from "@/modules/terminal/lib/sessionRestore";
+import { setTerminalLayout, loadTerminalLayout } from "@/modules/settings/store";
 import { isDirtyEditorTab } from "./closeGuards";
 import { reorderTabs, type TabDropPlacement } from "./tabsReorder";
 import {
@@ -179,6 +188,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
 
   function setWorkspaceTabs(workspaceId: string, next: Tab[]): void {
     tabsByWorkspace.value = { ...tabsByWorkspace.value, [workspaceId]: next };
+    schedulePersistLayout(workspaceId);
   }
 
   function setActiveIdRaw(workspaceId: string, id: number): void {
@@ -204,11 +214,149 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
   }
 
   /** Initialize a workspace's tab list if it doesn't already have one. */
+  /**
+   * 布局持久化。
+   *
+   * 写盘是防抖的：终端标题（OSC）高频变化，每次都写偏好会把 store 打满。
+   * 读盘只在 initWorkspace 的首次进入时做一次。
+   */
+  const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const LAYOUT_PERSIST_DEBOUNCE_MS = 500;
+
+  /**
+   * 已 hydrate 的布局快照。
+   *
+   * tabs store **不**依赖 preferencesPinia —— 标签恢复发生在 WorkspaceHost
+   * 挂载早期，那一刻偏好可能还没 hydrate，耦合它会带来初始化顺序问题。
+   * 快照由应用入口在 hydrate 之后注入，读不到时走磁盘的异步路径。
+   */
+  let terminalLayoutSnapshot: Record<string, PersistedTerminalLayout> = {};
+
+  function schedulePersistLayout(wsId: string): void {
+    const existing = persistTimers.get(wsId);
+    if (existing) clearTimeout(existing);
+    persistTimers.set(
+      wsId,
+      setTimeout(() => {
+        persistTimers.delete(wsId);
+        void persistLayoutNow(wsId);
+      }, LAYOUT_PERSIST_DEBOUNCE_MS),
+    );
+  }
+
+  async function persistLayoutNow(wsId: string): Promise<void> {
+    const list = (tabsByWorkspace.value[wsId] ?? []).filter(
+      (tab): tab is TerminalTab => tab.kind === "terminal",
+    );
+    if (!isWorthPersisting(list)) {
+      // 退化回"只有一个裸 shell"时不留痕：否则每次启动都会恢复出一个
+      // 看起来多余的空终端。
+      void setTerminalLayout(wsId, null);
+      return;
+    }
+    const terminals = list
+      .map((tab) => serializeTerminal(tab))
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    if (terminals.length === 0) return;
+    const activeIndex = list.findIndex(
+      (tab) => tab.id === activeIdByWorkspace.value[wsId],
+    );
+    const layout: PersistedTerminalLayout = {
+      terminals,
+      activeTerminalIndex: activeIndex < 0 ? 0 : activeIndex,
+    };
+    void setTerminalLayout(wsId, layout);
+  }
+
+  /** 按持久化的布局重建终端标签。返回是否真的恢复了。 */
+  /**
+   * 按持久化的布局重建终端标签。
+   *
+   * 同步版本先看内存里的偏好（已 hydrate 时的快路径），没有则返回 false，
+   * 由 `restoreLayoutAsync` 走磁盘。
+   */
+  function restoreLayout(wsId: string, fallbackCwd?: string): boolean {
+    const stored = terminalLayoutSnapshot[wsId];
+    if (!stored) return false;
+    return applyRestoredLayout(wsId, stored, fallbackCwd);
+  }
+
+  function applyRestoredLayout(
+    wsId: string,
+    stored: PersistedTerminalLayout,
+    fallbackCwd?: string,
+  ): boolean {
+    const { terminals, activeIndex } = deserializeTerminals(stored);
+    if (terminals.length === 0) return false;
+    const restored = terminals.map((entry) => {
+      const tabId = nextId.value++;
+      const leafIds = entry.leaves.map(() => nextId.value++);
+      // leaf 归属登记：漏掉的话后续 OSC 的 cwd/title 找不到 owner 会静默失效。
+      const root = buildTreeFromLeaves(entry.leaves, leafIds);
+      const activeLeafId =
+        leafIds[Math.min(entry.activeLeafIndex, leafIds.length - 1)]!;
+      for (const leafId of leafIds) registerLeaf(wsId, tabId, leafId);
+      const tab: TerminalTab = {
+        id: tabId,
+        workspaceId: wsId,
+        kind: "terminal",
+        title: entry.title,
+        ...(entry.leaves[0]?.cwd || fallbackCwd
+          ? { cwd: entry.leaves[0]?.cwd ?? fallbackCwd }
+          : {}),
+        paneTree: root,
+        activeLeafId,
+      };
+      return tab;
+    });
+    setWorkspaceTabs(wsId, restored);
+    setActiveIdRaw(wsId, restored[activeIndex]?.id ?? restored[0]!.id);
+    return true;
+  }
+
+  /**
+   * 重建一棵与 `leaves` 等长的左嵌套 split 树。
+   *
+   * 用左嵌套而不是恢复原始的左右/上下结构：分屏方向的"原样还原"对用户
+   * 几乎没有价值（他记得的是"我开过三个终端"），而左右结构在窄面板里更好读。
+   */
+  function buildTreeFromLeaves(
+    leaves: ReadonlyArray<{ cwd?: string; startupInput?: string }>,
+    leafIds: readonly number[],
+  ): PaneNode {
+    const leafAt = (index: number): PaneLeaf => ({
+      kind: "leaf",
+      id: leafIds[index]!,
+      ...(leaves[index]?.cwd ? { cwd: leaves[index]!.cwd } : {}),
+      ...(leaves[index]?.startupInput
+        ? { startupInput: leaves[index]!.startupInput }
+        : {}),
+    });
+    let node: PaneNode = leafAt(0);
+    for (let i = 1; i < leafIds.length; i += 1) {
+      node = {
+        kind: "split",
+        id: nextId.value++,
+        dir: "col",
+        children: [node, leafAt(i)],
+      };
+    }
+    return node;
+  }
+
   function initWorkspace(workspaceId: string, cwd?: string): void {
     if ((tabsByWorkspace.value[workspaceId]?.length ?? 0) > 0) return;
+    if (restoreLayout(workspaceId, cwd)) return;
     const tab = createInitialTab(workspaceId, cwd);
     setWorkspaceTabs(workspaceId, [tab]);
     setActiveIdRaw(workspaceId, tab.id);
+    // 内存里没有（偏好尚未 hydrate）时异步补一次：只有当这期间用户还没
+    // 自己开过标签才应用，否则会把用户刚建好的终端替换掉。
+    void loadTerminalLayout(workspaceId).then((stored) => {
+      if (!stored) return;
+      if ((tabsByWorkspace.value[workspaceId]?.length ?? 0) > 1) return;
+      applyRestoredLayout(workspaceId, stored, cwd);
+    }).catch(() => undefined);
   }
 
   /**
@@ -1130,6 +1278,11 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     initWorkspace,
     disposeWorkspaceTabs,
     workspaceTabs,
+    persistLayoutNow,
+    /** 注入已 hydrate 的布局快照（应用入口在偏好加载完成后调用）。 */
+    setTerminalLayoutSnapshot: (layouts: Record<string, PersistedTerminalLayout>) => {
+      terminalLayoutSnapshot = layouts ?? {};
+    },
     // mutations (workspaceId optional → active workspace)
     init,
     setActiveId,

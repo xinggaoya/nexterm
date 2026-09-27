@@ -18,6 +18,7 @@ import { onDeepLinkOpen, type DeepLinkOpenRequest } from "@/lib/native";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import {
   useWorkspaceRootPiniaStore,
   useWorkspacesPiniaStore,
@@ -46,7 +47,12 @@ app.use(i18n);
 // workspace set (no welcome-screen flash for returning users). These read
 // fast (Tauri store only) and are awaited to keep first paint correct.
 const prefs = usePreferencesPiniaStore(pinia);
-if (hasTauriInternals()) await prefs.hydrate();
+if (hasTauriInternals()) {
+  await prefs.hydrate();
+  // 终端布局快照在偏好 hydrate 之后注入 tabs store：标签恢复发生在
+  // WorkspaceHost 挂载早期，那一刻直接读盘会多一次异步往返。
+  useTabsPiniaStore().setTerminalLayoutSnapshot(prefs.terminalLayouts);
+}
 await applyLanguagePreference(prefs.language);
 await Promise.all([
   useWorkspacesPiniaStore(pinia).bootstrap(),

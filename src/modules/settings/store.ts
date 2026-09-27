@@ -3,6 +3,7 @@ import { LazyStore } from "@tauri-apps/plugin-store";
 import type { CommandId, KeybindingOverrides } from "@/modules/commands/types";
 import type { LanguagePref } from "@/modules/i18n/types";
 import type { WorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
+import type { PersistedTerminalLayout } from "@/modules/terminal/lib/sessionRestore";
 
 export type { LanguagePref } from "@/modules/i18n/types";
 
@@ -189,6 +190,12 @@ export type Preferences = {
   editorWordWrap: boolean;
   /** 保存时调用语言服务器的格式化。默认关 —— 改写用户代码必须由用户先同意。 */
   editorFormatOnSave: boolean;
+  /**
+   * 终端布局的持久化：workspaceId → 布局描述。
+   * 只恢复"意图"（打开过哪些终端、在哪个目录），不恢复运行中的进程 ——
+   * PTY 的内存缓冲无法序列化，假装能恢复只会更糟。
+   */
+  terminalLayouts: Record<string, PersistedTerminalLayout>;
   leftSidebar: LeftSidebarPref;
   panelVisibility: PanelVisibilityPref;
   /** v3.1 壳层:全局侧栏折叠为 52px 轨道。 */
@@ -458,6 +465,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   editorLspTypescriptMode: "builtin",
   editorWordWrap: false,
   editorFormatOnSave: false,
+  terminalLayouts: {},
   leftSidebar: {
     activity: "sourceControl",
     open: true,
@@ -715,6 +723,12 @@ export const PREF_SPECS: PrefSpecMap = {
     "editorFormatOnSave",
     boolPref(DEFAULT_PREFERENCES.editorFormatOnSave),
   ),
+  terminalLayouts: spec(
+    "terminalLayouts",
+    // 存储里可能被手改坏（或者来自旧版本）：形状不对的条目整份丢弃，
+    // 而不是让整个偏好加载失败 —— 偏好坏了不该让应用打不开。
+    (raw) => normalizeTerminalLayouts(raw),
+  ),
   leftSidebar: spec("layout.leftSidebar", normalizeLeftSidebarPref, normalizeLeftSidebarPref),
   panelVisibility: spec("layout.panels", normalizePanelVisibilityPref, normalizePanelVisibilityPref),
   sidebarCollapsed: spec("sidebarCollapsed", boolPref(DEFAULT_PREFERENCES.sidebarCollapsed)),
@@ -724,6 +738,61 @@ export const PREF_SPECS: PrefSpecMap = {
 };
 
 export type PrefKey = keyof Preferences;
+
+/**
+ * 读某个工作区的终端布局。
+ *
+ * 走 `loadPreferences()` 而不是缓存：终端标签恢复发生在 WorkspaceHost
+ * 挂载早期（那时 preferencesPinia 可能还没 hydrate），从源头读一次最可靠。
+ */
+export async function loadTerminalLayout(
+  workspaceId: string,
+): Promise<PersistedTerminalLayout | null> {
+  const preferences = await loadPreferences();
+  return preferences.terminalLayouts[workspaceId] ?? null;
+}
+
+/** 写某个工作区的终端布局；传 null 表示删除（退化成"只有一个裸 shell"）。 */
+export async function setTerminalLayout(
+  workspaceId: string,
+  layout: PersistedTerminalLayout | null,
+): Promise<void> {
+  const preferences = await loadPreferences();
+  const next = { ...preferences.terminalLayouts };
+  if (layout === null) delete next[workspaceId];
+  else next[workspaceId] = layout;
+  await setPreference("terminalLayouts", next);
+}
+
+/** 校验持久化的终端布局：形状不对就整份丢弃。 */
+export function normalizeTerminalLayouts(
+  raw: unknown,
+): Record<string, PersistedTerminalLayout> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, PersistedTerminalLayout> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!isPersistedTerminalLayout(value)) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+function isPersistedTerminalLayout(value: unknown): value is PersistedTerminalLayout {
+  if (!value || typeof value !== "object") return false;
+  const layout = value as Partial<PersistedTerminalLayout>;
+  if (typeof layout.activeTerminalIndex !== "number") return false;
+  if (!Array.isArray(layout.terminals)) return false;
+  return layout.terminals.every(
+    (entry) =>
+      entry &&
+      typeof entry.title === "string" &&
+      typeof entry.activeLeafPath === "string" &&
+      Array.isArray(entry.leaves) &&
+      entry.leaves.every(
+        (leaf) => leaf && typeof leaf.path === "string" && typeof leaf === "object",
+      ),
+  );
+}
 
 export async function loadPreferences(): Promise<Preferences> {
   const entries = await store.entries();
