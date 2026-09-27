@@ -60,6 +60,29 @@ pub(crate) fn init_git_repo(dir: &Path, branch: &str) {
         .status()
         .expect("git init");
     assert!(status.success(), "git init failed for {}", dir.display());
+
+    // 写 repo-local 的提交身份。上面两条命令靠 GIT_AUTHOR_*/GIT_COMMITTER_*
+    // 环境变量就够了，但**后续**的 git 调用（带注释标签的 `git tag -a`、
+    // stash 的 commit 等）走的是真实子进程，不会带上这里的 env —— 在没有
+    // 全局 ~/.gitconfig 的机器（CI runner）上会直接报
+    // "Committer identity unknown" 而失败，在开发者本机却能通过。
+    for (key, value) in [
+        ("user.name", "Nexterm Test"),
+        ("user.email", "test@nexterm.local"),
+        ("commit.gpgsign", "false"),
+        ("tag.gpgsign", "false"),
+    ] {
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .arg("config")
+            .arg(key)
+            .arg(value)
+            .status()
+            .expect("git config");
+        assert!(status.success(), "git config {key} failed for {}", dir.display());
+    }
+
     // Create an empty initial commit so the existing resolve path can read
     // HEAD; an empty repo makes `git rev-parse --abbrev-ref HEAD` fail
     // before any commits exist.
