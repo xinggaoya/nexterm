@@ -11,7 +11,10 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
 import { tabLabel } from "@/modules/tabs/tabLabel";
 import { t } from "@/modules/i18n/translate";
-import type { TabDropPlacement } from "@/modules/tabs/tabsReorder";
+import {
+  usePointerDragReorder,
+  type DragPlacement,
+} from "@/lib/usePointerDragReorder";
 import type { Tab, TerminalTab } from "@/modules/tabs/tabsTypes";
 import type { TabWidthMode } from "@/modules/settings/store";
 import TabContextMenu, {
@@ -30,7 +33,7 @@ const emit = defineEmits<{
   selectTab: [id: number];
   closeTab: [id: number];
   pinTab: [id: number];
-  reorderTab: [sourceId: number, targetId: number, placement: TabDropPlacement];
+  reorderTab: [sourceId: number, targetId: number, placement: DragPlacement];
   closeOthers: [id: number];
   closeToRight: [id: number];
   closeAll: [];
@@ -76,157 +79,46 @@ function tabWidthClass(): string {
     : "max-w-48 flex-[1_1_8rem]";
 }
 
-// ── Drag-to-reorder(移植自旧 TabBar)─────────────────────────────────
+// ── Drag-to-reorder ────────────────────────────────────────────────────
+// 手势本体在 `usePointerDragReorder`（与 Sidebar 的工作区重排、explorer
+// 的文件搬运共用）；这里只负责标签行的 selector、中线二分与 ghost 宽度。
 
-type PointerDragState = {
-  sourceId: number;
-  pointerId: number;
-  startX: number;
-  startY: number;
-  sourceWidth: number;
-  dragging: boolean;
-};
-
-type DragGhostState = {
-  tab: Tab;
-  x: number;
-  y: number;
-  width: number;
-};
-
-const DRAG_THRESHOLD = 6;
-const draggingTabId = ref<number | null>(null);
-const dropTarget = ref<{ id: number; placement: TabDropPlacement } | null>(null);
-const pointerDrag = ref<PointerDragState | null>(null);
-const suppressedClickTabId = ref<number | null>(null);
-const dragGhost = ref<DragGhostState | null>(null);
-
-function clearDragState() {
-  draggingTabId.value = null;
-  dropTarget.value = null;
-  pointerDrag.value = null;
-  dragGhost.value = null;
-  cachedDragTab = null;
-  cachedDragTabId = null;
-}
-
-function dropPlacementFromElement(clientX: number, el: HTMLElement): TabDropPlacement {
-  const rect = el.getBoundingClientRect();
-  return clientX < rect.left + rect.width / 2 ? "before" : "after";
-}
-
-function tabElementFromPoint(x: number, y: number): HTMLElement | null {
-  return document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-tab-id]") ?? null;
-}
-
-function tabIdFromElement(el: HTMLElement): number | null {
+function tabDragTarget(clientX: number, clientY: number) {
+  const el = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>("[data-tab-id]") ?? null;
+  if (!el) return null;
   const id = Number(el.dataset.tabId);
-  return Number.isFinite(id) ? id : null;
+  if (!Number.isFinite(id)) return null;
+  return { id, el };
 }
 
-function updateDropTarget(e: PointerEvent) {
-  const drag = pointerDrag.value;
-  if (!drag) return;
-  const el = tabElementFromPoint(e.clientX, e.clientY);
-  if (!el) { dropTarget.value = null; return; }
-  const id = tabIdFromElement(el);
-  if (id === null || id === drag.sourceId) { dropTarget.value = null; return; }
-  dropTarget.value = { id, placement: dropPlacementFromElement(e.clientX, el) };
+// ghost 宽度向可读区间钳制：固定宽度模式跟随设定值，自适应模式封顶 224px，
+// 否则超宽标签的 ghost 会遮住大半条会话条。
+function clampGhostWidth(measured: number): number {
+  if (props.widthMode !== "fixed") return Math.min(224, Math.max(104, measured));
+  const cap = Math.max(104, props.fixedWidth);
+  const floor = Math.min(104, props.fixedWidth);
+  return Math.min(cap, Math.max(floor, measured));
 }
 
-// 拖拽开始时缓存 sourceTab,避免 pointermove 每帧线性扫描 tabs。
-let cachedDragTab: Tab | null = null;
-let cachedDragTabId: number | null = null;
+const tabDrag = usePointerDragReorder<Tab, number>({
+  enabled: () => props.tabs.length > 1,
+  resolveTarget: (x, y) => tabDragTarget(x, y),
+  resolveGhost: (id) => props.tabs.find((tab) => tab.id === id) ?? null,
+  ghostWidth: clampGhostWidth,
+  onDrop: (sourceId, targetId, placement) =>
+    emit("reorderTab", sourceId, targetId, placement),
+});
 
-function updateDragGhost(e: PointerEvent, drag: PointerDragState) {
-  if (cachedDragTabId !== drag.sourceId) {
-    cachedDragTab = props.tabs.find((t) => t.id === drag.sourceId) ?? null;
-    cachedDragTabId = drag.sourceId;
-  }
-  const tab = cachedDragTab;
-  if (!tab) { dragGhost.value = null; return; }
-  dragGhost.value = { tab, x: e.clientX, y: e.clientY, width: drag.sourceWidth };
-}
-
-function handleWindowPointerMove(e: PointerEvent) {
-  const drag = pointerDrag.value;
-  if (!drag || drag.pointerId !== e.pointerId) return;
-  const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
-  if (!drag.dragging && dist < DRAG_THRESHOLD) return;
-  e.preventDefault();
-  if (!drag.dragging) {
-    drag.dragging = true;
-    draggingTabId.value = drag.sourceId;
-  }
-  updateDragGhost(e, drag);
-  updateDropTarget(e);
-}
-
-function handleWindowPointerUp(e: PointerEvent) {
-  const drag = pointerDrag.value;
-  if (!drag || drag.pointerId !== e.pointerId) return;
-  const sourceId = drag.sourceId;
-  if (drag.dragging) updateDropTarget(e);
-  const target = dropTarget.value;
-  removePointerListeners();
-  if (drag.dragging) {
-    e.preventDefault();
-    suppressedClickTabId.value = sourceId;
-    window.setTimeout(() => { if (suppressedClickTabId.value === sourceId) suppressedClickTabId.value = null; }, 400);
-    if (target && target.id !== sourceId) {
-      emit("reorderTab", sourceId, target.id, target.placement);
-    }
-  }
-  clearDragState();
-}
-
-function handleWindowPointerCancel(e: PointerEvent) {
-  const drag = pointerDrag.value;
-  if (!drag || drag.pointerId !== e.pointerId) return;
-  removePointerListeners();
-  clearDragState();
-}
-
-function addPointerListeners() {
-  window.addEventListener("pointermove", handleWindowPointerMove, { passive: false });
-  window.addEventListener("pointerup", handleWindowPointerUp);
-  window.addEventListener("pointercancel", handleWindowPointerCancel);
-}
-
-function removePointerListeners() {
-  window.removeEventListener("pointermove", handleWindowPointerMove);
-  window.removeEventListener("pointerup", handleWindowPointerUp);
-  window.removeEventListener("pointercancel", handleWindowPointerCancel);
-}
+const draggingTabId = tabDrag.draggingId;
+const dropTarget = tabDrag.dropTarget;
+const tabGhost = tabDrag.ghost;
 
 function handleTabPointerDown(e: PointerEvent, tab: Tab) {
-  if (props.tabs.length <= 1 || e.button !== 0) return;
-  e.stopPropagation();
-  removePointerListeners();
-  const actualWidth =
-    (e.currentTarget as HTMLElement)?.getBoundingClientRect().width ?? 160;
-  const ghostCap = props.widthMode === "fixed"
-    ? Math.max(104, props.fixedWidth)
-    : 224;
-  const ghostFloor = props.widthMode === "fixed"
-    ? Math.min(104, props.fixedWidth)
-    : 104;
-  pointerDrag.value = {
-    sourceId: tab.id,
-    pointerId: e.pointerId,
-    startX: e.clientX,
-    startY: e.clientY,
-    sourceWidth: Math.min(ghostCap, Math.max(ghostFloor, actualWidth)),
-    dragging: false,
-  };
-  addPointerListeners();
+  tabDrag.startDrag(e, tab.id);
 }
 
 function handleTabClick(tab: Tab) {
-  if (suppressedClickTabId.value === tab.id) {
-    suppressedClickTabId.value = null;
-    return;
-  }
+  if (tabDrag.consumeSuppressedClick(tab.id)) return;
   emit("selectTab", tab.id);
 }
 
@@ -327,8 +219,6 @@ onBeforeUnmount(() => {
   stripResizeObserver?.disconnect();
   stripResizeObserver = null;
 });
-
-onBeforeUnmount(removePointerListeners);
 </script>
 
 <template>
@@ -465,25 +355,25 @@ onBeforeUnmount(removePointerListeners);
 
     <!-- Drag ghost -->
     <div
-      v-if="dragGhost"
+      v-if="tabGhost"
       class="v2-glass-float will-change-transform pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-full px-3 text-[12px] opacity-95"
       :style="{
-        width: `${dragGhost.width}px`,
-        transform: `translate3d(${dragGhost.x}px, ${dragGhost.y}px, 0) translate(-50%, -50%)`,
+        width: `${tabGhost.width}px`,
+        transform: `translate3d(${tabGhost.x}px, ${tabGhost.y}px, 0) translate(-50%, -50%)`,
       }"
     >
       <img
-        v-if="dragGhost.tab.kind === 'editor' || dragGhost.tab.kind === 'markdown'"
-        :src="fileIconUrl(dragGhost.tab.title)"
+        v-if="tabGhost.item.kind === 'editor' || tabGhost.item.kind === 'markdown'"
+        :src="fileIconUrl(tabGhost.item.title)"
         alt=""
         class="size-3.5 shrink-0"
       />
       <NIcon
-        v-else-if="dragGhost.tab.kind === 'terminal'"
+        v-else-if="tabGhost.item.kind === 'terminal'"
         :component="DuplicateOutline"
         :size="12"
       />
-      <span class="min-w-0 truncate">{{ tabLabel(dragGhost.tab) }}</span>
+      <span class="min-w-0 truncate">{{ tabLabel(tabGhost.item) }}</span>
     </div>
 
     <TabContextMenu

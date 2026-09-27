@@ -11,12 +11,15 @@ import {
   TerminalOutline,
 } from "@vicons/ionicons5";
 import { NDropdown, NIcon, type DropdownOption } from "naive-ui";
-import { computed, h, onBeforeUnmount, ref, watch } from "vue";
+import { computed, h, ref, watch } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { fmtShortcut, IS_WINDOWS, MOD_KEY } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { t } from "@/modules/i18n/translate";
-import type { TabDropPlacement } from "@/modules/tabs/tabsReorder";
+import {
+  usePointerDragReorder,
+  type DragPlacement,
+} from "@/lib/usePointerDragReorder";
 import {
   LOCAL_WORKSPACE,
   type WorkspaceEnv,
@@ -40,7 +43,7 @@ const emit = defineEmits<{
   "close-workspace": [id: string];
   "add-workspace": [env: WorkspaceEnv];
   "open-workspace-in-new-window": [id: string];
-  "reorder-workspace": [sourceId: string, targetId: string, placement: TabDropPlacement];
+  "reorder-workspace": [sourceId: string, targetId: string, placement: DragPlacement];
   "open-settings": [];
   "open-command-palette": [];
   "toggle-collapse": [];
@@ -156,135 +159,52 @@ function rowTitle(workspace: WorkspaceInstance): string {
   return `${workspace.name}\n${workspace.rootPath}\n${envLabel}`;
 }
 
-// ── 拖拽排序(移植自 SessionStrip,竖向版)───────────────────────────────
+// ── 拖拽排序 ───────────────────────────────────────────────────────────
 // 展开行(data-workspace-row)与折叠芯片(data-workspace-chip)共用同一套
-// 指针手势:阈值判定 → ghost 跟随 → 目标行上/下半区决定 before/after。
+// 指针手势(阈值判定 → ghost 跟随 → 目标行上/下半区决定 before/after),
+// 手势本体在 `usePointerDragReorder`；这里只负责 selector、id 提取与
+// 竖向中线判定。
 
-type PointerDragState = {
-  sourceId: string;
-  pointerId: number;
-  startX: number;
-  startY: number;
-  dragging: boolean;
-};
-
-const DRAG_THRESHOLD = 6;
-const draggingWorkspaceId = ref<string | null>(null);
-const dropTarget = ref<{ id: string; placement: TabDropPlacement } | null>(null);
-const pointerDrag = ref<PointerDragState | null>(null);
-const suppressedClickWorkspaceId = ref<string | null>(null);
-const dragGhost = ref<{ workspace: WorkspaceInstance; x: number; y: number } | null>(null);
-
-function clearDragState() {
-  draggingWorkspaceId.value = null;
-  dropTarget.value = null;
-  pointerDrag.value = null;
-  dragGhost.value = null;
-}
-
-function workspaceElementFromPoint(x: number, y: number): HTMLElement | null {
-  return (
+function workspaceDragTarget(clientX: number, clientY: number) {
+  const el =
     document
-      .elementFromPoint(x, y)
-      ?.closest<HTMLElement>("[data-workspace-row],[data-workspace-chip]") ?? null
-  );
+      .elementFromPoint(clientX, clientY)
+      ?.closest<HTMLElement>("[data-workspace-row],[data-workspace-chip]") ?? null;
+  if (!el) return null;
+  const id = el.dataset.workspaceRow ?? el.dataset.workspaceChip;
+  if (!id) return null;
+  return { id, el };
 }
 
-function workspaceIdFromElement(el: HTMLElement): string | null {
-  return el.dataset.workspaceRow ?? el.dataset.workspaceChip ?? null;
-}
-
-function dropPlacementFromElement(clientY: number, el: HTMLElement): TabDropPlacement {
-  const rect = el.getBoundingClientRect();
+// 竖向列表：上/下半区决定 before/after。
+function verticalPlacementOf(
+  target: { el: HTMLElement },
+  _clientX: number,
+  clientY: number,
+): DragPlacement {
+  const rect = target.el.getBoundingClientRect();
   return clientY < rect.top + rect.height / 2 ? "before" : "after";
 }
 
-function updateDropTarget(e: PointerEvent) {
-  const drag = pointerDrag.value;
-  if (!drag) return;
-  const el = workspaceElementFromPoint(e.clientX, e.clientY);
-  if (!el) { dropTarget.value = null; return; }
-  const id = workspaceIdFromElement(el);
-  if (!id || id === drag.sourceId) { dropTarget.value = null; return; }
-  dropTarget.value = { id, placement: dropPlacementFromElement(e.clientY, el) };
-}
+const workspaceDrag = usePointerDragReorder<WorkspaceInstance, string>({
+  enabled: () => props.workspaces.length > 1,
+  resolveTarget: (x, y) => workspaceDragTarget(x, y),
+  placementOf: verticalPlacementOf,
+  resolveGhost: (id) => props.workspaces.find((ws) => ws.id === id) ?? null,
+  onDrop: (sourceId, targetId, placement) =>
+    emit("reorder-workspace", sourceId, targetId, placement),
+});
 
-function updateDragGhost(e: PointerEvent, drag: PointerDragState) {
-  const workspace = props.workspaces.find((ws) => ws.id === drag.sourceId);
-  if (!workspace) { dragGhost.value = null; return; }
-  dragGhost.value = { workspace, x: e.clientX, y: e.clientY };
-}
-
-function handleWindowPointerMove(e: PointerEvent) {
-  const drag = pointerDrag.value;
-  if (!drag || drag.pointerId !== e.pointerId) return;
-  const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
-  if (!drag.dragging && dist < DRAG_THRESHOLD) return;
-  e.preventDefault();
-  if (!drag.dragging) {
-    drag.dragging = true;
-    draggingWorkspaceId.value = drag.sourceId;
-  }
-  updateDragGhost(e, drag);
-  updateDropTarget(e);
-}
-
-function handleWindowPointerUp(e: PointerEvent) {
-  const drag = pointerDrag.value;
-  if (!drag || drag.pointerId !== e.pointerId) return;
-  const sourceId = drag.sourceId;
-  if (drag.dragging) updateDropTarget(e);
-  const target = dropTarget.value;
-  removePointerListeners();
-  if (drag.dragging) {
-    e.preventDefault();
-    suppressedClickWorkspaceId.value = sourceId;
-    window.setTimeout(() => { if (suppressedClickWorkspaceId.value === sourceId) suppressedClickWorkspaceId.value = null; }, 400);
-    if (target && target.id !== sourceId) {
-      emit("reorder-workspace", sourceId, target.id, target.placement);
-    }
-  }
-  clearDragState();
-}
-
-function handleWindowPointerCancel(e: PointerEvent) {
-  const drag = pointerDrag.value;
-  if (!drag || drag.pointerId !== e.pointerId) return;
-  removePointerListeners();
-  clearDragState();
-}
-
-function addPointerListeners() {
-  window.addEventListener("pointermove", handleWindowPointerMove, { passive: false });
-  window.addEventListener("pointerup", handleWindowPointerUp);
-  window.addEventListener("pointercancel", handleWindowPointerCancel);
-}
-
-function removePointerListeners() {
-  window.removeEventListener("pointermove", handleWindowPointerMove);
-  window.removeEventListener("pointerup", handleWindowPointerUp);
-  window.removeEventListener("pointercancel", handleWindowPointerCancel);
-}
+const draggingWorkspaceId = workspaceDrag.draggingId;
+const dropTarget = workspaceDrag.dropTarget;
+const dragGhostItem = workspaceDrag.ghost;
 
 function handleItemPointerDown(e: PointerEvent, workspace: WorkspaceInstance) {
-  if (props.workspaces.length <= 1 || e.button !== 0) return;
-  e.stopPropagation();
-  removePointerListeners();
-  pointerDrag.value = {
-    sourceId: workspace.id,
-    pointerId: e.pointerId,
-    startX: e.clientX,
-    startY: e.clientY,
-    dragging: false,
-  };
-  addPointerListeners();
+  workspaceDrag.startDrag(e, workspace.id);
 }
 
 function handleItemClick(workspace: WorkspaceInstance) {
-  if (suppressedClickWorkspaceId.value === workspace.id) {
-    suppressedClickWorkspaceId.value = null;
-    return;
-  }
+  if (workspaceDrag.consumeSuppressedClick(workspace.id)) return;
   emit("select-workspace", workspace.id);
 }
 
@@ -297,8 +217,6 @@ function dropIndicatorClass(id: string): string {
     ? "before:absolute before:inset-x-1.5 before:top-0 before:h-0.5 before:rounded-full before:bg-primary"
     : "before:absolute before:inset-x-1.5 before:bottom-0 before:h-0.5 before:rounded-full before:bg-primary";
 }
-
-onBeforeUnmount(removePointerListeners);
 
 // ── 工作区行右键菜单 ────────────────────────────────────────────────────
 const rowMenu = ref<{ x: number; y: number; id: string } | null>(null);
@@ -573,18 +491,18 @@ function handleRowMenuSelect(key: string | number) {
 
   <!-- 拖拽 ghost:折叠/展开态共用,monogram + 名称胶囊跟随指针 -->
   <div
-    v-if="dragGhost"
+    v-if="dragGhostItem"
     class="v2-glass-float will-change-transform pointer-events-none fixed z-50 flex h-8 items-center gap-2 rounded-lg px-1.5 text-[12.5px] opacity-95"
     :style="{
-      transform: `translate3d(${dragGhost.x}px, ${dragGhost.y}px, 0) translate(-50%, -50%)`,
+      transform: `translate3d(${dragGhostItem.x}px, ${dragGhostItem.y}px, 0) translate(-50%, -50%)`,
     }"
   >
     <span
       class="grid size-5 shrink-0 place-items-center rounded-md text-[11px] font-semibold"
-      :style="monogramStyle(dragGhost.workspace.id)"
+      :style="monogramStyle(dragGhostItem.item.id)"
     >
-      {{ monogramOf(dragGhost.workspace) }}
+      {{ monogramOf(dragGhostItem.item) }}
     </span>
-    <span class="min-w-0 max-w-40 truncate">{{ dragGhost.workspace.name }}</span>
+    <span class="min-w-0 max-w-40 truncate">{{ dragGhostItem.item.name }}</span>
   </div>
 </template>
