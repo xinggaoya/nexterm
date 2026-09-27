@@ -128,9 +128,9 @@ type AnyTarget =
   | typeof rootTarget
   | typeof multiTarget;
 
-function mountMenu(target: AnyTarget) {
+function mountMenu(target: AnyTarget, props: { canPaste?: boolean } = {}) {
   return mount(ExplorerContextMenu, {
-    props: { target, rootPath: "/repo" },
+    props: { target, rootPath: "/repo", canPaste: props.canPaste ?? true },
   });
 }
 

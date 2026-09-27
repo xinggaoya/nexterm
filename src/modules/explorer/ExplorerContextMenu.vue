@@ -28,6 +28,8 @@ export type ExplorerContextMenuTarget = {
 const props = defineProps<{
   target: ExplorerContextMenuTarget | null;
   rootPath: string | null;
+  /** 剪贴板非空时才允许“粘贴”。 */
+  canPaste: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -40,6 +42,9 @@ const emit = defineEmits<{
   create: [parentPath: string, kind: "file" | "dir"];
   rename: [path: string];
   deletePaths: [paths: string[]];
+  copy: [];
+  cut: [];
+  paste: [];
 }>();
 
 // NDropdown 默认监听 Escape（在 trigger=manual 下由 VueUse onKeyStroke
@@ -114,6 +119,17 @@ const menuOptions = computed<DropdownOption[]>(() => {
   // 多选：只保留对整批选择都有意义且安全的动作。
   if (isMultiSelection(target)) {
     opts.push({
+      key: "copy",
+      label: t("explorer.copy"),
+      render: renderOption("copy"),
+    });
+    opts.push({
+      key: "paste",
+      label: t("explorer.paste"),
+      disabled: !props.canPaste,
+      render: renderOption("paste"),
+    });
+    opts.push({
       key: "copy-path",
       label: t("explorer.copyPath"),
       render: renderOption("copy-path"),
@@ -168,6 +184,26 @@ const menuOptions = computed<DropdownOption[]>(() => {
     key: "duplicate",
     label: t("explorer.duplicate"),
     render: renderOption("duplicate"),
+  });
+
+  opts.push({ key: "divider-clip", type: "divider" });
+
+  opts.push({
+    key: "cut",
+    label: t("explorer.cut"),
+    render: renderOption("cut"),
+  });
+  opts.push({
+    key: "copy",
+    label: t("explorer.copy"),
+    render: renderOption("copy"),
+  });
+  opts.push({
+    key: "paste",
+    label: t("explorer.paste"),
+    // 根目录右键时也能粘（落到工作区根）。
+    disabled: !props.canPaste,
+    render: renderOption("paste"),
   });
 
   opts.push({ key: "divider-1", type: "divider" });
@@ -243,6 +279,19 @@ function handleSelect(key: string | number) {
       break;
     case "duplicate":
       emit("duplicate", target.path);
+      close();
+      break;
+    case "cut":
+      emit("cut");
+      close();
+      break;
+    case "copy":
+      emit("copy");
+      close();
+      break;
+    case "paste":
+      if (!props.canPaste) return;
+      emit("paste");
       close();
       break;
     case "new-file":

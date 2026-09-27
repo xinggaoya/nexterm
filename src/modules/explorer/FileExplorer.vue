@@ -45,6 +45,7 @@ import {
   type RejectReason,
   type TransferMode,
 } from "./lib/fileTransfer";
+import { useFileClipboard } from "./lib/fileClipboard";
 import {
   buildFileTreeRows,
   updateFileTreeRows,
@@ -107,6 +108,8 @@ const focusedPath = ref<string | null>(null);
 const anchorPath = ref<string | null>(null);
 const isSearchOpen = ref(false);
 const isSearchActive = ref(false);
+// 每个工作区的文件树各持一份剪贴板：组件卸载即丢弃，切工作区自然隔离。
+const clipboard = useFileClipboard();
 const mode = ref<"files" | "content">("files");
 const menu = ref<ExplorerContextMenuTarget | null>(null);
 let fsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1112,6 +1115,46 @@ const dragGhostLabel = computed(() => {
     : `${verb} ${names}`;
 });
 
+// ── 剪贴板动作（右键菜单与 Cmd+C/X/V 共用）───────────────────────
+
+/**
+ * 粘贴落点：选中恰好一个目录就用它，否则粘到工作区根。
+ *
+ * 不支持"粘到文件所在目录"这种隐式落点：用户往往刚点了右键，期望粘到
+ * 右键的那个目录；而选中多个项时“往哪粘”本来就没有唯一答案。
+ */
+function pasteTargetDir(): string | null {
+  if (!props.rootPath) return null;
+  const selected = orderedSelectedPaths();
+  if (selected.length !== 1) return props.rootPath;
+  const path = selected[0]!;
+  const state = nodes[dirname(path)];
+  const isDir = state?.status === "loaded"
+    ? state.entries.some((entry) => entry.name === basename(path) && entry.kind === "dir")
+    : false;
+  return isDir ? path : props.rootPath;
+}
+
+function copySelectionToClipboard(): void {
+  const paths = orderedSelectedPaths();
+  if (paths.length > 0) clipboard.setCopy(paths);
+}
+
+function cutSelectionToClipboard(): void {
+  const paths = orderedSelectedPaths();
+  if (paths.length > 0) clipboard.setCut(paths);
+}
+
+async function pasteFromClipboard(): Promise<void> {
+  const state = clipboard.state.value;
+  const target = pasteTargetDir();
+  if (!target || state.paths.length === 0) return;
+  const mode: TransferMode = state.mode === "cut" ? "move" : "copy";
+  await runTransfer(state.paths, target, mode);
+  // 剪切是一次性的：粘贴完成后剪贴板失效，避免重复剪切引发意外搬运。
+  if (state.mode === "cut") clipboard.clear();
+}
+
 function openTerminalInDir(path: string) {
   closeMenu();
   emit("openInTerminal", path);
@@ -1143,6 +1186,28 @@ function handleKeydown(event: KeyboardEvent) {
     event.preventDefault();
     selectAll();
     return;
+  }
+
+  // 文件树内的 Cmd+C / Cmd+X / Cmd+V 走文件剪贴板，不与文本剪贴板混用。
+  // 选中集为空时不接管：用户很可能是在编辑筛选框或只是没选中任何东西。
+  const mod = event.ctrlKey || event.metaKey;
+  if (mod) {
+    const key = event.key.toLowerCase();
+    if (key === "c" && selectedPaths.value.size > 0) {
+      event.preventDefault();
+      copySelectionToClipboard();
+      return;
+    }
+    if (key === "x" && selectedPaths.value.size > 0) {
+      event.preventDefault();
+      cutSelectionToClipboard();
+      return;
+    }
+    if (key === "v" && !clipboard.isEmpty.value) {
+      event.preventDefault();
+      void pasteFromClipboard();
+      return;
+    }
   }
 
   const currentIdx = focusedPath.value ? paths.indexOf(focusedPath.value) : -1;
@@ -1527,6 +1592,10 @@ defineExpose({
       @open-file-preview="(path) => emit('openFilePreview', path)"
       @open-in-terminal="openTerminalInDir"
       @duplicate="duplicatePath"
+      @copy="copySelectionToClipboard"
+      @cut="cutSelectionToClipboard"
+      @paste="pasteFromClipboard"
+      :can-paste="!clipboard.isEmpty.value"
       @create="beginCreate"
       @rename="beginRename"
       @delete-paths="deletePaths"

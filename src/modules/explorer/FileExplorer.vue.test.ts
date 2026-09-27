@@ -1626,3 +1626,164 @@ describe("FileExplorer drag-to-transfer", () => {
     expect(mockWsNative.fsCopyMany).not.toHaveBeenCalled();
   });
 });
+
+describe("FileExplorer clipboard (cut / copy / paste)", () => {
+  beforeEach(() => {
+    resetExplorerMocks();
+  });
+
+  /**
+   * 直接在元素上派发 KeyboardEvent：vue-test-utils 的 trigger 会尝试给
+   * 事件写 isTrusted（只读属性），传构造器实例会抛错。
+   */
+  function pressKey(
+    wrapper: ReturnType<typeof mount>,
+    key: string,
+    init: { ctrlKey?: boolean } = {},
+  ): void {
+    wrapper.find("[data-file-explorer]").element.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key,
+        ctrlKey: init.ctrlKey ?? true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }
+
+  it("Cmd+C 复制多选集，Cmd+V 粘到选中的目录（走复制）", async () => {
+    mockWsNative.fsCopyMany.mockResolvedValueOnce({
+      completed: [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+    // 多选两项
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("click", { ctrlKey: true });
+    await wrapper
+      .find("[data-explorer-row-path='/repo/package.json']")
+      .trigger("click", { ctrlKey: true });
+    await flush();
+
+    pressKey(wrapper, "c");
+    await flush();
+
+    // 粘贴落点 = 当前单选的目录
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+    pressKey(wrapper, "v");
+    await flush();
+
+    expect(mockWsNative.fsCopyMany).toHaveBeenCalledWith(
+      [
+        { from: "/repo/README.md", to: "/repo/src/README.md" },
+        { from: "/repo/package.json", to: "/repo/src/package.json" },
+      ],
+      "rename",
+    );
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+  });
+
+  it("Cmd+X 剪切后 Cmd+V 走移动", async () => {
+    mockWsNative.fsMoveMany.mockResolvedValueOnce({
+      completed: [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+    // 选中 src 目录作为粘贴落点
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("click");
+    await flush();
+    pressKey(wrapper, "x");
+    await flush();
+    // 重新选中 src 作为落点
+    await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+    pressKey(wrapper, "v");
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
+      [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
+      "rename",
+    );
+    expect(mockWsNative.fsCopyMany).not.toHaveBeenCalled();
+  });
+
+  it("剪切粘贴后剪贴板失效（一次性）", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("click");
+    await flush();
+    pressKey(wrapper, "x");
+    await flush();
+
+    pressKey(wrapper, "v");
+    await flush();
+    mockWsNative.fsMoveMany.mockClear();
+
+    // 剪贴板已空 → 再按 Cmd+V 不发任何请求
+    pressKey(wrapper, "v");
+    await flush();
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+  });
+
+  it("空剪贴板时 Cmd+V 不被文件树接管", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    pressKey(wrapper, "v");
+    await flush();
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+    expect(mockWsNative.fsCopyMany).not.toHaveBeenCalled();
+  });
+
+  it("右键菜单：剪切 / 复制 / 粘出三个动作", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+
+    for (const action of ["cut", "copy", "paste"]) {
+      expect(wrapper.find(`[data-menu-action='${action}']`).exists(), action).toBe(true);
+    }
+  });
+
+  it("右键菜单的粘贴按剪贴板状态启用", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("contextmenu", { clientX: 10, clientY: 20 });
+    await flush();
+    // 空剪贴板 → 根右键菜单的粘贴不可用
+    wrapper.unmount();
+
+    // 根目录菜单
+    const rootWrapper = mountExplorer();
+    await flush();
+    rootWrapper
+      .find("[data-explorer-drop-root]")
+      .element.dispatchEvent(
+        new MouseEvent("contextmenu", { clientX: 5, clientY: 5, bubbles: true }),
+      );
+    await flush();
+    expect(rootWrapper.find("[data-menu-action='paste']").exists()).toBe(true);
+  });
+});
