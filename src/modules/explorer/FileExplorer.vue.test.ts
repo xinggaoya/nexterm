@@ -164,6 +164,9 @@ function clickInBody(selector: string): void {
   el.click();
 }
 
+
+// 服务函数现在以 wsNative 为首参；断言时忽略该参数，只校验 path/showHidden。
+
 // NModal 走 teleport 挂到 body 且退出时保留 DOM，所以每个用例后必须清场，
 // 否则上一个用例的残留对话框会被下一个用例查到。
 const transferWrappers: Array<ReturnType<typeof mount>> = [];
@@ -173,54 +176,64 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-// 服务函数现在以 wsNative 为首参；断言时忽略该参数，只校验 path/showHidden。
+/** 挂载一个根为 /repo 的文件树，并登记到清场列表。 */
+function mountExplorer() {
+  const wrapper = mount(FileExplorer, {
+    global: { plugins: [createPinia()] },
+    props: { rootPath: "/repo" },
+  });
+  transferWrappers.push(wrapper);
+  return wrapper;
+}
+
 const WS_NATIVE_MATCHER = expect.anything();
+
+const EMPTY_TRANSFER_RESULT = {
+  completed: [],
+  skipped: [],
+  failed: [],
+  crossDevice: [],
+  warnings: [],
+};
+
+/** 两个 describe 共用的默认夹具：清 mock + 默认目录内容 + 搬运结果形状。 */
+function resetExplorerMocks(): void {
+  vi.clearAllMocks();
+  vi.mocked(readFileTreeDir).mockImplementation(async (_ws, path) => {
+    if (path === "/repo") {
+      return [
+        { name: "src", kind: "dir", size: 0, mtime: 1 },
+        { name: "README.md", kind: "file", size: 10, mtime: 2 },
+        { name: "package.json", kind: "file", size: 20, mtime: 4 },
+      ];
+    }
+    if (path === "/repo/src") {
+      return [{ name: "main.ts", kind: "file", size: 100, mtime: 3 }];
+    }
+    return [];
+  });
+  vi.mocked(createFileTreeEntry).mockResolvedValue(undefined);
+  vi.mocked(renameFileTreePath).mockResolvedValue(undefined);
+  vi.mocked(deleteFileTreePath).mockResolvedValue(undefined);
+  vi.mocked(copyFileTreePath).mockResolvedValue(undefined);
+  vi.mocked(searchFileTree).mockResolvedValue({
+    hits: [
+      {
+        path: "/repo/src/main.ts",
+        rel: "src/main.ts",
+        name: "main.ts",
+        is_dir: false,
+      },
+    ],
+    truncated: false,
+  });
+  mockWsNative.fsMoveMany.mockResolvedValue(EMPTY_TRANSFER_RESULT);
+  mockWsNative.fsCopyMany.mockResolvedValue(EMPTY_TRANSFER_RESULT);
+}
 
 describe("FileExplorer.vue", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(readFileTreeDir).mockImplementation(async (_ws, path) => {
-      if (path === "/repo") {
-        return [
-          { name: "src", kind: "dir", size: 0, mtime: 1 },
-          { name: "README.md", kind: "file", size: 10, mtime: 2 },
-          { name: "package.json", kind: "file", size: 20, mtime: 4 },
-        ];
-      }
-      if (path === "/repo/src") {
-        return [{ name: "main.ts", kind: "file", size: 100, mtime: 3 }];
-      }
-      return [];
-    });
-    vi.mocked(createFileTreeEntry).mockResolvedValue(undefined);
-    vi.mocked(renameFileTreePath).mockResolvedValue(undefined);
-    vi.mocked(deleteFileTreePath).mockResolvedValue(undefined);
-    vi.mocked(copyFileTreePath).mockResolvedValue(undefined);
-    vi.mocked(searchFileTree).mockResolvedValue({
-      hits: [
-        {
-          path: "/repo/src/main.ts",
-          rel: "src/main.ts",
-          name: "main.ts",
-          is_dir: false,
-        },
-      ],
-      truncated: false,
-    });
-    mockWsNative.fsMoveMany.mockResolvedValue({
-      completed: [],
-      skipped: [],
-      failed: [],
-      crossDevice: [],
-      warnings: [],
-    });
-    mockWsNative.fsCopyMany.mockResolvedValue({
-      completed: [],
-      skipped: [],
-      failed: [],
-      crossDevice: [],
-      warnings: [],
-    });
+    resetExplorerMocks();
   });
 
   afterEach(() => {
@@ -1133,15 +1146,6 @@ describe("FileExplorer.vue", () => {
   // /repo 根目录已加载：条目为 src(dir) / README.md / package.json，
   // 因此目标为 /repo 时 exists 探测是真实生效的。
 
-  function mountExplorer() {
-    const wrapper = mount(FileExplorer, {
-      global: { plugins: [createPinia()] },
-      props: { rootPath: "/repo" },
-    });
-    transferWrappers.push(wrapper);
-    return wrapper;
-  }
-
   it("无冲突时直接搬运，并让已打开的 tab 跟随新路径", async () => {
     mockWsNative.fsMoveMany.mockResolvedValueOnce({
       completed: [{ from: "/repo/src/main.ts", to: "/repo/main.ts" }],
@@ -1343,5 +1347,282 @@ describe("FileExplorer.vue", () => {
     await flush();
 
     expect(mockWsNative.fsMoveMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── 文件树拖拽搬运 ─────────────────────────────────────────────────
+//
+// jsdom 没有 document.elementFromPoint，用真实行元素做命中目标：
+// 组件的 treeDropTarget 会对它 closest() 定位行与拖放根容器。
+
+const elementFromPointMock = vi.fn((): Element | null => null);
+const originalElementFromPoint = document.elementFromPoint;
+
+/**
+ * 让 elementFromPoint 命中某个选择器对应的元素。
+ * 必须从 wrapper 取元素：这里的 mount 没有 attachTo，DOM 在游离节点上，
+ * document.querySelector 查不到（且会误命中其它用例遗留的树）。
+ */
+function pointAt(wrapper: ReturnType<typeof mount>, selector: string): void {
+  const el = wrapper.find(selector).element;
+  elementFromPointMock.mockImplementation(() => el);
+}
+
+function pointNowhere(): void {
+  elementFromPointMock.mockImplementation(() => null);
+}
+
+/** 起手 → 越过阈值 → 悬停落点 → 松手。 */
+function dragRowTo(
+  wrapper: ReturnType<typeof mount>,
+  sourceSelector: string,
+  targetSelector: string | null,
+  options: { altKey?: boolean } = {},
+) {
+  const source = wrapper.find(sourceSelector);
+  source.element.dispatchEvent(
+    new MouseEvent("pointerdown", {
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+      altKey: options.altKey ?? false,
+      bubbles: true,
+    }),
+  );
+  targetSelector === null ? pointNowhere() : pointAt(wrapper, targetSelector);
+  window.dispatchEvent(new MouseEvent("pointermove", { clientX: 60, clientY: 60, bubbles: true }));
+  window.dispatchEvent(new MouseEvent("pointerup", { clientX: 60, clientY: 60, bubbles: true }));
+}
+
+function moveOnly(x = 60, y = 60) {
+  window.dispatchEvent(new MouseEvent("pointermove", { clientX: x, clientY: y, bubbles: true }));
+}
+
+describe("FileExplorer drag-to-transfer", () => {
+  beforeEach(() => {
+    resetExplorerMocks();
+    document.elementFromPoint =
+      elementFromPointMock as unknown as typeof document.elementFromPoint;
+    elementFromPointMock.mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    document.elementFromPoint = originalElementFromPoint;
+  });
+
+  it("拖文件到目录行上 → 搬运（移动）", async () => {
+    mockWsNative.fsMoveMany.mockResolvedValueOnce({
+      completed: [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+
+    dragRowTo(
+      wrapper,
+      "[data-explorer-row-path='/repo/README.md']",
+      "[data-explorer-row-path='/repo/src']",
+    );
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
+      [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
+      "rename",
+    );
+  });
+
+  it("按住 Alt 拖拽 → 走复制", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+
+    dragRowTo(
+      wrapper,
+      "[data-explorer-row-path='/repo/README.md']",
+      "[data-explorer-row-path='/repo/src']",
+      { altKey: true },
+    );
+    await flush();
+
+    expect(mockWsNative.fsCopyMany).toHaveBeenCalledWith(
+      [{ from: "/repo/README.md", to: "/repo/src/README.md" }],
+      "rename",
+    );
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+  });
+
+  it("拖拽期间松开 Alt 会在松手前切回移动", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    const source = wrapper.find("[data-explorer-row-path='/repo/README.md']");
+    source.element.dispatchEvent(
+      new MouseEvent("pointerdown", {
+        button: 0,
+        clientX: 10,
+        clientY: 10,
+        altKey: true,
+        bubbles: true,
+      }),
+    );
+    pointAt(wrapper, "[data-explorer-row-path='/repo/src']");
+    moveOnly();
+    // 拖拽中松开 Alt
+    window.dispatchEvent(new KeyboardEvent("keyup", { altKey: false, bubbles: true }));
+    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 60, clientY: 60, bubbles: true }));
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledTimes(1);
+    expect(mockWsNative.fsCopyMany).not.toHaveBeenCalled();
+  });
+
+  it("拖多选时整批一起搬", async () => {
+    mockWsNative.fsMoveMany.mockResolvedValue({
+      completed: [],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+    // ctrl 点选 README.md 与 package.json
+    await wrapper
+      .find("[data-explorer-row-path='/repo/README.md']")
+      .trigger("click", { ctrlKey: true });
+    await wrapper
+      .find("[data-explorer-row-path='/repo/package.json']")
+      .trigger("click", { ctrlKey: true });
+    await flush();
+
+    dragRowTo(
+      wrapper,
+      "[data-explorer-row-path='/repo/README.md']",
+      "[data-explorer-row-path='/repo/src']",
+    );
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).toHaveBeenCalledWith(
+      [
+        { from: "/repo/README.md", to: "/repo/src/README.md" },
+        { from: "/repo/package.json", to: "/repo/src/package.json" },
+      ],
+      "rename",
+    );
+  });
+
+  it("文件行不接收落点（不能把东西放进文件里）", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+
+    dragRowTo(
+      wrapper,
+      "[data-explorer-row-path='/repo/README.md']",
+      "[data-explorer-row-path='/repo/package.json']",
+    );
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+    expect(mockWsNative.fsCopyMany).not.toHaveBeenCalled();
+  });
+
+  it("拖进自身子目录：非法落点，松手不执行", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+
+    // /repo/src 是目录；把它拖到它自己的子目录需要该子目录在树上。
+    vi.mocked(readFileTreeDir).mockImplementation(async (_ws, path) => {
+      if (path === "/repo") {
+        return [
+          { name: "src", kind: "dir", size: 0, mtime: 1 },
+          { name: "README.md", kind: "file", size: 10, mtime: 2 },
+        ];
+      }
+      if (path === "/repo/src") {
+        return [{ name: "deep", kind: "dir", size: 0, mtime: 3 }];
+      }
+      return [];
+    });
+    const wrapper2 = mountExplorer();
+    await flush();
+    await wrapper2.find("[data-explorer-row-path='/repo/src']").trigger("click");
+    await flush();
+
+    dragRowTo(
+      wrapper2,
+      "[data-explorer-row-path='/repo/src']",
+      "[data-explorer-row-path='/repo/src/deep']",
+    );
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("拖到树的空白区域 = 搬到工作区根", async () => {
+    mockWsNative.fsMoveMany.mockResolvedValueOnce({
+      completed: [{ from: "/repo/README.md", to: "/repo/README.md" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+
+    // 命中树容器（data-explorer-drop-root）但不是任何行。
+    pointAt(wrapper, "[data-explorer-drop-root]");
+    const source = wrapper.find("[data-explorer-row-path='/repo/README.md']");
+    source.element.dispatchEvent(
+      new MouseEvent("pointerdown", { button: 0, clientX: 10, clientY: 10, bubbles: true }),
+    );
+    moveOnly();
+    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 60, clientY: 60, bubbles: true }));
+    await flush();
+
+    // 源本来就在根下 → 守卫拦下（不重复搬到自己脚下）
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+  });
+
+  it("拖拽结束后吃掉紧跟的 click，不改变选择", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+
+    const source = wrapper.find("[data-explorer-row-path='/repo/README.md']");
+    source.element.dispatchEvent(
+      new MouseEvent("pointerdown", { button: 0, clientX: 10, clientY: 10, bubbles: true }),
+    );
+    pointAt(wrapper, "[data-explorer-row-path='/repo/src']");
+    moveOnly();
+    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 60, clientY: 60, bubbles: true }));
+    await flush();
+
+    // 拖拽前 src 未选中；松手后的 click 若生效会把 src 选上
+    await source.trigger("click");
+    await flush();
+    expect(
+      wrapper
+        .findAll("[data-explorer-row-path]")
+        .map((row) => row.attributes("aria-pressed"))
+        .filter((value) => value === "true"),
+    ).toEqual([]);
+  });
+
+  it("位移小于阈值只是普通点击，不触发搬运", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+
+    const source = wrapper.find("[data-explorer-row-path='/repo/README.md']");
+    source.element.dispatchEvent(
+      new MouseEvent("pointerdown", { button: 0, clientX: 10, clientY: 10, bubbles: true }),
+    );
+    pointAt(wrapper, "[data-explorer-row-path='/repo/src']");
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 12, clientY: 11, bubbles: true }));
+    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 12, clientY: 11, bubbles: true }));
+    await flush();
+
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+    expect(mockWsNative.fsCopyMany).not.toHaveBeenCalled();
   });
 });

@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { useVirtualWindow } from "@/lib/useVirtualWindow";
+import { useEventListener } from "@/lib/useEventListener";
+import { usePointerDragReorder } from "@/lib/usePointerDragReorder";
 import { basename } from "@/lib/path";
 import { normalizeErrorMessage } from "@/lib/error";
 import {
+  CopyOutline,
   DocumentOutline,
   FolderOutline,
+  MoveOutline,
   RefreshOutline,
   SearchOutline,
 } from "@vicons/ionicons5";
@@ -32,6 +36,7 @@ import FileTransferConflictDialog, {
   type ConflictRequest,
 } from "./FileTransferConflictDialog.vue";
 import {
+  canTransferInto,
   describeRejections,
   isInsideDir,
   planTransfer,
@@ -880,6 +885,233 @@ async function settleAfterTransfer(
   for (const dir of dirs) void loadChildren(dir, { silent: true });
 }
 
+// ── 文件树拖拽搬运 ───────────────────────────────────────────────────
+//
+// 手势用 `usePointerDragReorder`（与标签重排、工作区重排同一份实现）：阈值
+// 判定 / ghost / click 抑制 / window 监听成对移除都不在这里重写。
+//
+// 交互按 VS Code 习惯：
+// - 默认**移动**，按住 Alt（或 Ctrl）拖时变**复制**，ghost 文案实时跟着变；
+// - 拖拽源 = 当前多选集（拖其中一行就拖走整批），未选中则只拖该行；
+// - 落点是**目录**（或树的空白区 = 工作区根），不是文件；
+// - 悬停目录 600ms 自动展开，拖到边缘自动滚动。
+// drop-between（带缩进的插入线）是另一个独立交互，不与本阶段混在一起。
+
+type DragGhost = { path: string; count: number; names: string[] };
+
+/** 拖拽中的源集（多选时是整批）。ghost / 落点判定 / 执行都读它。 */
+const dragSources = ref<readonly string[]>([]);
+/** 移动 / 复制随修饰键实时切换。 */
+const dragMode = ref<TransferMode>("move");
+/** 当前落点目录；null 表示无落点。 */
+const dropTargetDir = ref<string | null>(null);
+const dropAllowed = ref(false);
+
+/** 拖拽不可用（无根目录 / 搜索模式 / 内联重命名中 / 上一次搬运未结束）。 */
+function dragDisabled(): boolean {
+  if (!props.rootPath || transferBusy.value) return true;
+  if (renaming.value || pendingCreate.value) return true;
+  // 搜索与内容搜索模式下没有可拖的树行。
+  return isSearchOpen.value || isSearchActive.value || mode.value !== "files";
+}
+
+/** 命中测试：目录行 = 放入该目录；树的空白区 = 放入工作区根。文件行不接收。 */
+function treeDropTarget(clientX: number, clientY: number) {
+  const hit = document.elementFromPoint(clientX, clientY);
+  if (!hit) return null;
+  const row = hit.closest<HTMLElement>("[data-explorer-row-path]");
+  if (row) {
+    if (row.dataset.isDir !== "true") return null;
+    const path = row.dataset.explorerRowPath;
+    return path ? { id: path, el: row } : null;
+  }
+  // 没命中行：落在树容器内（行间缝隙、行下方空白）就当工作区根。
+  const container = hit.closest<HTMLElement>("[data-explorer-drop-root]");
+  if (container && props.rootPath) return { id: props.rootPath, el: container };
+  return null;
+}
+
+const treeDrag = usePointerDragReorder<DragGhost, string>({
+  enabled: () => !dragDisabled(),
+  resolveTarget: (x, y) => treeDropTarget(x, y),
+  // 本阶段只有 drop-into 语义，before/after 不参与判断；固定返回 after
+  // 以避免默认的水平中线二分给出一个无意义的方向。
+  placementOf: () => "after",
+  resolveGhost: (path) => ({
+    path,
+    count: dragSources.value.length,
+    names: dragSources.value.map((source) => basename(source)).slice(0, 3),
+  }),
+  onDraggingChange: (dragging) => {
+    if (dragging) return;
+    // 拖拽结束（或取消）：清掉所有拖拽态，避免 ghost / 落点高亮残留。
+    dropTargetDir.value = null;
+    dropAllowed.value = false;
+    cancelHoverExpand();
+  },
+  onDrop: (sourceId, targetId) => {
+    const sources = dragSources.value.length > 0 ? dragSources.value : [sourceId];
+    void runTransfer(sources, targetId, dragMode.value);
+  },
+});
+
+const dragGhost = treeDrag.ghost;
+
+function onEntryPointerDown(row: EntryRow, event: PointerEvent) {
+  // 拖拽源 = 多选集：拖其中一行就拖走整批（VS Code 行为）。非多选时只拖它。
+  const selected = orderedSelectedPaths();
+  dragSources.value =
+    selected.includes(row.path) && selected.length > 1 ? selected : [row.path];
+  if (event.altKey || event.ctrlKey) dragMode.value = "copy";
+  // 不在这里改选择集：真正拖起来时 click 会被 consumeSuppressedClick 吃掉，
+  // 而没拖起来的普通点击应当走 handleEntryClick 的原有语义。
+  treeDrag.startDrag(event, row.path);
+}
+
+// 拖拽结束后紧跟的 click 要被吃掉，否则松手会先落 drop 再触发选中。
+function handleEntryClickForDrag(row: EntryRow, event: MouseEvent) {
+  if (treeDrag.consumeSuppressedClick(row.path)) return;
+  handleEntryClick(row, event);
+}
+
+// ── 修饰键监听：Alt / Ctrl 在拖拽过程中实时切换移动与复制 ────────────
+//
+// 靠 keydown/keyup 而不是 pointermove 读 event.altKey：修饰键的按下会
+// 产生独立的键盘事件，比在每一帧里重新取 modifier 状态可靠。
+function syncDragMode(event: KeyboardEvent) {
+  if (treeDrag.draggingId.value === null) return;
+  dragMode.value = event.altKey || event.ctrlKey ? "copy" : "move";
+}
+
+useEventListener(window, "keydown", syncDragMode);
+useEventListener(window, "keyup", syncDragMode);
+
+watch(
+  () => treeDrag.dropTarget.value?.id ?? null,
+  (target) => {
+    dropTargetDir.value = target;
+    dropAllowed.value = target
+      ? canTransferInto(dragSources.value, target, dragMode.value)
+      : false;
+    scheduleHoverExpand(target);
+  },
+);
+
+watch(dragMode, () => {
+  const target = dropTargetDir.value;
+  dropAllowed.value = target
+    ? canTransferInto(dragSources.value, target, dragMode.value)
+    : false;
+});
+
+// ── 悬停自动展开：拖到折叠目录上停 600ms 就展开，方便长路径嵌套 ────
+const HOVER_EXPAND_DELAY_MS = 600;
+let hoverExpandTimer: ReturnType<typeof setTimeout> | null = null;
+let hoverExpandTarget: string | null = null;
+
+function cancelHoverExpand() {
+  if (hoverExpandTimer) clearTimeout(hoverExpandTimer);
+  hoverExpandTimer = null;
+  hoverExpandTarget = null;
+}
+
+function scheduleHoverExpand(target: string | null) {
+  cancelHoverExpand();
+  if (!target || !props.rootPath) return;
+  if (target === props.rootPath) return;
+  if (expanded.has(target)) return;
+  // 源自身与其子目录不能展开：展开后用户只会看到自己拖走的东西。
+  if (dragSources.value.some((source) => isInsideDir(target, source))) return;
+  hoverExpandTarget = target;
+  hoverExpandTimer = setTimeout(() => {
+    hoverExpandTimer = null;
+    const dir = hoverExpandTarget;
+    hoverExpandTarget = null;
+    if (!dir) return;
+    expanded.add(dir);
+    rebuildTreeSnapshot();
+    if (!nodes[dir] || nodes[dir]?.status === "error") void loadChildren(dir);
+  }, HOVER_EXPAND_DELAY_MS);
+}
+
+// ── 边缘自动滚动：拖到容器上下边缘时持续滚动，否则大树无法拖到深处 ──
+const EDGE_SCROLL_ZONE = 28;
+const EDGE_SCROLL_SPEED = 12;
+let edgeScrollFrame: number | null = null;
+
+function stopEdgeScroll() {
+  if (edgeScrollFrame !== null) {
+    cancelAnimationFrame(edgeScrollFrame);
+    edgeScrollFrame = null;
+  }
+}
+
+function edgeScrollStep() {
+  const ghost = dragGhost.value;
+  const scroller = treeScroll.value;
+  if (!ghost || !scroller) {
+    stopEdgeScroll();
+    return;
+  }
+  const rect = scroller.getBoundingClientRect();
+  let delta = 0;
+  if (ghost.y < rect.top + EDGE_SCROLL_ZONE) {
+    delta = -EDGE_SCROLL_SPEED * (1 - (ghost.y - rect.top) / EDGE_SCROLL_ZONE);
+  } else if (ghost.y > rect.bottom - EDGE_SCROLL_ZONE) {
+    delta = EDGE_SCROLL_SPEED * (1 - (rect.bottom - ghost.y) / EDGE_SCROLL_ZONE);
+  }
+  if (delta !== 0) scroller.scrollTop += Math.max(-EDGE_SCROLL_SPEED, Math.min(EDGE_SCROLL_SPEED, delta));
+  // 持续跑：指针不动时也要继续滚（虚拟滚动下还要走 onScroll 让 range 更新）。
+  edgeScrollFrame = requestAnimationFrame(edgeScrollStep);
+}
+
+watch(
+  dragGhost,
+  (ghost) => {
+    if (ghost && edgeScrollFrame === null) {
+      edgeScrollFrame = requestAnimationFrame(edgeScrollStep);
+    } else if (!ghost) {
+      stopEdgeScroll();
+    }
+  },
+);
+
+// ── 行级拖拽视觉的判定（virtual / 非 virtual 两处循环共用）───────────
+type AnyRow = VisibleTreeRow;
+
+function isRowDragging(row: AnyRow): boolean {
+  if (row.kind !== "entry") return false;
+  return dragSources.value.includes(row.path);
+}
+
+function isRowDropTarget(row: AnyRow): boolean {
+  return row.kind === "entry" && dropTargetDir.value === row.path;
+}
+
+function isRowDropForbidden(row: AnyRow): boolean {
+  return (
+    row.kind === "entry" &&
+    dropTargetDir.value === row.path &&
+    !dropAllowed.value
+  );
+}
+
+/** 拖拽 ghost 文案：跟随修饰键在「移动 / 复制」之间实时切换。 */
+const dragGhostLabel = computed(() => {
+  const ghost = dragGhost.value;
+  if (!ghost) return "";
+  const verb = dragMode.value === "move"
+    ? t("explorer.dragMove")
+    : t("explorer.dragCopy");
+  const names = ghost.item.names.join("、");
+  const more = ghost.item.count > ghost.item.names.length
+    ? t("explorer.dragMore", { count: ghost.item.count - ghost.item.names.length })
+    : "";
+  return ghost.item.count > 1
+    ? `${verb} ${ghost.item.count} 项：${names}${more}`
+    : `${verb} ${names}`;
+});
+
 function openTerminalInDir(path: string) {
   closeMenu();
   emit("openInTerminal", path);
@@ -1168,6 +1400,7 @@ defineExpose({
       <div
         v-show="!isSearchActive && mode === 'files'"
         ref="treeScroll"
+        data-explorer-drop-root
         class="min-h-0 flex-1 overflow-y-auto py-1"
         @scroll.passive="onTreeScroll"
         @contextmenu.prevent="openRootMenu"
@@ -1218,7 +1451,11 @@ defineExpose({
               :key="row.key"
               :row="row"
               :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPaths.has(row.path)"
-              @entry-click="handleEntryClick"
+              :dragging="isRowDragging(row)"
+              :drop-target="isRowDropTarget(row)"
+              :drop-forbidden="isRowDropForbidden(row)"
+              @entry-click="handleEntryClickForDrag"
+              @entry-pointer-down="onEntryPointerDown"
               @begin-rename="beginRename"
               @commit-rename="commitRename"
               @cancel-rename="cancelRename"
@@ -1237,7 +1474,11 @@ defineExpose({
               :key="row.key"
               :row="row"
               :selected="row.kind !== 'status' && row.kind !== 'pending' && selectedPaths.has(row.path)"
-              @entry-click="handleEntryClick"
+              :dragging="isRowDragging(row)"
+              :drop-target="isRowDropTarget(row)"
+              :drop-forbidden="isRowDropForbidden(row)"
+              @entry-click="handleEntryClickForDrag"
+              @entry-pointer-down="onEntryPointerDown"
               @begin-rename="beginRename"
               @commit-rename="commitRename"
               @cancel-rename="cancelRename"
@@ -1255,6 +1496,27 @@ defineExpose({
       @resolve="onConflictResolved"
       @cancel="onConflictCanceled"
     />
+
+    <!--
+      拖拽 ghost：跟随指针的胶囊，文案实时反映“移动/复制 N 项”。
+      pointer-events-none：ghost 不能挡住下面的行，否则 elementFromPoint
+      会命中它自己导致落点抖动。
+    -->
+    <div
+      v-if="dragGhost"
+      data-explorer-drag-ghost
+      class="v2-glass-float pointer-events-none fixed z-50 flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] opacity-95"
+      :class="dropAllowed ? '' : 'text-destructive'"
+      :style="{
+        transform: `translate3d(${dragGhost.x}px, ${dragGhost.y}px, 0) translate(-50%, -140%)`,
+      }"
+    >
+      <NIcon
+        :component="dragMode === 'move' ? MoveOutline : CopyOutline"
+        :size="12"
+      />
+      <span class="max-w-56 truncate">{{ dragGhostLabel }}</span>
+    </div>
 
     <ExplorerContextMenu
       :target="menu"

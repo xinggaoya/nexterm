@@ -391,6 +391,10 @@ const enUS = {
     transferRejectedSameDir: "Item is already in that folder",
     transferRejectedSelf: "A folder cannot be moved into itself",
     transferBusy: "Transferring {count} item(s)…",
+    // ── Drag-to-transfer ──
+    dragMove: "Move",
+    dragCopy: "Copy",
+    dragMore: "and {count} more",
     duplicate: "Duplicate",
     loading: "Loading...",
     newFile: "New file",

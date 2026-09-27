@@ -14,11 +14,18 @@ type MenuRow = Extract<FileTreeRow, { kind: "entry" | "rename" }>;
 const props = defineProps<{
   row: FileTreeRow;
   selected: boolean;
+  /** 正在被拖动（源）行：降低不透明度让用户知道拖的是哪几行。 */
+  dragging?: boolean;
+  /** 悬停中的落点行（仅目录行有意义）。 */
+  dropTarget?: boolean;
+  /** 落点非法：整行变禁用色，松手也不执行。 */
+  dropForbidden?: boolean;
 }>();
 
 const emit = defineEmits<{
   // 透传原始事件，父级据 ctrl/meta/shift 决定是切换多选、范围选还是单选打开。
   entryClick: [row: EntryRow, event: MouseEvent];
+  entryPointerDown: [row: EntryRow, event: PointerEvent];
   beginRename: [path: string];
   commitRename: [value: string];
   cancelRename: [];
@@ -63,6 +70,24 @@ const iconUrl = computed(() => {
 
 function handleEntryClick(event: MouseEvent) {
   if (props.row.kind === "entry") emit("entryClick", props.row, event);
+}
+
+// 拖拽手势由父级统一接管（`usePointerDragReorder`）：行只负责把原始
+// 事件透传上去，这样阈值判定 / ghost / click 抑制只有一处实现。
+function handleEntryPointerDown(event: PointerEvent) {
+  if (props.row.kind === "entry") emit("entryPointerDown", props.row, event);
+}
+
+/** 行级拖拽视觉：源行变淡，落点行高亮并加左侧竖条，非法落点转警示色。 */
+function dragClass(): string {
+  if (props.dropForbidden) {
+    return "bg-destructive/10 text-destructive/80 ring-1 ring-inset ring-destructive/50";
+  }
+  if (props.dropTarget) {
+    return "bg-accent text-foreground before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:rounded-full before:bg-primary";
+  }
+  if (props.dragging) return "opacity-50";
+  return "";
 }
 
 function handleDoubleClick() {
@@ -127,14 +152,18 @@ function statusDotClass(statusKind: SourceControlStatusKind): string {
     v-else-if="row.kind === 'entry'"
     type="button"
     :data-explorer-row-path="row.path"
+    :data-is-dir="row.isDir ? 'true' : undefined"
     :class="[
-      'group flex h-6 w-full min-w-0 cursor-pointer items-center gap-2 rounded-sm px-1.5 text-left text-[13px] transition-colors hover:bg-accent/70',
+      'group relative flex h-6 w-full min-w-0 cursor-pointer items-center gap-2 rounded-sm px-1.5 text-left text-[13px] transition-colors hover:bg-accent/70',
       selected ? 'bg-accent text-foreground' : 'text-foreground/85',
+      dragClass(),
     ]"
     :style="{ paddingLeft }"
+    :aria-grabbed="dragging === true"
     @click="handleEntryClick"
     @dblclick.stop.prevent="handleDoubleClick"
     @contextmenu.stop.prevent="handleContextMenu"
+    @pointerdown="handleEntryPointerDown"
   >
     <span class="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">
       <NIcon

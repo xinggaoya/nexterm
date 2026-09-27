@@ -86,6 +86,21 @@ function rejectReasonFor(
   return null;
 }
 
+/**
+ * 落点是否可行 —— 拖拽过程中做实时反馈用（非法落点要提前变禁用态，
+ * 不能等松手才报错）。
+ *
+ * 任何一条源非法就整体不可行：多选拖拽里"搬 3 个成功 1 个失败"体验更差。
+ */
+export function canTransferInto(
+  sources: readonly string[],
+  targetDir: string,
+  mode: TransferMode,
+): boolean {
+  if (sources.length === 0 || !targetDir) return false;
+  return sources.every((source) => rejectReasonFor(source, targetDir, mode) === null);
+}
+
 export type PlanTransferInput = {
   sources: readonly string[];
   targetDir: string;

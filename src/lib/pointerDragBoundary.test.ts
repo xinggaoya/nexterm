@@ -73,11 +73,10 @@ describe("pointer drag reorder boundary", () => {
   });
 
   it("keeps every reorder consumer on the shared composable", () => {
-    // explorer 的文件搬运拖拽（阶段 5）接入后把
-    // "modules/explorer/FileExplorer.vue" 补进这个列表。
     const consumers = [
       "app/shell/SessionStrip.vue",
       "app/shell/Sidebar.vue",
+      "modules/explorer/FileExplorer.vue",
     ];
     for (const rel of consumers) {
       const source = readFileSync(join(REPO_SRC, rel), "utf8");

@@ -389,6 +389,10 @@ const zhCN = {
     transferRejectedSameDir: "项目已经在该目录中",
     transferRejectedSelf: "不能把文件夹移动到它自己",
     transferBusy: "正在搬运 {count} 项…",
+    // ── 拖拽搬运 ──
+    dragMove: "移动",
+    dragCopy: "复制",
+    dragMore: "等 {count} 项",
     duplicate: "复制副本",
     loading: "加载中...",
     newFile: "新建文件",
