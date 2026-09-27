@@ -58,6 +58,10 @@ type WorkbenchCommandOptions = {
   openGotoLine: () => void;
   /** LSP 跳转定义（F12）：打开目标文件并跳到定义处。 */
   goToDefinition: () => void | Promise<void>;
+  /** LSP 重命名符号（F2）：取 WorkspaceEdit 后上抛给宿主确认。 */
+  renameSymbol: () => void | Promise<void>;
+  /** LSP 查找引用（Shift+F12）。 */
+  findReferences: () => void | Promise<void>;
   openFindInFiles: () => void;
   openCommandPalette: (mode?: "commands" | "files") => void;
   openRenameDialog: (leafId: number, currentTitle: string) => void;
@@ -425,6 +429,12 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
         return;
       case "editor.goToDefinition":
         void options.goToDefinition();
+        return;
+      case "editor.renameSymbol":
+        void options.renameSymbol();
+        return;
+      case "editor.findReferences":
+        void options.findReferences();
         return;
       case "terminal.focusLeft":
       case "terminal.focusRight":

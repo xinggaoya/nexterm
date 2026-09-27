@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { PendingEdit, ReferenceGroup } from "@/modules/lsp/lspLanguageSupport";
 import { computed, defineAsyncComponent, ref } from "vue";
 import { native } from "@/lib/native";
 import { getPtyIdForLeaf, TerminalWorkspace, disposeSession } from "@/modules/terminal";
@@ -50,6 +51,10 @@ const emit = defineEmits<{
    * WorkspaceHost 统一编排（开 tab + 跳行）。
    */
   "go-to-definition": [target: GoToDefinitionTarget | null];
+  /** LSP 重命名的待改列表（上抛给宿主确认后落盘）。 */
+  "request-rename": [edits: PendingEdit[]];
+  /** 查找引用结果。 */
+  "show-references": [groups: ReferenceGroup[]];
 }>();
 
 const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
@@ -113,10 +118,20 @@ async function goToDefinition(): Promise<void> {
   await activeEditorPane.value?.goToDefinition();
 }
 
+async function renameSymbol(): Promise<void> {
+  await activeEditorPane.value?.renameSymbol();
+}
+
+async function findReferences(): Promise<void> {
+  await activeEditorPane.value?.findReferences();
+}
+
 defineExpose({
   saveActiveEditor,
   openGotoLine,
   goToDefinition,
+  renameSymbol,
+  findReferences,
   revealEditorLine,
   killTerminal,
 });
@@ -226,6 +241,8 @@ defineExpose({
         :fs-event="workspaceFsEvent"
         @dirty-change="(dirty) => tabsStore.updateTab(activeTab!.id, { dirty })"
         @go-to-definition="(target) => emit('go-to-definition', target)"
+        @request-rename="(edits) => emit('request-rename', edits)"
+        @show-references="(groups) => emit('show-references', groups)"
       />
     </div>
   </div>

@@ -2,12 +2,15 @@ import type { Text } from "@codemirror/state";
 import type { Completion, CompletionResult } from "@codemirror/autocomplete";
 import type {
   LspCompletionItem,
+  LspDocumentSymbol,
   LspCompletionList,
   LspHover,
   LspLocation,
   LspLocationLink,
   LspMarkupContent,
   LspPosition,
+  LspRange,
+  LspWorkspaceEdit,
 } from "./types";
 
 /**
@@ -215,4 +218,121 @@ export function resolveDefinitionLocations(
     line: first.range.start.line,
     character: first.range.start.character,
   };
+}
+
+// ── 重命名 / 引用 / 符号 ───────────────────────────────────────────────
+
+/** 一处待改的文本。 */
+export type PendingEdit = {
+  /** `file://` URI（键来自 WorkspaceEdit）。 */
+  uri: string;
+  path: string;
+  range: LspRange;
+  newText: string;
+};
+
+/**
+ * WorkspaceEdit（`uri → edits`）→ 按路径分组的扁平列表。
+ *
+ * 之所以要摊平：WorkspaceEdit 的键是 URI，而编辑器的应用侧只认路径；
+ * 跨文件重命名的改动要一次性写回多个文件，按路径分组才好落。
+ */
+export function toPendingEdits(
+  edit: LspWorkspaceEdit | null | undefined,
+  fileUriToPath: (uri: string) => string,
+): PendingEdit[] {
+  if (!edit) return [];
+  const out: PendingEdit[] = [];
+  for (const [uri, edits] of Object.entries(edit)) {
+    if (!Array.isArray(edits)) continue;
+    for (const item of edits) {
+      if (!item || !item.range) continue;
+      out.push({
+        uri,
+        path: fileUriToPath(uri),
+        range: item.range,
+        newText: typeof item.newText === "string" ? item.newText : "",
+      });
+    }
+  }
+  return out;
+}
+
+/** 引用列表 → 按路径分组、每处一行。 */
+export type ReferenceGroup = {
+  path: string;
+  /** 按行号升序，便于渲染。 */
+  lines: number[];
+};
+
+export function toReferenceGroups(
+  locations: LspLocation[] | null | undefined,
+  fileUriToPath: (uri: string) => string,
+): ReferenceGroup[] {
+  if (!locations || locations.length === 0) return [];
+  const byPath = new Map<string, number[]>();
+  for (const location of locations) {
+    const path = fileUriToPath(location.uri);
+    const lines = byPath.get(path) ?? [];
+    lines.push(location.range.start.line);
+    byPath.set(path, lines);
+  }
+  return Array.from(byPath.entries())
+    .map(([path, lines]) => ({ path, lines: lines.sort((a, b) => a - b) }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** 深度优先摊平符号树，产出面包屑可用的线性列表。 */
+export function flattenDocumentSymbols(
+  symbols: LspDocumentSymbol[],
+  container: string[] = [],
+): Array<{ symbol: LspDocumentSymbol; container: string[] }> {
+  const out: Array<{ symbol: LspDocumentSymbol; container: string[] }> = [];
+  const walk = (
+    list: LspDocumentSymbol[],
+    path: string[],
+    depth: number,
+  ) => {
+    if (depth > 12) return; // 防御畸形数据导致的无限递归
+    for (const symbol of list) {
+      out.push({ symbol, container: path });
+      if (symbol.children?.length) {
+        walk(symbol.children, [...path, symbol.name], depth + 1);
+      }
+    }
+  };
+  walk(symbols, container, 0);
+  return out;
+}
+
+/** 符号在文件里的字节偏移（用于面包屑点击跳转）。 */
+export function symbolRangeToOffsets(
+  doc: Text,
+  range: LspRange,
+): { from: number; to: number } {
+  const from = lspPositionToOffset(doc, range.start);
+  const to = lspPositionToOffset(doc, range.end);
+  return { from: Math.min(from, to), to: Math.max(from, to) };
+}
+
+/**
+ * 位置偏移 → 所属符号的容器路径（面包屑用）。
+ *
+ * 返回**最内层**的匹配：深度优先摊平时父节点排在子节点之前，直接取第一个
+ * 命中会得到最外层符号（光标在函数体内的局部变量上时，面包屑会只显示函数名
+ * 而少一层）。所以这里保留最后一个命中 —— 也就是最深的那个。
+ */
+export function containerPathForOffset(
+  doc: Text,
+  symbols: LspDocumentSymbol[],
+  offset: number,
+): string[] {
+  let deepest: string[] = [];
+  for (const { symbol, container } of flattenDocumentSymbols(symbols)) {
+    const { from, to } = symbolRangeToOffsets(doc, symbol.range);
+    if (offset >= from && offset <= to) {
+      deepest = [...container, symbol.name];
+    }
+  }
+  return deepest;
 }

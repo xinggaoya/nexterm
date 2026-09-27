@@ -29,4 +29,19 @@ export const EDITOR_COMMAND_SPECS: CommandSpec[] = [
     defaultKeybinding: "F12",
     workspaceRequired: true,
   },
+  {
+    id: "editor.renameSymbol",
+    titleKey: "commands.items.renameSymbol",
+    category: "editor",
+    defaultKeybinding: "F2",
+    workspaceRequired: true,
+  },
+  {
+    id: "editor.findReferences",
+    titleKey: "commands.items.findReferences",
+    category: "editor",
+    // Shift+F12，与 VS Code 一致
+    defaultKeybinding: "Ctrl+Shift+F12",
+    workspaceRequired: true,
+  },
 ];

@@ -24,6 +24,15 @@ const zhCN = {
   },
   lsp: {
     noDefinition: "没有找到定义",
+    noReferences: "没有找到引用",
+    renamePrompt: "重命名为",
+    renameUnavailable: "该位置无法重命名",
+    referencesTitle: "找到 {count} 处引用",
+    referencesEmpty: "没有引用",
+    renameApplyFailed: "重命名 {file} 失败",
+    renameApplied: "已重命名 {count} 处",
+    applyRename: "应用",
+    renamePreview: "将修改 {files} 个文件中的 {count} 处",
   },
 
   commands: {
@@ -58,6 +67,8 @@ const zhCN = {
       focusLeft: "向左聚焦面板",
       focusRight: "向右聚焦面板",
       focusUp: "向上聚焦面板",
+      renameSymbol: "重命名符号",
+      findReferences: "查找引用",
       goToDefinition: "跳转到定义",
       gotoLine: "跳转到行…",
       nextTab: "下一个标签",

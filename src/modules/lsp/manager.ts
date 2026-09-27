@@ -11,8 +11,28 @@ import {
   type LspLocation,
   type LspLocationLink,
   type LspPosition,
+  type LspSymbolInformation,
+  type LspWorkspaceEdit,
   type PublishDiagnosticsParams,
 } from "./types";
+
+/**
+ * SymbolInformation（扁平的，workspace/symbol 用）→ DocumentSymbol（树状的，
+ * documentSymbol 用）。归一到后者之后，符号列表只有一个渲染路径。
+ */
+function normalizeSymbol(
+  symbol: LspDocumentSymbol | LspSymbolInformation,
+): LspDocumentSymbol {
+  if ("location" in symbol) {
+    return {
+      name: symbol.name,
+      kind: symbol.kind,
+      range: symbol.location.range,
+      selectionRange: symbol.location.range,
+    };
+  }
+  return symbol;
+}
 
 /** initialize 握手的超时；超时则放弃 attach 并杀掉会话，不让编辑器卡死。 */
 const INITIALIZE_TIMEOUT_MS = 10_000;
@@ -72,6 +92,24 @@ export type LspEditorClient = {
     position: LspPosition,
   ) => Promise<LspLocation | LspLocationLink | LspLocation[] | null>;
   requestDocumentSymbols: () => Promise<LspDocumentSymbol[] | null>;
+  /**
+   * 重命名符号。返回 WorkspaceEdit（`uri → edits`）。
+   * server 拒绝时返回 null（例如符号定义不唯一、或该位置没有符号）。
+   */
+  requestRename: (
+    position: LspPosition,
+    newName: string,
+  ) => Promise<LspWorkspaceEdit | null>;
+  /** 查找引用。`includeDeclaration` 决定结果里是否含定义本身那一处。 */
+  requestReferences: (
+    position: LspPosition,
+    includeDeclaration: boolean,
+  ) => Promise<LspLocation[] | null>;
+  /**
+   * 跨文件搜索符号（Cmd/Ctrl+Shift+O 的数据源）。
+   * 结果已归一为 `LspDocumentSymbol[]`（SymbolInformation 会被提升）。
+   */
+  requestWorkspaceSymbols: (query: string) => Promise<LspDocumentSymbol[] | null>;
   dispose: () => void;
 };
 
@@ -189,21 +227,25 @@ export async function attachLspToEditor(
   const bumpVersion = (): number => (version += 1);
 
   /**
-   * 统一的请求入口：带上文档定位 + 超时，并给出“错了也不能拖死编辑器”的
-   * 降级策略。补全失败就当没有补全，hover 失败就没有悬浮 —— 任何情况下
-   * 都不应该抛到调用方。
+   * 统一的请求入口：带上文档定位 + 超时，并给出"错了也不能拖死编辑器"的
+   * 降级策略。补全失败就当没有补全，hover 失败就没有悬浮 —— 任何情况下都
+   * 不应该抛到调用方。
+   *
+   * `extra` 用于形状不是 `{textDocument, position}` 的请求：rename 带
+   * newName、references 带 context、workspace/symbol 连 textDocument 都
+   * 没有（只有 query）。
    */
   const request = async <T>(
     method: string,
-    position?: LspPosition,
+    extra: Record<string, unknown>,
     timeoutMs = REQUEST_TIMEOUT_MS,
   ): Promise<T | null> => {
-    const params = position
-      ? { textDocument: { uri: documentUri }, position }
-      : { textDocument: { uri: documentUri } };
     try {
       return await withTimeout(
-        connection.sendRequest<T>(method, params),
+        connection.sendRequest<T>(method, {
+          textDocument: { uri: documentUri },
+          ...extra,
+        }),
         timeoutMs,
       );
     } catch (error) {
@@ -211,6 +253,9 @@ export async function attachLspToEditor(
       return null;
     }
   };
+
+  /** `{ position }` —— 大多数 textDocument/* 请求的公共部分。 */
+  const at = (position: LspPosition): Record<string, unknown> => ({ position });
 
   const client: Client = {
     language,
@@ -231,16 +276,32 @@ export async function attachLspToEditor(
       });
     },
     requestCompletion: (position) =>
-      request<LspCompletionList>("textDocument/completion", position),
-    requestHover: (position) => request<LspHover>("textDocument/hover", position),
+      request<LspCompletionList>("textDocument/completion", at(position)),
+    requestHover: (position) => request<LspHover>("textDocument/hover", at(position)),
     requestDefinition: (position) =>
       request<LspLocation | LspLocationLink | LspLocation[]>(
         "textDocument/definition",
-        position,
+        at(position),
       ),
     // 符号树可能很大，给更宽的超时。
     requestDocumentSymbols: () =>
-      request<LspDocumentSymbol[]>("textDocument/documentSymbol", undefined, 5_000),
+      request<LspDocumentSymbol[]>("textDocument/documentSymbol", {}, 5_000),
+    requestRename: (position, newName) =>
+      request<LspWorkspaceEdit>("textDocument/rename", {
+        ...at(position),
+        newName,
+      }, 5_000),
+    requestReferences: (position, includeDeclaration) =>
+      request<LspLocation[]>("textDocument/references", {
+        ...at(position),
+        context: { includeDeclaration },
+      }),
+    requestWorkspaceSymbols: async (query) => {
+      const raw = await request<
+        LspDocumentSymbol[] | LspSymbolInformation[]
+      >("workspace/symbol", { query }, 5_000);
+      return raw ? raw.map(normalizeSymbol) : null;
+    },
     dispose: () => {
       try {
         connection.sendNotification("textDocument/didClose", {

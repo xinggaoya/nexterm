@@ -2,16 +2,21 @@ import { describe, expect, it } from "vitest";
 import { EditorState, Text } from "@codemirror/state";
 import {
   completionInsertText,
+  containerPathForOffset,
+  flattenDocumentSymbols,
   lspPositionToOffset,
   markupToText,
   offsetToLspPosition,
   resolveDefinitionLocations,
   toCmCompletionResult,
   toHoverText,
+  toPendingEdits,
+  toReferenceGroups,
   wordStartAt,
 } from "./lspLanguageSupport";
 import type {
   LspCompletionItem,
+  LspDocumentSymbol,
   LspHover,
   LspLocation,
   LspLocationLink,
@@ -295,5 +300,156 @@ describe("fileUriToPath", () => {
 
   it("非 file:// 的 uri 原样返回", () => {
     expect(fileUriToPath("jdt://contents/foo")).toBe("jdt://contents/foo");
+  });
+});
+
+describe("rename / references / symbols", () => {
+  it("WorkspaceEdit 摊平成按路径分组的待改列表", () => {
+    const edits = toPendingEdits(
+      {
+        "file:///repo/src/a.ts": [
+          {
+            range: { start: { line: 1, character: 0 }, end: { line: 1, character: 3 } },
+            newText: "renamed",
+          },
+        ],
+        "file:///repo/src/b.ts": [
+          {
+            range: { start: { line: 5, character: 2 }, end: { line: 5, character: 7 } },
+            newText: "renamed",
+          },
+          {
+            range: { start: { line: 9, character: 0 }, end: { line: 9, character: 3 } },
+            newText: "renamed",
+          },
+        ],
+      },
+      fileUriToPath,
+    );
+    expect(edits).toHaveLength(3);
+    expect(new Set(edits.map((e) => e.path))).toEqual(
+      new Set(["/repo/src/a.ts", "/repo/src/b.ts"]),
+    );
+    expect(edits[0]?.newText).toBe("renamed");
+  });
+
+  it("null / 空的 WorkspaceEdit 返回空列表", () => {
+    expect(toPendingEdits(null, fileUriToPath)).toEqual([]);
+    expect(toPendingEdits(undefined, fileUriToPath)).toEqual([]);
+    expect(toPendingEdits({}, fileUriToPath)).toEqual([]);
+  });
+
+  it("容忍 WorkspaceEdit 里形状不对的条目而不是崩掉", () => {
+    const edits = toPendingEdits(
+      {
+        "file:///repo/a.ts": [
+          { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, newText: "x" },
+          // 缺 range：跳过
+          { newText: "y" } as never,
+          null as never,
+        ],
+        "file:///repo/b.ts": "not-an-array" as never,
+      },
+      fileUriToPath,
+    );
+    expect(edits).toHaveLength(1);
+    expect(edits[0]?.path).toBe("/repo/a.ts");
+  });
+
+  it("引用按路径分组且行号升序", () => {
+    const groups = toReferenceGroups(
+      [
+        { uri: "file:///repo/b.ts", range: { start: { line: 9, character: 0 }, end: { line: 9, character: 1 } } },
+        { uri: "file:///repo/a.ts", range: { start: { line: 4, character: 0 }, end: { line: 4, character: 1 } } },
+        { uri: "file:///repo/a.ts", range: { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } } },
+      ],
+      fileUriToPath,
+    );
+    expect(groups).toEqual([
+      { path: "/repo/a.ts", lines: [1, 4] },
+      { path: "/repo/b.ts", lines: [9] },
+    ]);
+  });
+
+  it("空引用返回空列表", () => {
+    expect(toReferenceGroups(null, fileUriToPath)).toEqual([]);
+    expect(toReferenceGroups([], fileUriToPath)).toEqual([]);
+  });
+
+  it("符号树深度优先摊平，带容器路径", () => {
+    const flat = flattenDocumentSymbols([
+      {
+        name: "outer",
+        kind: 12,
+        range: { start: { line: 0, character: 0 }, end: { line: 9, character: 0 } },
+        selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
+        children: [
+          {
+            name: "inner",
+            kind: 6,
+            range: { start: { line: 2, character: 0 }, end: { line: 3, character: 0 } },
+            selectionRange: { start: { line: 2, character: 2 }, end: { line: 2, character: 7 } },
+          },
+        ],
+      },
+      {
+        name: "top",
+        kind: 12,
+        range: { start: { line: 20, character: 0 }, end: { line: 21, character: 0 } },
+        selectionRange: { start: { line: 20, character: 0 }, end: { line: 20, character: 3 } },
+      },
+    ]);
+    expect(flat.map((entry) => [entry.symbol.name, entry.container])).toEqual([
+      ["outer", []],
+      ["inner", ["outer"]],
+      ["top", []],
+    ]);
+  });
+
+  it("深度超限的畸形符号树不会无限递归", () => {
+    // 造一条 20 层自嵌套的链，验证深度保护生效（否则爆栈）。
+    let deepest = {
+      name: "leaf",
+      kind: 6,
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+    } as LspDocumentSymbol;
+    for (let i = 0; i < 20; i += 1) {
+      deepest = {
+        name: `n${i}`,
+        kind: 12,
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        children: [deepest],
+      };
+    }
+    const flat = flattenDocumentSymbols([deepest]);
+    // 深度保护在 12 层截断
+    expect(flat.length).toBeLessThanOrEqual(13);
+  });
+
+  it("按偏移找到所属符号的容器路径（面包屑用）", () => {
+    const doc = docOf("line0\nline1\nline2\nline3\n");
+    const symbols: LspDocumentSymbol[] = [
+      {
+        name: "fn",
+        kind: 12,
+        range: { start: { line: 0, character: 0 }, end: { line: 3, character: 0 } },
+        selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 2 } },
+        children: [
+          {
+            name: "inner",
+            kind: 6,
+            range: { start: { line: 2, character: 0 }, end: { line: 2, character: 5 } },
+            selectionRange: { start: { line: 2, character: 0 }, end: { line: 2, character: 5 } },
+          },
+        ],
+      },
+    ];
+    // "line0\nline1\n" 共 12 个字符，line2 从 12 开始 —— inner 在那一行。
+    expect(containerPathForOffset(doc, symbols, 13)).toEqual(["fn", "inner"]);
+    // line1 落在 fn 内但不在 inner 内 → 只返回最内层的 fn
+    expect(containerPathForOffset(doc, symbols, 8)).toEqual(["fn"]);
+    expect(containerPathForOffset(doc, symbols, 1000)).toEqual([]);
   });
 });

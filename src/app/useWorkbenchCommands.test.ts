@@ -53,6 +53,8 @@ function createHarness(activeRepoRoot: string | null) {
     saveActiveEditor: vi.fn(),
     openGotoLine: vi.fn(),
     goToDefinition: vi.fn(),
+    renameSymbol: vi.fn(),
+    findReferences: vi.fn(),
     openFindInFiles: vi.fn(),
     openCommandPalette: vi.fn(),
     openRenameDialog: vi.fn(),

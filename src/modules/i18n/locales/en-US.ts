@@ -22,6 +22,15 @@ const enUS = {
   },
   lsp: {
     noDefinition: "No definition found",
+    noReferences: "No references found",
+    renamePrompt: "Rename to",
+    renameUnavailable: "This symbol cannot be renamed",
+    referencesTitle: "{count} reference(s)",
+    referencesEmpty: "No references",
+    renameApplyFailed: "Failed to rename {file}",
+    renameApplied: "Renamed {count} place(s)",
+    applyRename: "Apply",
+    renamePreview: "Will change {count} place(s) in {files} file(s)",
   },
 
   commands: {
@@ -56,6 +65,8 @@ const enUS = {
       focusLeft: "Focus Pane Left",
       focusRight: "Focus Pane Right",
       focusUp: "Focus Pane Up",
+      renameSymbol: "Rename Symbol",
+      findReferences: "Find References",
       goToDefinition: "Go to Definition",
       gotoLine: "Go to Line…",
       nextTab: "Next Tab",

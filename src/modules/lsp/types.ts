@@ -121,6 +121,47 @@ export type LspDocumentSymbol = {
   children?: LspDocumentSymbol[];
 };
 
+// ── 重命名 / 引用 / 工作区符号 ─────────────────────────────────────────
+
+/** `textDocument/rename` 的参数。 */
+export type LspRenameParams = {
+  textDocument: { uri: string };
+  position: LspPosition;
+  newName: string;
+};
+
+export type LspTextDocumentIdentifier = { uri: string; version?: number | null };
+
+/** `textDocument/references` 的参数。`includeDeclaration` 让结果含定义本身。 */
+export type LspReferenceParams = {
+  textDocument: { uri: string };
+  position: LspPosition;
+  context: { includeDeclaration: boolean };
+};
+
+export type LspReferenceContext = { includeDeclaration: boolean };
+
+/** 单个重命名 / 引用改动：`[from, to)` 是要替换的原文范围。 */
+export type LspWorkspaceEdit = Record<
+  string,
+  Array<{
+    range: LspRange;
+    newText: string;
+  }>
+>;
+
+/**
+ * `workspace/symbol` 用的是 **SymbolInformation**（扁平的），不是
+ * `DocumentSymbol`（带 children 的树）。server 可以返回任一形态，
+ * 两者都要能吃 —— 见 `normalizeSymbol`。
+ */
+export type LspSymbolInformation = {
+  name: string;
+  kind: number;
+  location: LspLocation;
+  containerName?: string;
+};
+
 /** URI → 路径。LSP 用 `file://` + 百分号编码，这里只处理我们写入的形式。 */
 export function fileUriToPath(uri: string): string {
   if (!uri.startsWith("file://")) return uri;

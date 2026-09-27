@@ -59,7 +59,12 @@ import {
   lspCompletionExtension,
   lspHoverExtension,
   resolveDefinitionAt,
+  resolveDocumentSymbols,
+  resolveReferencesAt,
+  resolveRenameAt,
 } from "@/modules/lsp/lspExtensions";
+import type { PendingEdit, ReferenceGroup } from "@/modules/lsp/lspLanguageSupport";
+import type { LspDocumentSymbol } from "@/modules/lsp/types";
 import { notifyInfo } from "@/modules/notifications/notificationCenter";
 import type { LspEditorHooks } from "./lib/editorPaneLsp";
 import {
@@ -80,6 +85,16 @@ const emit = defineEmits<{
    * 只把目标上抛给 Canvas → WorkspaceHost 统一编排。
    */
   "go-to-definition": [target: { path: string; line: number; character: number } | null];
+  /**
+   * F2 重命名的待改列表。编辑器不写盘也不开标签 —— 它只把"要改哪里、改成
+   * 什么"报上去，由 WorkspaceHost 统一确认与应用（跨文件写入要能被用户
+   * 看到并有机会反悔）。
+   */
+  "request-rename": [edits: PendingEdit[]];
+  /** 查找引用结果。 */
+  "show-references": [groups: ReferenceGroup[]];
+  /** 文档符号变化（面包屑 / 大纲）。 */
+  "symbols-changed": [symbols: LspDocumentSymbol[]];
 }>();
 
 const dialog = useDialog();
@@ -406,6 +421,56 @@ async function handleEditorPointerDown(event: MouseEvent, pos: number): Promise<
   await goToDefinition(pos);
 }
 
+/** F2 重命名：问 server 要 WorkspaceEdit，摊平后上抛给宿主确认。 */
+async function renameSymbol(pos?: number): Promise<void> {
+  const current = view.value;
+  if (!current) return;
+  const at_ = pos ?? current.state.selection.main.head;
+  // 用光标处的标识符做初值：多数情况下这就是用户想要的新名字。
+  const line = current.state.doc.lineAt(at_);
+  const text = line.text.slice(0, at_ - line.from);
+  const word = /[A-Za-z_$][A-Za-z0-9_$]*$/.exec(text)?.[0] ?? "";
+  const newName = window.prompt(t("lsp.renamePrompt"), word);
+  if (!newName) return;
+  const edits = await resolveRenameAt(current, at_, newName);
+  if (!edits) {
+    notifyInfo(t("lsp.renameUnavailable"));
+    return;
+  }
+  emit("request-rename", edits);
+}
+
+/** 查找引用：结果上抛，UI 负责列出来。 */
+async function findReferences(pos?: number): Promise<void> {
+  const current = view.value;
+  if (!current) return;
+  const groups = await resolveReferencesAt(
+    current,
+    pos ?? current.state.selection.main.head,
+    true,
+  );
+  if (!groups) {
+    notifyInfo(t("lsp.noReferences"));
+    return;
+  }
+  emit("show-references", groups);
+}
+
+async function refreshSymbols(): Promise<void> {
+  const current = view.value;
+  if (!current) return;
+  const symbols = await resolveDocumentSymbols(current);
+  emit("symbols-changed", symbols ?? []);
+}
+
+/** 符号位置偏移 → 行号（1-based），供宿主跳转。 */
+async function gotoSymbol(pos: number): Promise<void> {
+  const current = view.value;
+  if (!current) return;
+  current.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
+  current.focus();
+}
+
 function openGotoLine(): void {
   const current = view.value;
   if (!current) return;
@@ -559,6 +624,10 @@ defineExpose({
   setContentForTest,
   openGotoLine,
   goToDefinition,
+  renameSymbol,
+  findReferences,
+  refreshSymbols,
+  gotoSymbol,
   revealLine,
   reload: () => reloadExternalChange(true),
   undo: () => {

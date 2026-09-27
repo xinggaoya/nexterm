@@ -22,8 +22,13 @@
  */
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { NInput, useDialog } from "naive-ui";
+import { basename } from "@/lib/path";
 import { createNativeForEnv, type WorkspaceFsChangedEvent } from "@/lib/native";
-import { notifyError, notifyInfo } from "@/modules/notifications/notificationCenter";
+import {
+  notifyError,
+  notifyInfo,
+  notifySuccess,
+} from "@/modules/notifications/notificationCenter";
 import { workspaceScopeKey } from "@/modules/workspace";
 import type { GitDecorationMap } from "@/modules/source-control";
 import type {
@@ -34,6 +39,7 @@ import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import { isDirtyEditorTab } from "@/modules/tabs/closeGuards";
 import { leafIds, type SplitDir } from "@/modules/terminal/lib/layout";
+import type { PendingEdit, ReferenceGroup } from "@/modules/lsp/lspLanguageSupport";
 import { MAX_PANES_PER_TAB } from "@/modules/tabs/tabsTypes";
 import {
   provideWorkspaceContext,
@@ -198,6 +204,92 @@ function openFilePreview(path: string): void {
 // 否则脏缓冲下次保存会写回已经不存在的旧路径，静默丢改动。
 function onPathRenamed(from: string, to: string): void {
   tabs.followPath(from, to, props.workspace.id);
+}
+
+/**
+ * 应用 LSP 重命名的待改列表。
+ *
+ * 为什么在这里落盘而不是编辑器里：这是**跨文件写入**，可能一次改几十个
+ * 文件。编辑器不持有工作区状态、也不知道打开文件的正确顺序；这里统一
+ * 编排，并且**先让用户确认**（重命名不可逆，尤其当它跨文件时）。
+ *
+ * 编辑按行号从后往前应用：前面的行改动不会影响后面行的偏移。
+ */
+async function onRequestRename(edits: PendingEdit[]): Promise<void> {
+  if (edits.length === 0) return;
+  const byPath = new Map<string, PendingEdit[]>();
+  for (const edit of edits) {
+    const bucket = byPath.get(edit.path) ?? [];
+    bucket.push(edit);
+    byPath.set(edit.path, bucket);
+  }
+  const affected = Array.from(byPath.keys());
+  const confirmed = await confirmCrossFileRename(affected, edits.length);
+  if (!confirmed) return;
+
+  for (const [path, list] of byPath) {
+    try {
+      const result = await wsNative.fsReadFile(path);
+      // 二进制/超限文件读回来是别的 kind：不参与重命名，交给报错提示。
+      if (result.kind !== "text") continue;
+      // 纯文本按行切分：LSP 的 range 是 (line, character)，与这里的切分一致。
+      const lines = result.content.split("\n");
+      const sorted = [...list].sort(
+        (a, b) => b.range.start.line - a.range.start.line,
+      );
+      for (const edit of sorted) {
+        const index = edit.range.start.line;
+        const line = lines[index];
+        if (line === undefined) continue;
+        lines[index] =
+          line.slice(0, edit.range.start.character) +
+          edit.newText +
+          line.slice(edit.range.end.character);
+      }
+      await wsNative.fsWriteFile(path, lines.join("\n"));
+      // 不主动推事件：写入会触发 watcher → workspace-fs-changed → 已打开的
+      // 编辑器自行重载（有未保存改动时会走既有的"外部变更"确认，而不是
+      // 被静默覆盖）。
+    } catch (error) {
+      notifyError(t("lsp.renameApplyFailed", { file: basename(path) }), error);
+    }
+  }
+  notifySuccess(t("lsp.renameApplied", { count: edits.length }));
+}
+
+/** 跨文件重命名的确认对话框。 */
+function confirmCrossFileRename(paths: string[], count: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    dialog.warning({
+      title: t("lsp.renamePreview", { files: paths.length, count }),
+      content: paths.slice(0, 8).join("\n") + (paths.length > 8 ? "\n…" : ""),
+      positiveText: t("lsp.applyRename"),
+      negativeText: t("common.cancel"),
+      onPositiveClick: () => resolve(true),
+      onNegativeClick: () => resolve(false),
+      onClose: () => resolve(false),
+      onMaskClick: () => false,
+    });
+  });
+}
+
+/** 查找引用：结果以列表形式上抛（MainApp 侧用 toast 汇总 + 打开对应文件）。 */
+function onShowReferences(groups: ReferenceGroup[]): void {
+  const total = groups.reduce((sum, group) => sum + group.lines.length, 0);
+  if (total === 0) {
+    notifyInfo(t("lsp.referencesEmpty"));
+    return;
+  }
+  notifyInfo(
+    t("lsp.referencesTitle", { count: total }),
+    groups
+      .slice(0, 5)
+      .map((group) => `${basename(group.path)} (${group.lines.length})`)
+      .join("、"),
+  );
+  // 先打开第一个引用所在文件，其余由用户在文件树里继续查看。
+  const first = groups[0];
+  if (first) openSearchResult(first.path, first.lines[0]! + 1);
 }
 
 function onPathDeleted(path: string): void {
@@ -461,6 +553,8 @@ const commandApi = useWorkbenchCommands({
   saveActiveEditor,
   openGotoLine,
   goToDefinition: () => canvas.value?.goToDefinition(),
+  renameSymbol: () => canvas.value?.renameSymbol(),
+  findReferences: () => canvas.value?.findReferences(),
   openFindInFiles,
   openCommandPalette: (mode) => emit("request-command-palette", mode),
   openUrlPreview,
@@ -567,6 +661,8 @@ defineExpose({
           :workspace-fs-event="normalizedFsEvent"
           @history-ref-change="onHistoryRefChange"
           @go-to-definition="onGoToDefinition"
+          @request-rename="onRequestRename"
+          @show-references="onShowReferences"
         />
 
         <WorkspacePanel

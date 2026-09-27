@@ -5,12 +5,16 @@ import {
 import type { Extension } from "@codemirror/state";
 import { hoverTooltip, type EditorView, type Tooltip } from "@codemirror/view";
 import { getLspClient } from "./manager";
-import { fileUriToPath } from "./types";
+import { fileUriToPath, type LspDocumentSymbol } from "./types";
 import {
   offsetToLspPosition,
   resolveDefinitionLocations,
   toCmCompletionResult,
   toHoverText,
+  toPendingEdits,
+  toReferenceGroups,
+  type PendingEdit,
+  type ReferenceGroup,
   type ResolvedDefinition,
 } from "./lspLanguageSupport";
 
@@ -84,4 +88,47 @@ export async function resolveDefinitionAt(
     result as Parameters<typeof resolveDefinitionLocations>[0],
     fileUriToPath,
   );
+}
+
+/**
+ * F2 重命名的结果：server 给出的 WorkspaceEdit 已摊平成待改列表。
+ *
+ * 为什么不直接落盘：跨文件重命名会同时改多个文件，server 也可能给出我们
+ * 接不住的改动。摊平成"哪些文件、哪些位置、改成什么"之后，UI 才能先给用户
+ * 看一眼再落。
+ */
+export async function resolveRenameAt(
+  view: EditorView,
+  pos: number,
+  newName: string,
+): Promise<PendingEdit[] | null> {
+  const client = getLspClient(view);
+  if (!client) return null;
+  const position = offsetToLspPosition(view.state.doc, pos);
+  const edit = await client.requestRename(position, newName);
+  const edits = toPendingEdits(edit, fileUriToPath);
+  return edits.length > 0 ? edits : null;
+}
+
+/** 查找引用。`includeDeclaration` 为真时结果含定义本身那一处。 */
+export async function resolveReferencesAt(
+  view: EditorView,
+  pos: number,
+  includeDeclaration = false,
+): Promise<ReferenceGroup[] | null> {
+  const client = getLspClient(view);
+  if (!client) return null;
+  const position = offsetToLspPosition(view.state.doc, pos);
+  const locations = await client.requestReferences(position, includeDeclaration);
+  const groups = toReferenceGroups(locations, fileUriToPath);
+  return groups.length > 0 ? groups : null;
+}
+
+/** 文档符号（面包屑 / 大纲的数据源）。 */
+export async function resolveDocumentSymbols(
+  view: EditorView,
+): Promise<LspDocumentSymbol[] | null> {
+  const client = getLspClient(view);
+  if (!client) return null;
+  return client.requestDocumentSymbols();
 }

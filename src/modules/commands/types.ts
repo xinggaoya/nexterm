@@ -38,6 +38,8 @@ export type CommandId =
   | "files.recent"
   | "editor.gotoLine"
   | "editor.goToDefinition"
+  | "editor.renameSymbol"
+  | "editor.findReferences"
   | "terminal.focusLeft"
   | "terminal.focusRight"
   | "terminal.focusUp"
