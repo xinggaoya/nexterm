@@ -595,6 +595,8 @@ const zhCN = {
     remoteRemoveSuccess: "已删除远程 \"{name}\"",
   },
   editor: {
+    formatOnSave: "保存时格式化",
+    formatOnSaveHint: "调用语言服务器的格式化器（rustfmt / gofmt 等）；服务器不支持时静默跳过。",
     binaryFile: "二进制文件",
     diffFallbackUnavailable: "此文件不支持差异预览。",
     exceedsLimit: "{size} 超出 {limit} 限制。",

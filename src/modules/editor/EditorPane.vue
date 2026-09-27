@@ -58,6 +58,7 @@ import { attachOrDetachLsp, applyCmDiagnostics } from "./lib/editorPaneLsp";
 import {
   lspCompletionExtension,
   lspHoverExtension,
+  requestFormattingEdits,
   resolveDefinitionAt,
   resolveDocumentSymbols,
   resolveReferencesAt,
@@ -65,7 +66,10 @@ import {
 } from "@/modules/lsp/lspExtensions";
 import type { PendingEdit, ReferenceGroup } from "@/modules/lsp/lspLanguageSupport";
 import type { LspDocumentSymbol } from "@/modules/lsp/types";
-import { containerPathForOffset } from "@/modules/lsp/lspLanguageSupport";
+import {
+  applyTextEdits,
+  containerPathForOffset,
+} from "@/modules/lsp/lspLanguageSupport";
 import EditorBreadcrumb from "./EditorBreadcrumb.vue";
 import { notifyInfo } from "@/modules/notifications/notificationCenter";
 import type { LspEditorHooks } from "./lib/editorPaneLsp";
@@ -361,12 +365,37 @@ async function saveConfirmed() {
   lastSavedPath.value = props.path;
   lastSavedAt.value = Date.now();
   setDirty(false);
+  await formatBeforeSave();
   // 先 flush 掉还挂在防抖窗口里的那次推送（否则会有两次内容相同的
   // didChange），再发 didSave —— capabilities 里声明了 didSave: true，
   // rust-analyzer / gopls 依赖它触发重算。
   flushLspSync();
   if (view.value) notifyLspDocumentSaved(view.value, buffer.value);
   emit("saved");
+}
+
+/**
+ * 保存时格式化。
+ *
+ * 走 LSP 的 `textDocument/formatting` 而不是内置 formatter：零新依赖，
+ * 而且用的是**用户自己项目的** formatter 配置（rustfmt.toml、.editorconfig），
+ * 而不是我们硬编码的一套规则。server 不支持时静默跳过 —— 格式化是锦上添花，
+ * 不该因为它失败而阻塞保存。
+ */
+async function formatBeforeSave(): Promise<void> {
+  if (!prefs.editorFormatOnSave) return;
+  const current = view.value;
+  if (!current) return;
+  const edits = await requestFormattingEdits(current);
+  if (!edits || edits.length === 0) return;
+  const before = current.state.doc.toString();
+  const formatted = applyTextEdits(before, edits);
+  if (formatted === before) return;
+  // 整篇替换：格式化本质就是重排全文，逐条 dispatch 会让撤销栈变得无法使用。
+  current.dispatch({
+    changes: { from: 0, to: current.state.doc.length, insert: formatted },
+    selection: { anchor: current.state.selection.main.head },
+  });
 }
 
 async function save() {
@@ -619,6 +648,8 @@ function flushLspSync(): void {
 const lspHooks: LspEditorHooks = {
   workspaceRoot: wsCtx.workspace.rootPath,
   getDocumentText: () => view.value?.state.doc.toString() ?? "",
+  getTabSize: () => prefs.editorTabSize,
+  getInsertSpaces: () => true,
   applyDiagnostics: (diagnostics) => {
     const current = view.value;
     if (current) applyCmDiagnostics(current, diagnostics);

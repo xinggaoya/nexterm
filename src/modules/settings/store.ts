@@ -187,6 +187,8 @@ export type Preferences = {
   editorTabSize: number;
   editorLspTypescriptMode: EditorLspTypescriptMode;
   editorWordWrap: boolean;
+  /** 保存时调用语言服务器的格式化。默认关 —— 改写用户代码必须由用户先同意。 */
+  editorFormatOnSave: boolean;
   leftSidebar: LeftSidebarPref;
   panelVisibility: PanelVisibilityPref;
   /** v3.1 壳层:全局侧栏折叠为 52px 轨道。 */
@@ -455,6 +457,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   editorTabSize: EDITOR_TAB_SIZE_DEFAULT,
   editorLspTypescriptMode: "builtin",
   editorWordWrap: false,
+  editorFormatOnSave: false,
   leftSidebar: {
     activity: "sourceControl",
     open: true,
@@ -708,6 +711,10 @@ export const PREF_SPECS: PrefSpecMap = {
   editorTabSize: spec("editorTabSize", numberPref(DEFAULT_PREFERENCES.editorTabSize), clampEditorTabSize),
   editorLspTypescriptMode: spec("editorLspTypescriptMode", enumPref(["builtin", "lsp"] as const, DEFAULT_PREFERENCES.editorLspTypescriptMode)),
   editorWordWrap: spec("editorWordWrap", boolPref(DEFAULT_PREFERENCES.editorWordWrap)),
+  editorFormatOnSave: spec(
+    "editorFormatOnSave",
+    boolPref(DEFAULT_PREFERENCES.editorFormatOnSave),
+  ),
   leftSidebar: spec("layout.leftSidebar", normalizeLeftSidebarPref, normalizeLeftSidebarPref),
   panelVisibility: spec("layout.panels", normalizePanelVisibilityPref, normalizePanelVisibilityPref),
   sidebarCollapsed: spec("sidebarCollapsed", boolPref(DEFAULT_PREFERENCES.sidebarCollapsed)),

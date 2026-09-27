@@ -153,6 +153,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const updateEditorFontSize = (value: number) => updatePref("editorFontSize", value);
   const updateEditorTabSize = (value: number) => updatePref("editorTabSize", value);
   const updateEditorWordWrap = (value: boolean) => updatePref("editorWordWrap", value);
+  const updateEditorFormatOnSave = (value: boolean) =>
+    updatePref("editorFormatOnSave", value);
   const updateLeftSidebar = (value: LeftSidebarPref) => updatePref("leftSidebar", value);
   const updatePanelVisibility = (value: PanelVisibilityPref) => updatePref("panelVisibility", value);
 
@@ -235,6 +237,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateEditorFontSize,
     updateEditorTabSize,
     updateEditorWordWrap,
+
+    updateEditorFormatOnSave,
     updateLeftSidebar,
     updatePanelVisibility,
     updateCommandKeybinding,

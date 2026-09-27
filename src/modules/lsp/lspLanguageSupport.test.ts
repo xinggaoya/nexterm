@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EditorState, Text } from "@codemirror/state";
 import {
+  applyTextEdits,
   completionInsertText,
   containerPathForOffset,
   flattenDocumentSymbols,
@@ -451,5 +452,83 @@ describe("rename / references / symbols", () => {
     // line1 落在 fn 内但不在 inner 内 → 只返回最内层的 fn
     expect(containerPathForOffset(doc, symbols, 8)).toEqual(["fn"]);
     expect(containerPathForOffset(doc, symbols, 1000)).toEqual([]);
+  });
+});
+
+describe("applyTextEdits", () => {
+  it("单条替换", () => {
+    // "let  a=1;" 的 [3,5) 是两个连续空格，缩成一个
+    const out = applyTextEdits("let  a=1;", [
+      { range: { start: { line: 0, character: 3 }, end: { line: 0, character: 5 } }, newText: " " },
+    ]);
+    expect(out).toBe("let a=1;");
+  });
+
+  it("多条编辑按偏移倒序应用（前面的改动不会打乱后面的偏移）", () => {
+    // 故意把后面的编辑放在数组前面 —— 顺序无关，结果必须一致
+    const edits = [
+      { range: { start: { line: 1, character: 0 }, end: { line: 1, character: 3 } }, newText: "CCC" },
+      { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } }, newText: "AAA" },
+    ];
+    expect(applyTextEdits("aaa\nbbb", edits)).toBe("AAA\nCCC");
+  });
+
+  it("插入与删除（零宽 range）", () => {
+    const content = "abcdef";
+    expect(
+      applyTextEdits(content, [
+        { range: { start: { line: 0, character: 1 }, end: { line: 0, character: 1 } }, newText: "-" },
+      ]),
+    ).toBe("a-bcdef");
+    expect(
+      applyTextEdits(content, [
+        { range: { start: { line: 0, character: 1 }, end: { line: 0, character: 4 } }, newText: "" },
+      ]),
+    ).toBe("aef");
+  });
+
+  it("跨行替换", () => {
+    expect(
+      applyTextEdits("one\ntwo\nthree", [
+        { range: { start: { line: 0, character: 1 }, end: { line: 2, character: 2 } }, newText: "X" },
+      ]),
+    ).toBe("oXree");
+  });
+
+  it("character 越界钳到行尾而不是崩掉", () => {
+    expect(
+      applyTextEdits("ab", [
+        { range: { start: { line: 0, character: 999 }, end: { line: 0, character: 999 } }, newText: "!" },
+      ]),
+    ).toBe("ab!");
+  });
+
+  it("行号越界的编辑被跳过（其余编辑照常应用）", () => {
+    const out = applyTextEdits("x\ny", [
+      { range: { start: { line: 99, character: 0 }, end: { line: 99, character: 1 } }, newText: "?" },
+      { range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, newText: "X" },
+    ]);
+    expect(out).toBe("X\ny");
+  });
+
+  it("起止颠倒的 range 自动归一", () => {
+    expect(
+      applyTextEdits("abcdef", [
+        { range: { start: { line: 0, character: 4 }, end: { line: 0, character: 1 } }, newText: "X" },
+      ]),
+    ).toBe("aXef");
+  });
+
+  it("空编辑列表原样返回", () => {
+    expect(applyTextEdits("abc", [])).toBe("abc");
+  });
+
+  it("末尾无换行与有换行都能正确处理", () => {
+    // content 末尾没换行时，最后一行仍然是一个合法行
+    expect(
+      applyTextEdits("a", [
+        { range: { start: { line: 0, character: 1 }, end: { line: 0, character: 1 } }, newText: "\nb" },
+      ]),
+    ).toBe("a\nb");
   });
 });

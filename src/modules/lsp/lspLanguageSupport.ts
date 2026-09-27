@@ -336,3 +336,49 @@ export function containerPathForOffset(
   }
   return deepest;
 }
+
+/**
+ * 把 LSP 的 TextEdit 列表应用到纯文本。
+ *
+ * 按**偏移从后往前**替换：前面的改动会让后面的偏移失效，正序应用会把内容
+ * 搅乱（这正是重命名落盘时踩过的坑，这里一次做对）。
+ *
+ * 越界的 range 会被钳到行内，行号越界则跳过该条而不是崩掉 —— server 返回
+ * 的范围偶尔会落在刚被前面改动挪走的位置。
+ */
+export function applyTextEdits(
+  content: string,
+  edits: readonly { range: LspRange; newText: string }[],
+): string {
+  if (edits.length === 0) return content;
+  const lines = content.split("\n");
+  // 先算出每条编辑的绝对偏移，再倒序应用。
+  const resolved = edits
+    .map((edit) => {
+      const startLine = Math.min(Math.max(edit.range.start.line, 0), lines.length - 1);
+      const endLine = Math.min(Math.max(edit.range.end.line, 0), lines.length - 1);
+      if (startLine !== edit.range.start.line || endLine !== edit.range.end.line) {
+        return null;
+      }
+      const start = offsetOf(lines, startLine, edit.range.start.character);
+      const end = offsetOf(lines, endLine, edit.range.end.character);
+      return { from: Math.min(start, end), to: Math.max(start, end), newText: edit.newText };
+    })
+    .filter((entry): entry is { from: number; to: number; newText: string } => entry !== null)
+    .sort((a, b) => b.from - a.from);
+  let out = content;
+  for (const edit of resolved) {
+    out = out.slice(0, edit.from) + edit.newText + out.slice(edit.to);
+  }
+  return out;
+}
+
+/** (line, character) → 绝对偏移。character 越界时钳到行尾。 */
+function offsetOf(lines: readonly string[], line: number, character: number): number {
+  let offset = 0;
+  for (let i = 0; i < line; i += 1) {
+    offset += (lines[i] ?? "").length + 1; // +1 是换行符
+  }
+  const text = lines[line] ?? "";
+  return offset + Math.min(Math.max(character, 0), text.length);
+}

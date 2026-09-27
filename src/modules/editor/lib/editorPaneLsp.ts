@@ -17,6 +17,10 @@ export type LspEditorHooks = {
   applyDiagnostics: (diagnostics: LspDiagnostic[]) => void;
   /** LSP 不可用（无 server 二进制/握手失败）时兜底提示。 */
   onAttachFailed?: (reason: string) => void;
+  /** 缩进宽度（formatting 请求要带上）。 */
+  getTabSize?: () => number;
+  /** 是否用空格缩进。 */
+  getInsertSpaces?: () => boolean;
 };
 
 /** LSP severity(1-4) → CodeMirror diagnostic severity。 */
@@ -91,6 +95,8 @@ export async function attachOrDetachLsp(
     workspaceRoot: hooks.workspaceRoot,
     getDocumentText: hooks.getDocumentText,
     onDiagnostics: (params) => hooks.applyDiagnostics(params.diagnostics),
+    getTabSize: hooks.getTabSize,
+    getInsertSpaces: hooks.getInsertSpaces,
   });
   if (!outcome.attached) {
     hooks.applyDiagnostics([]);

@@ -162,7 +162,25 @@ export type LspSymbolInformation = {
   containerName?: string;
 };
 
-/** URI → 路径。LSP 用 `file://` + 百分号编码，这里只处理我们写入的形式。 */
+// ── 格式化 ────────────────────────────────────────────────────────────
+
+/**
+ * `textDocument/formatting` 的参数。`range` 为 null 表示"整篇"。
+ * 只声明 `tabSize` / `insertSpaces` —— 我们没有可配置的 per-language
+ * formatterOptions，传空对象让 server 用它自己的默认值（rustfmt.toml、
+ * .editorconfig 之类），那才是用户真正在用的配置。
+ */
+export type LspFormattingParams = {
+  textDocument: { uri: string };
+  options: {
+    tabSize: number;
+    insertSpaces: boolean;
+    trimTrailingWhitespace?: boolean;
+    insertFinalNewline?: boolean;
+  };
+};
+
+// ── URI → 路径。LSP 用 `file://` + 百分号编码，这里只处理我们写入的形式。
 export function fileUriToPath(uri: string): string {
   if (!uri.startsWith("file://")) return uri;
   const withoutScheme = uri.slice("file://".length);

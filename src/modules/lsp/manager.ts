@@ -11,7 +11,9 @@ import {
   type LspLocation,
   type LspLocationLink,
   type LspPosition,
+  type LspRange,
   type LspSymbolInformation,
+  type LspTextEdit,
   type LspWorkspaceEdit,
   type PublishDiagnosticsParams,
 } from "./types";
@@ -110,6 +112,11 @@ export type LspEditorClient = {
    * 结果已归一为 `LspDocumentSymbol[]`（SymbolInformation 会被提升）。
    */
   requestWorkspaceSymbols: (query: string) => Promise<LspDocumentSymbol[] | null>;
+  /**
+   * 请求格式化。`range` 为 null 表示整篇。server 不支持时返回 null
+   * （`textDocument/formatting` 是可选能力，gopls / pyright 就不提供）。
+   */
+  requestFormatting: (range: LspRange | null) => Promise<LspTextEdit[] | null>;
   dispose: () => void;
 };
 
@@ -126,6 +133,10 @@ export type LspAttachOptions = {
   workspaceRoot?: string | null;
   /** server 推回诊断时的回调（已按文档 URI 过滤）。 */
   onDiagnostics?: (params: PublishDiagnosticsParams) => void;
+  /** 缩进宽度（formatting 请求要带上）。 */
+  getTabSize?: () => number;
+  /** 是否用空格缩进。 */
+  getInsertSpaces?: () => boolean;
 };
 
 export type LspAttachOutcome =
@@ -295,6 +306,18 @@ export async function attachLspToEditor(
       request<LspLocation[]>("textDocument/references", {
         ...at(position),
         context: { includeDeclaration },
+      }),
+    requestFormatting: (range) =>
+      // tabSize/insertSpaces 用编辑器当前设置；其余交给 server 自己的
+      // formatter 配置（rustfmt.toml / .editorconfig 之类），那才是用户在用的。
+      request<LspTextEdit[]>("textDocument/formatting", {
+        ...(range ? { range } : {}),
+        options: {
+          // 缺省 2/空格：宿主没提供时用与编辑器无关的保守值，server
+          // 反正会按它自己的配置决定。
+          tabSize: options.getTabSize?.() ?? 2,
+          insertSpaces: options.getInsertSpaces?.() ?? true,
+        },
       }),
     requestWorkspaceSymbols: async (query) => {
       const raw = await request<

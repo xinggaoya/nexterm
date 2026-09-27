@@ -50,10 +50,21 @@ describe("EditorSection.vue", () => {
     });
     const prefs = usePreferencesPiniaStore(pinia);
     expect(prefs.editorLspTypescriptMode).toBe("builtin");
-    // 模板次序：switch[0]=Vim，switch[1]=LSP 诊断。
+    // 模板次序：switch[0]=Vim，switch[1]=保存时格式化，switch[2]=LSP 诊断。
     const switches = wrapper.findAllComponents(NSwitch);
-    expect(switches.length).toBe(2);
-    await switches[1].vm.$emit("update:value", true);
+    expect(switches.length).toBe(3);
+    await switches[2].vm.$emit("update:value", true);
     expect(prefs.editorLspTypescriptMode).toBe("lsp");
+  });
+
+  it("保存时格式化默认关闭（改写用户代码必须由用户先同意）", async () => {
+    const wrapper = mount(EditorSection, {
+      global: { plugins: [pinia, i18n] },
+    });
+    const prefs = usePreferencesPiniaStore(pinia);
+    expect(prefs.editorFormatOnSave).toBe(false);
+    const switches = wrapper.findAllComponents(NSwitch);
+    await switches[1].vm.$emit("update:value", true);
+    expect(prefs.editorFormatOnSave).toBe(true);
   });
 });

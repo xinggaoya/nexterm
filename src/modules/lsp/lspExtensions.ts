@@ -5,7 +5,7 @@ import {
 import type { Extension } from "@codemirror/state";
 import { hoverTooltip, type EditorView, type Tooltip } from "@codemirror/view";
 import { getLspClient } from "./manager";
-import { fileUriToPath, type LspDocumentSymbol } from "./types";
+import { fileUriToPath, type LspDocumentSymbol, type LspTextEdit } from "./types";
 import {
   offsetToLspPosition,
   resolveDefinitionLocations,
@@ -131,4 +131,16 @@ export async function resolveDocumentSymbols(
   const client = getLspClient(view);
   if (!client) return null;
   return client.requestDocumentSymbols();
+}
+
+/**
+ * 请求格式化整篇文档。server 不支持时返回 null，调用方静默跳过 ——
+ * 格式化是锦上添花，不该因为它失败而阻塞保存。
+ */
+export async function requestFormattingEdits(
+  view: EditorView,
+): Promise<LspTextEdit[] | null> {
+  const client = getLspClient(view);
+  if (!client) return null;
+  return client.requestFormatting(null);
 }

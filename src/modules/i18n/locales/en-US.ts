@@ -600,6 +600,8 @@ const enUS = {
     remoteRemoveSuccess: "Removed remote \"{name}\"",
   },
   editor: {
+    formatOnSave: "Format on save",
+    formatOnSaveHint: "Uses the language server's formatter (rustfmt, gofmt, ...). Silently skipped when the server has no formatting support.",
     binaryFile: "Binary file",
     diffFallbackUnavailable: "Diff preview is not available for this file.",
     exceedsLimit: "{size} exceeds the {limit} limit.",
