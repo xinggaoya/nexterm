@@ -48,3 +48,92 @@ export type PublishDiagnosticsParams = {
   diagnostics: LspDiagnostic[];
 };
 
+// ── 补全 / 悬浮 / 跳转定义所需的协议子集 ─────────────────────────────
+//
+// 只声明实际读到的字段（类型先行：Rust 侧不参与，但前端读到的形状必须与
+// LSP 规范一致，否则会在某个 server 上静默拿到 undefined）。
+
+/** LSP 位置用的是 UTF-16 code unit 计数，与 CodeMirror 的偏移同刻度。 */
+export type LspCompletionItem = {
+  label: string;
+  kind?: number;
+  detail?: string;
+  documentation?: string | LspMarkupContent;
+  // 补全可以带 textEdit（server 直接给出插入范围），优先级高于 insertText。
+  // `insert` 形态是 InsertReplaceEdit（客户端声明 insertReplaceSupport 后
+  // 才会出现），这里一并接受。
+  textEdit?: LspTextEdit | LspInsertReplaceEdit;
+  insertText?: string;
+  insertTextFormat?: 1 | 2;
+  sortText?: string;
+  filterText?: string;
+  additionalTextEdits?: LspTextEdit[];
+};
+
+export type LspTextEdit = {
+  range: LspRange;
+  newText: string;
+};
+
+export type LspInsertReplaceEdit = {
+  newText: string;
+  insert: LspRange;
+  replace?: LspRange;
+};
+
+export type LspMarkupContent = {
+  kind: "plaintext" | "markdown";
+  value: string;
+};
+
+export type LspCompletionList = {
+  isIncomplete: boolean;
+  items: LspCompletionItem[];
+};
+
+export type LspCompletionParams = {
+  textDocument: { uri: string };
+  position: LspPosition;
+};
+
+export type LspHover = {
+  contents: string | LspMarkupContent | Array<string | LspMarkupContent>;
+  range?: LspRange;
+};
+
+export type LspLocation = {
+  uri: string;
+  range: LspRange;
+};
+
+export type LspLocationLink = {
+  targetUri: string;
+  targetRange: LspRange;
+  targetSelectionRange: LspRange;
+};
+
+export type LspDocumentSymbol = {
+  name: string;
+  detail?: string;
+  kind: number;
+  range: LspRange;
+  selectionRange: LspRange;
+  children?: LspDocumentSymbol[];
+};
+
+/** URI → 路径。LSP 用 `file://` + 百分号编码，这里只处理我们写入的形式。 */
+export function fileUriToPath(uri: string): string {
+  if (!uri.startsWith("file://")) return uri;
+  const withoutScheme = uri.slice("file://".length);
+  // Windows 的 `file:///C:/x` 去掉首个斜杠才是盘符路径。
+  const normalized =
+    withoutScheme.startsWith("/") && /^\/[a-zA-Z]:/.test(withoutScheme)
+      ? withoutScheme.slice(1)
+      : withoutScheme;
+  try {
+    return decodeURIComponent(normalized);
+  } catch {
+    return normalized;
+  }
+}
+

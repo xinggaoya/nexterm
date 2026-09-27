@@ -912,3 +912,15 @@ html[data-accent="blue"] {
   --term-cyan: oklch(0.78 0.16 255);
   --term-bright-cyan: oklch(0.88 0.17 255);
 }
+
+/* LSP 悬浮框：与 CodeMirror 自身的 tooltip 同一套视觉语言，
+   但用等宽字体 —— 内容通常是代码与类型签名。 */
+.nexterm-lsp-hover {
+  max-width: 480px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+}

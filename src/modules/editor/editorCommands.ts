@@ -22,4 +22,11 @@ export const EDITOR_COMMAND_SPECS: CommandSpec[] = [
     defaultKeybinding: "Ctrl+G",
     workspaceRequired: true,
   },
+  {
+    id: "editor.goToDefinition",
+    titleKey: "commands.items.goToDefinition",
+    category: "editor",
+    defaultKeybinding: "F12",
+    workspaceRequired: true,
+  },
 ];

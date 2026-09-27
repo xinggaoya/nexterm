@@ -22,6 +22,10 @@ const zhCN = {
     settings: "设置",
     unknown: "未知",
   },
+  lsp: {
+    noDefinition: "没有找到定义",
+  },
+
   commands: {
     categories: {
       editor: "编辑器",
@@ -54,6 +58,7 @@ const zhCN = {
       focusLeft: "向左聚焦面板",
       focusRight: "向右聚焦面板",
       focusUp: "向上聚焦面板",
+      goToDefinition: "跳转到定义",
       gotoLine: "跳转到行…",
       nextTab: "下一个标签",
       newTerminal: "新建终端",

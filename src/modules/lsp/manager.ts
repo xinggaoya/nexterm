@@ -4,10 +4,49 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 
 import { createLspConnection } from "./lspTransport";
 import { detectLspLanguage, type SupportedLanguage } from "./languageMap";
-import type { PublishDiagnosticsParams } from "./types";
+import {
+  type LspCompletionList,
+  type LspDocumentSymbol,
+  type LspHover,
+  type LspLocation,
+  type LspLocationLink,
+  type LspPosition,
+  type PublishDiagnosticsParams,
+} from "./types";
 
 /** initialize 握手的超时；超时则放弃 attach 并杀掉会话，不让编辑器卡死。 */
 const INITIALIZE_TIMEOUT_MS = 10_000;
+
+/**
+ * 单次补全 / 悬浮 / 跳转的超时。给一个明确上界，否则卡住的 server 会让
+ * 补全面板一直转圈。
+ */
+const REQUEST_TIMEOUT_MS = 2_000;
+
+/**
+ * 客户端能力声明。**只声明真正接上的功能** —— 声明了却不做，服务端会给
+ * 出客户端接不住的结果（比如建议的 workspaceEdit 变更），用户会看到
+ * “看起来能点但没反应”。
+ */
+const CLIENT_CAPABILITIES = {
+  textDocument: {
+    // 我们走全量 textDocumentSync（didChange 带全文），kind 1 = Full。
+    synchronization: { dynamicRegistration: false, willSave: false, didSave: true },
+    completion: {
+      dynamicRegistration: false,
+      // snippetSupport: false —— 我们不解析 snippet 占位符。
+      completionItem: { snippetSupport: false, documentationFormat: ["markdown", "plaintext"] },
+      contextSupport: false,
+    },
+    hover: { dynamicRegistration: false, contentFormat: ["markdown", "plaintext"] },
+    definition: { dynamicRegistration: false, linkSupport: false },
+    documentSymbol: {
+      dynamicRegistration: false,
+      hierarchicalDocumentSymbolSupport: true,
+    },
+  },
+  workspace: { workspaceFolders: true },
+} as const;
 
 export type LspEditorClient = {
   language: SupportedLanguage;
@@ -15,6 +54,16 @@ export type LspEditorClient = {
   documentUri: string;
   /** 保存后调用：把当前全文作为 didChange 推给 server，触发重新诊断。 */
   notifyDocumentChanged: (text: string) => void;
+  /**
+   * 请求补全。`position` 用 LSP 的 0-based line + UTF-16 character。
+   * server 不可用 / 超时 / 协议不符时返回 null，调用方降级为无补全。
+   */
+  requestCompletion: (position: LspPosition) => Promise<LspCompletionList | null>;
+  requestHover: (position: LspPosition) => Promise<LspHover | null>;
+  requestDefinition: (
+    position: LspPosition,
+  ) => Promise<LspLocation | LspLocationLink | LspLocation[] | null>;
+  requestDocumentSymbols: () => Promise<LspDocumentSymbol[] | null>;
   dispose: () => void;
 };
 
@@ -92,7 +141,7 @@ export async function attachLspToEditor(
       connection.sendRequest<{ capabilities: unknown }>("initialize", {
         processId: null,
         rootUri,
-        capabilities: {},
+        capabilities: CLIENT_CAPABILITIES,
         workspaceFolders: rootUri
           ? [{ uri: rootUri, name: options.workspaceRoot }]
           : null,
@@ -129,6 +178,30 @@ export async function attachLspToEditor(
   }
 
   let version = 1;
+  /**
+   * 统一的请求入口：带上文档定位 + 超时，并给出“错了也不能拖死编辑器”的
+   * 降级策略。补全失败就当没有补全，hover 失败就没有悬浮 —— 任何情况下
+   * 都不应该抛到调用方。
+   */
+  const request = async <T>(
+    method: string,
+    position?: LspPosition,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+  ): Promise<T | null> => {
+    const params = position
+      ? { textDocument: { uri: documentUri }, position }
+      : { textDocument: { uri: documentUri } };
+    try {
+      return await withTimeout(
+        connection.sendRequest<T>(method, params),
+        timeoutMs,
+      );
+    } catch (error) {
+      console.warn(`[lsp] ${method} failed:`, error);
+      return null;
+    }
+  };
+
   const client: Client = {
     language,
     documentUri,
@@ -140,6 +213,17 @@ export async function attachLspToEditor(
         contentChanges: [{ text }],
       });
     },
+    requestCompletion: (position) =>
+      request<LspCompletionList>("textDocument/completion", position),
+    requestHover: (position) => request<LspHover>("textDocument/hover", position),
+    requestDefinition: (position) =>
+      request<LspLocation | LspLocationLink | LspLocation[]>(
+        "textDocument/definition",
+        position,
+      ),
+    // 符号树可能很大，给更宽的超时。
+    requestDocumentSymbols: () =>
+      request<LspDocumentSymbol[]>("textDocument/documentSymbol", undefined, 5_000),
     dispose: () => {
       try {
         connection.sendNotification("textDocument/didClose", {
@@ -203,4 +287,9 @@ export function isLspAttached(
   editor: EditorView,
 ): boolean {
   return clients.has(editor);
+}
+
+/** 当前 editor 的 LSP 客户端（未 attach 时为 undefined）。 */
+export function getLspClient(editor: EditorView): LspEditorClient | undefined {
+  return clients.get(editor);
 }

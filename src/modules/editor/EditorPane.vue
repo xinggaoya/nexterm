@@ -55,6 +55,12 @@ import {
 import { themeExtensionFor } from "./lib/themes";
 import { vimHandlersExtension, vimModeExtension } from "./lib/vim";
 import { attachOrDetachLsp, applyCmDiagnostics } from "./lib/editorPaneLsp";
+import {
+  lspCompletionExtension,
+  lspHoverExtension,
+  resolveDefinitionAt,
+} from "@/modules/lsp/lspExtensions";
+import { notifyInfo } from "@/modules/notifications/notificationCenter";
 import type { LspEditorHooks } from "./lib/editorPaneLsp";
 import { notifyLspDocumentChanged } from "@/modules/lsp/manager";
 
@@ -66,6 +72,11 @@ const props = defineProps<{
 const emit = defineEmits<{
   dirtyChange: [dirty: boolean];
   saved: [];
+  /**
+   * LSP 跳转定义的结果。编辑器不持有工作区状态，也不知道怎么开标签 ——
+   * 只把目标上抛给 Canvas → WorkspaceHost 统一编排。
+   */
+  "go-to-definition": [target: { path: string; line: number; character: number } | null];
 }>();
 
 const dialog = useDialog();
@@ -162,6 +173,24 @@ function editorBaseExtensions(): Extension[] {
     bracketMatching(),
     closeBrackets(),
     autocompletion(),
+    // LSP 补全 source：override 里只有它，未 attach（builtin 模式 / 无
+    // server）时返回 null，补全面板不会出现。
+    lspCompletionExtension(),
+    lspHoverExtension(),
+    // Ctrl/Cmd + 点击 = 跳转定义。用 DOM 事件而不是 CM 扩展：需要的是
+    // "鼠标位置 → 文档偏移"，CM 的 domEventHandlers 正好直接给 pos。
+    EditorView.domEventHandlers({
+      mousedown: (event, view) => {
+        const mouse = event as MouseEvent;
+        if (!(mouse.ctrlKey || mouse.metaKey) || mouse.button !== 0) return false;
+        // 同步阻止默认，异步请求；这里不 await 避免阻塞 CM 的事件分发。
+        mouse.preventDefault();
+        const pos = view.posAtCoords({ x: mouse.clientX, y: mouse.clientY }) ?? -1;
+        if (pos < 0) return true;
+        void handleEditorPointerDown(mouse, pos);
+        return true;
+      },
+    }),
     highlightActiveLine(),
     // LSP 诊断的宿主扩展：真正的诊断由 manager 经 setDiagnostics 效果
     // 推入；这里挂空 source 的 linter 作为面板/gutter 的载体。
@@ -338,6 +367,34 @@ function getSelection(): string | null {
   return current.state.sliceDoc(from, to);
 }
 
+/**
+ * LSP 跳转定义。两种触发：
+ * - F12（命令 `editor.goToDefinition`）
+ * - Ctrl/Cmd + 点击（光标下的符号）
+ *
+ * 结果只上抛给宿主（Canvas → WorkspaceHost）去开标签：编辑器不持有
+ * 工作区状态。
+ */
+async function goToDefinition(pos?: number): Promise<void> {
+  const current = view.value;
+  if (!current) return;
+  const at = pos ?? current.state.selection.main.head;
+  const target = await resolveDefinitionAt(current, at);
+  if (!target) {
+    notifyInfo(t("lsp.noDefinition"));
+    return;
+  }
+  emit("go-to-definition", target);
+}
+
+/** Ctrl/Cmd + 点击：命中则跳转，否则把点击让给正常的光标定位。 */
+async function handleEditorPointerDown(event: MouseEvent, pos: number): Promise<void> {
+  if (!(event.ctrlKey || event.metaKey) || event.button !== 0) return;
+  // 修饰键 + 点击可能被其他扩展（如 vim 的块选择）用掉，先阻止默认再试。
+  event.preventDefault();
+  await goToDefinition(pos);
+}
+
 function openGotoLine(): void {
   const current = view.value;
   if (!current) return;
@@ -461,6 +518,7 @@ defineExpose({
   getSelection,
   setContentForTest,
   openGotoLine,
+  goToDefinition,
   revealLine,
   reload: () => reloadExternalChange(true),
   undo: () => {

@@ -37,6 +37,7 @@ export type CommandId =
   | "tab.restoreClosed"
   | "files.recent"
   | "editor.gotoLine"
+  | "editor.goToDefinition"
   | "terminal.focusLeft"
   | "terminal.focusRight"
   | "terminal.focusUp"

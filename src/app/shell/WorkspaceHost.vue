@@ -212,6 +212,18 @@ function onPathDeleted(path: string): void {
   }
 }
 
+/**
+ * LSP 跳转定义：打开目标文件并把光标落到定义处。
+ *
+ * 复用 `openSearchResult` 的同一套编排（开 tab + 轮询等编辑器挂载就绪），
+ * 不另写一份跳转逻辑 —— 两者对"跳到某个文件的某一行"是同一个需求。
+ */
+function onGoToDefinition(target: { path: string; line: number } | null): void {
+  if (!target) return;
+  // LSP 的 line 是 0-based，revealEditorLine 收 1-based。
+  openSearchResult(target.path, target.line + 1);
+}
+
 function openSearchResult(path: string, line: number): void {
   tabs.openFileTab(path, props.workspace.id, true);
   // 编辑器挂载是异步的（tab 激活 + 文档加载），用短轮询等它就绪后跳行。
@@ -448,6 +460,7 @@ const commandApi = useWorkbenchCommands({
   requestCloseTab,
   saveActiveEditor,
   openGotoLine,
+  goToDefinition: () => canvas.value?.goToDefinition(),
   openFindInFiles,
   openCommandPalette: (mode) => emit("request-command-palette", mode),
   openUrlPreview,
@@ -479,6 +492,7 @@ defineExpose({
   saveActiveEditor,
   openGotoLine,
   openFindInFiles,
+  goToDefinition: () => canvas.value?.goToDefinition(),
   killActiveTerminal,
   workspaceId,
   commandApi,
@@ -552,6 +566,7 @@ defineExpose({
           }"
           :workspace-fs-event="normalizedFsEvent"
           @history-ref-change="onHistoryRefChange"
+          @go-to-definition="onGoToDefinition"
         />
 
         <WorkspacePanel

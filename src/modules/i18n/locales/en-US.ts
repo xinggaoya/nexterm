@@ -20,6 +20,10 @@ const enUS = {
     settings: "Settings",
     unknown: "Unknown",
   },
+  lsp: {
+    noDefinition: "No definition found",
+  },
+
   commands: {
     categories: {
       editor: "Editor",
@@ -52,6 +56,7 @@ const enUS = {
       focusLeft: "Focus Pane Left",
       focusRight: "Focus Pane Right",
       focusUp: "Focus Pane Up",
+      goToDefinition: "Go to Definition",
       gotoLine: "Go to Line…",
       nextTab: "Next Tab",
       newTerminal: "New Terminal",

@@ -34,10 +34,22 @@ const props = defineProps<{
   workspaceFsEvent: import("@/lib/native").WorkspaceFsChangedEvent | null;
 }>();
 
+export type GoToDefinitionTarget = {
+  path: string;
+  /** 0-based（LSP 语义）。 */
+  line: number;
+  character: number;
+};
+
 const emit = defineEmits<{
   "history-ref-change": [
     input: { tabId: number; refName: string | null; allRefs: boolean },
   ];
+  /**
+   * LSP 跳转定义。编辑器不持有工作区状态也不知道怎么开标签，逐层上抛给
+   * WorkspaceHost 统一编排（开 tab + 跳行）。
+   */
+  "go-to-definition": [target: GoToDefinitionTarget | null];
 }>();
 
 const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
@@ -96,9 +108,15 @@ function revealEditorLine(path: string, line: number): boolean {
   return true;
 }
 
+/** F12：把命令系统的调用转给活动编辑器（无编辑器时静默）。 */
+async function goToDefinition(): Promise<void> {
+  await activeEditorPane.value?.goToDefinition();
+}
+
 defineExpose({
   saveActiveEditor,
   openGotoLine,
+  goToDefinition,
   revealEditorLine,
   killTerminal,
 });
@@ -207,6 +225,7 @@ defineExpose({
         :path="activeTab.path"
         :fs-event="workspaceFsEvent"
         @dirty-change="(dirty) => tabsStore.updateTab(activeTab!.id, { dirty })"
+        @go-to-definition="(target) => emit('go-to-definition', target)"
       />
     </div>
   </div>

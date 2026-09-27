@@ -56,6 +56,8 @@ type WorkbenchCommandOptions = {
   requestCloseTab: (id: number) => void;
   saveActiveEditor: () => void | Promise<void>;
   openGotoLine: () => void;
+  /** LSP 跳转定义（F12）：打开目标文件并跳到定义处。 */
+  goToDefinition: () => void | Promise<void>;
   openFindInFiles: () => void;
   openCommandPalette: (mode?: "commands" | "files") => void;
   openRenameDialog: (leafId: number, currentTitle: string) => void;
@@ -420,6 +422,9 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
         return;
       case "editor.gotoLine":
         options.openGotoLine();
+        return;
+      case "editor.goToDefinition":
+        void options.goToDefinition();
         return;
       case "terminal.focusLeft":
       case "terminal.focusRight":
