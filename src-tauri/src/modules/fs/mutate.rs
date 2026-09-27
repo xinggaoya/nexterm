@@ -376,6 +376,9 @@ fn copy_blocking(
 
 /// 批量移动。`items` 里的 from/to 都是**用户视角路径**（WSL 侧是 Linux
 /// 路径），解析与执行位置由 `workspace` 决定。
+// Tauri 命令的参数是一对一映射到 IPC 字段的（每个字段一个参数），因此
+// 参数数天然偏多；这里显式豁免而不是把命令拆开 —— 拆开会破坏 IPC 契约。
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn fs_move_many(
     items: Vec<TransferItem>,
@@ -402,6 +405,9 @@ pub async fn fs_move_many(
 }
 
 /// 批量复制。语义与 `fs_move_many` 一致，只是不删源。
+// Tauri 命令的参数是一对一映射到 IPC 字段的（每个字段一个参数），因此
+// 参数数天然偏多；这里显式豁免而不是把命令拆开 —— 拆开会破坏 IPC 契约。
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn fs_copy_many(
     items: Vec<TransferItem>,
@@ -440,6 +446,9 @@ pub async fn fs_cancel_transfer(
     Ok(transfers.cancel(operation_id))
 }
 
+// Tauri 命令的参数是一对一映射到 IPC 字段的（每个字段一个参数），因此
+// 参数数天然偏多；这里显式豁免而不是把命令拆开 —— 拆开会破坏 IPC 契约。
+#[allow(clippy::too_many_arguments)]
 async fn dispatch_transfer(
     items: Vec<TransferItem>,
     policy: ConflictPolicy,

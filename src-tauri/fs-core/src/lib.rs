@@ -110,11 +110,18 @@ impl TransferProgress {
         if self.total == 0 {
             return None;
         }
-        if self.bytes_total > 0 {
-            let pct = self.bytes_done.saturating_mul(100) / self.bytes_total;
-            return Some(pct.min(100) as u8);
-        }
-        Some((self.done * 100 / self.total).min(100) as u8)
+        // 用 checked_div 而不是「先判 > 0 再除」：后者是 clippy 的
+        // manual_checked_ops 会拦的写法，而 checked_div 本身就把"除数为 0"
+        // 表达成 None，省掉一个分支。
+        let ratio: u64 = if self.bytes_total > 0 {
+            self.bytes_done
+                .saturating_mul(100)
+                .checked_div(self.bytes_total)
+                .unwrap_or(0)
+        } else {
+            self.done as u64 * 100 / self.total as u64
+        };
+        Some(ratio.min(100) as u8)
     }
 }
 
