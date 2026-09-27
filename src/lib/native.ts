@@ -340,6 +340,14 @@ export type FsGlobHit = {
   rel: string;
 };
 
+// ── 从操作系统拖入文件 ────────────────────────────────────────────────
+
+/** OS 拖拽事件。`position` 已换算为 CSS 像素，可直接用于 elementFromPoint。 */
+export type OsFileDragEvent =
+  | { kind: "over"; position: { x: number; y: number } }
+  | { kind: "drop"; paths: string[]; position: { x: number; y: number } }
+  | { kind: "leave" };
+
 // ── 文件搬运（拖拽移动/复制、剪贴板粘贴）─────────────────────────────
 // 逐字段对齐 Rust `nexterm_fs_core` 的 serde 模型。**不要在前端另定义一份
 // 形状**：后端声明两份就会在某次协议演进时静默错位。
@@ -855,3 +863,43 @@ export const ssh = {
       secret: secret ?? null,
     }),
 };
+
+/**
+ * 订阅"从操作系统拖文件进窗口"事件。
+ *
+ * Tauri v2 默认 `dragDropEnabled: true`：系统层的拖拽被 Tauri 拦截后
+ * 以事件广播给 webview，而不是走 HTML5 drag-and-drop。所以这条通道
+ * （与 `usePointerDragReorder` 的指针手势）互不干扰，可以共存。
+ *
+ * 位置换算：Tauri 报的是**物理像素**，webview 的 `elementFromPoint` 要
+ * **CSS 像素**，必须除以 devicePixelRatio，否则高 DPI 屏幕上落点会整体
+ * 偏移（1080p 上偏得最明显，缩放越高偏得越多）。
+ *
+ * `enter` 不单独对外暴露：它和 `over` 对调用方意义相同（都是"高亮落点"），
+ * 合成一个 over 事件可以少写一处分支。
+ */
+export async function onOsFileDragDrop(
+  handler: (event: OsFileDragEvent) => void,
+): Promise<UnlistenFn> {
+  const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+  return getCurrentWebview().onDragDropEvent((event) => {
+    const payload = event.payload;
+    const toLogical = (position: { x: number; y: number }) => {
+      const scale = window.devicePixelRatio || 1;
+      return { x: position.x / scale, y: position.y / scale };
+    };
+    if (payload.type === "enter" || payload.type === "over") {
+      handler({ kind: "over", position: toLogical(payload.position) });
+      return;
+    }
+    if (payload.type === "drop") {
+      handler({
+        kind: "drop",
+        paths: payload.paths,
+        position: toLogical(payload.position),
+      });
+      return;
+    }
+    handler({ kind: "leave" });
+  });
+}

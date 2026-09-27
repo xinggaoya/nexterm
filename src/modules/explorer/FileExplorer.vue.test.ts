@@ -50,6 +50,35 @@ vi.mock("./lib/fileTreeService", async () => {
   };
 });
 
+// OS 拖入走 webview 事件通道（getCurrentWebview().onDragDropEvent）。
+// 组件在 mount 时订阅，这里用可手动触发的 handler 替身。
+const osDragHandlers: Array<(event: OsDragPayload) => void> = [];
+vi.mock("@tauri-apps/api/webview", () => ({
+  getCurrentWebview: () => ({
+    onDragDropEvent: async (handler: (event: OsDragPayload) => void) => {
+      osDragHandlers.push(handler);
+      return () => {
+        const index = osDragHandlers.indexOf(handler);
+        if (index >= 0) osDragHandlers.splice(index, 1);
+      };
+    },
+  }),
+}));
+vi.mock("@/lib/tauriRuntime", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/tauriRuntime")>("@/lib/tauriRuntime");
+  return { ...actual, hasTauriInternals: () => true };
+});
+
+type OsDragPayload =
+  | { type: "enter"; paths: string[]; position: { x: number; y: number } }
+  | { type: "over"; position: { x: number; y: number } }
+  | { type: "drop"; paths: string[]; position: { x: number; y: number } }
+  | { type: "leave" };
+
+function fireOsDrag(event: OsDragPayload): void {
+  for (const handler of [...osDragHandlers]) handler({ payload: event } as never);
+}
+
 vi.mock("./lib/iconResolver", () => ({
   fileIconUrl: (name: string) => `file-icon:${name}`,
   folderIconUrl: (name: string, expanded: boolean) =>
@@ -1785,5 +1814,165 @@ describe("FileExplorer clipboard (cut / copy / paste)", () => {
       );
     await flush();
     expect(rootWrapper.find("[data-menu-action='paste']").exists()).toBe(true);
+  });
+});
+
+describe("FileExplorer OS file drop", () => {
+  beforeEach(() => {
+    resetExplorerMocks();
+    osDragHandlers.length = 0;
+    document.elementFromPoint = elementFromPointMock as unknown as typeof document.elementFromPoint;
+    elementFromPointMock.mockReturnValue(null);
+  });
+
+  /**
+   * onOsFileDragDrop 内部是动态 import，订阅发生在微任务之后的宏任务里，
+   * 单次 flush 不够；等它真的挂上再继续。
+   */
+  async function waitForOsSubscription(): Promise<void> {
+    await vi.waitFor(() => expect(osDragHandlers.length).toBeGreaterThan(0));
+  }
+
+  it("drop 到目录行 → 复制到该目录（OS 拖入永不删源）", async () => {
+    mockWsNative.fsCopyMany.mockResolvedValueOnce({
+      completed: [{ from: "/home/dev/pic.png", to: "/repo/src/pic.png" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+    await waitForOsSubscription();
+    pointAt(wrapper, "[data-explorer-row-path='/repo/src']");
+
+    fireOsDrag({
+      type: "drop",
+      paths: ["/home/dev/pic.png"],
+      position: { x: 20, y: 20 },
+    });
+    await flush();
+
+    expect(mockWsNative.fsCopyMany).toHaveBeenCalledWith(
+      [{ from: "/home/dev/pic.png", to: "/repo/src/pic.png" }],
+      "rename",
+    );
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+  });
+
+  it("over 高亮落点，leave 清除", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await waitForOsSubscription();
+    pointAt(wrapper, "[data-explorer-row-path='/repo/src']");
+
+    fireOsDrag({ type: "enter", paths: [], position: { x: 20, y: 20 } });
+    await flush();
+    const row = wrapper.find("[data-explorer-row-path='/repo/src']");
+    expect(row.classes()).toContain("bg-accent");
+
+    fireOsDrag({ type: "leave" });
+    await flush();
+    expect(
+      wrapper.find("[data-explorer-row-path='/repo/src']").classes(),
+    ).not.toContain("bg-accent");
+  });
+
+  it("drop 到文件行：不接收（不能把东西放进文件里）", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await waitForOsSubscription();
+    pointAt(wrapper, "[data-explorer-row-path='/repo/README.md']");
+
+    fireOsDrag({
+      type: "drop",
+      paths: ["/home/dev/pic.png"],
+      position: { x: 20, y: 20 },
+    });
+    await flush();
+
+    expect(mockWsNative.fsCopyMany).not.toHaveBeenCalled();
+    expect(mockWsNative.fsMoveMany).not.toHaveBeenCalled();
+  });
+
+  it("drop 到树空白区 = 复制到工作区根", async () => {
+    mockWsNative.fsCopyMany.mockResolvedValueOnce({
+      completed: [{ from: "/home/dev/pic.png", to: "/repo/pic.png" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+    await waitForOsSubscription();
+    pointAt(wrapper, "[data-explorer-drop-root]");
+
+    fireOsDrag({
+      type: "drop",
+      paths: ["/home/dev/pic.png"],
+      position: { x: 20, y: 400 },
+    });
+    await flush();
+
+    expect(mockWsNative.fsCopyMany).toHaveBeenCalledWith(
+      [{ from: "/home/dev/pic.png", to: "/repo/pic.png" }],
+      "rename",
+    );
+  });
+
+  it("拖到窗口外（命中不到树）时清空高亮", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await waitForOsSubscription();
+    pointAt(wrapper, "[data-explorer-row-path='/repo/src']");
+    fireOsDrag({ type: "enter", paths: [], position: { x: 20, y: 20 } });
+    await flush();
+
+    elementFromPointMock.mockReturnValue(null);
+    fireOsDrag({ type: "over", position: { x: 900, y: 900 } });
+    await flush();
+    expect(
+      wrapper.find("[data-explorer-row-path='/repo/src']").classes(),
+    ).not.toContain("bg-accent");
+  });
+
+  it("组件卸载后退订，不再处理拖拽事件", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await waitForOsSubscription();
+    expect(osDragHandlers.length).toBe(1);
+    wrapper.unmount();
+    expect(osDragHandlers.length).toBe(0);
+  });
+
+  it("OS 拖入的源在工作区外时，只刷新工作区内的目录", async () => {
+    mockWsNative.fsCopyMany.mockResolvedValueOnce({
+      completed: [{ from: "/home/dev/pic.png", to: "/repo/pic.png" }],
+      skipped: [],
+      failed: [],
+      crossDevice: [],
+      warnings: [],
+    });
+    const wrapper = mountExplorer();
+    await flush();
+    await waitForOsSubscription();
+    const before = vi.mocked(readFileTreeDir).mock.calls.length;
+    pointAt(wrapper, "[data-explorer-drop-root]");
+
+    fireOsDrag({
+      type: "drop",
+      paths: ["/home/dev/pic.png"],
+      position: { x: 20, y: 400 },
+    });
+    await flush();
+
+    // 源目录 /home/dev 不在树内，不能因此发起读请求。
+    // readFileTreeDir(wsNative, path)：第 2 个参数就是路径。
+    const requested = vi
+      .mocked(readFileTreeDir)
+      .mock.calls.slice(before)
+      .map((call) => String(call[1]));
+    expect(requested.every((path) => path.startsWith("/repo"))).toBe(true);
   });
 });

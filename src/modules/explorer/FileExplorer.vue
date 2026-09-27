@@ -20,8 +20,11 @@ import { useWorkspaceContext } from "@/app/workspaceContext";
 import type {
   FsConflictPolicy,
   FsTransferResult,
+  OsFileDragEvent,
   WorkspaceFsChangedEvent,
 } from "@/lib/native";
+import { onOsFileDragDrop } from "@/lib/native";
+import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { notifyError, notifyInfo, notifySuccess } from "@/modules/notifications/notificationCenter";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { isSameWorkspaceRoot, normalizeWorkspacePath } from "@/modules/workspace";
@@ -885,7 +888,64 @@ async function settleAfterTransfer(
     dirs.add(dirname(item.from));
     dirs.add(dirname(item.to));
   }
-  for (const dir of dirs) void loadChildren(dir, { silent: true });
+  for (const dir of dirs) {
+    // 只刷新工作区内的目录：OS 拖入的源路径在磁盘任意位置，`dirname` 算
+    // 出来的父目录可能根本不在树里，刷新它只会白白发一次读请求。
+    if (props.rootPath && isInsideDir(dir, props.rootPath)) {
+      void loadChildren(dir, { silent: true });
+    }
+  }
+}
+
+// ── 从操作系统拖文件进窗口 ───────────────────────────────────────
+//
+// 走 Tauri 的 drag-drop 事件通道（Tauri v2 默认 dragDropEnabled: true，
+// 系统拖拽由 Tauri 拦截后广播给 webview），与树内指针拖拽共存。
+//
+// 一律当**复制**：从 Finder / 资源管理器拖进来永远不会删掉源文件，这与
+// Finder / VS Code / 资源管理器本身的行为一致。
+
+let unlistenOsDrag: (() => void) | null = null;
+
+function handleOsDragEvent(event: OsFileDragEvent): void {
+  if (dragDisabled() || !props.rootPath) {
+    if (event.kind !== "leave") clearOsDropTarget();
+    return;
+  }
+  if (event.kind === "leave") {
+    clearOsDropTarget();
+    return;
+  }
+  const hit = document.elementFromPoint(event.position.x, event.position.y);
+  if (!hit) {
+    clearOsDropTarget();
+    return;
+  }
+  const row = hit.closest<HTMLElement>("[data-explorer-row-path]");
+  let target: string | null = null;
+  if (row) {
+    target = row.dataset.isDir === "true" ? row.dataset.explorerRowPath ?? null : null;
+  } else if (hit.closest("[data-explorer-drop-root]")) {
+    target = props.rootPath;
+  }
+  if (!target) {
+    clearOsDropTarget();
+    return;
+  }
+  if (event.kind === "drop") {
+    clearOsDropTarget();
+    // 可行性在 drop 时才能算（Tauri 只在 drop 事件里给 paths），所以
+    // over 阶段只做高亮；非法落点由 runTransfer 的守卫拒绝并提示。
+    void runTransfer(event.paths, target, "copy");
+    return;
+  }
+  dropTargetDir.value = target;
+  dropAllowed.value = true;
+}
+
+function clearOsDropTarget(): void {
+  dropTargetDir.value = null;
+  dropAllowed.value = false;
 }
 
 // ── 文件树拖拽搬运 ───────────────────────────────────────────────────
@@ -1318,7 +1378,26 @@ watch(rows, () => {
 
 onBeforeUnmount(() => {
   clearScheduledTreeRefresh();
+  stopEdgeScroll();
+  cancelHoverExpand();
+  unlistenOsDrag?.();
+  unlistenOsDrag = null;
 });
+
+// OS 拖入订阅挂在组件生命周期上：文件树在每个工作区各一份，每份都订阅
+// 同一个全局事件，落点靠自己的命中判定区分。卸载时必须退订，否则工作区
+// 关掉后仍在处理拖拽事件。
+if (hasTauriInternals()) {
+  void onOsFileDragDrop(handleOsDragEvent)
+    .then((unlisten) => {
+      unlistenOsDrag = unlisten;
+    })
+    .catch((error) => {
+      // 不支持 drag-drop 的平台（如部分 Wayland 组合）会在这里失败：
+      // 静默降级为“不支持拖入”，而不是让整棵文件树挂掉。
+      console.warn("[explorer] OS file drag & drop unavailable:", error);
+    });
+}
 
 function setMode(next: "files" | "content") {
   mode.value = next;
