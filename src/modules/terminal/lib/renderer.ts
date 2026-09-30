@@ -12,6 +12,7 @@
  */
 
 import { Terminal } from "@xterm/xterm";
+import type { SearchAddon } from "@xterm/addon-search";
 import {
   applyTerminalTheme,
   buildTerminalTheme,
@@ -85,12 +86,25 @@ export interface TerminalTypography {
 
 export interface TerminalRenderer {
   term: Terminal;
+  /** SearchAddon 句柄：终端内 Ctrl+F 用的就是它（此前已装载但零引用）。 */
+  search: SearchAddon;
   /** 立即 fit,如字号/容器变化后调用 */
   fit: () => void;
   /** 应用字号/字体/间距变化,内部重新加载字体并重画 */
   applyTypography: (typography: TerminalTypography) => Promise<void>;
   /** 调整 scrollback */
   setScrollback: (scrollback: number) => void;
+  /**
+   * 跳到底部。用于上翻后“↓ N 行”的悬浮回底按钮。
+   */
+  scrollToBottom: () => void;
+  /**
+   * 视口距底部的行数。0 = 已在底部。
+   *
+   * 替代 `buffer.baseY - buffer.viewportY` 的手写计算：备用屏（alt screen，
+   * TUI AI 工具全都在用）下 baseY 语义不同，直接相减会算出乱七八糟的负数。
+   */
+  linesFromBottom: () => number;
   /** 切换渲染器 */
   setRenderer: (kind: RendererKind) => void;
   /** 当前生效的渲染器 */
@@ -283,6 +297,27 @@ export async function createTerminalRenderer(
     if (term.rows > 0) term.refresh(0, term.rows - 1);
   }
 
+  function scrollToBottom(): void {
+    if (disposed) return;
+    term.scrollToBottom();
+  }
+
+  /**
+   * 视口距底部多少行。
+   *
+   * 备用屏（DECSET 1049，claude code / opencode 这类 TUI 工具一进交互就切过去）
+   * 下 `baseY` 恒为 0，直接 `baseY - viewportY` 会返回负数 —— 必须先确认
+   * viewportY 确实落在 [0, baseY] 区间内，否则一律按 0（已在底部）算。
+   */
+  function linesFromBottom(): number {
+    if (disposed) return 0;
+    const buffer = term.buffer.active;
+    const viewportY = buffer.viewportY;
+    const baseY = buffer.baseY;
+    if (baseY <= 0 || viewportY >= baseY || viewportY < 0) return 0;
+    return baseY - viewportY;
+  }
+
   function dispose(): void {
     if (disposed) return;
     disposed = true;
@@ -308,12 +343,15 @@ export async function createTerminalRenderer(
 
   return {
     term,
+    search: addons?.search ?? null,
     fit,
     applyTypography,
     setScrollback,
     setRenderer,
     activeRenderer,
     redraw,
+    scrollToBottom,
+    linesFromBottom,
     dispose,
   };
 }

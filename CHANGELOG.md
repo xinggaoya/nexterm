@@ -7,6 +7,36 @@ Nexterm 所有值得注意的变更都记录在本文件中。版本遵循 [语�
 
 ## [Unreleased]
 
+### 修复 🐛
+
+- **终端聚焦时全局快捷键几乎全部失效** — xterm 用隐藏的 `<textarea class="xterm-helper-textarea">` 接收键盘，被 `isEditableTarget()` 判成普通输入框，于是除命令面板/快速打开外的所有快捷键（`Mod+W`、`Ctrl+Tab`、`Alt+方向键`、`Ctrl+Shift+F`、`Ctrl+G`、`F12`…）在终端里都被放行成裸字节发给 PTY。用户 95% 时间在终端里，等于快捷键系统整个失效
+- **Alt+方向键抢走 shell 的前后词跳转** — 该键在 bash/zsh/fish 里都绑定词跳转。现在只有**确实存在该方位相邻分屏**时命令才生效，单分屏时还给 shell
+- **分屏拖拽条是死的** — `TerminalResizer` 手势完整并 emit `resize`/`reset`，但树里没有任何监听者，`layout.resizeSplit` 从未被调用：把手画得出来、hover 有高亮，拖下去什么都不发生
+- **分屏关不掉** — `TerminalPane` 声明了 `close` emit 却没有触发点，`closeLeafInTab` 只能收到一个永不发出的事件。分屏之后只能整标签关掉
+- **终端内 Ctrl+F 不工作** — `TerminalSearch` 组件与 `SearchAddon` 早已写好并装载，全项目零引用
+- **`tab.closeOthers` 的默认键位撞车** — `"Mod+K Mod+W"` 被 `normalizeKeybinding` 静默折叠成 `"Mod+W"`，与 `tab.close` 冲突；分发时按数组顺序先命中 `tab.close`，`closeOthers` 变成一条永远执行不到的死命令
+- **`terminal.rename` 是孤儿命令** — 存在于 `CommandId` 联合类型和处理器表，却没有 spec 条目：既不进命令面板、也无法绑定
+- **`Ctrl+G` 在终端里会打断正在敲的命令** — bash 的 `Ctrl+G` 是 abort。编辑器专属命令现在只在活动标签是编辑器时可用
+
+### 新增 ✨
+
+- **每个分屏一条标题栏** — 状态点（运行/启动中/已退出）+ 退出码、标题、cwd，以及分屏与关闭按钮。激活的分屏用 `--terminal-focus` 描边（此前 `isFocused` 唯一的副作用是 `outline: 0`，多 pane 时完全无法判断输入落在哪）
+- **终端内查找面板** — `Ctrl+F` 开关，Enter/↓ 下一个、Shift+Enter/↑ 上一个、实时高亮与命中计数、Esc 关闭
+- **回到底部浮层** — 上翻之后新内容还在往下涌，底部的“末尾”看不见也不知道差多少行；按钮直接显示差距并一键回底
+- **终端右键菜单补全** — 清屏 / 重置 / 分屏 / 重命名 / 字号± / 关闭分屏，且全部文案走 i18n（此前只有 Copy/Paste/Select All 三项且**硬编码英文**，zh-CN 用户看到英文）
+- **快捷键设置页** — 搜索过滤、冲突逐条详情、录入当场拒绝（撞车 / 无修饰键）、一键全部重置
+
+### 重构 ♻️
+
+- **命令系统单一事实源** — 49 分支 `switch` 改为 `Record<CommandId, …>`（漏写一条处理器从静默 no-op 变成编译期错误）；抽出 `specToDefinition` 供命令面板与设置页共用，不再各拼一遍
+- **快捷键不再静默折叠** — `normalizeKeybinding` 拒绝和弦（多键序列）而不是取最后一个非修饰键 token
+- **`CommandSpec` 承载可用性条件** — 新增 `when`（如“该方位有相邻分屏”）与 `captureInTerminal`，可用性判断从快捷键分发处收回 spec
+- **分屏把手改 pointer 事件** — 鼠标版在 webview 里手感发涩；顺带补上最小边长夹取与 `containerSize` 上报
+
+### 文档 📚
+
+- `commandSpecsContract.test.ts` / `shortcutCapture.test.ts` / `paneInteraction.test.ts` / `paneWiring.test.ts` — 锁死「`CommandId` 联合类型 ↔ spec 表一致」「默认键位两两不撞」「终端 textarea 不算输入框」「把手与 pane 事件链完整」
+
 ## [0.2.2] - 2026-09-27
 
 ### 新增 ✨

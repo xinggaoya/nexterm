@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h, nextTick, type VNode } from "vue";
+import { i18n, setI18nLanguage } from "@/modules/i18n";
 import TerminalContextMenu from "./TerminalContextMenu.vue";
 
 // jsdom 下 NDropdown 的 popper 面板不会渲染；这里把 NDropdown mock 成
@@ -78,11 +79,29 @@ async function flush() {
   await nextTick();
 }
 
+const baseProps = {
+  x: 100,
+  y: 200,
+  selection: "",
+  canSplit: true,
+  onlyPane: false,
+  fontSize: 14,
+};
+
+function mountMenu(overrides: Partial<typeof baseProps> = {}) {
+  return mount(TerminalContextMenu, {
+    props: { ...baseProps, ...overrides },
+    global: { plugins: [i18n] },
+  });
+}
+
 describe("TerminalContextMenu.vue", () => {
+  beforeEach(() => {
+    setI18nLanguage("en-US");
+  });
+
   it("emits copy when the copy option is selected", async () => {
-    const wrapper = mount(TerminalContextMenu, {
-      props: { x: 100, y: 200, selection: "echo hi" },
-    });
+    const wrapper = mountMenu({ selection: "echo hi" });
     await flush();
 
     await wrapper.find("[data-menu-action='copy']").trigger("click");
@@ -94,9 +113,7 @@ describe("TerminalContextMenu.vue", () => {
   });
 
   it("emits paste when the paste option is selected", async () => {
-    const wrapper = mount(TerminalContextMenu, {
-      props: { x: 100, y: 200, selection: "" },
-    });
+    const wrapper = mountMenu();
     await flush();
 
     await wrapper.find("[data-menu-action='paste']").trigger("click");
@@ -106,9 +123,7 @@ describe("TerminalContextMenu.vue", () => {
   });
 
   it("emits selectAll when the select-all option is selected", async () => {
-    const wrapper = mount(TerminalContextMenu, {
-      props: { x: 100, y: 200, selection: "" },
-    });
+    const wrapper = mountMenu();
     await flush();
 
     await wrapper.find("[data-menu-action='selectAll']").trigger("click");
@@ -118,9 +133,7 @@ describe("TerminalContextMenu.vue", () => {
   });
 
   it("disables copy when there is no selection", async () => {
-    const wrapper = mount(TerminalContextMenu, {
-      props: { x: 100, y: 200, selection: "" },
-    });
+    const wrapper = mountMenu();
     await flush();
 
     const copyOption = wrapper.find("[data-menu-action='copy']");
@@ -133,28 +146,54 @@ describe("TerminalContextMenu.vue", () => {
     expect(wrapper.emitted("copy")).toBeUndefined();
   });
 
-  it("emits close on clickoutside", async () => {
-    const wrapper = mount(TerminalContextMenu, {
-      props: { x: 100, y: 200, selection: "" },
-    });
+  it("closes after selecting an action", async () => {
+    const wrapper = mountMenu();
     await flush();
 
-    // 通过 mount 上 NDropdown 的 @clickoutside="emit('close')" 路径：手动
-    // 派发 clickoutside 模拟外部点击。这里改为断言 NDropdown 的行为契约：
-    // 当真实 NDropdown emit clickoutside 时，组件应当 emit close。
-    // 直接通过 wrapper.findComponent(NDropdown).vm 不便（mock 没有暴露），
-    // 因此跳过这条路径；改测 select 不触发 close。
     await wrapper.find("[data-menu-action='paste']").trigger("click");
     await flush();
     expect(wrapper.emitted("paste")).toHaveLength(1);
-    // select 路径不会发出 close。
-    expect(wrapper.emitted("close")).toBeUndefined();
+    // 选完必须收起：菜单是 one-shot 的，否则会盖在刚打开的对话框上。
+    expect(wrapper.emitted("close")).toHaveLength(1);
+  });
+
+  it("exposes the TUI-hosting actions and closes a pane", async () => {
+    const wrapper = mountMenu();
+    await flush();
+
+    for (const action of [
+      "clear",
+      "reset",
+      "splitRight",
+      "splitDown",
+      "rename",
+      "zoomIn",
+      "zoomOut",
+      "closePane",
+    ]) {
+      expect(wrapper.find(`[data-menu-action='${action}']`).exists()).toBe(true);
+    }
+
+    await wrapper.find("[data-menu-action='closePane']").trigger("click");
+    await flush();
+    expect(wrapper.emitted("closePane")).toHaveLength(1);
+
+    await wrapper.find("[data-menu-action='splitDown']").trigger("click");
+    await flush();
+    expect(wrapper.emitted("split")).toEqual([["col"]]);
+  });
+
+  it("disables the split actions when the pane limit is reached", async () => {
+    const wrapper = mountMenu({ canSplit: false });
+    await flush();
+
+    expect(
+      wrapper.find("[data-menu-action='splitRight']").attributes("class") ?? "",
+    ).toContain("--disabled");
   });
 
   it("passes the pointer coordinates directly to the dropdown", async () => {
-    const wrapper = mount(TerminalContextMenu, {
-      props: { x: 123, y: 234, selection: "" },
-    });
+    const wrapper = mountMenu({ x: 123, y: 234 });
     await flush();
 
     const dropdown = wrapper.get("[data-dropdown-mock]");

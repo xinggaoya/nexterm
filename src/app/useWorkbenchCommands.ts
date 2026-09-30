@@ -19,11 +19,18 @@ import {
   buildResolvedKeybindings,
   createCommandRegistry,
   keybindingMatchesEvent,
+  resolveCaptureInTerminal,
+  specToDefinition,
   type CommandContext,
   type CommandDefinition,
   type CommandId,
   type KeybindingOverrides,
+  type PaneDirection,
 } from "@/modules/commands";
+import {
+  isTerminalInputSurface,
+  isTextEntryTarget,
+} from "@/modules/commands/shortcutTarget";
 import type { CommandPaletteMode } from "@/modules/commands/CommandPalette.vue";
 import {
   buildSourceControlEntries,
@@ -44,6 +51,13 @@ type WorkbenchCommandOptions = {
   workspaceRoot: ComputedRef<string | null>;
   activeRepoRoot: Ref<string | null>;
   activeTab: ComputedRef<Tab | null>;
+  /**
+   * 活动分屏在四个方位上是否存在相邻 pane。
+   *
+   * 决定 Alt+方向键是“切分屏焦点”还是“把键还给 shell 做前后词跳转”——
+   * 单分屏时后者才是用户想要的，所以没有邻居时命令不生效。
+   */
+  paneNeighbour: ComputedRef<Record<PaneDirection, boolean>>;
   leftPanelOpen: Ref<boolean>;
   rightPanelOpen: Ref<boolean>;
   workspaceFsEvent: Ref<WorkspaceFsChangedEvent | null>;
@@ -92,21 +106,16 @@ type WorkbenchCommandOptions = {
 export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
   const commandPaletteOpen = ref(false);
   const commandPaletteMode = ref<CommandPaletteMode>("commands");
-  const commandContext = computed(() => ({
+  const commandContext = computed<CommandContext>(() => ({
     workspaceReady: options.hasWorkspace.value,
+    paneNeighbour: options.paneNeighbour.value,
+    activeTabKind: options.activeTab.value?.kind ?? null,
   }));
 
   const commandDefinitions = computed<CommandDefinition[]>(() => [
-    ...CORE_COMMAND_SPECS.map((spec) => ({
-      id: spec.id,
-      title: options.t(spec.titleKey),
-      category: spec.category,
-      defaultKeybinding: spec.defaultKeybinding,
-      when: spec.workspaceRequired
-        ? (context: CommandContext) => context.workspaceReady
-        : undefined,
-      run: () => runCoreCommand(spec.id),
-    })),
+    ...CORE_COMMAND_SPECS.map((spec) =>
+      specToDefinition(spec, options.t, () => runCoreCommand(spec.id)),
+    ),
     ...DEFAULT_TERMINAL_SNIPPETS.map((snippet) => ({
       id: `snippet.${snippet.id}` as CommandId,
       title: options.t(snippet.nameKey),
@@ -291,185 +300,185 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
     options.requestCloseTab(tab.id);
   }
 
-  async function runCoreCommand(id: CommandId) {
-    switch (id) {
-      case "workbench.commandPalette.open":
-        openCommandPalette("commands");
-        return;
-      case "workbench.quickOpen.open":
-        openCommandPalette("files");
-        return;
-      case "workbench.closeActiveTab":
-        closeActiveTabFromCommand();
-        return;
-      case "terminal.new":
-        options.newTerminalTab();
-        return;
-      case "terminal.splitHorizontal":
-        options.splitActivePane("row");
-        return;
-      case "terminal.splitVertical":
-        options.splitActivePane("col");
-        return;
-      case "terminal.clear": {
-        const tab = options.activeTab.value;
-        if (tab?.kind === "terminal") {
-          const handle = createTerminalSessionHandle(tab.workspaceId, tab.activeLeafId);
-          handle.write("\x1b[H\x1b[2J\x1b[3J\x1b[H");
-        }
-        return;
+  /** 把分屏焦点移到指定方位。只有确实存在邻居时才会被调用（见 spec 的 when）。 */
+  function focusPane(dir: PaneDirection) {
+    const tab = options.activeTab.value;
+    if (!tab || tab.kind !== "terminal") return;
+    options.tabs.focusDirection(tab.id, tab.activeLeafId, dir);
+  }
+
+  /**
+   * 每条命令的处理器。
+   *
+   * 以前是一个 49 分支的 `switch`：新增命令时忘了加 case 只会静默 no-op
+   * （TypeScript 对 switch 不做穷尽性检查）。改成 `Record<CommandId, …>`
+   * 之后漏写一条就是编译期错误 —— 命令 id、spec 表、处理器表由类型强制对齐。
+   */
+  const CORE_RUNNERS: Record<CommandId, () => Promise<void> | void> = {
+    "workbench.commandPalette.open": async () => {
+      openCommandPalette("commands");
+    },
+    "workbench.quickOpen.open": async () => {
+      openCommandPalette("files");
+    },
+    "workbench.closeActiveTab": async () => {
+      closeActiveTabFromCommand();
+    },
+    "terminal.new": async () => {
+      options.newTerminalTab();
+    },
+    "terminal.splitHorizontal": async () => {
+      options.splitActivePane("row");
+    },
+    "terminal.splitVertical": async () => {
+      options.splitActivePane("col");
+    },
+    "terminal.clear": async () => {
+      const tab = options.activeTab.value;
+      if (tab?.kind === "terminal") {
+        const handle = createTerminalSessionHandle(tab.workspaceId, tab.activeLeafId);
+        handle.write("\x1b[H\x1b[2J\x1b[3J\x1b[H");
       }
-      case "terminal.reset": {
-        const tab = options.activeTab.value;
-        if (tab?.kind === "terminal") {
-          const handle = createTerminalSessionHandle(tab.workspaceId, tab.activeLeafId);
-          handle.write("\x1bc");
-        }
-        return;
+    },
+    "terminal.reset": async () => {
+      const tab = options.activeTab.value;
+      if (tab?.kind === "terminal") {
+        const handle = createTerminalSessionHandle(tab.workspaceId, tab.activeLeafId);
+        handle.write("\x1bc");
       }
-      case "panel.sourceControl.toggle":
-        options.leftPanelOpen.value = !options.leftPanelOpen.value;
-        return;
-      case "panel.explorer.toggle":
-        options.rightPanelOpen.value = !options.rightPanelOpen.value;
-        return;
-      case "explorer.refresh":
-        refreshExplorerFromCommand();
-        return;
-      case "editor.save":
-        await saveActiveEditorFromCommand();
-        return;
-      case "editor.closeActive":
-        if (options.activeTab.value?.kind === "editor") closeActiveTabFromCommand();
-        return;
-      case "settings.open":
-        options.openSettings();
-        return;
-      case "terminal.selectDefaultShell":
-        options.openSettings("terminal");
-        return;
-      case "preview.open":
-        options.openUrlPreview();
-        return;
-      case "git.refresh":
-        refreshSourceControlFromCommand();
-        return;
-      case "git.history.open":
-        await openGitHistoryFromCommand();
-        return;
-      case "git.stageAll":
-        await stageAllFromCommand();
-        return;
-      case "git.unstageAll":
-        await unstageAllFromCommand();
-        return;
-      case "git.fetch":
-        await runGitRemoteCommand(options.t("sourceControl.fetchSuccess"), options.gitFetch);
-        return;
-      case "git.pull":
-        await runGitRemoteCommand(options.t("sourceControl.pullSuccess"), options.gitPullFfOnly);
-        return;
-      case "git.push":
-        await runGitRemoteCommand(options.t("sourceControl.pushSuccess"), options.gitPush);
-        return;
-      case "git.branch.checkout":
-      case "git.branch.create":
-        await openBranchWorkflowFromCommand();
-        return;
-      case "git.stash.save":
-        await stashSaveFromCommand();
-        return;
-      case "git.stash.pop":
-        await stashPopFromCommand();
-        return;
-      case "tab.close": {
-        const tab = options.activeTab.value;
-        if (!tab) return;
-        options.requestCloseTab(tab.id);
-        return;
-      }
-      case "tab.closeOthers": {
-        const tab = options.activeTab.value;
-        if (!tab) return;
-        options.tabs.closeOthers(tab.id);
-        return;
-      }
-      case "tab.closeToRight": {
-        const tab = options.activeTab.value;
-        if (!tab) return;
-        options.tabs.closeToRight(tab.id);
-        return;
-      }
-      case "tab.closeAll":
-        options.tabs.closeAll();
-        return;
-      case "tab.next":
-        options.tabs.cycleActive(1);
-        return;
-      case "tab.previous":
-        options.tabs.cycleActive(-1);
-        return;
-      case "tab.duplicate": {
-        const tab = options.activeTab.value;
-        if (!tab || tab.kind !== "terminal") return;
-        options.tabs.newTab(tab.cwd);
-        return;
-      }
-      case "tab.pin": {
-        const tab = options.activeTab.value;
-        if (!tab || tab.kind !== "editor" || !tab.preview) return;
-        options.tabs.pinTab(tab.id);
-        return;
-      }
-      case "tab.restoreClosed":
-        options.tabs.restoreClosed();
-        return;
-      case "editor.gotoLine":
-        options.openGotoLine();
-        return;
-      case "editor.goToDefinition":
-        void options.goToDefinition();
-        return;
-      case "editor.renameSymbol":
-        void options.renameSymbol();
-        return;
-      case "editor.findReferences":
-        void options.findReferences();
-        return;
-      case "terminal.focusLeft":
-      case "terminal.focusRight":
-      case "terminal.focusUp":
-      case "terminal.focusDown": {
-        const tab = options.activeTab.value;
-        if (!tab || tab.kind !== "terminal") return;
-        const dir = id === "terminal.focusLeft" ? "left"
-          : id === "terminal.focusRight" ? "right"
-          : id === "terminal.focusUp" ? "up" : "down";
-        options.tabs.focusDirection(tab.id, tab.activeLeafId, dir);
-        return;
-      }
-      case "search.findInFiles":
-        options.openFindInFiles();
-        return;
-      case "files.recent": {
-        // 触发命令面板并预设搜索词 "recent"
-        options.openCommandPalette("files");
-        return;
-      }
-      case "terminal.runSnippet":
-        options.openCommandPalette("commands");
-        return;
-      case "terminal.rename": {
-        const tab = options.activeTab.value;
-        if (tab?.kind !== "terminal") return;
-        options.openRenameDialog(tab.activeLeafId, tab.terminalTitle ?? "");
-        return;
-      }
-      case "terminal.kill": {
-        await options.killActiveTerminal();
-        return;
-      }
-    }
+    },
+    "panel.sourceControl.toggle": async () => {
+      options.leftPanelOpen.value = !options.leftPanelOpen.value;
+    },
+    "panel.explorer.toggle": async () => {
+      options.rightPanelOpen.value = !options.rightPanelOpen.value;
+    },
+    "explorer.refresh": async () => {
+      refreshExplorerFromCommand();
+    },
+    "editor.save": async () => {
+      await saveActiveEditorFromCommand();
+    },
+    "editor.closeActive": async () => {
+      if (options.activeTab.value?.kind === "editor") closeActiveTabFromCommand();
+    },
+    "settings.open": async () => {
+      options.openSettings();
+    },
+    "terminal.selectDefaultShell": async () => {
+      options.openSettings("terminal");
+    },
+    "preview.open": async () => {
+      options.openUrlPreview();
+    },
+    "git.refresh": async () => {
+      refreshSourceControlFromCommand();
+    },
+    "git.history.open": async () => {
+      await openGitHistoryFromCommand();
+    },
+    "git.stageAll": async () => {
+      await stageAllFromCommand();
+    },
+    "git.unstageAll": async () => {
+      await unstageAllFromCommand();
+    },
+    "git.fetch": async () => {
+      await runGitRemoteCommand(options.t("sourceControl.fetchSuccess"), options.gitFetch);
+    },
+    "git.pull": async () => {
+      await runGitRemoteCommand(options.t("sourceControl.pullSuccess"), options.gitPullFfOnly);
+    },
+    "git.push": async () => {
+      await runGitRemoteCommand(options.t("sourceControl.pushSuccess"), options.gitPush);
+    },
+    "git.branch.checkout": async () => {
+      await openBranchWorkflowFromCommand();
+    },
+    "git.branch.create": async () => {
+      await openBranchWorkflowFromCommand();
+    },
+    "git.stash.save": async () => {
+      await stashSaveFromCommand();
+    },
+    "git.stash.pop": async () => {
+      await stashPopFromCommand();
+    },
+    "tab.close": async () => {
+      const tab = options.activeTab.value;
+      if (!tab) return;
+      options.requestCloseTab(tab.id);
+    },
+    "tab.closeOthers": async () => {
+      const tab = options.activeTab.value;
+      if (!tab) return;
+      options.tabs.closeOthers(tab.id);
+    },
+    "tab.closeToRight": async () => {
+      const tab = options.activeTab.value;
+      if (!tab) return;
+      options.tabs.closeToRight(tab.id);
+    },
+    "tab.closeAll": async () => {
+      options.tabs.closeAll();
+    },
+    "tab.next": async () => {
+      options.tabs.cycleActive(1);
+    },
+    "tab.previous": async () => {
+      options.tabs.cycleActive(-1);
+    },
+    "tab.duplicate": async () => {
+      const tab = options.activeTab.value;
+      if (!tab || tab.kind !== "terminal") return;
+      options.tabs.newTab(tab.cwd);
+    },
+    "tab.pin": async () => {
+      const tab = options.activeTab.value;
+      if (!tab || tab.kind !== "editor" || !tab.preview) return;
+      options.tabs.pinTab(tab.id);
+    },
+    "tab.restoreClosed": async () => {
+      options.tabs.restoreClosed();
+    },
+    "editor.gotoLine": async () => {
+      options.openGotoLine();
+    },
+    "editor.goToDefinition": async () => {
+      void options.goToDefinition();
+    },
+    "editor.renameSymbol": async () => {
+      void options.renameSymbol();
+    },
+    "editor.findReferences": async () => {
+      void options.findReferences();
+    },
+    "terminal.focusLeft": async () => focusPane("left"),
+    "terminal.focusRight": async () => focusPane("right"),
+    "terminal.focusUp": async () => focusPane("up"),
+    "terminal.focusDown": async () => focusPane("down"),
+    "search.findInFiles": async () => {
+      options.openFindInFiles();
+    },
+    "files.recent": async () => {
+      // 触发命令面板并预设搜索词 "recent"
+      options.openCommandPalette("files");
+    },
+    "terminal.runSnippet": async () => {
+      options.openCommandPalette("commands");
+    },
+    "terminal.rename": async () => {
+      const tab = options.activeTab.value;
+      if (tab?.kind !== "terminal") return;
+      options.openRenameDialog(tab.activeLeafId, tab.terminalTitle ?? "");
+    },
+    "terminal.kill": async () => {
+      await options.killActiveTerminal();
+    },
+  };
+
+  function runCoreCommand(id: CommandId): Promise<void> | void {
+    return CORE_RUNNERS[id]?.();
   }
 
   async function executeCommand(id: CommandId) {
@@ -487,23 +496,37 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
   }
 
   function isEditableTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof Element)) return false;
-    return !!target.closest(
-      "input, textarea, select, [contenteditable='true'], [data-command-palette]",
-    );
+    return isTextEntryTarget(target);
   }
 
+  /**
+   * 这条命令该不该抢下这次按键。
+   *
+   * 三层规则，从强到弱：
+   * 1. **真的在输入框里打字**（搜索框 / 设置项 / 行内重命名 / 命令面板）
+   *    → 一律让位，任何命令都不抢。
+   * 2. **焦点不在终端**（面板按钮、文件树等）→ 抢。
+   * 3. **焦点在终端** → 看 `captureInTerminal`（对齐 VS Code：用户显式绑了
+   *    键位的命令就是全局和弦，终端里也生效；显式标了
+   *    `captureInTerminal: false` 的命令把键还给 shell）。
+   *
+   * 第 1 层的关键是把 xterm 的 `xterm-helper-textarea` 从“输入框”里排除：
+   * 它只是终端的键盘入口，键入的真正去处是 PTY。以前它被当成普通 textarea，
+   * 导致除命令面板外**所有**快捷键在终端里失效。
+   *
+   * `terminal.focus*` 还额外受 spec 的 `when` 约束：只有确实存在该方位的
+   * 相邻分屏时才生效，否则 Alt+方向键仍然是 shell 的前后词跳转。
+   */
   function canCaptureCommandShortcut(
-    id: CommandId,
+    command: CommandDefinition,
     event: KeyboardEvent,
   ): boolean {
-    if (
-      id === "workbench.commandPalette.open" ||
-      id === "workbench.quickOpen.open"
-    ) {
-      return true;
-    }
-    return !isEditableTarget(event.target);
+    if (isEditableTarget(event.target)) return false;
+    if (!isTerminalInputSurface(event.target)) return true;
+    return resolveCaptureInTerminal(
+      command,
+      resolvedCommandKeybindings.value[command.id],
+    );
   }
 
   function handleGlobalCommandKeydown(event: KeyboardEvent) {
@@ -519,7 +542,7 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
       ) {
         continue;
       }
-      if (!canCaptureCommandShortcut(command.id, event)) continue;
+      if (!canCaptureCommandShortcut(command, event)) continue;
       event.preventDefault();
       void executeCommand(command.id);
       return;

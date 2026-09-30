@@ -53,15 +53,21 @@ export function normalizeKeybinding(raw: string | null | undefined): string | nu
   if (tokens.length === 0) return null;
 
   const modifiers = new Set<Modifier>();
-  let key: string | null = null;
+  const keys: string[] = [];
   for (const token of tokens) {
     if ((MODIFIER_ORDER as readonly string[]).includes(token)) {
       modifiers.add(token as Modifier);
     } else {
-      key = token;
+      keys.push(token);
     }
   }
-  if (!key) return null;
+  // 和弦（"Mod+K Mod+W" 这类多键序列）**不被支持**：以前这里只取最后一个
+  // 非修饰键 token，于是 `tab.closeOthers` 的默认键位 "Mod+K Mod+W" 被悄悄
+  // 折叠成 "Mod+W"，和 `tab.close` 撞车 —— 后者因在数组里靠先而永远胜出，
+  // `closeOthers` 变成一条永远执行不到的死命令。宁可判为非法（返回 null，
+  // 在设置里显示"未设置"）也不要静默折叠成一个错误的绑定。
+  if (keys.length !== 1) return null;
+  const [key] = keys;
   return [
     ...MODIFIER_ORDER.filter((modifier) => modifiers.has(modifier)),
     key,
@@ -100,6 +106,25 @@ export function findKeybindingConflicts(
   return [...idsByKey.entries()]
     .filter(([, commandIds]) => commandIds.length > 1)
     .map(([keybinding, commandIds]) => ({ keybinding, commandIds }));
+}
+
+/**
+ * 该命令在终端聚焦时是否仍然抢占按键。
+ *
+ * 默认"有绑定就抢"（对齐 VS Code）：用户显式绑了快捷键 = 这是条全局和弦，
+ * 终端里也该生效。spec 上显式写 `captureInTerminal: false` 可以把某个默认
+ * 绑定让回给 shell（例如让 Alt+Left 保持 readline 的词跳转）。
+ */
+export function resolveCaptureInTerminal(
+  command: Pick<CommandDefinition, "captureInTerminal"> & {
+    defaultKeybinding: string | null;
+  },
+  resolvedKeybinding: string | null | undefined,
+): boolean {
+  if (typeof command.captureInTerminal === "boolean") {
+    return command.captureInTerminal;
+  }
+  return normalizeKeybinding(resolvedKeybinding) !== null;
 }
 
 export function formatKeybinding(

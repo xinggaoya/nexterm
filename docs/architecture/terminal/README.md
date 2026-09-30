@@ -14,15 +14,25 @@
 - **HiDPI / DPI 监听**:Windows 125%~200% 缩放下字符不再发虚
 - **OSC 升级**:增加 OSC 8 超链接;OSC 52 clipboard 由 addon-clipboard 处理
 - **偏好 + 设置面板拆分**:字体 / 行为 / 渲染器三块独立子组件,字段从 21 增至 ~50
+- **每个 pane 一条标题栏**:状态点 + 退出码 / 标题 / cwd / 分屏与关闭按钮;激活的 pane 用
+  `--terminal-focus` 描边(此前 `isFocused` 唯一的副作用是 `outline: 0`,多分屏时完全无法
+  判断键鼠输入落在哪)
+- **分屏把手接上 store**:`TerminalResizer` 的 `resize`/`reset` 此前**没有任何监听者**,
+  `layout.resizeSplit` 从未被调用——把手画得出来、hover 有高亮,拖下去什么都不发生
+- **终端内查找面板**:`TerminalSearch` + `SearchAddon` 早已存在但零引用,终端里 `Ctrl+F`
+  根本不工作;现已接上并补了命中计数与上下跳转
+- **回到底部浮层**:上翻后新内容还在往下涌,底部的“末尾”看不见也不知道差多少行
 
 ## 2. 目录与文件
 
 ```
 src/modules/terminal/
   TerminalPane.vue              # 终端面板(单 pane 内单 xterm)
+  TerminalPaneHeader.vue        # 分屏标题栏(状态/cwd/分屏/关闭 + 焦点描边)
   TerminalWorkspace.vue         # 多 pane 树容器
-  TerminalResizer.vue           # pane 之间的拖拽条
-  TerminalSearch.vue            # 终端内搜索 UI
+  TerminalTreeNode.vue          # 递归渲染 pane 树;转发事件并接上把手
+  TerminalResizer.vue           # pane 之间的拖拽条(pointer 事件)
+  TerminalSearch.vue            # 终端内搜索 UI(Ctrl+F)
   TerminalContextMenu.vue       # 右键菜单
   index.ts                      # 公共导出
   lib/
@@ -35,8 +45,8 @@ src/modules/terminal/
     theme.ts                    # CSS 变量 → xterm ITheme
     osc.ts                      # OSC 7/0/2/8 解析
     sessions.ts                 # PtySessionHandle 单会话模型
-    shortcuts.ts                # 自定义键位(剪贴板 copy/paste)
-    layout.ts                   # PaneNode / splitLeaf / leafIds 等
+    shortcuts.ts                # 终端内键位(剪贴板 copy/paste + Ctrl+F 查找)
+    layout.ts                   # PaneNode / splitLeaf / leafIds / resizeSplit 等
     bell.ts                     # BEL 响铃：toast/系统通知 + 可选蜂鸣（冷却限流）
     commands.ts                 # 注册到 commands 的终端命令
 ```
@@ -197,10 +207,20 @@ graph LR
 - Mac 上 Option+Click 不再误触发 Meta
 - 150% Windows DPI 下字符不发虚
 - 设置面板分组清晰,新字段 UI 与 i18n 同步
+- **多分屏时**:拖动分隔条能真实改变比例,双击恢复等分;每条 pane 顶部有标题栏,
+  激活的那条有 `--terminal-focus` 描边,能独立关闭/再次分屏
+- **单分屏时**:`Alt+←/→` 仍然是 shell 的前后词跳转(不被切焦点的快捷键抢走);
+  `Ctrl+F` 打开终端内查找,`Mod+W`/`Ctrl+Tab` 在终端聚焦时仍然生效
+- **TUI 场景**:上翻后底部出现“距末尾 N 行”浮层,点一下回到最新输出
+- **右键菜单**:全部文案随语言切换(不再是硬编码英文)
 
 ## 9. 不在本期范围
 
 - 终端 AI 集成(command palette AI 命令)
+- **Shell integration(OSC 133)**:命令失败就地染色、耗时/退出码脚注、输出里的路径可点。
+  已解析 OSC 0/2/7/8,但 133 未接——需要同时改 `lib/osc.ts` 与 Rust 侧 `shell_init/*` 的
+  注入脚本,工作量独立,单独立项
+- 多行粘贴确认(防 TUI AI 工具被误提交)
 - 终端录制/回放(`.cast` 文件)
 - 终端标签页拖拽排序(Tabby 风格)
 - 命令面板模糊搜索 xterm addons

@@ -53,19 +53,30 @@ const fakeTerm: Terminal = {
   rows: 24,
   onData: vi.fn(),
   onResize: vi.fn(),
+  onScroll: vi.fn(() => ({ dispose: vi.fn() })),
   write: vi.fn(),
   refresh: vi.fn(),
   clearTextureAtlas: vi.fn(),
 } as unknown as Terminal;
 
+const fakeSearchAddon = { activate: vi.fn(), dispose: vi.fn(), clearActiveDecoration: vi.fn(), onAfterSearch: vi.fn(), onBeforeSearch: vi.fn(),
+  findNext: vi.fn(() => true),
+  findPrevious: vi.fn(() => true),
+  clearDecorations: vi.fn(),
+  onDidChangeResults: vi.fn(() => ({ dispose: vi.fn() })),
+};
+
 const fakeRenderer: TerminalRenderer = {
   term: fakeTerm,
+  search: fakeSearchAddon,
   fit: vi.fn(),
   applyTypography: vi.fn(async () => undefined),
   setScrollback: vi.fn(),
   setRenderer: vi.fn(),
   activeRenderer: (): "dom" | "webgl" => "dom",
   redraw: vi.fn(),
+  scrollToBottom: vi.fn(),
+  linesFromBottom: vi.fn(() => 0),
   dispose: vi.fn(),
 };
 

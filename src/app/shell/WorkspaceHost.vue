@@ -38,7 +38,7 @@ import type {
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 import { isDirtyEditorTab } from "@/modules/tabs/closeGuards";
-import { leafIds, type SplitDir } from "@/modules/terminal/lib/layout";
+import { leafIds, nextLeafInDir, findLeafTitle, type SplitDir } from "@/modules/terminal/lib/layout";
 import type { PendingEdit, ReferenceGroup } from "@/modules/lsp/lspLanguageSupport";
 import { MAX_PANES_PER_TAB } from "@/modules/tabs/tabsTypes";
 import {
@@ -62,6 +62,7 @@ import type { WorkspacePanelTab } from "@/modules/settings/store";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import type { SettingsTab } from "@/modules/settings/tabs";
+import type { PaneDirection } from "@/modules/commands/types";
 
 const props = defineProps<{
   workspace: WorkspaceInstance;
@@ -150,6 +151,30 @@ const canSplitActiveTab = computed(() => {
   const tab = activeTab.value;
   if (!tab || tab.kind !== "terminal") return false;
   return leafIds(tab.paneTree).length < MAX_PANES_PER_TAB;
+});
+
+/**
+ * 活动分屏在四个方位上是否存在相邻 pane。
+ *
+ * 只用于命令可用性：Alt+方向键既是 shell 的前后词跳转（bash/zsh/fish 全都
+ * 占），也是"切分屏焦点"。没有邻居时把键还给 shell —— 单分屏场景下这才是
+ * 用户想要的语义。
+ */
+const paneNeighbour = computed<Record<PaneDirection, boolean>>(() => {
+  const tab = activeTab.value;
+  const none: Record<PaneDirection, boolean> = {
+    left: false,
+    right: false,
+    up: false,
+    down: false,
+  };
+  if (!tab || tab.kind !== "terminal") return none;
+  return {
+    left: nextLeafInDir(tab.paneTree, tab.activeLeafId, "left") !== null,
+    right: nextLeafInDir(tab.paneTree, tab.activeLeafId, "right") !== null,
+    up: nextLeafInDir(tab.paneTree, tab.activeLeafId, "up") !== null,
+    down: nextLeafInDir(tab.paneTree, tab.activeLeafId, "down") !== null,
+  };
 });
 
 function newTerminalTab(): void {
@@ -464,6 +489,18 @@ function onWorkspaceActivated(): void {
   refreshSourceControlOnActivate();
 }
 
+// 分屏标题栏的“重命名”→ 复用与 SessionStrip 右键、terminal.rename 命令
+// 完全相同的 RenameTerminalDialog 链路。
+function onRenamePane(leafId: number): void {
+  emit("request-rename", { leafId, currentTitle: currentLeafTitle(leafId) });
+}
+
+function currentLeafTitle(leafId: number): string {
+  const tab = activeTab.value;
+  if (!tab || tab.kind !== "terminal") return "";
+  return findLeafTitle(tab.paneTree, leafId) ?? "";
+}
+
 watch(
   () => workspaces.activeWorkspaceId,
   (activeId, prevId) => {
@@ -540,6 +577,7 @@ const commandApi = useWorkbenchCommands({
   workspaceRoot,
   activeRepoRoot,
   activeTab,
+  paneNeighbour,
   leftPanelOpen,
   rightPanelOpen,
   workspaceFsEvent,
@@ -663,6 +701,7 @@ defineExpose({
           @go-to-definition="onGoToDefinition"
           @request-rename="onRequestRename"
           @show-references="onShowReferences"
+          @rename-pane="onRenamePane"
         />
 
         <WorkspacePanel

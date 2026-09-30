@@ -11,7 +11,10 @@ export const TAB_COMMAND_SPECS: CommandSpec[] = [
     id: "tab.closeOthers",
     titleKey: "commands.items.closeOtherTabs",
     category: "tab",
-    defaultKeybinding: "Mod+K Mod+W",
+    // 原来是 "Mod+K Mod+W"，被 normalizeKeybinding 折叠成 "Mod+W" 与
+    // tab.close 撞车。改用不撞车的单键序列；快捷键体系不支持和弦，
+    // 详见 commands/keybindings.ts 的 normalizeKeybinding。
+    defaultKeybinding: "Mod+Alt+W",
   },
   {
     id: "tab.closeToRight",
@@ -23,7 +26,8 @@ export const TAB_COMMAND_SPECS: CommandSpec[] = [
     id: "tab.closeAll",
     titleKey: "commands.items.closeAllTabs",
     category: "tab",
-    defaultKeybinding: "Mod+K Mod+Shift+W",
+    // 原来是 "Mod+K Mod+Shift+W"，同样被折叠成 "Mod+Shift+W"。
+    defaultKeybinding: "Mod+Shift+W",
   },
   {
     id: "tab.next",

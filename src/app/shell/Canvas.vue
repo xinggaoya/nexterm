@@ -55,6 +55,8 @@ const emit = defineEmits<{
   "request-rename": [edits: PendingEdit[]];
   /** 查找引用结果。 */
   "show-references": [groups: ReferenceGroup[]];
+  /** 分屏标题栏发来的“重命名这条分屏”。 */
+  "rename-pane": [leafId: number];
 }>();
 
 const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
@@ -160,6 +162,7 @@ defineExpose({
         <TerminalWorkspace
           :tab="terminalTab"
           :is-active="isActiveKind('terminal') && terminalTab.id === activeId"
+          @rename="(leafId) => emit('rename-pane', leafId as number)"
         />
       </div>
     </div>

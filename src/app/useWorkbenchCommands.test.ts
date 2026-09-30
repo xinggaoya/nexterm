@@ -40,6 +40,12 @@ function createHarness(activeRepoRoot: string | null) {
     workspaceRoot: computed<string | null>(() => "/workspace"),
     activeRepoRoot: ref<string | null>(activeRepoRoot),
     activeTab: computed(() => null),
+    paneNeighbour: computed(() => ({
+      left: false,
+      right: false,
+      up: false,
+      down: false,
+    })),
     leftPanelOpen,
     rightPanelOpen: ref(false),
     workspaceFsEvent: ref(null),

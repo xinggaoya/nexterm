@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import {
   readClipboardText,
@@ -13,6 +13,7 @@ import {
   watchTerminalTheme,
 } from "./lib/theme";
 import { attachClipboardShortcuts } from "./lib/shortcuts";
+import { t } from "@/modules/i18n/translate";
 import { attachTerminalBell } from "./lib/bell";
 import {
   createTerminalRenderer,
@@ -21,7 +22,11 @@ import {
 } from "./lib/renderer";
 import type { FontPreference } from "./lib/fontStack";
 import type { RendererKind } from "./lib/rendererPipeline";
+import { ArrowDownOutline } from "@vicons/ionicons5";
+import { NIcon } from "naive-ui";
 import TerminalContextMenu from "./TerminalContextMenu.vue";
+import TerminalPaneHeader from "./TerminalPaneHeader.vue";
+import TerminalSearch from "./TerminalSearch.vue";
 
 const props = defineProps<{
   leafId: string;
@@ -30,6 +35,10 @@ const props = defineProps<{
   isActive: boolean;
   isFocused: boolean;
   flex: number;
+  /** 整个标签只有这一条分屏（关掉它 = 关掉标签）。 */
+  onlyPane?: boolean;
+  /** 分屏数是否已达上限（上限时隐藏标题栏的分屏按钮）。 */
+  canSplit?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -38,11 +47,105 @@ const emit = defineEmits<{
   focus: [];
   split: ["row" | "col"];
   close: [];
+  /** 请求重命名本分屏的标题（复用宿主的 RenameTerminalDialog）。 */
+  rename: [];
   renderer: [RendererKind];
 }>();
 
 const container = ref<HTMLElement>();
 const state = ref<SessionState>("connecting");
+const exitCode = ref<number | undefined>(undefined);
+
+// ── 回到底部 ──────────────────────────────────────────────────────────
+/**
+ * 视口距底部多少行。
+ *
+ * TUI AI 工具（claude code / opencode / aider）会持续吐输出；用户上翻看旧
+ * 画面时完全不知道底下已经刷了多少行。没有这个数字就只能反复按 End 试探。
+ */
+const linesFromBottom = ref(0);
+let detachScrollWatch: { dispose: () => void } | null = null;
+let detachSearchWatch: { dispose: () => void } | null = null;
+
+function updateLinesFromBottom(): void {
+  const next = renderer?.linesFromBottom() ?? 0;
+  if (next !== linesFromBottom.value) linesFromBottom.value = next;
+}
+
+function scrollToBottom(): void {
+  renderer?.scrollToBottom();
+  updateLinesFromBottom();
+}
+
+// ── 终端内查找（Ctrl+F）───────────────────────────────────────────────
+// 组件与 SearchAddon 此前都已存在（addon 装好、index.ts 也导出了），但零引用：
+// 终端里 Ctrl+F 根本不工作。
+const searchOpen = ref(false);
+const searchQuery = ref("");
+const searchResult = ref<{ index: number; total: number } | null>(null);
+/** 上一次是往前找还是往后找：连按同一个键时应该保持同一个方向。 */
+const searchLastDirection = ref(1);
+/**
+ * 查找高亮配色。
+ *
+ * SearchAddon 要求 `#RRGGBB`，而主题里的 `--term-selection` 是带 alpha 的
+ * oklch/rgb，无法直接喂进去；而 `decorations` 一旦传入就必须给全
+ * `matchOverviewRuler` / `activeMatchColorOverviewRuler`（addon 不给默认值，
+ * 缺了就抛）。这两个 overviewRuler 颜色在本应用里恒为透明 —— theme.ts 已经
+ * 把 OverviewRulerRenderer 抹掉了。
+ */
+const searchOptions = {
+  incremental: false,
+  decorations: {
+    matchBackground: "#3f6212",
+    matchBorder: "#84cc16",
+    activeMatchBackground: "#166534",
+    matchOverviewRuler: "transparent",
+    activeMatchColorOverviewRuler: "transparent",
+  },
+} as const;
+
+function runSearch(query: string, incremental: boolean): void {
+  const addon = renderer?.search;
+  searchQuery.value = query;
+  if (!addon) return;
+  if (!query) {
+    // 清空时收掉高亮，但不动用户已有的滚动位置。
+    addon.clearDecorations();
+    searchResult.value = null;
+    return;
+  }
+  addon.findNext(query, { ...searchOptions, incremental });
+}
+
+function findNext(): void {
+  const addon = renderer?.search;
+  if (!addon) return;
+  const forward = searchLastDirection.value >= 0;
+  if (forward) addon.findNext(searchQuery.value, searchOptions);
+  else addon.findPrevious(searchQuery.value, searchOptions);
+}
+
+function findPrevious(): void {
+  const addon = renderer?.search;
+  if (!addon) return;
+  addon.findPrevious(searchQuery.value, searchOptions);
+  searchLastDirection.value = -1;
+}
+
+function closeSearch(): void {
+  searchOpen.value = false;
+  renderer?.search?.clearDecorations();
+  searchResult.value = null;
+}
+
+function toggleSearch(): void {
+  if (searchOpen.value) {
+    closeSearch();
+    return;
+  }
+  searchOpen.value = true;
+}
 
 const menu = ref<{ x: number; y: number; selection: string } | null>(null);
 
@@ -129,8 +232,9 @@ async function ensureSession(): Promise<void> {
   const sessionCallbacks = {
     onCwd: (cwd: string) => emit("cwd", cwd),
     onTitle: (title: string) => emit("title", title),
-    onStateChange: (next: SessionState) => {
+    onStateChange: (next: SessionState, code?: number) => {
       state.value = next;
+      exitCode.value = code;
     },
   };
   const existing = getSessionForLeaf(wsCtx!.workspace.id, props.leafId);
@@ -142,6 +246,7 @@ async function ensureSession(): Promise<void> {
     // 新 xterm 的用户键入也重新接回 PTY。PTY 进程本身不变。
     existing.rebindTerm(term);
     state.value = existing.getState();
+    exitCode.value = existing.getExitCode();
     existing.resize(term.cols, term.rows);
     return;
   }
@@ -219,7 +324,22 @@ onMounted(async () => {
 
   detachClipboardShortcuts = attachClipboardShortcuts({
     term: nextRenderer.term,
+    onFind: toggleSearch,
   });
+  // 滚动位置变化时更新“距底部 N 行”。xterm 的 onScroll 在用户上翻、
+  // 程序输出、查找跳转三种情况下都会触发，足够。
+  detachScrollWatch = nextRenderer.term.onScroll(() => {
+    updateLinesFromBottom();
+  });
+  // 命中数由 addon 自己在搜索后派发（findNext 只返回布尔"是否找到"）。
+  detachSearchWatch = nextRenderer.search.onDidChangeResults((event) => {
+    const total = event.resultCount;
+    searchResult.value =
+      total === 0
+        ? null
+        : { index: Math.max(1, event.resultIndex + 1), total };
+  });
+  updateLinesFromBottom();
   detachBell = attachTerminalBell(nextRenderer.term, {
     enabled: () => prefs.terminalNotificationEnabled,
     soundEnabled: () => prefs.terminalNotificationSoundEnabled,
@@ -288,6 +408,10 @@ onBeforeUnmount(() => {
   deadStartInFlight = false;
   detachThemeWatch?.();
   detachClipboardShortcuts?.();
+  detachScrollWatch?.dispose();
+  detachScrollWatch = null;
+  detachSearchWatch?.dispose();
+  detachSearchWatch = null;
   detachBell?.();
   detachBell = null;
   resizeObserver?.disconnect();
@@ -380,6 +504,27 @@ function handleMenuSelectAll() {
   closeContextMenu();
 }
 
+/** 清屏：只清 xterm 自己的 buffer，不发任何字节给 PTY。 */
+function handleMenuClear() {
+  renderer?.term.clear();
+  closeContextMenu();
+}
+
+/** 重置：向 PTY 发 RIS（ESC c），让 shell 重新初始化。 */
+function handleMenuReset() {
+  session?.write("\x1bc");
+  closeContextMenu();
+}
+
+const fontSize = computed(() => prefs.terminalFontSize);
+
+/** 字号 ±1：走全局偏好，renderer 上的 watch 会重新加载字体并重画。 */
+function changeFontSize(delta: number) {
+  const next = Math.max(8, Math.min(32, prefs.terminalFontSize + delta));
+  if (next === prefs.terminalFontSize) return;
+  void prefs.updateTerminalFontSize(next);
+}
+
 defineExpose({
   focus: () => renderer?.term.focus(),
   write: (data: string) => session?.write(data),
@@ -391,10 +536,69 @@ defineExpose({
     class="terminal-pane flex flex-col"
     :class="{ focused: isFocused, exited: state === 'exited' }"
     :style="{ flex: String(flex) }"
+    data-terminal-pane
+    :data-focused="isFocused ? 'true' : 'false'"
     @mousedown="handleFocus"
     @contextmenu="openContextMenu"
   >
+    <TerminalPaneHeader
+      :title="title"
+      :cwd="cwd"
+      :state="state"
+      :exit-code="exitCode"
+      :is-focused="isFocused"
+      :can-split="canSplit ?? true"
+      :only-pane="onlyPane ?? false"
+      @focus="emit('focus')"
+      @close="emit('close')"
+      @split="(d: 'row' | 'col') => emit('split', d)"
+    />
     <div ref="container" class="terminal-pane-body" />
+
+    <!-- 终端内查找：Ctrl+F。面板自身不占布局宽度，浮在右上角。 -->
+    <TerminalSearch
+      v-if="searchOpen"
+      :visible="searchOpen"
+      @close="closeSearch"
+      @search="(q: string) => runSearch(q, true)"
+      @next="findNext"
+      @previous="findPrevious"
+    >
+      <template #status>
+        <span
+          v-if="searchQuery && searchResult"
+          class="shrink-0 px-1 text-[10px] tabular-nums text-muted-foreground"
+          data-terminal-search-count
+        >
+          {{ t("terminal.searchResults", searchResult) }}
+        </span>
+        <span
+          v-else-if="searchQuery"
+          class="shrink-0 px-1 text-[10px] text-destructive"
+          data-terminal-search-empty
+        >
+          {{ t("terminal.searchNoResults") }}
+        </span>
+      </template>
+    </TerminalSearch>
+
+    <!--
+      回到底部：上翻之后新内容还在往下涌，底部的“末尾”既看不见也不知道
+      差多少行。与其让用户反复按 End 试探，不如把差距直接告诉他。
+      仅在确实有差距时出现，不占布局。
+    -->
+    <button
+      v-if="linesFromBottom > 0"
+      type="button"
+      class="scroll-latest"
+      data-terminal-scroll-latest
+      :title="t('terminal.scrollToBottom', { count: linesFromBottom })"
+      @click="scrollToBottom"
+    >
+      <span class="tabular-nums">{{ linesFromBottom }}</span>
+      <NIcon :component="ArrowDownOutline" :size="12" />
+    </button>
+
     <!--
       TerminalContextMenu 内部使用 NDropdown，NDropdown 默认 Teleport 到 body，
       此处不必再额外包一层 Teleport，避免与 NDropdown 的 teleport 重复造成双重定位。
@@ -404,10 +608,20 @@ defineExpose({
       :x="menu.x"
       :y="menu.y"
       :selection="menu.selection"
+      :can-split="canSplit ?? true"
+      :only-pane="onlyPane ?? false"
+      :font-size="fontSize"
       @close="closeContextMenu"
       @copy="handleMenuCopy"
       @paste="handleMenuPaste"
       @select-all="handleMenuSelectAll"
+      @clear="handleMenuClear"
+      @reset="handleMenuReset"
+      @split="(d: 'row' | 'col') => emit('split', d)"
+      @close-pane="emit('close')"
+      @rename="emit('rename')"
+      @zoom-in="() => changeFontSize(1)"
+      @zoom-out="() => changeFontSize(-1)"
     />
   </div>
 </template>
@@ -436,6 +650,35 @@ defineExpose({
 }
 .terminal-pane.focused .terminal-pane-body {
   outline: 0;
+}
+/* 回到底部悬浮按钮：绝对定位，不参与布局，避免把 xterm 推出 fit 计算。 */
+.scroll-latest {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  background: var(--term-pane-header-bg);
+  border: 1px solid var(--term-pane-divider);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+  transition: background-color 120ms, color 120ms, border-color 120ms;
+}
+.scroll-latest:hover {
+  color: var(--foreground);
+  border-color: var(--term-pane-divider-active);
+}
+@media (hover: none) {
+  /* 触屏上 hover 不到，按钮必须是常驻的。 */
+  .scroll-latest {
+    opacity: 1;
+  }
 }
 </style>
 

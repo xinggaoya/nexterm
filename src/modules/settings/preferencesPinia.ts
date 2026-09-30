@@ -168,6 +168,11 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     await updatePref("keybindings", next);
   }
 
+  /** 清空全部自定义键位，回到默认绑定。 */
+  async function resetCommandKeybindings(): Promise<void> {
+    await updatePref("keybindings", {});
+  }
+
   const RECENT_FILES_MAX = 50;
 
   async function recordOpenedFile(path: string): Promise<void> {
@@ -242,6 +247,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateLeftSidebar,
     updatePanelVisibility,
     updateCommandKeybinding,
+    resetCommandKeybindings,
     recordOpenedFile,
     clearRecentFiles,
   };

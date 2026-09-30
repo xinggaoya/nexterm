@@ -5,12 +5,15 @@ import { useWorkspacesPiniaStore } from "@/modules/workspace/workspacesPinia";
 import {
   findLeafCwd,
   findLeafTitle,
+  findSplitWithChild,
   hasLeaf,
   leafIds,
   type PaneLeaf,
   type PaneNode,
   nextLeafInDir,
   removeLeaf,
+  resetSplitSizesIn,
+  resizeSplit,
   setLeafCwd as setLeafCwdInTree,
   setLeafTitle as setLeafTitleInTree,
   siblingLeafOf,
@@ -1176,6 +1179,70 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
   }
 
   /**
+   * 拖动分屏把手：按像素增量重新分配相邻两个子节点的 flex 权重。
+   *
+   * 以前 `resizeSplit` / `resetSplitSizes` 已在 layout.ts 实现并导出，但
+   * TerminalResizer 的 resize / reset 事件**没有任何监听者** —— 把手画得
+   * 出来、hover 有高亮、拖下去却什么都不发生。这里补上从手势到 store 的链路。
+   *
+   * @param deltaPx   把手本次移动的像素增量（右/下为正）
+   * @param containerSize 父容器在该轴向上的像素长度
+   */
+  function resizePane(
+    tabId: number,
+    leafId: number,
+    deltaPx: number,
+    containerSize: number,
+    workspaceId?: string,
+  ): void {
+    const wsId = resolveWorkspaceId(workspaceId);
+    if (containerSize <= 0 || deltaPx === 0) return;
+    const tab = workspaceTabs(wsId).find((t) => t.id === tabId);
+    if (!tab || tab.kind !== "terminal") return;
+    const target = findSplitWithChild(tab.paneTree, leafId);
+    if (!target) return;
+    const nextTree = resizeSplit(
+      tab.paneTree,
+      target.split.id,
+      target.index,
+      deltaPx,
+      containerSize,
+    );
+    if (nextTree === tab.paneTree) return;
+    setWorkspaceTabs(
+      wsId,
+      workspaceTabs(wsId).map((item) =>
+        item.id === tabId && item.kind === "terminal"
+          ? { ...item, paneTree: nextTree }
+          : item,
+      ),
+    );
+  }
+
+  /** 双击把手：把该分屏的子节点恢复成等宽。 */
+  function resetPaneSizes(
+    tabId: number,
+    leafId: number,
+    workspaceId?: string,
+  ): void {
+    const wsId = resolveWorkspaceId(workspaceId);
+    const tab = workspaceTabs(wsId).find((t) => t.id === tabId);
+    if (!tab || tab.kind !== "terminal") return;
+    const target = findSplitWithChild(tab.paneTree, leafId);
+    if (!target) return;
+    const nextTree = resetSplitSizesIn(tab.paneTree, target.split.id);
+    if (nextTree === tab.paneTree) return;
+    setWorkspaceTabs(
+      wsId,
+      workspaceTabs(wsId).map((item) =>
+        item.id === tabId && item.kind === "terminal"
+          ? { ...item, paneTree: nextTree }
+          : item,
+      ),
+    );
+  }
+
+  /**
    * 从终端 tab 中移除一个 leaf 的公共实现：
    * 返回 true 表示整棵 pane 树被移除（tab 本身已关闭）。
    */
@@ -1314,5 +1381,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     splitActivePane,
     closeActivePane,
     closeLeafInTab,
+    resizePane,
+    resetPaneSizes,
   };
 });

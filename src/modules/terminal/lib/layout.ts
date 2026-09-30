@@ -328,6 +328,21 @@ export function resetSplitSizes(split: PaneSplit): PaneSplit {
   };
 }
 
+/**
+ * 把整棵树里 id 为 `splitId` 的分屏节点重置为等分。
+ *
+ * 与 `resizeSplit` 同构：返回一个**新树**（命中时）或原树（未命中），
+ * 方便调用方用引用相等判断是否需要写回 store。
+ */
+export function resetSplitSizesIn(
+  root: PaneNode,
+  splitId: LeafId,
+): PaneNode {
+  return transformNode(root, splitId, (node) =>
+    node.kind === "split" ? resetSplitSizes(node) : node,
+  );
+}
+
 export function findSplitWithChild(root: PaneNode, leafId: LeafId): {
   split: PaneSplit;
   index: number;
