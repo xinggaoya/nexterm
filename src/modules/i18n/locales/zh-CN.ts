@@ -435,7 +435,13 @@ const zhCN = {
     resultsCount: "{count} 个结果",
     revealInFinder: "在文件管理器中显示",
     searchFiles: "搜索文件...",
-    searchFilesTitle: "搜索文件",
+    // ── 统一搜索抽屉（工具栏 🔍 的唯一落点）──
+    searchPanelTitle: "搜索与过滤",
+    closeSearchPanel: "关闭搜索面板",
+    searchSegmentFiles: "文件名",
+    searchSegmentContent: "内容",
+    searchSegmentFilter: "过滤",
+    moreActions: "更多操作",
     searching: "搜索中...",
   },
   findInFiles: {

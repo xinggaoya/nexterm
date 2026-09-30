@@ -122,6 +122,9 @@ const naiveDropdownMock = vi.hoisted(() => {
   const { defineComponent, h, onBeforeUnmount, onMounted } = vue;
   return {
     NDropdown: defineComponent({
+      // 命名后测试才能用 findAllComponents({ name: "NDropdown" }) 拿到
+      // options 原对象——溢出菜单的 disabled 态只能从 options 读。
+      name: "NDropdown",
       props: ["options", "show"],
       emits: ["select", "clickoutside"],
       setup(
@@ -230,6 +233,46 @@ function clickInBody(selector: string): void {
   const el = document.body.querySelector<HTMLElement>(selector);
   if (!el) throw new Error(`dialog element not found: ${selector}`);
   el.click();
+}
+
+/**
+ * 取工具栏「更多」溢出菜单的某个选项定义（拿 label / disabled）。
+ * mock 出来的 NDropdown 把 options 摊成 div[data-menu-action]，拿不到
+ * disabled，只能回到 options 原对象上断言。
+ */
+function moreOption(
+  wrapper: ReturnType<typeof mount>,
+  key: string,
+): { key: string | number; label?: unknown; disabled?: boolean } {
+  for (const dropdown of wrapper.findAllComponents({ name: "NDropdown" })) {
+    const options = dropdown.props("options") as
+      | Array<{ key: string | number; label?: unknown; disabled?: boolean }>
+      | undefined;
+    const hit = options?.find((option) => String(option.key) === key);
+    if (hit) return hit;
+  }
+  throw new Error(`overflow option not found: ${key}`);
+}
+
+/** 点溢出菜单里的某一项。 */
+async function clickMoreOption(
+  wrapper: ReturnType<typeof mount>,
+  key: string,
+): Promise<void> {
+  const option = wrapper.find(`[data-menu-action='${key}']`);
+  if (!option.exists()) throw new Error(`overflow option not rendered: ${key}`);
+  await option.trigger("click");
+}
+
+/**
+ * 打开统一搜索抽屉的「过滤」段。
+ * 过滤输入框不再常驻工具栏，而是点 🔍 后在搜索抽屉里就地展开。
+ */
+async function openFilterSegment(wrapper: ReturnType<typeof mount>): Promise<void> {
+  await wrapper.find("[data-toggle-search]").trigger("click");
+  await flush();
+  await wrapper.find("[data-search-mode='filter']").trigger("click");
+  await flush();
 }
 
 
@@ -1074,14 +1117,8 @@ describe("FileExplorer.vue", () => {
     expect(wrapper.text()).not.toContain("new-at-subtree.ts");
     vi.mocked(readFileTreeDir).mockClear();
 
-    // Click the toolbar refresh button (the only entry that exercises
-    // `refreshPath` with its default argument).
-    const refreshButton = wrapper
-      .find("[data-explorer-header]")
-      .findAll("button")
-      .find((b) => b.attributes("aria-label") === "Refresh");
-    expect(refreshButton).toBeDefined();
-    await refreshButton!.trigger("click");
+    // 「更多」溢出菜单里的刷新（唯一会以默认参数调 `refreshPath` 的入口）。
+    await clickMoreOption(wrapper, "refresh");
     await vi.advanceTimersByTimeAsync(0);
     await flush();
 
@@ -1827,7 +1864,7 @@ describe("FileExplorer drag-to-transfer", () => {
     await flush();
 
     // 撤销按钮在还没有移动过之前是禁用的
-    expect(wrapper.find("[data-undo-move]").attributes("disabled")).toBeDefined();
+    expect(moreOption(wrapper, "undo-move").disabled).toBe(true);
 
     dragRowTo(
       wrapper,
@@ -1837,10 +1874,10 @@ describe("FileExplorer drag-to-transfer", () => {
     // 按钮启用发生在 settleAfterTransfer 里，而 transferBusy 要到 finally
     // 才清 —— 等它真的可点，否则点下去会被"搬运中"守卫吞掉。
     await vi.waitFor(() =>
-      expect(wrapper.find("[data-undo-move]").attributes("disabled")).toBeUndefined(),
+      expect(moreOption(wrapper, "undo-move").disabled).toBe(false),
     );
 
-    await wrapper.find("[data-undo-move]").trigger("click");
+    await clickMoreOption(wrapper, "undo-move");
     await flush();
 
     // 撤销 = 一次新的 move，把落点搬回原目录
@@ -1871,7 +1908,7 @@ describe("FileExplorer drag-to-transfer", () => {
     );
     await flush();
 
-    expect(wrapper.find("[data-undo-move]").attributes("disabled")).toBeDefined();
+    expect(moreOption(wrapper, "undo-move").disabled).toBe(true);
   });
 
   it("撤销是一次性的：撤销后按钮重新禁用", async () => {
@@ -1894,12 +1931,12 @@ describe("FileExplorer drag-to-transfer", () => {
       "[data-explorer-drop-root]",
     );
     await vi.waitFor(() =>
-      expect(wrapper.find("[data-undo-move]").attributes("disabled")).toBeUndefined(),
+      expect(moreOption(wrapper, "undo-move").disabled).toBe(false),
     );
-    await wrapper.find("[data-undo-move]").trigger("click");
+    await clickMoreOption(wrapper, "undo-move");
     await flush();
 
-    expect(wrapper.find("[data-undo-move]").attributes("disabled")).toBeDefined();
+    expect(moreOption(wrapper, "undo-move").disabled).toBe(true);
   });
 
   it("位移小于阈值只是普通点击，不触发搬运", async () => {
@@ -2256,8 +2293,9 @@ describe("FileExplorer filter + expand/collapse", () => {
     // 展开 src 让子项可见
     await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
     await flush();
+    await openFilterSegment(wrapper);
 
-    const input = wrapper.find("[data-tree-filter-input] input");
+    const input = wrapper.find("[data-tree-filter-input]");
     await input.setValue("main");
     await flush();
 
@@ -2270,7 +2308,8 @@ describe("FileExplorer filter + expand/collapse", () => {
   it("清空过滤后恢复全部行", async () => {
     const wrapper = mountExplorer();
     await flush();
-    const input = wrapper.find("[data-tree-filter-input] input");
+    await openFilterSegment(wrapper);
+    const input = wrapper.find("[data-tree-filter-input]");
     await input.setValue("zzz");
     await flush();
     expect(wrapper.findAll("[data-explorer-row-path]")).toHaveLength(0);
@@ -2285,7 +2324,7 @@ describe("FileExplorer filter + expand/collapse", () => {
     await flush();
     const before = vi.mocked(readFileTreeDir).mock.calls.length;
 
-    await wrapper.find("[data-collapse-all]").trigger("click");
+    await clickMoreOption(wrapper, "toggle-expand-all");
     await flush();
 
     // src 是根的子目录且已加载（根已加载），所以 src 出现在行里；
@@ -2296,7 +2335,7 @@ describe("FileExplorer filter + expand/collapse", () => {
     expect(vi.mocked(readFileTreeDir).mock.calls.length).toBe(before);
   });
 
-  it("有展开项时按钮变为折叠全部，点击后收起", async () => {
+  it("有展开项时菜单项变为折叠全部，点击后收起", async () => {
     const wrapper = mountExplorer();
     await flush();
     await wrapper.find("[data-explorer-row-path='/repo/src']").trigger("click");
@@ -2305,19 +2344,16 @@ describe("FileExplorer filter + expand/collapse", () => {
       wrapper.find("[data-explorer-row-path='/repo/src/main.ts']").exists(),
     ).toBe(true);
 
-    const toggle = wrapper.find("[data-collapse-all]");
-    expect(toggle.attributes("data-collapse-all")).toBe("collapse");
-    await toggle.trigger("click");
+    expect(moreOption(wrapper, "toggle-expand-all").label).toBe("Collapse All");
+    await clickMoreOption(wrapper, "toggle-expand-all");
     await flush();
 
     expect(
       wrapper.find("[data-explorer-row-path='/repo/src/main.ts']").exists(),
     ).toBe(false);
     // 再点一次回到展开
-    expect(
-      wrapper.find("[data-collapse-all]").attributes("data-collapse-all"),
-    ).toBe("expand");
-    await wrapper.find("[data-collapse-all]").trigger("click");
+    expect(moreOption(wrapper, "toggle-expand-all").label).toBe("Expand All");
+    await clickMoreOption(wrapper, "toggle-expand-all");
     await flush();
     expect(
       wrapper.find("[data-explorer-row-path='/repo/src/main.ts']").exists(),
@@ -2327,7 +2363,8 @@ describe("FileExplorer filter + expand/collapse", () => {
   it("过滤状态下选择集与键盘导航只看可见行", async () => {
     const wrapper = mountExplorer();
     await flush();
-    const input = wrapper.find("[data-tree-filter-input] input");
+    await openFilterSegment(wrapper);
+    const input = wrapper.find("[data-tree-filter-input]");
     await input.setValue("README");
     await flush();
 
@@ -2506,5 +2543,119 @@ describe("FileExplorer filter + expand/collapse", () => {
     expect(document.body.querySelector("[data-transfer-conflict]")).toBeNull();
     // 搬运照常执行，后端按 rename 策略兼底
     expect(mockWsNative.fsMoveMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * 工具栏只有 4 个入口（搜索 / 新建文件 / 新建文件夹 / 更多），另外三个搜索
+ * 类入口合并进一个带分段切换的抽屉。面板最窄 240px 时这条断言是拥挤问题
+ * 不复发的护栏。
+ */
+describe("FileExplorer 统一搜索抽屉", () => {
+  beforeEach(() => {
+    resetExplorerMocks();
+  });
+
+  it("工具栏只留四个入口，没有常驻的过滤输入框", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+
+    const header = wrapper.find("[data-explorer-header]");
+    expect(header.find("[data-toggle-search]").exists()).toBe(true);
+    expect(header.find("[data-new-file]").exists()).toBe(true);
+    expect(header.find("[data-new-folder]").exists()).toBe(true);
+    expect(header.find("[data-explorer-more]").exists()).toBe(true);
+    // 常驻输入框 + 第二个搜索按钮都已收进抽屉
+    expect(header.find("[data-tree-filter-input]").exists()).toBe(false);
+    expect(header.find("[data-toggle-content-search]").exists()).toBe(false);
+    expect(header.findAll("button")).toHaveLength(4);
+  });
+
+  it("点搜索开抽屉并落在文件名段，切换分段换掉面板内容", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+
+    await wrapper.find("[data-toggle-search]").trigger("click");
+    await flush();
+    expect(wrapper.find("[data-explorer-search-panel]").exists()).toBe(true);
+    expect(wrapper.find("[data-explorer-search-input]").exists()).toBe(true);
+
+    await wrapper.find("[data-search-mode='content']").trigger("click");
+    await flush();
+    expect(wrapper.find("[data-find-in-files]").exists()).toBe(true);
+    expect(wrapper.find("[data-explorer-search-input]").exists()).toBe(false);
+
+    await wrapper.find("[data-search-mode='filter']").trigger("click");
+    await flush();
+    expect(wrapper.find("[data-tree-filter-input]").exists()).toBe(true);
+    // 过滤段不遮树：行集仍渲染在抽屉下方
+    expect(
+      wrapper.find("[data-explorer-row-path='/repo/README.md']").exists(),
+    ).toBe(true);
+  });
+
+  it("文件名 / 内容段遮住树，过滤段不遮", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    // v-show 落在行内 style 上；jsdom 的 getComputedStyle 不可用，只看行内值。
+    const treeHidden = () =>
+      (wrapper.find("[data-explorer-drop-root]").attributes("style") ?? "").includes(
+        "display: none",
+      );
+
+    await wrapper.find("[data-toggle-search]").trigger("click");
+    await flush();
+    expect(treeHidden()).toBe(true);
+
+    await wrapper.find("[data-search-mode='filter']").trigger("click");
+    await flush();
+    expect(treeHidden()).toBe(false);
+  });
+
+  it("关掉抽屉回到未过滤的完整树", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await openFilterSegment(wrapper);
+    await wrapper.find("[data-tree-filter-input]").setValue("README");
+    await flush();
+    expect(wrapper.findAll("[data-explorer-row-path]")).toHaveLength(1);
+
+    await wrapper.find("[data-search-close]").trigger("click");
+    await flush();
+    expect(wrapper.find("[data-explorer-search-panel]").exists()).toBe(false);
+    // 过滤是视图状态：关抽屉就回到完整树，避免用户以为文件丢了
+    expect(wrapper.findAll("[data-explorer-row-path]").length).toBeGreaterThan(1);
+  });
+
+  it("过滤段按 Esc 先清空、再按才关抽屉", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+    await openFilterSegment(wrapper);
+
+    const input = wrapper.find("[data-tree-filter-input]");
+    await input.setValue("README");
+    await flush();
+    await input.trigger("keydown", { key: "Escape" });
+    await flush();
+    expect(
+      (wrapper.find("[data-tree-filter-input]").element as HTMLInputElement).value,
+    ).toBe("");
+    expect(wrapper.find("[data-explorer-search-panel]").exists()).toBe(true);
+
+    await wrapper.find("[data-tree-filter-input]").trigger("keydown", {
+      key: "Escape",
+    });
+    await flush();
+    expect(wrapper.find("[data-explorer-search-panel]").exists()).toBe(false);
+  });
+
+  it("命令面板的「在工作区中查找」走 setMode('content')：开抽屉并停在内容段", async () => {
+    const wrapper = mountExplorer();
+    await flush();
+
+    wrapper.vm.setMode("content");
+    await flush();
+    expect(wrapper.find("[data-explorer-search-panel]").exists()).toBe(true);
+    expect(wrapper.find("[data-find-in-files]").exists()).toBe(true);
   });
 });

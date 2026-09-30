@@ -13,9 +13,11 @@ src/modules/explorer/
   FileExplorer.vue                    # 面板主组件（组装 + 模板）
   FileTreeRow.vue                     # 单行渲染（虚拟滚动用）
   ExplorerContextMenu.vue             # 右键菜单
-  ExplorerSearch.vue                  # 顶部按名字搜索
+  ExplorerSearchPanel.vue             # 统一搜索抽屉（文件名 / 内容 / 过滤 三分段）
+  ExplorerSearch.vue                  # 文件名搜索（由 SearchPanel 的 files 段渲染）
   InlineTreeInput.vue                 # 内联重命名 / 新建输入
   FileTransferConflictDialog.vue      # 搬运冲突征询（覆盖/跳过/全部改名）
+  explorerTypes.ts                    # ExplorerSearchMode 联合类型
   explorerCommands.ts                 # 注册到 commands
   index.ts
   composables/
@@ -55,6 +57,7 @@ src/modules/explorer/
 
 - `naive-ui` -- 按钮、图标、对话框、输入框
 - `@vicons/ionicons5` -- 图标
+- `@/modules/search` -- `FindInFilesPanel`（由 SearchPanel 的 content 段渲染）
 
 ## 4. 数据契约
 
@@ -94,11 +97,31 @@ src/modules/explorer/
 - `preferencesPinia.showHidden` -- 是否显示隐藏文件
 - `preferencesPinia.explorerPanelWidth` -- 面板宽度（宿主持有）
 
+## 7.1 工具栏布局（拥挤治理）
+
+面板宽度默认 320px、最窄 240px（`SIDE_PANEL_WIDTH_MIN`）。早期工具栏一行挂 7 个图标按钮 + 160px 常驻过滤框，最小需要 ~344px，根目录名会被压成三四个字符。因此改为：
+
+```
+[📁 根目录名 flex-1]  [🔍 搜索]  [📄 新建文件]  [📁 新建文件夹]  [⋯ 更多]
+```
+
+`⋯ 更多`（`NDropdown`）收走三个低频动作：撤销移动 / 全部展开·折叠 / 刷新。三者均另有入口（右键菜单、命令面板）。
+
+三个搜索类入口合并进 `ExplorerSearchPanel` 的分段抽屉，只由工具栏的一个 🔍 打开：
+
+| 段 | 内容 | 文件树 |
+|----|------|--------|
+| 文件名 | `ExplorerSearch` 结果列表 | 隐藏 |
+| 内容 | `FindInFilesPanel` 结果列表 | 隐藏 |
+| 过滤 | 单行输入框（绑定 `treeFilter`） | **继续显示并被过滤** |
+
+关闭抽屉会清空 `treeFilter` 并回到完整树（过滤是视图状态，不是搜索会话）。命令面板的「在工作区中查找」走 `FileExplorer.setMode('content')`，同样把抽屉拉到 content 段。
+
 ## 8. 测试
 
 - `lib/fileTransfer.test.ts` / `lib/fileClipboard.test.ts` / `lib/fileTreeRows.test.ts` / `lib/fileTreeRowsUpdate.test.ts` / `lib/fileTreeService.test.ts` / `lib/contextActions.test.ts`
-- `FileExplorer.vue.test.ts` -- 组件行为契约（加载、选择、键盘、拖拽、剪贴板、OS 拖入、过滤、折叠展开）
-- `ExplorerContextMenu.vue.test.ts` / `ExplorerSearch.vue.test.ts`
+- `FileExplorer.vue.test.ts` -- 组件行为契约（加载、选择、键盘、拖拽、剪贴板、OS 拖入、过滤、折叠展开、工具栏四入口、统一搜索抽屉）
+- `ExplorerContextMenu.vue.test.ts` / `ExplorerSearch.vue.test.ts` / `ExplorerSearchPanel.vue.test.ts`
 - `explorerVueBoundary.test.ts` -- 模块边界
 
 ## 9. 相关文档

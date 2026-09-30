@@ -5,14 +5,15 @@ import {
   ContractOutline,
   CopyOutline,
   DocumentOutline,
+  EllipsisHorizontalOutline,
   ExpandOutline,
   FolderOutline,
   MoveOutline,
   RefreshOutline,
   SearchOutline,
 } from "@vicons/ionicons5";
-import { NButton, NIcon, NInput } from "naive-ui";
-import { computed, onBeforeUnmount, ref } from "vue";
+import { NButton, NDropdown, NIcon, type DropdownOption } from "naive-ui";
+import { computed, h, onBeforeUnmount, ref } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t } from "@/modules/i18n/translate";
 import { useWorkspaceContext } from "@/app/workspaceContext";
@@ -23,8 +24,8 @@ import type { GitDecorationMap } from "@/modules/source-control";
 import ExplorerContextMenu, {
   type ExplorerContextMenuTarget,
 } from "./ExplorerContextMenu.vue";
-import ExplorerSearch from "./ExplorerSearch.vue";
-import { FindInFilesPanel } from "@/modules/search";
+import ExplorerSearchPanel from "./ExplorerSearchPanel.vue";
+import { type ExplorerSearchMode } from "./explorerTypes";
 import FileTreeRow from "./FileTreeRow.vue";
 import FileTransferConflictDialog from "./FileTransferConflictDialog.vue";
 import { useFileTreeData } from "./composables/useFileTreeData";
@@ -56,9 +57,8 @@ const emit = defineEmits<{
 const prefs = usePreferencesPiniaStore();
 const wsCtx = useWorkspaceContext();
 
-const mode = ref<"files" | "content">("files");
+const mode = ref<ExplorerSearchMode>("files");
 const isSearchOpen = ref(false);
-const isSearchActive = ref(false);
 const menu = ref<ExplorerContextMenuTarget | null>(null);
 
 /**
@@ -158,9 +158,9 @@ const transfer = useTreeTransfer({
     transferBusy.value ||
     renaming.value !== null ||
     pendingCreate.value !== null ||
-    isSearchOpen.value ||
-    isSearchActive.value ||
-    mode.value !== "files",
+    // 搜索/过滤抽屉打开时一律禁拖拽：files / content 段树已让位，filter 段
+    // 树虽还在但行集已被过滤，拖拽落点与源都不稳定。
+    isSearchOpen.value,
 });
 
 const {
@@ -273,7 +273,9 @@ function beginRename(path: string) {
 }
 
 function handleKeydown(event: KeyboardEvent) {
-  if (renaming.value || pendingCreate.value || isSearchOpen.value) return;
+  if (renaming.value || pendingCreate.value) return;
+  // filter 段只占一行输入框，文件树仍在下方可见，键盘导航要继续交给树。
+  if (isSearchOpen.value && mode.value !== "filter") return;
   const target = event.target as HTMLElement | null;
   if (
     target?.tagName === "INPUT" ||
@@ -397,9 +399,60 @@ function openTerminalInDir(path: string) {
   emit("openInTerminal", path);
 }
 
-function setMode(next: "files" | "content") {
+/**
+ * 打开统一搜索抽屉并切到指定分段。命令面板的「在工作区中查找」与工具栏
+ * 的 🔍 走同一个入口，只是后者用 toggleSearch。
+ */
+function setMode(next: ExplorerSearchMode) {
   mode.value = next;
+  isSearchOpen.value = true;
+}
+
+function toggleSearch() {
+  isSearchOpen.value = !isSearchOpen.value;
+}
+
+function closeSearch() {
   isSearchOpen.value = false;
+  // 过滤是「视图状态」而不是「搜索会话」：关掉抽屉就回到未过滤的完整树，
+  // 免得用户以为文件丢了。
+  if (mode.value === "filter") treeFilter.value = "";
+}
+
+// ── 工具栏溢出菜单 ─────────────────────────────────────────────────────
+// 工具栏只留 4 个高频入口（搜索 / 新建文件 / 新建文件夹 / 更多），低频的
+// 撤销移动、展开折叠、刷新收进 NDropdown——面板最窄 240px 时根目录名才
+// 不会被挤成三四个字符。
+const moreOptions = computed<DropdownOption[]>(() => [
+  {
+    key: "undo-move",
+    label: t("explorer.undoMove"),
+    icon: () => h(NIcon, null, { default: () => h(ArrowUndoOutline) }),
+    disabled: !canUndoMove.value,
+  },
+  { key: "divider-more", type: "divider" },
+  {
+    key: "toggle-expand-all",
+    label:
+      expandedCount.value > 0 ? t("explorer.collapseAll") : t("explorer.expandAll"),
+    icon: () =>
+      h(NIcon, null, {
+        default: () => h(expandedCount.value > 0 ? ContractOutline : ExpandOutline),
+      }),
+    disabled: !props.rootPath,
+  },
+  {
+    key: "refresh",
+    label: t("common.refresh"),
+    icon: () => h(NIcon, null, { default: () => h(RefreshOutline) }),
+    disabled: !props.rootPath,
+  },
+]);
+
+function handleMoreSelect(key: string | number) {
+  if (key === "undo-move") void undoLastMove();
+  if (key === "toggle-expand-all") toggleExpandAll();
+  if (key === "refresh") refreshPath();
 }
 
 onBeforeUnmount(() => {
@@ -453,31 +506,19 @@ defineExpose({
           :size="14"
           class="shrink-0 text-muted-foreground"
         />
-        <span class="truncate text-[12px] font-medium text-foreground/85">
+        <span class="min-w-0 truncate text-[12px] font-medium text-foreground/85">
           {{ rootName || t("common.explorer") }}
         </span>
       </div>
-      <TooltipTitle :label="t('explorer.searchFilesTitle')">
+      <TooltipTitle :label="t('explorer.searchPanelTitle')">
         <NButton
           size="tiny"
           quaternary
           data-toggle-search
-          :aria-label="t('explorer.searchFilesTitle')"
+          :aria-label="t('explorer.searchPanelTitle')"
           :disabled="!rootPath"
-          @click="isSearchOpen = !isSearchOpen; mode = 'files'"
-        >
-          <template #icon><NIcon :component="SearchOutline" /></template>
-        </NButton>
-      </TooltipTitle>
-      <TooltipTitle :label="t('findInFiles.searchPlaceholder')">
-        <NButton
-          size="tiny"
-          quaternary
-          data-toggle-content-search
-          :aria-label="t('findInFiles.searchPlaceholder')"
-          :disabled="!rootPath"
-          :class="mode === 'content' ? 'bg-accent text-foreground' : ''"
-          @click="mode = mode === 'content' ? 'files' : 'content'; isSearchOpen = false"
+          :class="isSearchOpen ? 'bg-accent text-foreground' : ''"
+          @click="toggleSearch"
         >
           <template #icon><NIcon :component="SearchOutline" /></template>
         </NButton>
@@ -506,57 +547,21 @@ defineExpose({
           <template #icon><NIcon :component="FolderOutline" /></template>
         </NButton>
       </TooltipTitle>
-      <TooltipTitle :label="t('explorer.undoMove')">
-        <NButton
-          size="tiny"
-          quaternary
-          data-undo-move
-          :aria-label="t('explorer.undoMove')"
-          :disabled="!canUndoMove"
-          @click="undoLastMove"
-        >
-          <template #icon><NIcon :component="ArrowUndoOutline" /></template>
-        </NButton>
-      </TooltipTitle>
-      <TooltipTitle :label="expandedCount > 0 ? t('explorer.collapseAll') : t('explorer.expandAll')">
-        <NButton
-          size="tiny"
-          quaternary
-          :data-collapse-all="expandedCount > 0 ? 'collapse' : 'expand'"
-          :aria-label="expandedCount > 0 ? t('explorer.collapseAll') : t('explorer.expandAll')"
-          :disabled="!rootPath"
-          @click="toggleExpandAll"
-        >
-          <template #icon>
-            <NIcon :component="expandedCount > 0 ? ContractOutline : ExpandOutline" />
-          </template>
-        </NButton>
-      </TooltipTitle>
-      <TooltipTitle :label="t('common.refresh')">
-        <NButton
-          size="tiny"
-          quaternary
-          :aria-label="t('common.refresh')"
-          :disabled="!rootPath"
-          @click="refreshPath()"
-        >
-          <template #icon><NIcon :component="RefreshOutline" /></template>
-        </NButton>
-      </TooltipTitle>
-      <div
-        v-if="rootPath"
-        class="relative ml-0.5 flex min-w-0 flex-1 items-center"
-        data-tree-filter
+      <NDropdown
+        trigger="click"
+        placement="bottom-end"
+        :options="moreOptions"
+        @select="handleMoreSelect"
       >
-        <NInput
-          v-model:value="treeFilter"
+        <NButton
           size="tiny"
-          clearable
-          :placeholder="t('explorer.filterTreePlaceholder')"
-          data-tree-filter-input
-          class="max-w-40"
-        />
-      </div>
+          quaternary
+          data-explorer-more
+          :aria-label="t('explorer.moreActions')"
+        >
+          <template #icon><NIcon :component="EllipsisHorizontalOutline" /></template>
+        </NButton>
+      </NDropdown>
     </div>
 
     <div v-if="!rootPath" class="grid min-h-0 flex-1 place-items-center p-4 text-center">
@@ -566,23 +571,24 @@ defineExpose({
     </div>
 
     <template v-else>
-      <ExplorerSearch
-        v-if="mode === 'files'"
+      <!--
+        统一搜索抽屉。filter 段不遮树（行集被过滤后仍在下方可见），
+        files / content 段则接管整块内容区。
+      -->
+      <ExplorerSearchPanel
+        v-if="isSearchOpen"
         :root-path="rootPath"
-        :open="isSearchOpen"
-        @request-close="isSearchOpen = false"
-        @active-change="(active) => (isSearchActive = active)"
+        :mode="mode"
+        :filter="treeFilter"
+        @update:mode="(next) => (mode = next)"
+        @update:filter="(value) => (treeFilter = value)"
+        @request-close="closeSearch"
         @open-file="(path, pin) => emit('openFile', path, pin)"
-      />
-
-      <FindInFilesPanel
-        v-else
-        :root-path="rootPath"
-        @open-result="(path, line) => emit('openSearchResult', path, line)"
+        @open-search-result="(path, line) => emit('openSearchResult', path, line)"
       />
 
       <div
-        v-show="!isSearchActive && mode === 'files'"
+        v-show="!isSearchOpen || mode === 'filter'"
         ref="treeScroll"
         data-explorer-drop-root
         class="min-h-0 flex-1 overflow-y-auto py-1"

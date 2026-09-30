@@ -437,7 +437,13 @@ const enUS = {
     resultsCount: "{count} results",
     revealInFinder: "Reveal in Finder",
     searchFiles: "Search files...",
-    searchFilesTitle: "Search files",
+    // ── 统一搜索抽屉（工具栏 🔍 的唯一落点）──
+    searchPanelTitle: "Search & Filter",
+    closeSearchPanel: "Close search panel",
+    searchSegmentFiles: "Names",
+    searchSegmentContent: "Content",
+    searchSegmentFilter: "Filter",
+    moreActions: "More actions",
     searching: "Searching...",
   },
   findInFiles: {
