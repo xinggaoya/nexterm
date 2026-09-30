@@ -88,6 +88,17 @@ export interface TerminalRenderer {
   term: Terminal;
   /** SearchAddon 句柄：终端内 Ctrl+F 用的就是它（此前已装载但零引用）。 */
   search: SearchAddon;
+  /**
+   * 安装粘贴拦截器。
+   *
+   * 拦在 `term.paste` 这一层而不是具体快捷键上：xterm 自己的 paste 事件监听
+   * （普通 Ctrl+V / 中键主选区）也走这个方法，只拦右键菜单等于没做——用户从
+   * 正常路径粘一样会“一贴就提交”。拦截器返回新文本则粘贴，返回 null 则丢弃
+   * （用户取消）。
+   */
+  setPasteInterceptor: (
+    fn: ((text: string) => Promise<string | null>) | null,
+  ) => void;
   /** 立即 fit,如字号/容器变化后调用 */
   fit: () => void;
   /** 应用字号/字体/间距变化,内部重新加载字体并重画 */
@@ -175,6 +186,31 @@ export async function createTerminalRenderer(
 
   // 3) 创建 Terminal 实例
   const term = new Terminal(termOptions);
+
+  // 3.5) 包一层 paste：所有粘贴入口（快捷键 / 右键菜单 / xterm 自己的
+  // paste 事件 / 中键主选区）最终都走 term.paste，在这里做多行守卫。
+  let pasteInterceptor: ((text: string) => Promise<string | null>) | null = null;
+  const rawPaste = term.paste.bind(term);
+  const patchedTerm = term as Terminal & {
+    paste: (data: string) => void | Promise<void>;
+  };
+  patchedTerm.paste = (data: string) => {
+    if (!pasteInterceptor) {
+      rawPaste(data);
+      return;
+    }
+    // 拦截器可能是异步的（弹确认框）。xterm 内部的 paste 事件处理器不关心
+    // 返回值，所以异步延迟落盘对它透明。
+    void Promise.resolve(pasteInterceptor(data)).then((next) => {
+      if (next) rawPaste(next);
+    });
+  };
+
+  function setPasteInterceptor(
+    fn: ((text: string) => Promise<string | null>) | null,
+  ): void {
+    pasteInterceptor = fn;
+  }
 
   // 4) 装载标准 addons(包含 clipboard)
   let addons: StandardAddons | null = loadStandardAddons(term, prefs.clipboard);
@@ -344,6 +380,7 @@ export async function createTerminalRenderer(
   return {
     term,
     search: addons?.search ?? null,
+    setPasteInterceptor,
     fit,
     applyTypography,
     setScrollback,

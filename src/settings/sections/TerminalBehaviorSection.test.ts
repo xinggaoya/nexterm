@@ -104,6 +104,29 @@ describe("TerminalBehaviorSection.vue", () => {
     );
   });
 
+  it("多行粘贴确认默认开启，关闭后走 updateTerminalConfirmMultilinePaste", async () => {
+    // TUI AI 编码工具把输入框里的换行当提交，粘一大段 prompt 就跑起来了。
+    // 默认开着，且开关可关（信任自己的粘贴习惯的用户不该被打断）。
+    const wrapper = mount(TerminalBehaviorSection, {
+      global: { plugins: [pinia, i18n] },
+    });
+    const prefs = usePreferencesPiniaStore(pinia);
+    expect(prefs.terminalConfirmMultilinePaste).toBe(true);
+
+    const item = wrapper
+      .findAll(".n-form-item")
+      .find((el) => el.text().includes("Confirm multi-line paste"));
+    expect(item).toBeTruthy();
+    const toggle = item!.findComponent(NSwitch);
+    expect(toggle).toBeTruthy();
+    await toggle.vm.$emit("update:value", false);
+    expect(prefs.terminalConfirmMultilinePaste).toBe(false);
+    expect(vi.mocked(setPreference)).toHaveBeenCalledWith(
+      "terminalConfirmMultilinePaste",
+      false,
+    );
+  });
+
   it("Windows 下默认 Shell 下拉展示探测结果且可切换", async () => {
     shellListProfilesMock.mockResolvedValue([
       {

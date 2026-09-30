@@ -7,6 +7,11 @@ Nexterm 所有值得注意的变更都记录在本文件中。版本遵循 [语�
 
 ## [Unreleased]
 
+### 新增 ✨
+
+- **多行粘贴守卫** — 终端里跑的 TUI AI 编码工具（claude code / aider / opencode）把输入框里的换行当成提交：从网页/笔记粘一大段 prompt 过去、末尾自带换行 → **一贴就被执行**，命令真跑起来事后很难挽回。超过 4 行的粘贴先弹一次确认（可在设置关闭）。守卫拦在 `term.paste` 层面，所以普通 `Ctrl+V`、右键粘贴、中键主选区三条路径一视同仁；单行、勾选删除、以及只有尾随换行的情况一律不拦（编辑器复制带一个结尾换行是常态，为此弹窗只会把人训练成无脑点确认）
+- **状态坞右半边** — 此前 `justify-between` 却只有一个子元素，24px 高的常驻条右侧整片空着。现在显示活动终端的 `cols×rows`（直接决定 TUI 工具的布局）、**实际生效**的渲染器（WebGL 可能已静默回退到 DOM，字形与抗锯齿都会变）、以及非运行态的会话状态。没有活动终端时不占位
+
 ### 修复 🐛
 
 - **终端聚焦时全局快捷键几乎全部失效** — xterm 用隐藏的 `<textarea class="xterm-helper-textarea">` 接收键盘，被 `isEditableTarget()` 判成普通输入框，于是除命令面板/快速打开外的所有快捷键（`Mod+W`、`Ctrl+Tab`、`Alt+方向键`、`Ctrl+Shift+F`、`Ctrl+G`、`F12`…）在终端里都被放行成裸字节发给 PTY。用户 95% 时间在终端里，等于快捷键系统整个失效
@@ -33,9 +38,16 @@ Nexterm 所有值得注意的变更都记录在本文件中。版本遵循 [语�
 - **`CommandSpec` 承载可用性条件** — 新增 `when`（如“该方位有相邻分屏”）与 `captureInTerminal`，可用性判断从快捷键分发处收回 spec
 - **分屏把手改 pointer 事件** — 鼠标版在 webview 里手感发涩；顺带补上最小边长夹取与 `containerSize` 上报
 
-### 文档 📚
+### 测试 🧪
 
-- `commandSpecsContract.test.ts` / `shortcutCapture.test.ts` / `paneInteraction.test.ts` / `paneWiring.test.ts` — 锁死「`CommandId` 联合类型 ↔ spec 表一致」「默认键位两两不撞」「终端 textarea 不算输入框」「把手与 pane 事件链完整」
+- `commandSpecsContract.test.ts` / `shortcutCapture.test.ts` — 锁死「`CommandId` 联合类型 ↔ spec 表一致」「默认键位两两不撞」「终端 textarea 不算输入框」
+- `paneInteraction.test.ts` / `paneWiring.test.ts` — 锁死把手与 pane 事件链完整、粘贴守卫挂在 `term.paste` 上
+- `pasteGuard.test.ts` — 纯函数判定：单行 / 尾随换行 / 勾选删除一律不拦，只对大块多行内容拦
+- `StatusDock.vue.test.ts` — 无活动终端时不占位；有则显示尺寸 / 渲染器 / 异常状态
+
+### 门禁
+
+- `pnpm test` 858 passed / 143 files、`pnpm build` ✓、`vue-tsc --noEmit` clean、`cargo clippy --all-targets --locked -- -D warnings` ✓
 
 ## [0.2.2] - 2026-09-27
 

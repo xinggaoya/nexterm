@@ -15,6 +15,11 @@ import {
 import { attachClipboardShortcuts } from "./lib/shortcuts";
 import { t } from "@/modules/i18n/translate";
 import { attachTerminalBell } from "./lib/bell";
+import { useDialog } from "naive-ui";
+import {
+  classifyPaste,
+  needsPasteConfirmation,
+} from "./lib/pasteGuard";
 import {
   createTerminalRenderer,
   type TerminalRenderer,
@@ -22,6 +27,7 @@ import {
 } from "./lib/renderer";
 import type { FontPreference } from "./lib/fontStack";
 import type { RendererKind } from "./lib/rendererPipeline";
+import type { PaneStatus } from "./lib/paneStatus";
 import { ArrowDownOutline } from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
 import TerminalContextMenu from "./TerminalContextMenu.vue";
@@ -50,6 +56,15 @@ const emit = defineEmits<{
   /** 请求重命名本分屏的标题（复用宿主的 RenameTerminalDialog）。 */
   rename: [];
   renderer: [RendererKind];
+  /**
+   * 上报本分屏的终端状态摘要（尺寸 / 渲染器 / 会话状态）。
+   *
+   * 终端的 `cols×rows` 直接决定 TUI 工具的布局，而用户的窗口在画布里只占
+   * 一部分，标题栏上没有任何地方能告诉他现在到底是多少列。这里把尺寸、实际
+   * 生效的渲染器（设置里选的和 WebGL 回退后真正在跑的可能不同）、会话状态
+   * 汇总上抛，宿���填进状态坞。
+   */
+  "pane-status": [status: PaneStatus];
 }>();
 
 const container = ref<HTMLElement>();
@@ -149,6 +164,43 @@ function toggleSearch(): void {
 
 const menu = ref<{ x: number; y: number; selection: string } | null>(null);
 
+const dialog = useDialog();
+
+/**
+ * 多行粘贴守卫。
+ *
+ * 终端里跑的 TUI AI 编码工具（claude code / aider / opencode）把输入框里的
+ * 换行当成提交。从网页/笔记粘一大段 prompt 过去，末尾自带换行 → 一贴就被
+ * 执行。命令真的跑起来，事后很难挽回。
+ *
+ * 拦在 `term.paste` 层面（见 renderer.setPasteInterceptor），所以普通 Ctrl+V、
+ * 右键粘贴、中键主选区三条路径一视同仁。
+ */
+async function guardPaste(text: string): Promise<string | null> {
+  const risk = classifyPaste(text, {
+    isBracketedSelection: Boolean(renderer?.term.hasSelection?.()),
+  });
+  if (!needsPasteConfirmation(risk)) return text;
+  if (risk.kind !== "multiline") return text;
+
+  return new Promise<string | null>((resolve) => {
+    const confirm = dialog.warning({
+      title: t("terminal.pasteGuardTitle"),
+      content: t("terminal.pasteGuardBody", { lines: risk.lines }),
+      positiveText: t("terminal.pasteGuardConfirm"),
+      negativeText: t("common.cancel"),
+      // 关掉对话框（Esc / 点遮罩）一律当作取消：宁可让用户重粘一次，
+      // 也不能在一个“不确定发生了什么”的动作上默认往下走。
+      onPositiveClick: () => resolve(text),
+      onNegativeClick: () => resolve(null),
+      onClose: () => resolve(null),
+      onMaskClick: () => false,
+    });
+    // 用户可能先按了“不再询问”类的快捷操作；对话框被外部销毁时也走 onClose。
+    void confirm;
+  });
+}
+
 const prefs = usePreferencesPiniaStore();
 
 // 终端必须在 WorkspaceHost 内渲染：通过注入的 workspace 上下文拿到
@@ -235,6 +287,7 @@ async function ensureSession(): Promise<void> {
     onStateChange: (next: SessionState, code?: number) => {
       state.value = next;
       exitCode.value = code;
+      reportPaneStatus();
     },
   };
   const existing = getSessionForLeaf(wsCtx!.workspace.id, props.leafId);
@@ -332,7 +385,7 @@ onMounted(async () => {
     updateLinesFromBottom();
   });
   // 命中数由 addon 自己在搜索后派发（findNext 只返回布尔"是否找到"）。
-  detachSearchWatch = nextRenderer.search.onDidChangeResults((event) => {
+  detachScrollWatch = nextRenderer.search.onDidChangeResults((event) => {
     const total = event.resultCount;
     searchResult.value =
       total === 0
@@ -340,6 +393,12 @@ onMounted(async () => {
         : { index: Math.max(1, event.resultIndex + 1), total };
   });
   updateLinesFromBottom();
+
+  // 粘贴守卫：仅在偏好打开时安装，否则完全走原生路径（零开销）。
+  if (prefs.terminalConfirmMultilinePaste) {
+    nextRenderer.setPasteInterceptor(guardPaste);
+  }
+  reportPaneStatus();
   detachBell = attachTerminalBell(nextRenderer.term, {
     enabled: () => prefs.terminalNotificationEnabled,
     soundEnabled: () => prefs.terminalNotificationSoundEnabled,
@@ -437,6 +496,7 @@ watch(
     requestAnimationFrame(() => {
       refreshLayout();
       renderer?.redraw();
+      reportPaneStatus();
     });
     // 注:不再在此处重试 ensureSession —— 对于首个终端(生来 active),
     // isActive 不会发生 false→true 跳变,watch 永远不触发,重试无效。
@@ -465,8 +525,33 @@ watch(
   (kind) => {
     renderer?.setRenderer(kind);
     emit("renderer", renderer?.activeRenderer() ?? "dom");
+    reportPaneStatus();
   },
 );
+
+// 粘贴守卫开关要在运行中的终端上即时生效（用户刚在设置里改的）。
+watch(
+  () => prefs.terminalConfirmMultilinePaste,
+  (enabled) => {
+    renderer?.setPasteInterceptor(enabled ? guardPaste : null);
+  },
+);
+
+/** 尺寸只在真的变了才上抛：fit 会在拖窗口时高频触发，状态坞不需要跟着抖。 */
+let lastStatusKey = "";
+function reportPaneStatus(): void {
+  const term = renderer?.term;
+  if (!term) return;
+  const key = `${term.cols}x${term.rows}:${renderer?.activeRenderer()}:${state.value}`;
+  if (key === lastStatusKey) return;
+  lastStatusKey = key;
+  emit("pane-status", {
+    cols: term.cols,
+    rows: term.rows,
+    renderer: renderer?.activeRenderer() ?? "dom",
+    state: state.value,
+  });
+}
 
 function handleFocus() {
   emit("focus");
@@ -495,7 +580,11 @@ function handleMenuCopy() {
 
 function handleMenuPaste() {
   const term = renderer?.term;
-  if (term) void readClipboardText().then((text) => text && term.paste(text)).catch(() => {});
+  if (term) {
+    // 走 term.paste 而不是 readClipboardText().then(...) 绕过拦截器 ——
+    // 否则右键粘贴会漏掉多行守卫。
+    void readClipboardText().then((text) => text && term.paste(text)).catch(() => {});
+  }
   closeContextMenu();
 }
 

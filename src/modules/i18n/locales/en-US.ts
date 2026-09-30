@@ -114,6 +114,12 @@ const enUS = {
     shortcutRejectedBare: "Add a modifier (Ctrl / Alt / Cmd) to record a shortcut",
   },
   app: {
+    dock: {
+      rendererWebgl: "WebGL",
+      rendererDom: "DOM",
+      rendererHint: "Active terminal renderer",
+      sizeHint: "Terminal size (columns × rows)",
+    },
     header: {
       closeTab: "Close tab",
       gitDiff: "Git diff",
@@ -297,6 +303,9 @@ const enUS = {
       devtoolsUnavailable: "DevTools unavailable (requires a debug build or the devtools feature).",
       terminal: "Terminal",
       terminalContextMenu: "Terminal context menu",
+      terminalConfirmMultilinePaste: "Confirm multi-line paste",
+      terminalConfirmMultilinePasteHint:
+        "Ask before pasting several lines — TUI coding tools treat a newline as submit.",
       terminalDescription: "Local terminal rendering, font, and buffer defaults.",
       theme: "Theme",
       title: "General",

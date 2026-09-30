@@ -3,6 +3,7 @@ import type { PendingEdit, ReferenceGroup } from "@/modules/lsp/lspLanguageSuppo
 import { computed, defineAsyncComponent, ref } from "vue";
 import { native } from "@/lib/native";
 import { getPtyIdForLeaf, TerminalWorkspace, disposeSession } from "@/modules/terminal";
+import type { PaneStatus } from "@/modules/terminal";
 import { tryWorkspaceContext } from "@/app/workspaceContext";
 const EditorPane = defineAsyncComponent(() => import("@/modules/editor/EditorPane.vue"));
 import GitDiffStack from "@/modules/editor/GitDiffStack.vue";
@@ -57,7 +58,16 @@ const emit = defineEmits<{
   "show-references": [groups: ReferenceGroup[]];
   /** 分屏标题栏发来的“重命名这条分屏”。 */
   "rename-pane": [leafId: number];
+  /**
+   * 活动分屏的终端状态摘要（尺寸 / 渲染器 / 会话状态）。
+   *
+   * 状态坞需要这些才能填满右半边 —— 此前那里整片空着。尺寸尤其重要：
+   * `cols×rows` 直接决定 TUI 工具的布局，用户得能一眼看到。
+   */
+  "pane-status": [status: PaneStatus | null];
 }>();
+
+export type { PaneStatus } from "@/modules/terminal";
 
 const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
 
@@ -163,6 +173,7 @@ defineExpose({
           :tab="terminalTab"
           :is-active="isActiveKind('terminal') && terminalTab.id === activeId"
           @rename="(leafId) => emit('rename-pane', leafId as number)"
+          @pane-status="(status) => emit('pane-status', status as PaneStatus | null)"
         />
       </div>
     </div>

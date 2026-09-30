@@ -10,6 +10,8 @@ export { default as TerminalResizer } from "./TerminalResizer.vue";
 export { default as TerminalSearch } from "./TerminalSearch.vue";
 export { default as TerminalContextMenu } from "./TerminalContextMenu.vue";
 
+export type { PaneStatus } from "./lib/paneStatus";
+
 export { TERMINAL_COMMAND_SPECS } from "./lib/commands";
 
 export {

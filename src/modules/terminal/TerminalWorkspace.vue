@@ -3,6 +3,7 @@ import { computed } from "vue";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { TerminalTab } from "@/modules/tabs/tabsTypes";
 import type { LeafId } from "./lib/layout";
+import type { PaneStatus } from "./lib/paneStatus";
 import TerminalTreeNode from "./TerminalTreeNode.vue";
 
 const props = defineProps<{
@@ -13,6 +14,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** 请求重命名某条分屏的标题（宿主持有 RenameTerminalDialog）。 */
   rename: [leafId: LeafId];
+  /** 活动分屏的状态摘要，向宿主透传给状态坞。 */
+  "pane-status": [status: PaneStatus | null];
 }>();
 
 const tabsStore = useTabsPiniaStore();
@@ -75,6 +78,7 @@ function resetPaneSizes(leafId: LeafId) {
       @resize="resizePane"
       @reset="resetPaneSizes"
       @rename="(leafId: LeafId) => emit('rename', leafId)"
+      @pane-status="(status: PaneStatus | null) => emit('pane-status', status)"
     />
   </div>
 </template>

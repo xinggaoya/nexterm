@@ -116,6 +116,12 @@ const zhCN = {
     shortcutRejectedBare: "请加上修饰键（Ctrl / Alt / Cmd）再录入快捷键",
   },
   app: {
+    dock: {
+      rendererWebgl: "WebGL",
+      rendererDom: "DOM",
+      rendererHint: "当前终端渲染器",
+      sizeHint: "终端尺寸（列 × 行）",
+    },
     header: {
       closeTab: "关闭标签",
       gitDiff: "Git 差异",
@@ -297,6 +303,9 @@ const zhCN = {
       devtoolsUnavailable: "开发者工具不可用（需要 debug 构建或开启 devtools 特性）。",
       terminal: "终端",
       terminalContextMenu: "终端右键菜单",
+      terminalConfirmMultilinePaste: "多行粘贴前确认",
+      terminalConfirmMultilinePasteHint:
+        "粘贴多行内容前先问一句——TUI 编码工具会把换行当成提交。",
       terminalDescription: "本地终端渲染、字体与缓冲区默认设置。",
       theme: "主题",
       title: "通用",

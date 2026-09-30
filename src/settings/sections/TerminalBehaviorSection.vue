@@ -172,6 +172,18 @@ const selectedShellProgram = computed(() => {
           @update:value="prefs.updateTerminalContextMenuEnabled"
         />
       </NFormItem>
+      <NFormItem :label="t('settings.general.terminalConfirmMultilinePaste')">
+        <NSpace vertical class="w-full">
+          <NSwitch
+            :value="prefs.terminalConfirmMultilinePaste"
+            data-terminal-confirm-multiline-paste
+            @update:value="prefs.updateTerminalConfirmMultilinePaste"
+          />
+          <span class="text-xs text-muted-foreground">
+            {{ t("settings.general.terminalConfirmMultilinePasteHint") }}
+          </span>
+        </NSpace>
+      </NFormItem>
       <NFormItem :label="t('settings.general.terminalNotifications')">
         <NSwitch
           :value="prefs.terminalNotificationEnabled"

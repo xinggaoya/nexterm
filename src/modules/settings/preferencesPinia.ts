@@ -106,6 +106,8 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const updateTerminalShellId = (value: string) => updatePref("terminalShellId", value);
   const updateTerminalContextMenuEnabled = (value: boolean) =>
     updatePref("terminalContextMenuEnabled", value);
+  const updateTerminalConfirmMultilinePaste = (value: boolean) =>
+    updatePref("terminalConfirmMultilinePaste", value);
   const updateTerminalFontFamily = (value: string) => updatePref("terminalFontFamily", value);
   const updateTerminalFontWeight = (value: number) =>
     updatePref("terminalFontWeight", value as Preferences["terminalFontWeight"]);
@@ -212,6 +214,7 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateTerminalWebglEnabled,
     updateTerminalShellId,
     updateTerminalContextMenuEnabled,
+    updateTerminalConfirmMultilinePaste,
     updateTerminalFontFamily,
     updateTerminalFontWeight,
     updateTerminalFontWeightBold,

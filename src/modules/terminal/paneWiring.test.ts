@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const terminalDir = fileURLToPath(new URL(".", import.meta.url));
-
 function readSource(relativePath: string): string {
   return readFileSync(join(terminalDir, relativePath), "utf8");
 }
@@ -51,5 +50,16 @@ describe("terminal module wiring (source-level contracts)", () => {
     const menu = readSource("TerminalContextMenu.vue");
     expect(menu).not.toMatch(/label:\s*"(Copy|Paste|Select All)"/);
     expect(menu).toMatch(/label: t\(/);
+  });
+
+  it("intercepts the paste at term.paste so no entry point can bypass the guard", () => {
+    // 只拦右键菜单等于没做：普通 Ctrl+V（xterm 自己的 paste 事件）和中键
+    // 主选区同样能触发“一贴就提交”。守卫必须挂在 term.paste 这一层。
+    const renderer = readSource("lib/renderer.ts");
+    expect(renderer).toMatch(/term\.paste\.bind\(term\)/);
+    expect(renderer).toMatch(/setPasteInterceptor/);
+    // 右键粘贴不能再自己 readClipboardText 后直写，得回到 term.paste。
+    const pane = readSource("TerminalPane.vue");
+    expect(pane).toMatch(/term\.paste\(text\)/);
   });
 });

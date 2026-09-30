@@ -55,6 +55,7 @@ import TopBar from "./TopBar.vue";
 import SessionStrip from "./SessionStrip.vue";
 import WorkspacePanel from "./WorkspacePanel.vue";
 import Canvas from "./Canvas.vue";
+import type { PaneStatus } from "./Canvas.vue";
 import StatusDock from "./StatusDock.vue";
 import { useWorkspacesPiniaStore } from "@/modules/workspace/workspacesPinia";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
@@ -63,6 +64,8 @@ import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import type { SettingsTab } from "@/modules/settings/tabs";
 import type { PaneDirection } from "@/modules/commands/types";
+import type { RendererKind } from "@/modules/terminal/lib/rendererPipeline";
+import type { SessionState } from "@/modules/terminal/lib/sessions";
 
 const props = defineProps<{
   workspace: WorkspaceInstance;
@@ -501,6 +504,27 @@ function currentLeafTitle(leafId: number): string {
   return findLeafTitle(tab.paneTree, leafId) ?? "";
 }
 
+/**
+ * 活动分屏上报的终端状态摘要，喂给状态坞右半边。
+ *
+ * 注意：活动标签切到编辑器/预览时，Canvas 里那些终端 layer 虽然 `v-show`
+ * 隐藏但仍然挂载，上报不会停。所以必须跟着活动标签的种类一起判定，否则
+ * 状态坞会在“没有活动终端”时还挂着一行陈旧的 `120×30`。
+ */
+const paneStatus = ref<{ cols: number; rows: number; renderer: RendererKind; state: SessionState } | null>(null);
+
+function onPaneStatus(status: PaneStatus | null): void {
+  paneStatus.value =
+    status && activeTab.value?.kind === "terminal" ? status : null;
+}
+
+watch(
+  () => activeTab.value?.kind,
+  (kind) => {
+    if (kind !== "terminal") paneStatus.value = null;
+  },
+);
+
 watch(
   () => workspaces.activeWorkspaceId,
   (activeId, prevId) => {
@@ -702,6 +726,7 @@ defineExpose({
           @request-rename="onRequestRename"
           @show-references="onShowReferences"
           @rename-pane="onRenamePane"
+          @pane-status="onPaneStatus"
         />
 
         <WorkspacePanel
@@ -737,6 +762,9 @@ defineExpose({
         :workspace-name="workspace.name"
         :env="workspace.env"
         :git-branch="gitBranch"
+        :terminal-size="paneStatus"
+        :renderer="paneStatus?.renderer ?? null"
+        :session-state="paneStatus?.state ?? null"
       />
     </div>
   </div>

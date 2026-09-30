@@ -22,6 +22,9 @@
 - **终端内查找面板**:`TerminalSearch` + `SearchAddon` 早已存在但零引用,终端里 `Ctrl+F`
   根本不工作;现已接上并补了命中计数与上下跳转
 - **回到底部浮层**:上翻后新内容还在往下涌,底部的“末尾”看不见也不知道差多少行
+- **多行粘贴守卫**:拦在 `term.paste` 层面(而非某个快捷键上),所以普通 `Ctrl+V`、右键粘贴、
+  中键主选区三条路径一视同仁。TUI AI 工具把换行当提交,“一贴就跑”是这类场景最典型的翻车方式
+- **分屏状态上报** → 状态坞:活动终端的 `cols×rows`、实际生效的渲染器、会话状态
 
 ## 2. 目录与文件
 
@@ -47,6 +50,8 @@ src/modules/terminal/
     sessions.ts                 # PtySessionHandle 单会话模型
     shortcuts.ts                # 终端内键位(剪贴板 copy/paste + Ctrl+F 查找)
     layout.ts                   # PaneNode / splitLeaf / leafIds / resizeSplit 等
+    pasteGuard.ts               # 多行粘贴风险判定（纯函数，可单测）
+    paneStatus.ts               # 分屏向宿主上报的状态摘要类型
     bell.ts                     # BEL 响铃：toast/系统通知 + 可选蜂鸣（冷却限流）
     commands.ts                 # 注册到 commands 的终端命令
 ```
@@ -213,6 +218,7 @@ graph LR
   `Ctrl+F` 打开终端内查找,`Mod+W`/`Ctrl+Tab` 在终端聚焦时仍然生效
 - **TUI 场景**:上翻后底部出现“距末尾 N 行”浮层,点一下回到最新输出
 - **右键菜单**:全部文案随语言切换(不再是硬编码英文)
+- **多行粘贴**:粘一段 5 行以上的 prompt 会先弹确认;单行/勾选删除/只有尾随换行不拦
 
 ## 9. 不在本期范围
 
@@ -220,7 +226,7 @@ graph LR
 - **Shell integration(OSC 133)**:命令失败就地染色、耗时/退出码脚注、输出里的路径可点。
   已解析 OSC 0/2/7/8,但 133 未接——需要同时改 `lib/osc.ts` 与 Rust 侧 `shell_init/*` 的
   注入脚本,工作量独立,单独立项
-- 多行粘贴确认(防 TUI AI 工具被误提交)
+- 多行粘贴确认(防 TUI AI 工具被误提交) ← **已实现**，见上文“新增”
 - 终端录制/回放(`.cast` 文件)
 - 终端标签页拖拽排序(Tabby 风格)
 - 命令面板模糊搜索 xterm addons

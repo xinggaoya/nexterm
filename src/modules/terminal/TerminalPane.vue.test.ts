@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { mount, type VueWrapper } from "@vue/test-utils";
-import { nextTick } from "vue";
+import { defineComponent, nextTick } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NDialogProvider } from "naive-ui";
 import type { Terminal } from "@xterm/xterm";
 import type { TerminalRenderer } from "./lib/renderer";
 
@@ -75,6 +76,7 @@ const fakeRenderer: TerminalRenderer = {
   setRenderer: vi.fn(),
   activeRenderer: (): "dom" | "webgl" => "dom",
   redraw: vi.fn(),
+  setPasteInterceptor: vi.fn(),
   scrollToBottom: vi.fn(),
   linesFromBottom: vi.fn(() => 0),
   dispose: vi.fn(),
@@ -180,6 +182,7 @@ vi.mock("@/modules/settings/preferencesPinia", () => ({
 
 import TerminalPane from "./TerminalPane.vue";
 
+
 async function flush(): Promise<void> {
   // 推完 microtask + 一次 nextTick，覆盖 onMounted 内的 await 链路
   // 与 rAF（rAF 需要再推一次 microtask + nextTick）。
@@ -192,6 +195,32 @@ async function flush(): Promise<void> {
 describe("TerminalPane.vue", () => {
   let host: HTMLDivElement | null = null;
   let wrapper: VueWrapper | null = null;
+
+/**
+ * TerminalPane 里的多行粘贴守卫用 `useDialog()` 弹确认框，需要
+ * NDialogProvider 祖先。这里按仓库惯例包一层真实 provider（而不是依赖
+ * naive-ui 的内部注入 key —— 那是私有路径，升级就可能断）。
+ */
+const PaneHost = defineComponent({
+  components: { NDialogProvider, TerminalPane },
+  props: {
+    leafId: { type: String, required: true },
+    isActive: { type: Boolean, required: true },
+    isFocused: { type: Boolean, required: true },
+    flex: { type: Number, required: true },
+  },
+  template:
+    "<NDialogProvider><TerminalPane v-bind=\"$props\" /></NDialogProvider>",
+});
+
+function mountPane(props: {
+  leafId: string;
+  isActive: boolean;
+  isFocused: boolean;
+  flex: number;
+}) {
+  return mount(PaneHost, { attachTo: host!, props });
+}
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -214,10 +243,7 @@ describe("TerminalPane.vue", () => {
   it("calls renderer.redraw on the false→true isActive transition", async () => {
     // isActive=false 起步：监听 canvas 重绘丢失的修复路径，模拟
     // "display:none 切回可见" 时 false→true 跳变触发补画。
-    wrapper = mount(TerminalPane, {
-      attachTo: host!,
-      props: { leafId: "1", isActive: false, isFocused: false, flex: 1 },
-    });
+    wrapper = mountPane({ leafId: "1", isActive: false, isFocused: false, flex: 1 });
     await flush();
     expect(fakeRenderer.redraw).not.toHaveBeenCalled();
 
@@ -229,10 +255,7 @@ describe("TerminalPane.vue", () => {
 
   it("does not call redraw when isActive stays true on remount", async () => {
     // 首次挂载即为 active（首个终端常见情况）：watch 不应被触发补画。
-    wrapper = mount(TerminalPane, {
-      attachTo: host!,
-      props: { leafId: "1", isActive: true, isFocused: false, flex: 1 },
-    });
+    wrapper = mountPane({ leafId: "1", isActive: true, isFocused: false, flex: 1 });
     await flush();
     expect(fakeRenderer.redraw).not.toHaveBeenCalled();
   });
@@ -240,10 +263,7 @@ describe("TerminalPane.vue", () => {
   it("does not call redraw when isActive goes from true to false", async () => {
     // 切走时不应主动 redraw——display:none 期间浏览器自然停画，调用
     // redraw 反而会无谓地消耗 CPU。
-    wrapper = mount(TerminalPane, {
-      attachTo: host!,
-      props: { leafId: "1", isActive: true, isFocused: false, flex: 1 },
-    });
+    wrapper = mountPane({ leafId: "1", isActive: true, isFocused: false, flex: 1 });
     await flush();
     await wrapper.setProps({ isActive: false });
     await flush();
@@ -257,10 +277,7 @@ describe("TerminalPane.vue", () => {
     // term.resize(2,1) → xterm buffer reflow 把提示符「➜  repo git:(master)」
     // 按 2 列折行不可逆切碎。切回后 resize 回原尺寸,但 reflow 损坏的 buffer
     // 已无法恢复。所以必须在 0 尺寸时从源头拦住 fit 调用。
-    wrapper = mount(TerminalPane, {
-      attachTo: host!,
-      props: { leafId: "1", isActive: true, isFocused: false, flex: 1 },
-    });
+    wrapper = mountPane({ leafId: "1", isActive: true, isFocused: false, flex: 1 });
     await flush();
     const ro = capturedResizeObservers[0];
     expect(ro).toBeTruthy();
@@ -289,10 +306,7 @@ describe("TerminalPane.vue", () => {
   it("does not call redraw on size changes between two non-zero sizes", async () => {
     // 分屏拖动等导致的同向尺寸变化(始终非 0)不应触发补画 —— 那只是普通 fit,
     // canvas 仍在绘制,不需要 redraw。redraw 只针对"从隐藏切回"这一跳变。
-    wrapper = mount(TerminalPane, {
-      attachTo: host!,
-      props: { leafId: "1", isActive: true, isFocused: false, flex: 1 },
-    });
+    wrapper = mountPane({ leafId: "1", isActive: true, isFocused: false, flex: 1 });
     await flush();
     const ro = capturedResizeObservers[0];
     // 初始化为非 0

@@ -170,6 +170,14 @@ export type Preferences = {
   terminalRescaleOverlappingGlyphs: boolean;
   // 终端 - UX
   terminalContextMenuEnabled: boolean;
+  /**
+   * 粘贴多行内容时是否先弹一次确认。
+   *
+   * 为什么需要：终端里跑的 TUI AI 工具（claude code / aider / opencode）
+   * 粘一大段 prompt 进去，结尾往往自带换行；而交互式 TUI 会把换行当成
+   * 提交，于是“一贴就提交了”——这是这类工具最典型的翻车方式。
+   */
+  terminalConfirmMultilinePaste: boolean;
   terminalNotificationEnabled: boolean;
   terminalNotificationSoundEnabled: boolean;
   // 其它
@@ -448,6 +456,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   terminalRescaleOverlappingGlyphs: true,
   // 终端 - UX
   terminalContextMenuEnabled: true,
+  terminalConfirmMultilinePaste: true,
   terminalNotificationEnabled: true,
   terminalNotificationSoundEnabled: true,
   // 其它
@@ -696,6 +705,7 @@ export const PREF_SPECS: PrefSpecMap = {
   terminalRescaleOverlappingGlyphs: spec("terminalRescaleOverlappingGlyphs", boolPref(DEFAULT_PREFERENCES.terminalRescaleOverlappingGlyphs)),
   // 终端 - UX
   terminalContextMenuEnabled: spec("terminalContextMenuEnabled", boolPref(DEFAULT_PREFERENCES.terminalContextMenuEnabled)),
+  terminalConfirmMultilinePaste: spec("terminalConfirmMultilinePaste", boolPref(DEFAULT_PREFERENCES.terminalConfirmMultilinePaste)),
   terminalNotificationEnabled: spec("terminalNotificationEnabled", boolPref(DEFAULT_PREFERENCES.terminalNotificationEnabled)),
   terminalNotificationSoundEnabled: spec("terminalNotificationSoundEnabled", boolPref(DEFAULT_PREFERENCES.terminalNotificationSoundEnabled)),
   // 其它
