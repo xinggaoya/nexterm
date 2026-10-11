@@ -5,7 +5,7 @@ export const PREVIEW_COMMAND_SPECS: CommandSpec[] = [
     id: "preview.open",
     titleKey: "commands.items.openUrlPreview",
     category: "workbench",
-    defaultKeybinding: null,
+    defaultKeybinding: "Ctrl+Shift+V",
     workspaceRequired: true,
   },
 ];

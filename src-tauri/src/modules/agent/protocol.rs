@@ -76,7 +76,10 @@ mod tests {
             panic!("expected response");
         };
         assert!(incoming.ok);
-        assert_eq!(incoming.result.as_ref().and_then(|v| v["version"].as_str()), Some("0.1.2"));
+        assert_eq!(
+            incoming.result.as_ref().and_then(|v| v["version"].as_str()),
+            Some("0.1.2")
+        );
 
         let err = parse_line(r#"{"id":2,"ok":false,"error":"boom"}"#);
         let ParsedLine::Response(incoming) = err else {
@@ -98,7 +101,10 @@ mod tests {
 
     #[test]
     fn event_and_garbage_lines_are_tolerated() {
-        assert!(matches!(parse_line(r#"{"event":"log"}"#), ParsedLine::Event(_)));
+        assert!(matches!(
+            parse_line(r#"{"event":"log"}"#),
+            ParsedLine::Event(_)
+        ));
         assert!(matches!(parse_line("garbage"), ParsedLine::Ignored));
         assert!(matches!(parse_line("   "), ParsedLine::Ignored));
     }
@@ -134,7 +140,6 @@ pub(crate) const METHOD_FS_COPY_MANY: &str = "fs.copyMany";
 /// fs.search
 pub(crate) const METHOD_FS_SEARCH: &str = "fs.search";
 /// fs.listFiles
-pub(crate) const METHOD_FS_LIST_FILES: &str = "fs.listFiles";
 /// fs.grep
 pub(crate) const METHOD_FS_GREP: &str = "fs.grep";
 /// fs.glob
@@ -200,20 +205,6 @@ pub(crate) fn fs_search_params(
         "limit": limit,
         "showHidden": show_hidden,
         "rootDisplay": root_display,
-    })
-}
-
-pub(crate) fn fs_list_files_params(
-    root: &str,
-    limit: Option<usize>,
-    max_depth: Option<usize>,
-    show_hidden: bool,
-) -> Value {
-    serde_json::json!({
-        "root": root,
-        "limit": limit,
-        "maxDepth": max_depth,
-        "showHidden": show_hidden,
     })
 }
 
@@ -308,7 +299,14 @@ mod params_tests {
         assert_eq!(with_stdin["timeoutMs"], json!(5000));
         assert!(with_stdin.get("stdinBase64").is_some());
 
-        let without_stdin = exec_params(None, &argv, &env, None, std::time::Duration::from_secs(5), 1024);
+        let without_stdin = exec_params(
+            None,
+            &argv,
+            &env,
+            None,
+            std::time::Duration::from_secs(5),
+            1024,
+        );
         assert!(without_stdin.get("stdinBase64").is_none());
         assert!(without_stdin["cwd"].is_null());
     }

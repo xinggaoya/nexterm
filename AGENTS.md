@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Nexterm is a terminal-centric development environment built as a Tauri 2 desktop app. It provides an integrated workspace with terminal multiplexing, file explorer, code editor, Git integration, and task runner -- all within a single native window. The Rust backend owns all system access; the Vue 3 webview is a pure presentation layer.
+Nexterm is a terminal-centric development environment built as a Tauri 2 desktop app. It provides an integrated workspace with terminal multiplexing, file explorer, code editor, LSP, and Git integration -- all within a single native window. The Rust backend owns all system access; the Vue 3 webview is a pure presentation layer.
 
 Identifiers: npm package `nexterm`, Rust crate `nexterm` (lib `nexterm_lib`), helper binary `nexterm-agent` (musl) and `nexterm-wsl-watcher`, Tauri product `Nexterm`, bundle id `app.xinggaoya.nexterm`. Current version: `0.2.2` (kept in sync between `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`). Licensed under Apache-2.0.
 
@@ -68,7 +68,6 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 | `src/settings/` | Settings drawer + 6 section components |
 | `src-tauri/src/modules/` | Rust backend modules: `pty`, `shell`, `fs`, `git`, `workspace`, `lock`, `process` |
 | `src-tauri/src/panic_report.rs` | Panic hook that emits structured log + stderr |
-| `src-tauri/wsl-watcher-helper/` | Standalone binary for WSL filesystem watching |
 
 ## Code Conventions & Common Patterns
 
@@ -144,14 +143,13 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 | `src/styles/tokens.ts` | Runtime oklch to RGB token resolution |
 | `src-tauri/src/lib.rs` | Rust entry: registers all Tauri commands and state |
 | `src-tauri/src/modules/pty/mod.rs` | PTY commands: open, write, resize, read_transcript, close |
-| `src-tauri/src/modules/pty/session.rs` | PTY session, Transcript, Job Object, flusher |
+| `src-tauri/src/modules/pty/session.rs` | PTY session, Job Object, 通道线程 |
 | `src-tauri/src/modules/shell/mod.rs` | Shell commands: run, session, background spawn/kill/list |
 | `src-tauri/src/modules/shell/profiles.rs` | 本地终端 shell profile 探测与白名单解析（`shell_list_profiles`、`pty_open` 的 `shellId` 只收 id） |
 | `src-tauri/src/modules/fs/mod.rs` | FS commands: read/write/stat, mutate, search, grep, glob, tree, watcher |
 | `src-tauri/src/modules/git/` | `commands.rs` 为 Tauri 包装层；`operations/` 按 status/stage/commit/branch/stash/log/remote/discover 分文件实现 git 能力 |
 | `src-tauri/src/modules/workspace/` | Workspace auth/registry (`mod.rs`, `registry.rs`), env 与 SSH 守卫 (`env.rs`), WSL 路径与进程助手 (`wsl.rs`) |
 | `src-tauri/src/modules/lock.rs` | Mutex/RwLock poison error wrappers |
-| `src-tauri/wsl-watcher-helper/src/main.rs` | WSL filesystem watcher binary (independent process) |
 | `vite.config.ts` | Vite 7 config with Vue, Tailwind 4, auto-imports, chunk splitting |
 
 ## Runtime/Tooling Preferences

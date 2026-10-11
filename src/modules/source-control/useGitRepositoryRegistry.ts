@@ -10,6 +10,7 @@ import type {
   WorkspaceFsChangedEvent,
   WorkspaceNative,
 } from "@/lib/native";
+import { normalizeErrorMessage } from "@/lib/error";
 import { isSameRoot, normalizePath } from "./sourceControlFormat";
 
 type GitRepositoryRegistryOptions = {
@@ -22,11 +23,6 @@ type GitRepositoryRegistryOptions = {
 
 const DISCOVERY_OPTIONS = { maxDepth: 4, maxRepos: 32 } as const;
 const FS_REFRESH_DEBOUNCE_MS = 250;
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
 
 function ownershipKey(
   scope: string,
@@ -96,7 +92,7 @@ export function useGitRepositoryRegistry(
       truncated.value = discovery.truncated;
     } catch (cause) {
       if (!requestMatchesWorkspace(currentId, triggerOwner)) return;
-      error.value = errorMessage(cause);
+      error.value = normalizeErrorMessage(cause);
     } finally {
       if (requestMatchesWorkspace(currentId, triggerOwner)) {
         loading.value = false;

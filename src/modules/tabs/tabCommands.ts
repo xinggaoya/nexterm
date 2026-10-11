@@ -20,7 +20,7 @@ export const TAB_COMMAND_SPECS: CommandSpec[] = [
     id: "tab.closeToRight",
     titleKey: "commands.items.closeTabsToRight",
     category: "tab",
-    defaultKeybinding: null,
+    defaultKeybinding: "Ctrl+K Ctrl+W",
   },
   {
     id: "tab.closeAll",
@@ -45,7 +45,7 @@ export const TAB_COMMAND_SPECS: CommandSpec[] = [
     id: "tab.duplicate",
     titleKey: "commands.items.duplicateTab",
     category: "tab",
-    defaultKeybinding: null,
+    defaultKeybinding: "Ctrl+K D",
   },
   {
     id: "tab.pin",

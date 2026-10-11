@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { normalizeErrorMessage } from "@/lib/error";
 import {
   ArrowUpOutline,
   CreateOutline,
@@ -189,7 +190,7 @@ async function navigate(rawPath: string): Promise<void> {
   } catch (error) {
     if (seq !== requestSeq) return;
     entries.value = [];
-    loadError.value = error instanceof Error ? error.message : String(error);
+    loadError.value = normalizeErrorMessage(error);
   } finally {
     if (seq === requestSeq) {
       loading.value = false;
@@ -274,7 +275,7 @@ async function createFolder(): Promise<void> {
     await navigate(parent);
     selectedName.value = name;
   } catch (error) {
-    createError.value = error instanceof Error ? error.message : String(error);
+    createError.value = normalizeErrorMessage(error);
   }
 }
 

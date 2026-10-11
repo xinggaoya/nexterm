@@ -3,125 +3,18 @@ pub mod profiles;
 pub mod ringbuffer;
 
 use std::collections::HashMap;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{mpsc, Arc, RwLock};
-use std::thread;
-use std::time::Duration;
-
-use serde::Serialize;
-use shared_child::SharedChild;
+use std::sync::{Arc, RwLock};
 
 use crate::modules::lock::{rwlock_read, rwlock_write};
-use crate::modules::process::{drain_limited, suppress_command_window, wait_with_timeout, WaitFailure};
+#[cfg(windows)]
+use crate::modules::process::suppress_command_window;
 #[cfg(windows)]
 use crate::modules::workspace::validate_wsl_distro_name;
 use crate::modules::workspace::{authorize_spawn_cwd, WorkspaceEnv, WorkspaceRegistry};
 
 use background::{BackgroundLogResponse, BackgroundProc, BackgroundProcInfo};
-
-const DEFAULT_TIMEOUT_SECS: u64 = 30;
-const MAX_TIMEOUT_SECS: u64 = 300;
-const MAX_OUTPUT_BYTES: usize = 256 * 1024;
-
-#[derive(Serialize)]
-pub struct CommandOutput {
-    pub stdout: String,
-    pub stderr: String,
-    pub exit_code: Option<i32>,
-    pub timed_out: bool,
-    pub truncated: bool,
-}
-
-/// Runs a one-shot command via the user's login shell. Output is capped and
-/// the process is force-killed on timeout. We deliberately do NOT pipe into
-/// the user's interactive PTY — that would fight their input. Tool calls
-/// are presented in chat as their own structured result.
-#[tauri::command]
-pub async fn shell_run_command(
-    command: String,
-    cwd: Option<String>,
-    timeout_secs: Option<u64>,
-    workspace: Option<WorkspaceEnv>,
-    registry: tauri::State<'_, WorkspaceRegistry>,
-) -> Result<CommandOutput, String> {
-    let trimmed = command.trim().to_string();
-    if trimmed.is_empty() {
-        return Err("empty command".into());
-    }
-
-    let workspace = WorkspaceEnv::from_option(workspace);
-    crate::modules::workspace::reject_ssh_unsupported(&workspace, "shell command")?;
-    authorize_spawn_cwd(&registry, cwd.as_deref(), &workspace)?;
-    let cwd_path = cwd
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
-
-    let dur = Duration::from_secs(
-        timeout_secs
-            .unwrap_or(DEFAULT_TIMEOUT_SECS)
-            .clamp(1, MAX_TIMEOUT_SECS),
-    );
-
-    // The blocking spawn + wait runs on a worker thread so the Tauri async
-    // runtime stays unblocked.
-    let (tx, rx) = mpsc::channel::<Result<CommandOutput, String>>();
-    thread::spawn(move || {
-        let _ = tx.send(run_blocking(trimmed, cwd_path, workspace, dur));
-    });
-
-    rx.recv().map_err(|e| e.to_string())?
-}
-
-fn run_blocking(
-    command: String,
-    cwd: Option<String>,
-    workspace: WorkspaceEnv,
-    dur: Duration,
-) -> Result<CommandOutput, String> {
-    let mut cmd = build_oneshot_command(&command, &workspace, cwd.as_deref())?;
-    if let (WorkspaceEnv::Local, Some(dir)) = (&workspace, cwd) {
-        cmd.current_dir(dir);
-    }
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let child = Arc::new(SharedChild::spawn(&mut cmd).map_err(|e| {
-        log::warn!("shell_run_command spawn failed: {e}");
-        e.to_string()
-    })?);
-    let mut stdout_pipe = child.take_stdout().ok_or_else(|| {
-        let _ = child.kill();
-        "no stdout pipe".to_string()
-    })?;
-    let mut stderr_pipe = child.take_stderr().ok_or_else(|| {
-        let _ = child.kill();
-        "no stderr pipe".to_string()
-    })?;
-
-    let stdout_handle = thread::spawn(move || drain_limited(&mut stdout_pipe, MAX_OUTPUT_BYTES, 8 * 1024, 0));
-    let stderr_handle = thread::spawn(move || drain_limited(&mut stderr_pipe, MAX_OUTPUT_BYTES, 8 * 1024, 0));
-
-    let (exit_code, timed_out) = match wait_with_timeout(&child, dur) {
-        Ok(result) => result,
-        Err(WaitFailure::Io(e)) => return Err(e.to_string()),
-        Err(WaitFailure::Disconnected) => return Err("shell wait thread disconnected".into()),
-    };
-
-    let (stdout_bytes, stdout_truncated) = stdout_handle.join().unwrap_or((Vec::new(), false));
-    let (stderr_bytes, stderr_truncated) = stderr_handle.join().unwrap_or((Vec::new(), false));
-
-    Ok(CommandOutput {
-        stdout: String::from_utf8_lossy(&stdout_bytes).into_owned(),
-        stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
-        exit_code,
-        timed_out,
-        truncated: stdout_truncated || stderr_truncated,
-    })
-}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Background process state.
@@ -173,17 +66,20 @@ pub fn shell_bg_logs(
 
 #[tauri::command]
 pub fn shell_bg_kill(state: tauri::State<ShellState>, handle: u32) -> Result<(), String> {
-    if let Some(proc) = rwlock_read(&state.bg, "background processes")?
-        .get(&handle)
-        .cloned()
-    {
+    // 必须从表里移除：只 kill 不 remove 会让每个后台进程永久占用
+    // 4 MiB 的环形缓冲 + SharedChild，`Drop` 也永不触发，
+    // `shell_bg_list` 还会无限增长地列出所有历史僵尸任务。
+    let proc = rwlock_write(&state.bg, "background processes")?.remove(&handle);
+    if let Some(proc) = proc {
         proc.kill();
     }
     Ok(())
 }
 
+/// 已自行退出的后台进程会在返回前顺手回收（见 `reap_exited`）。
 #[tauri::command]
 pub fn shell_bg_list(state: tauri::State<ShellState>) -> Result<Vec<BackgroundProcInfo>, String> {
+    reap_exited(&state);
     let map = rwlock_read(&state.bg, "background processes")?;
     let mut out = Vec::with_capacity(map.len());
     for (id, p) in map.iter() {
@@ -191,6 +87,24 @@ pub fn shell_bg_list(state: tauri::State<ShellState>) -> Result<Vec<BackgroundPr
     }
     out.sort_by_key(|i| i.handle);
     Ok(out)
+}
+
+/// 回收已经结束的后台进程条目。
+///
+/// 进程自己跑完（不需要前端显式 kill）时，没有任何地方会把它从表里
+/// 拿走。列表接口顺手清一次，代价是一次 O(n) 扫描。
+fn reap_exited(state: &ShellState) {
+    let Ok(mut map) = rwlock_write(&state.bg, "background processes") else {
+        return;
+    };
+    let finished: Vec<u32> = map
+        .iter()
+        .filter(|(_, proc)| proc.has_exited())
+        .map(|(id, _)| *id)
+        .collect();
+    for id in finished {
+        map.remove(&id);
+    }
 }
 
 /// 探测本机可用的终端 shell profile（设置界面"默认 Shell"下拉）。

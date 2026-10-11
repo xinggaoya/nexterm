@@ -141,7 +141,10 @@ fn wsl_unc_to_linux_path(distro: &str, path: &str) -> Result<Option<String>, Str
 }
 
 #[cfg(windows)]
-pub(super) fn normalize_wsl_workspace_request_path(distro: &str, path: &str) -> Result<String, String> {
+pub(super) fn normalize_wsl_workspace_request_path(
+    distro: &str,
+    path: &str,
+) -> Result<String, String> {
     validate_wsl_distro_name(distro)?;
     if let Some(linux_path) = wsl_unc_to_linux_path(distro, path)? {
         return Ok(linux_path);

@@ -420,14 +420,9 @@ mod tests {
         init_git_repo(&root.path, "main");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let result = super::discover_repositories(
-            &root.registry,
-            &path_str,
-            4,
-            64,
-            &WorkspaceEnv::Local,
-        )
-        .expect("discovery succeeds");
+        let result =
+            super::discover_repositories(&root.registry, &path_str, 4, 64, &WorkspaceEnv::Local)
+                .expect("discovery succeeds");
 
         assert!(!result.truncated);
         assert_eq!(result.repositories.len(), 1);
@@ -448,14 +443,9 @@ mod tests {
         init_git_repo(&nested, "feature/nested");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let result = super::discover_repositories(
-            &root.registry,
-            &path_str,
-            4,
-            64,
-            &WorkspaceEnv::Local,
-        )
-        .expect("discovery succeeds");
+        let result =
+            super::discover_repositories(&root.registry, &path_str, 4, 64, &WorkspaceEnv::Local)
+                .expect("discovery succeeds");
 
         let mut paths: Vec<_> = result
             .repositories
@@ -499,14 +489,9 @@ mod tests {
         init_git_repo(&repo_b, "develop");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let result = super::discover_repositories(
-            &root.registry,
-            &path_str,
-            4,
-            64,
-            &WorkspaceEnv::Local,
-        )
-        .expect("discovery succeeds");
+        let result =
+            super::discover_repositories(&root.registry, &path_str, 4, 64, &WorkspaceEnv::Local)
+                .expect("discovery succeeds");
 
         let mut paths: Vec<_> = result
             .repositories
@@ -564,14 +549,9 @@ mod tests {
         assert!(status.success(), "git worktree add failed");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let result = super::discover_repositories(
-            &root.registry,
-            &path_str,
-            4,
-            64,
-            &WorkspaceEnv::Local,
-        )
-        .expect("discovery succeeds");
+        let result =
+            super::discover_repositories(&root.registry, &path_str, 4, 64, &WorkspaceEnv::Local)
+                .expect("discovery succeeds");
 
         let worktree = result
             .repositories
@@ -589,14 +569,9 @@ mod tests {
         let root = make_root("empty");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let result = super::discover_repositories(
-            &root.registry,
-            &path_str,
-            4,
-            64,
-            &WorkspaceEnv::Local,
-        )
-        .expect("discovery succeeds");
+        let result =
+            super::discover_repositories(&root.registry, &path_str, 4, 64, &WorkspaceEnv::Local)
+                .expect("discovery succeeds");
 
         assert!(result.repositories.is_empty());
         assert!(!result.truncated);
@@ -616,14 +591,9 @@ mod tests {
         init_git_repo(&repo_c, "main");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let result = super::discover_repositories(
-            &root.registry,
-            &path_str,
-            4,
-            2,
-            &WorkspaceEnv::Local,
-        )
-        .expect("discovery succeeds");
+        let result =
+            super::discover_repositories(&root.registry, &path_str, 4, 2, &WorkspaceEnv::Local)
+                .expect("discovery succeeds");
 
         assert_eq!(result.repositories.len(), 2);
         assert!(result.truncated);
@@ -639,14 +609,9 @@ mod tests {
 
         // max_depth=2 means we look at root (depth 0) + one child level. The
         // deeply nested repo sits at depth 4 so it should be truncated.
-        let result = super::discover_repositories(
-            &root.registry,
-            &path_str,
-            2,
-            64,
-            &WorkspaceEnv::Local,
-        )
-        .expect("discovery succeeds");
+        let result =
+            super::discover_repositories(&root.registry, &path_str, 2, 64, &WorkspaceEnv::Local)
+                .expect("discovery succeeds");
 
         assert!(result.repositories.is_empty());
         assert!(result.truncated);

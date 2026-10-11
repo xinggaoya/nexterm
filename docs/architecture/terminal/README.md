@@ -4,7 +4,7 @@
 
 ## 1. 概述
 
-终端模块承载标签页内的所有终端渲染与 PTY 桥接。xterm.js 负责显示,Rust `pty::*` 负责实际进程,通信走 Tauri `Channel` 与 `Transcript` 临时文件双轨制。
+终端模块承载标签页内的所有终端渲染与 PTY 桥接。xterm.js 负责显示,Rust `pty::*` 负责实际进程,通信走 Tauri `Channel` 单轨制（Rust 端逐块发送,前端 `sessions.ts` 用 rAF 合批）。
 
 本次重构对齐 VSCode / Tabby / Ghostty / Rio 等成熟终端的设计,核心改动:
 
@@ -116,7 +116,6 @@ type PaneNode =
 | `pty_open` | `{cols, rows, cwd?, shellId?, workspace?}` + `onData` / `onExit` Channel | `id: u32` | 打开会话,Channel 流式输出 |
 | `pty_write` | `{id, data}` | `void` | 写入 |
 | `pty_resize` | `{id, cols, rows}` | `void` | 调整 |
-| `pty_read_transcript` | `{id, sinceOffset, maxBytes}` | `PtyTranscriptRead` | 拉取 transcript 片段 |
 | `pty_close` | `{id}` | `void` | 关闭,drop 在独立线程 |
 | `shell_list_profiles` | `{}` | `ShellProfile[]` | 探测本机可用 shell profile(id/name/program/args/kind) |
 
@@ -180,8 +179,6 @@ graph LR
   OSC --> X
   OSC -.->|cwd/title| TAB[tabsPinia]
   OSC -.->|hyperlink| LINK[xterm.registerLinkProvider]
-  R -.->|Transcript append| T[NamedTempFile]
-  T -.->|on reconnect| X
 ```
 
 - `fontStack.buildFontStack` 自动检测平台(Mac/Windows/Linux)与系统已装 Nerd/CJK/Emoji 字体,

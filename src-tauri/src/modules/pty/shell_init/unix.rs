@@ -79,7 +79,10 @@ pub fn build(cwd: Option<String>, shell_id: Option<&str>) -> Result<CommandBuild
 
 fn integration_root() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "could not resolve home dir".to_string())?;
-    let root = home.join(".cache").join("nexterm").join("shell-integration");
+    let root = home
+        .join(".cache")
+        .join("nexterm")
+        .join("shell-integration");
     fs::create_dir_all(&root).map_err(|e| format!("create {}: {e}", root.display()))?;
     Ok(root)
 }

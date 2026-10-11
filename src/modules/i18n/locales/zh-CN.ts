@@ -4,6 +4,8 @@ const zhCN = {
   common: {
     autoDetect: "自动检测",
     cancel: "取消",
+    delete: "删除",
+    edit: "编辑",
     close: "关闭",
     commit: "提交",
     copy: "复制",
@@ -116,6 +118,11 @@ const zhCN = {
     shortcutRejectedBare: "请加上修饰键（Ctrl / Alt / Cmd）再录入快捷键",
   },
   app: {
+    deepLink: {
+      confirmBody:
+        "授权后 Nexterm 将能够读取和修改其中的文件。仅在你信任这个链接来源时才继续。",
+      confirmTitle: "Nexterm 想要打开这个文件夹作为工作区：",
+    },
     dock: {
       rendererWebgl: "WebGL",
       rendererDom: "DOM",
@@ -773,6 +780,12 @@ const zhCN = {
       selectProfile: "请选择一个连接",
       formIncomplete: "名称、主机、用户名不能为空",
       loadingProfiles: "正在加载连接…",
+      deleteConfirm: "确定删除这个连接配置？",
+      knownHosts: "已知主机",
+      knownHostsHint:
+        "首次连接会把主机密钥记录在这里。服务器重装后密钥会变化，Nexterm 会拒绝连接——请先与服务器管理员核对指纹，再删除旧记录并重连。",
+      knownHostsEmpty: "还没有记录任何主机密钥。",
+      forget: "删除记录",
     },
   },
 

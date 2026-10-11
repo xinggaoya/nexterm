@@ -16,7 +16,7 @@
  */
 
 import type { Terminal } from "@xterm/xterm";
-import type { WorkspaceNative } from "@/lib/native";
+import { native, type WorkspaceNative } from "@/lib/native";
 import { recordPtyChunk } from "@/lib/perf";
 import { handleOscData } from "./osc";
 import type { OscEvent } from "./osc";
@@ -252,13 +252,15 @@ export async function createSession(
         console.debug("[pty] close dropped", e);
       });
     },
+    // 写/调整一律走全局 native 的 id-keyed 通道 —— 会话句柄只持有 id，
+    // 两套包装并存会让「该走哪条」变成每个调用点的隐式约定。
     write: (data) => {
-      void pty.write(data).catch((e) => {
+      void native.ptyWrite(pty.id, data).catch((e) => {
         console.debug("[pty] write dropped", e);
       });
     },
     resize: (cols, rows) => {
-      void pty.resize(cols, rows).catch((e) => {
+      void native.ptyResize(pty.id, cols, rows).catch((e) => {
         console.debug("[pty] resize dropped", e);
       });
     },

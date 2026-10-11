@@ -11,13 +11,20 @@ import {
 } from "vscode-jsonrpc";
 import type { Channel } from "@tauri-apps/api/core";
 
-import type {
-  LspServerMessage,
-  LspServerSpec,
-} from "./types";
+import type { LspServerMessage } from "./types";
 
 export type LspTransportOptions = {
-  spec: LspServerSpec;
+  /**
+   * 语言标识（`rust` / `typescript` / `python` / `go`）。
+   *
+   * **不要在这里传可执行文件路径。** 后端 `lsp_start` 只接受 language，
+   * 命令由后端白名单解析 —— 否则 webview 就拿到了一个「以宿主权限执行
+   * 任意程序」的接口。
+   */
+  language: string;
+  /** 工作区根目录（server 的 cwd）。必须已授权，否则后端会拒绝。 */
+  cwd?: string | null;
+  workspace?: unknown;
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   openChannel: <T>(name: string) => Promise<Channel<T>>;
   logger?: Logger;
@@ -94,7 +101,9 @@ export async function createLspConnection(
     `lsp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   );
   const sessionId = (await options.invoke("lsp_start", {
-    spec: options.spec,
+    language: options.language,
+    cwd: options.cwd ?? null,
+    workspace: options.workspace,
   })) as number;
 
   const reader = new TauriChannelReader(channel);

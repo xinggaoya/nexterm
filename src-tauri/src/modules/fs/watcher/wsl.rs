@@ -129,9 +129,8 @@ pub(super) fn workspace_fs_event_from_wsl_json_line(
         .collect();
     paths.sort();
     paths.dedup();
-    let git_related = has_git_repo
-        || helper_event.git_related
-        || paths.iter().any(|path| is_wsl_git_path(path));
+    let git_related =
+        has_git_repo || helper_event.git_related || paths.iter().any(|path| is_wsl_git_path(path));
     // The WSL helper binary doesn't currently report per-path kinds, so
     // we conservatively emit `Modify`. The file explorer already upgrades
     // silent refreshes to a full rebuild when the directory's membership
@@ -313,7 +312,8 @@ fn run_helper_once(
             return HelperRunResult::Stopped;
         }
         match line {
-            Ok(line) => match workspace_fs_event_from_wsl_json_line(root_path, has_git_repo, &line) {
+            Ok(line) => match workspace_fs_event_from_wsl_json_line(root_path, has_git_repo, &line)
+            {
                 Ok(Some(event)) => {
                     failures.reset();
                     if event_tx.send(event).is_err() {
@@ -392,7 +392,6 @@ fn clear_current_child(current_child: &Arc<Mutex<Option<std::process::Child>>>) 
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -420,20 +419,26 @@ mod tests {
         .expect("valid json")
         .expect("event");
         assert_eq!(event.kinds.len(), 2);
-        assert!(matches!(event.kinds[0], super::super::events::FsChangeKind::Create));
-        assert!(matches!(event.kinds[1], super::super::events::FsChangeKind::Delete));
+        assert!(matches!(
+            event.kinds[0],
+            super::super::events::FsChangeKind::Create
+        ));
+        assert!(matches!(
+            event.kinds[1],
+            super::super::events::FsChangeKind::Delete
+        ));
     }
 
     #[test]
     fn parser_defaults_to_modify_without_kinds() {
-        let event = workspace_fs_event_from_wsl_json_line(
-            "/home/dev/repo",
-            false,
-            r#"{"paths":["/x"]}"#,
-        )
-        .expect("valid json")
-        .expect("event");
-        assert!(matches!(event.kinds[0], super::super::events::FsChangeKind::Modify));
+        let event =
+            workspace_fs_event_from_wsl_json_line("/home/dev/repo", false, r#"{"paths":["/x"]}"#)
+                .expect("valid json")
+                .expect("event");
+        assert!(matches!(
+            event.kinds[0],
+            super::super::events::FsChangeKind::Modify
+        ));
     }
 
     #[test]
@@ -446,6 +451,9 @@ mod tests {
         .expect("valid json")
         .expect("event");
 
-        assert!(event.git_related, "source changes in a git repo must trigger git refresh");
+        assert!(
+            event.git_related,
+            "source changes in a git repo must trigger git refresh"
+        );
     }
 }

@@ -385,7 +385,11 @@ onMounted(async () => {
     updateLinesFromBottom();
   });
   // 命中数由 addon 自己在搜索后派发（findNext 只返回布尔"是否找到"）。
-  detachScrollWatch = nextRenderer.search.onDidChangeResults((event) => {
+  //
+  // 注意这里必须写进**另一个**变量：早先它和 onScroll 共用
+  // `detachScrollWatch`，后一句直接覆盖前一句的 disposable，于是 onScroll
+  // 闭包永远不被 dispose —— 每分屏/重挂一次泄漏一个。
+  detachSearchWatch = nextRenderer.search.onDidChangeResults((event) => {
     const total = event.resultCount;
     searchResult.value =
       total === 0

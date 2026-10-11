@@ -72,4 +72,44 @@ describe("markdown renderer", () => {
     expect(html).not.toMatch(/src="[^"]*javascript:/i);
     expect(html).toContain("blocked: unsafe image source");
   });
+
+  it("blocks attribute-breaking payloads smuggled through a data: image src", () => {
+    // marked 的 image tokenizer 不转义 href 中的 `"`，所以
+    // `data:image/png"onerror="alert(1)` 会渲染成
+    // `<img src="data:image/png"onerror="alert(1)">` —— onerror 在
+    // webview 主 origin 里直接执行。data: 分支必须走整体白名单。
+    const html = renderMarkdownToHtml('![x](data:image/png"onerror="alert(1))');
+
+    expect(html).not.toContain("onerror");
+    expect(html).not.toMatch(/<img[^>]*\son[a-z]+\s*=/i);
+    expect(html).toContain("blocked: unsafe image source");
+  });
+
+  it("blocks data: payloads that merely start with an image mime type", () => {
+    const cases = [
+      "data:image/svg+xml,<svg onload=alert(1)>",
+      "data:image/png,notbase64",
+      "data:image/png;base64,%%%not-base64%%%",
+      "data:text/html,<script>alert(1)</script>",
+    ];
+    for (const payload of cases) {
+      const html = renderMarkdownToHtml(`![x](${payload})`);
+      // 有的 payload 会被 marked 整体判成非图片语法（直接输出转义文本），
+      // 有的会走 image renderer 并落到 blocked 占位符。两种都安全，
+      // 这里只断言安全性质：不产生可执行的 <img>。
+      expect(html, payload).not.toContain("<img");
+      expect(html, payload).not.toMatch(/<[a-z]+[^>]*\son[a-z]+\s*=/i);
+      expect(html, payload).not.toContain("<script");
+    }
+  });
+
+  it("still renders legitimate inline base64 images", () => {
+    const onePixel =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const html = renderMarkdownToHtml(`![dot](${onePixel})`);
+
+    expect(html).toContain("<img src=\"data:image/png;base64,");
+    expect(html).toContain('alt="dot"');
+    expect(html).not.toContain("blocked");
+  });
 });

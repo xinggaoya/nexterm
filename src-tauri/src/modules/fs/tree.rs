@@ -2,10 +2,13 @@ use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
 
+use crate::modules::fs::exclude::should_prune_dir_name;
 use crate::modules::fs::wsl_ops::{self, WslEntryKind};
-use crate::modules::workspace::{resolve_path, WorkspaceEnv};
+use tauri::State;
 
-#[derive(Serialize)]
+use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
+
+#[derive(Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum EntryKind {
     File,
@@ -33,10 +36,17 @@ pub async fn fs_read_dir(
     path: String,
     show_hidden: bool,
     workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
 ) -> Result<Vec<DirEntry>, String> {
-    tauri::async_runtime::spawn_blocking(move || fs_read_dir_blocking(path, show_hidden, workspace))
-        .await
-        .map_err(|error| format!("fs_read_dir background task failed: {error}"))?
+    let workspace = WorkspaceEnv::from_option(workspace);
+    let path =
+        crate::modules::workspace::authorize_access_path(registry.inner(), &path, &workspace)?;
+    let path = crate::modules::fs::to_canon(&path);
+    tauri::async_runtime::spawn_blocking(move || {
+        fs_read_dir_blocking(path, show_hidden, Some(workspace))
+    })
+    .await
+    .map_err(|error| format!("fs_read_dir background task failed: {error}"))?
 }
 
 fn fs_read_dir_blocking(
@@ -47,10 +57,9 @@ fn fs_read_dir_blocking(
     let workspace = WorkspaceEnv::from_option(workspace);
     if let WorkspaceEnv::Ssh { profile_id } = &workspace {
         // Phase 2:远端条目经 SSH 通道上的 agent 读取。
-        let entries = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_read_dir(
-            profile_id,
-            &path,
-        ))?
+        let entries = tauri::async_runtime::block_on(
+            crate::modules::ssh::remote::remote_read_dir(profile_id, &path),
+        )?
         .into_iter()
         .map(|entry| DirEntry {
             name: entry.name,
@@ -133,10 +142,20 @@ fn entry_kind_from_wsl(kind: WslEntryKind) -> EntryKind {
     }
 }
 
+/// 目录列表的过滤 + 排序。
+///
+/// 除了隐藏项，还剪掉 `node_modules` / `target` / `dist` 这类构建产物目录。
+/// 原实现只按 `starts_with('.')` 过滤，于是工作区根目录里会完整列出
+/// `node_modules` —— 用户要在几万个条目里找自己的代码。
 fn filter_and_sort_entries(mut entries: Vec<DirEntry>, show_hidden: bool) -> Vec<DirEntry> {
-    if !show_hidden {
-        entries.retain(|entry| !entry.name.starts_with('.'));
-    }
+    entries.retain(|entry| {
+        if !show_hidden && entry.name.starts_with('.') {
+            return false;
+        }
+        // 只剪目录：同名的普通文件（`build` 可执行文件、`dist` 说明文件）
+        // 仍然应该出现在树里。
+        entry.kind != EntryKind::Dir || !should_prune_dir_name(&entry.name)
+    });
     entries.sort_by(|a, b| {
         let rank = |k: &EntryKind| match k {
             EntryKind::Dir => 0,

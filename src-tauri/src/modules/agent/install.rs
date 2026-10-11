@@ -139,7 +139,9 @@ fn write_bytes_to_wsl(distro: &str, target_path: &str, bytes: &[u8]) -> Result<(
             .ok_or_else(|| "failed to open agent installer stdin".to_string())?;
         stdin.write_all(bytes).map_err(|error| error.to_string())?;
     }
-    let output = child.wait_with_output().map_err(|error| error.to_string())?;
+    let output = child
+        .wait_with_output()
+        .map_err(|error| error.to_string())?;
     if output.status.success() {
         Ok(())
     } else {
@@ -179,7 +181,10 @@ mod tests {
         if let Ok(mut cache) = home_cache().lock() {
             cache.insert("TestDistro".to_string(), "/home/cached".to_string());
         }
-        assert_eq!(cached_wsl_home("TestDistro").expect("cached"), "/home/cached");
+        assert_eq!(
+            cached_wsl_home("TestDistro").expect("cached"),
+            "/home/cached"
+        );
         if let Ok(mut cache) = home_cache().lock() {
             cache.remove("TestDistro");
         }

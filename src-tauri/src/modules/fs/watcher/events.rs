@@ -33,6 +33,21 @@ pub(crate) enum FsChangeKind {
     Delete,
 }
 
+impl FsChangeKind {
+    /// 合并同一路径的多个事件时取「最重」的那个。
+    ///
+    /// 不能直接用派生的 `Ord`（声明序是 Create < Modify < Delete），
+    /// 那会把 Modify 排在 Create 前面：一次「删除后立刻重建」会被
+    /// 合并成 modify，explorer 就不会把新文件补进树里。
+    pub(super) fn severity(self) -> u8 {
+        match self {
+            FsChangeKind::Modify => 0,
+            FsChangeKind::Create => 1,
+            FsChangeKind::Delete => 2,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct WorkspaceFsChangedEvent {
@@ -82,10 +97,20 @@ impl WorkspaceFsEventBatch {
         if self.root_refresh {
             return;
         }
-        for (path, kind) in event.paths.into_iter().zip(event.kinds) {
-            self.path_kinds.insert((path.clone(), kind));
+        // `kinds` 可能是空的（旧 emitter 或 root-refresh 之外的退化
+        // 情况）。zip 会静默丢光 paths —— 整批变更就没了。缺省按
+        // `Modify` 处理，与 `align_paths_with_kinds` 的兜底一致。
+        if event.kinds.is_empty() {
+            for path in event.paths {
+                self.path_kinds.insert((path.clone(), FsChangeKind::Modify));
+            }
+        } else {
+            for (path, kind) in event.paths.into_iter().zip(event.kinds) {
+                self.path_kinds.insert((path.clone(), kind));
+            }
         }
-        self.paths.extend(self.path_kinds.iter().map(|(p, _)| p.clone()));
+        self.paths
+            .extend(self.path_kinds.iter().map(|(p, _)| p.clone()));
         if self.paths.len() > MAX_BATCH_EVENT_PATHS {
             self.root_refresh = true;
             self.paths.clear();
@@ -305,10 +330,9 @@ pub(super) fn notify_event_kind(event: &Event) -> FsChangeKind {
     match &event.kind {
         EventKind::Create(_) => FsChangeKind::Create,
         EventKind::Remove(_) => FsChangeKind::Delete,
-        EventKind::Modify(_)
-        | EventKind::Any
-        | EventKind::Other
-        | EventKind::Access(_) => FsChangeKind::Modify,
+        EventKind::Modify(_) | EventKind::Any | EventKind::Other | EventKind::Access(_) => {
+            FsChangeKind::Modify
+        }
     }
 }
 
@@ -339,8 +363,7 @@ pub(super) fn workspace_fs_event_from_notify(
     // refactor honest.
     let mut zipped: Vec<(String, FsChangeKind)> = paths.into_iter().zip(kinds).collect();
     zipped.sort_by(|a, b| a.0.cmp(&b.0));
-    let (sorted_paths, sorted_kinds): (Vec<String>, Vec<FsChangeKind>) =
-        zipped.into_iter().unzip();
+    let (sorted_paths, sorted_kinds): (Vec<String>, Vec<FsChangeKind>) = zipped.into_iter().unzip();
     Some(WorkspaceFsChangedEvent {
         root_path: root_path.to_string(),
         paths: sorted_paths,

@@ -5,11 +5,7 @@ import { useDialog } from "naive-ui";
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { t } from "@/modules/i18n/translate";
-import {
-  describeDirtyEditorTabs,
-  dirtyEditorTabs,
-  isDirtyEditorTab,
-} from "@/modules/tabs/closeGuards";
+import { describeDirtyEditorTabs, dirtyEditorTabs } from "@/modules/tabs/closeGuards";
 import type { EditorTab, Tab } from "@/modules/tabs/tabsTypes";
 
 const props = defineProps<{
@@ -25,29 +21,6 @@ const allowWindowClose = ref(false);
 let windowCloseUnlisten: UnlistenFn | null = null;
 let windowCloseDialogOpen = false;
 let unmounted = false;
-
-function showCloseTabDialog(tab: EditorTab) {
-  dialog.warning({
-    title: t("app.unsaved.closeFileTitle"),
-    content: t("app.unsaved.closeFileContent", {
-      files: describeDirtyEditorTabs([tab]),
-    }),
-    positiveText: t("app.unsaved.closeWithoutSaving"),
-    negativeText: t("common.cancel"),
-    positiveButtonProps: { type: "error" },
-    onPositiveClick: () => emit("closeTab", tab.id),
-  });
-}
-
-function requestCloseTab(id: number) {
-  const tab = props.tabs.find((item) => item.id === id);
-  if (!tab) return;
-  if (!isDirtyEditorTab(tab)) {
-    emit("closeTab", id);
-    return;
-  }
-  showCloseTabDialog(tab);
-}
 
 function resetWindowCloseDialog() {
   windowCloseDialogOpen = false;
@@ -111,9 +84,10 @@ onBeforeUnmount(() => {
   windowCloseUnlisten = null;
 });
 
-defineExpose({
-  requestCloseTab,
-});
+// 标签级关闭守卫不在这里：唯一实现是 `modules/tabs/useTabCloseGuard.ts`
+// （鼠标 ✕、右键菜单、命令面板、快捷键全部走它）。本组件只负责**窗口关闭**
+// 这一条路径 —— 语义不同（丢弃的是整个应用状态，不只是一个标签），所以
+// 对话框文案与按钮也不同。
 </script>
 
 <template></template>

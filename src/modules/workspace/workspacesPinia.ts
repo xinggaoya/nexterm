@@ -19,6 +19,7 @@ import {
   type WorkspaceEnv,
 } from "./workspaceEnvSnapshot";
 import { normalizeWorkspacePath, isSameWorkspaceRoot } from "./workspacePath";
+import { normalizeErrorMessage } from "@/lib/error";
 
 /**
  * A single open workspace instance in the multi-workspace model.
@@ -190,7 +191,7 @@ export const useWorkspacesPiniaStore = defineStore("workspaces", () => {
       }
       return { instance, created: true };
     } catch (err) {
-      error.value = err instanceof Error ? err.message : String(err);
+      error.value = normalizeErrorMessage(err);
       throw err;
     } finally {
       loading.value = false;

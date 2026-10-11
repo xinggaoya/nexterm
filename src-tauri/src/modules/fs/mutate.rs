@@ -3,11 +3,9 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, State};
 
+use crate::modules::fs::transfer_state::{emit_progress, FsTransferState, TransferCancellation};
 use crate::modules::fs::watcher::{
     emit_workspace_fs_changed_with_kinds, events::FsChangeKind, FsWatcherState,
-};
-use crate::modules::fs::transfer_state::{
-    emit_progress, FsTransferState, TransferCancellation,
 };
 use crate::modules::fs::wsl_ops;
 use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
@@ -36,6 +34,22 @@ impl FsNotifyIntent {
 }
 
 /// Creates a new empty file. Fails if the file already exists.
+/// WSL agent 只是一条**加速路径**：agent 不可用（熔断、协议不兼容、权限）
+/// 时必须回退到 `wsl.exe` / UNC 路径的 legacy 实现。
+///
+/// 但回退不能是静默的。旧实现在 6 个调用点直接写 `.is_ok()`，agent 因为
+/// 一个协议 bug 失败时，用户只会看到「WSL 下操作变慢了」，开发者完全无从
+/// 定位 —— 这类「加速路径静默失效」是最难查的一类问题。
+pub(crate) fn agent_ok(result: Result<(), String>, op: &str, path: &str) -> bool {
+    match result {
+        Ok(()) => true,
+        Err(error) => {
+            log::warn!("agent {op} failed for {path}, falling back to legacy: {error}");
+            false
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn fs_create_file(
     path: String,
@@ -44,6 +58,12 @@ pub async fn fs_create_file(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    let path = crate::modules::workspace::authorize_access_path_lenient(
+        registry.inner(),
+        &path,
+        &workspace,
+    )?;
+    let path = crate::modules::fs::to_canon(&path);
     let watcher = watcher.inner().clone();
     let intent =
         tauri::async_runtime::spawn_blocking(move || create_file_blocking(&path, workspace))
@@ -62,8 +82,7 @@ fn create_file_blocking(
     // SSH:写操作经远端 agent 执行(Phase 2)。
     if let WorkspaceEnv::Ssh { profile_id } = &workspace {
         tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_create_file(
-            profile_id,
-            path,
+            profile_id, path,
         ))?;
         return Ok(None);
     }
@@ -71,7 +90,11 @@ fn create_file_blocking(
     // Phase 0b:WSL 非 drvfs 路径经常驻 agent 写,消除 UNC 双轨;失败回退 UNC。
     if let WorkspaceEnv::Wsl { distro } = &workspace {
         if wsl_ops::should_use_wsl_ops(path, &workspace)
-            && crate::modules::agent::create_file(distro, path).is_ok()
+            && agent_ok(
+                crate::modules::agent::create_file(distro, path),
+                "create_file",
+                path,
+            )
         {
             return Ok(Some(FsNotifyIntent::new(
                 p,
@@ -105,6 +128,12 @@ pub async fn fs_create_dir(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    let path = crate::modules::workspace::authorize_access_path_lenient(
+        registry.inner(),
+        &path,
+        &workspace,
+    )?;
+    let path = crate::modules::fs::to_canon(&path);
     let watcher = watcher.inner().clone();
     let intent =
         tauri::async_runtime::spawn_blocking(move || create_dir_blocking(&path, workspace))
@@ -122,15 +151,18 @@ fn create_dir_blocking(
 ) -> Result<Option<FsNotifyIntent>, String> {
     if let WorkspaceEnv::Ssh { profile_id } = &workspace {
         tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_create_dir(
-            profile_id,
-            path,
+            profile_id, path,
         ))?;
         return Ok(None);
     }
     let p = resolve_path(path, &workspace);
     if let WorkspaceEnv::Wsl { distro } = &workspace {
         if wsl_ops::should_use_wsl_ops(path, &workspace)
-            && crate::modules::agent::create_dir(distro, path).is_ok()
+            && agent_ok(
+                crate::modules::agent::create_dir(distro, path),
+                "create_dir",
+                path,
+            )
         {
             return Ok(Some(FsNotifyIntent::new(
                 p,
@@ -163,12 +195,22 @@ pub async fn fs_rename(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    // 两端都要过：rename 的 `to` 是新路径（可能尚不存在，用 lenient），
+    // `from` 必须已存在。
+    let from =
+        crate::modules::workspace::authorize_access_path(registry.inner(), &from, &workspace)?;
+    let from = crate::modules::fs::to_canon(&from);
+    let to = crate::modules::workspace::authorize_access_path_lenient(
+        registry.inner(),
+        &to,
+        &workspace,
+    )?;
+    let to = crate::modules::fs::to_canon(&to);
     let watcher = watcher.inner().clone();
-    let intent = tauri::async_runtime::spawn_blocking(move || {
-        rename_blocking(&from, &to, workspace)
-    })
-    .await
-    .map_err(|error| format!("fs_rename background task failed: {error}"))??;
+    let intent =
+        tauri::async_runtime::spawn_blocking(move || rename_blocking(&from, &to, workspace))
+            .await
+            .map_err(|error| format!("fs_rename background task failed: {error}"))??;
     if let Some(intent) = intent {
         notify_workspace_fs_changed(registry.inner(), &watcher, &intent);
     }
@@ -182,9 +224,7 @@ fn rename_blocking(
 ) -> Result<Option<FsNotifyIntent>, String> {
     if let WorkspaceEnv::Ssh { profile_id } = &workspace {
         tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_rename(
-            profile_id,
-            from,
-            to,
+            profile_id, from, to,
         ))?;
         return Ok(None);
     }
@@ -192,7 +232,11 @@ fn rename_blocking(
     let to_p = resolve_path(to, &workspace);
     if let WorkspaceEnv::Wsl { distro } = &workspace {
         if wsl_ops::should_use_wsl_ops(from, &workspace)
-            && crate::modules::agent::rename(distro, from, to).is_ok()
+            && agent_ok(
+                crate::modules::agent::rename(distro, from, to),
+                "rename",
+                from,
+            )
         {
             return Ok(Some(FsNotifyIntent::new(
                 from_p,
@@ -236,6 +280,9 @@ pub async fn fs_delete(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    let path =
+        crate::modules::workspace::authorize_access_path(registry.inner(), &path, &workspace)?;
+    let path = crate::modules::fs::to_canon(&path);
     let watcher = watcher.inner().clone();
     let intent = tauri::async_runtime::spawn_blocking(move || delete_blocking(&path, workspace))
         .await
@@ -256,7 +303,7 @@ fn delete_blocking(path: &str, workspace: WorkspaceEnv) -> Result<Option<FsNotif
     let p = resolve_path(path, &workspace);
     if let WorkspaceEnv::Wsl { distro } = &workspace {
         if wsl_ops::should_use_wsl_ops(path, &workspace)
-            && crate::modules::agent::delete(distro, path).is_ok()
+            && agent_ok(crate::modules::agent::delete(distro, path), "delete", path)
         {
             let parent = p.parent().unwrap_or(&p).to_path_buf();
             return Ok(Some(FsNotifyIntent::new(
@@ -302,11 +349,19 @@ pub async fn fs_copy(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    let from =
+        crate::modules::workspace::authorize_access_path(registry.inner(), &from, &workspace)?;
+    let from = crate::modules::fs::to_canon(&from);
+    let to = crate::modules::workspace::authorize_access_path_lenient(
+        registry.inner(),
+        &to,
+        &workspace,
+    )?;
+    let to = crate::modules::fs::to_canon(&to);
     let watcher = watcher.inner().clone();
-    let intent =
-        tauri::async_runtime::spawn_blocking(move || copy_blocking(&from, &to, workspace))
-            .await
-            .map_err(|error| format!("fs_copy background task failed: {error}"))??;
+    let intent = tauri::async_runtime::spawn_blocking(move || copy_blocking(&from, &to, workspace))
+        .await
+        .map_err(|error| format!("fs_copy background task failed: {error}"))??;
     if let Some(intent) = intent {
         notify_workspace_fs_changed(registry.inner(), &watcher, &intent);
     }
@@ -328,7 +383,7 @@ fn copy_blocking(
     let to_p = resolve_path(to, &workspace);
     if let WorkspaceEnv::Wsl { distro } = &workspace {
         if wsl_ops::should_use_wsl_ops(from, &workspace)
-            && crate::modules::agent::copy(distro, from, to).is_ok()
+            && agent_ok(crate::modules::agent::copy(distro, from, to), "copy", from)
         {
             let dst_parent = to_p.parent().unwrap_or(&to_p).to_path_buf();
             return Ok(Some(FsNotifyIntent::new(
@@ -351,7 +406,11 @@ fn copy_blocking(
     // 无法重建的告警。
     let mut warnings = Vec::new();
     nexterm_fs_core::copy_path(&from_p, &to_p, &mut warnings).map_err(|e| {
-        log::debug!("fs_copy({} -> {}) failed: {e}", from_p.display(), to_p.display());
+        log::debug!(
+            "fs_copy({} -> {}) failed: {e}",
+            from_p.display(),
+            to_p.display()
+        );
         e
     })?;
     for warning in &warnings {
@@ -461,6 +520,26 @@ async fn dispatch_transfer(
     app: AppHandle,
 ) -> Result<TransferResult, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    // 搬运的每一项两端都要授权：批量接口是路径数量最多的入口，
+    // 漏一个就等于给了一个受限的任意读写原语。
+    let mut authorized: Vec<TransferItem> = Vec::with_capacity(items.len());
+    for item in items {
+        let from = crate::modules::workspace::authorize_access_path(
+            registry.inner(),
+            &item.from,
+            &workspace,
+        )?;
+        let to = crate::modules::workspace::authorize_access_path_lenient(
+            registry.inner(),
+            &item.to,
+            &workspace,
+        )?;
+        authorized.push(TransferItem {
+            from: crate::modules::fs::to_canon(&from),
+            to: crate::modules::fs::to_canon(&to),
+        });
+    }
+    let items = authorized;
     let watcher = watcher.inner().clone();
     if items.is_empty() {
         return Ok(TransferResult::default());
@@ -697,5 +776,11 @@ pub(crate) fn notify_workspace_fs_changed(
     let Some(root) = registry.longest_authorized_root(&intent.host_path) else {
         return;
     };
-    emit_workspace_fs_changed_with_kinds(watcher, &root, intent.paths.clone(), true, Some(intent.kinds.clone()));
+    emit_workspace_fs_changed_with_kinds(
+        watcher,
+        &root,
+        intent.paths.clone(),
+        true,
+        Some(intent.kinds.clone()),
+    );
 }

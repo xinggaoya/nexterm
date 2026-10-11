@@ -24,6 +24,13 @@ export type SshProfile = {
 
 export type SshProbeResult = { home: string; shell: string };
 
+/** 本机 TOFU 信任库里记录的一条远端主机密钥（与 Rust `KnownHostEntry` 对齐）。 */
+export type SshKnownHostEntry = {
+  host: string;
+  keyType: string;
+  publicKey: string;
+};
+
 /**
  * 探测到的本地终端 shell profile（与 Rust `ShellProfile` 对齐）。
  * 前端只持有 id，真实路径解析收敛在后端白名单里。
@@ -263,15 +270,10 @@ export type WorkspaceFsChangedEvent = {
   kinds?: Array<"create" | "modify" | "delete">;
 };
 
-// LSP server configuration and session metadata exposed to the webview.
-export type LspServerSpec = {
-  id: string;
-  language: string;
-  command: string;
-  args?: string[];
-  cwd?: string | null;
-};
-
+// LSP session metadata exposed to the webview.
+//
+// 启动一个 server 只需要 `language`：可执行文件由后端白名单解析，
+// 不接受前端传入的 `command`（否则 lsp_start 就是任意进程创建接口）。
 export type LspResolvedCommand = {
   command: string;
   args: string[];
@@ -409,10 +411,21 @@ export type PtyHandlers = {
   onExit?: (code: number) => void;
 };
 
+/**
+ * 一个 PTY 会话只由 `id` 标识。
+ *
+ * 原先这里挂着一组 `write` / `resize` / `close` 闭包，与全局
+ * `native.ptyWrite` / `ptyResize` / `ptyClose` 是**同一组后端命令的两套
+ * 前端包装**。两套语义并不对等（SSH 口令只在 `ptyOpen` 这条路上传，
+ * 第二套没有），于是「该用哪一套」变成每个调用点的隐式约定 ——
+ * `Canvas.vue` 的 killTerminal 就因为「ptyKill 是全局的」而走了另一条。
+ *
+ * 现在只保留 id，写/调整/关闭一律走全局那三个：后端本来就是按 id 路由的，
+ * 闭包没有任何额外能力，只是把同一件事写了两遍。
+ */
 export type PtySession = {
   id: number;
-  write: (data: string) => Promise<void>;
-  resize: (cols: number, rows: number) => Promise<void>;
+  /** 关闭会话并摘掉 Channel 回调（幂等）。 */
   close: () => Promise<void>;
 };
 
@@ -830,9 +843,6 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
       let closed = false;
       return {
         id,
-        write: (data: string) => invoke("pty_write", { id, data }),
-        resize: (c: number, r: number) =>
-          invoke("pty_resize", { id, cols: c, rows: r }),
         close: async () => {
           if (closed) return;
           closed = true;
@@ -875,16 +885,21 @@ export const native = {
   ptyKill: (id: number) => invoke<void>("pty_kill", { id }),
 
   // LSP transport — Section 2.
-  lspStart: (spec: LspServerSpec) => invoke<number>("lsp_start", { spec }),
+  lspStart: (language: string, cwd?: string | null) =>
+    invoke<number>("lsp_start", { language, cwd: cwd ?? null }),
   lspWrite: (id: number, message: string) =>
     invoke<void>("lsp_write", { id, message }),
   lspStop: (id: number) => invoke<void>("lsp_stop", { id }),
+  lspStopAll: () => invoke<number>("lsp_stop_all"),
   lspList: () => invoke<LspSessionInfo[]>("lsp_list"),
   lspResolveCommand: (language: string) =>
     invoke<LspResolvedCommand | null>("lsp_resolve_command", { language }),
 
   // DevTools — lets the settings page toggle the webview inspector without a
   // right-click (which the app disables for custom context menus).
+  // release 构建默认不编译 devtools（见 src-tauri/Cargo.toml 的 features.devtools）。
+  // 设置面板先用 devtoolsAvailable 探测能力，再决定是否渲染这一行。
+  devtoolsAvailable: () => invoke<boolean>("devtools_available"),
   toggleDevtools: () => invoke<boolean>("toggle_devtools"),
   isDevtoolsOpen: () => invoke<boolean>("is_devtools_open"),
 };
@@ -906,6 +921,15 @@ export const ssh = {
       profile,
       secret: secret ?? null,
     }),
+  /**
+   * 本机记录过的远端主机密钥（TOFU 信任库）。
+   *
+   * 指纹变化时后端一律拒绝连接，需要用户在这里核对并显式删除旧记录后重连 ——
+   * 不提供「一键接受」是刻意的：那等于把 MITM 防护降级成一次点击。
+   */
+  knownHostsList: () => invoke<SshKnownHostEntry[]>("ssh_known_hosts_list"),
+  knownHostsRemove: (host: string) =>
+    invoke<boolean>("ssh_known_hosts_remove", { host }),
 };
 
 /**

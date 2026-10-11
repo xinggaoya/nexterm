@@ -6,16 +6,19 @@ mod registry;
 mod roots;
 mod wsl;
 
-pub use env::{WorkspaceEnv, reject_ssh_unsupported};
-pub use registry::{WorkspaceRegistry, authorize_spawn_cwd, bootstrap_registry_with_launch_dir};
+pub use env::{reject_ssh_unsupported, WorkspaceEnv};
 pub(crate) use registry::normalize_host_path;
-pub use wsl::{WslDistro, resolve_path};
+pub use registry::{
+    authorize_access_path, authorize_access_path_lenient, authorize_spawn_cwd,
+    bootstrap_registry_with_launch_dir, WorkspaceRegistry, PATH_NOT_AUTHORIZED_PREFIX,
+};
 #[cfg(windows)]
 pub use wsl::{decode_command_output, wsl_path_to_host, wsl_path_to_unc};
 #[cfg(windows)]
-pub(crate) use wsl::{normalize_wsl_value, validate_wsl_distro_name, wsl_exec_capture};
-#[cfg(windows)]
 use wsl::{list_distros_blocking, normalize_wsl_workspace_request_path, run_wsl_sh};
+#[cfg(windows)]
+pub(crate) use wsl::{normalize_wsl_value, validate_wsl_distro_name, wsl_exec_capture};
+pub use wsl::{resolve_path, WslDistro};
 
 #[tauri::command]
 pub async fn workspace_authorize(
@@ -43,21 +46,23 @@ pub fn launch_cwd_snapshot() -> Option<PathBuf> {
     LAUNCH_CWD.get().and_then(|o| o.clone())
 }
 
-/// 解析可用的启动目录:快照的 cwd → 当前 cwd(须可用)→ 家目录。
-/// 返回 `None` 表示没有可用目录,调用方跳过授权;不再兜底到
-/// `PathBuf::from("/")` —— 那在 Windows 上不是有效目录,只会让
-/// 授权调用空转。
+/// 解析**可授权**的启动目录:快照的 cwd → 当前 cwd(须可用)。
+///
+/// 刻意**不**兜底到 `dirs::home_dir()`。授权 = 该目录下的文件对所有
+/// `fs_*` 命令可读写，把家目录塞进注册表等于交出 `~/.ssh` / `~/.aws` /
+/// `~/.gnupg`。
+///
+/// UI 侧的初始工作区提示走的是另一个来源（`get_launch_dir`，只返回 CLI
+/// 参数解析出的目录，从不返回家目录），所以这里不再兜底不会让应用
+/// 「打不开」—— 用户接受欢迎页那个目录时会走 `workspace_authorize`，
+/// 那是一次有用户手势的显式授权。
 fn resolve_launch_dir() -> Option<PathBuf> {
     if let Some(cwd) = launch_cwd_snapshot() {
         return Some(cwd);
     }
-    if let Some(cwd) = std::env::current_dir()
+    std::env::current_dir()
         .ok()
         .filter(|p| is_usable_launch_dir(p))
-    {
-        return Some(cwd);
-    }
-    dirs::home_dir()
 }
 
 fn is_usable_launch_dir(path: &Path) -> bool {

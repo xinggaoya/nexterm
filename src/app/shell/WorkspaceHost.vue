@@ -37,7 +37,7 @@ import type {
 } from "@/modules/workspace";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { Tab } from "@/modules/tabs/tabsTypes";
-import { isDirtyEditorTab } from "@/modules/tabs/closeGuards";
+import { useTabCloseGuard } from "@/modules/tabs/useTabCloseGuard";
 import { leafIds, nextLeafInDir, findLeafTitle, type SplitDir } from "@/modules/terminal/lib/layout";
 import type { PendingEdit, ReferenceGroup } from "@/modules/lsp/lspLanguageSupport";
 import { MAX_PANES_PER_TAB } from "@/modules/tabs/tabsTypes";
@@ -562,25 +562,55 @@ onBeforeUnmount(async () => {
 // host via the exposed `commandApi`.
 const dialog = useDialog();
 
+// 关闭确认的唯一实现。之前鼠标点 ✕ 直接绑 store 裸调，一次右键「关闭其他」
+// 就会连带丢弃多个未保存的编辑器 —— 本项目唯一一条确定性的数据丢失路径。
+const closeGuard = useTabCloseGuard();
+
 function requestCloseTab(id: number): void {
-  const tab = tabs.workspaceTabs(props.workspace.id).find((tk) => tk.id === id);
-  if (!tab) return;
-  if (!isDirtyEditorTab(tab)) {
-    tabs.closeTab(id, props.workspace.id);
-    return;
-  }
-  const warning = dialog.warning({
+  const wsId = props.workspace.id;
+  closeGuard.requestCloseTab(id, tabs.workspaceTabs(wsId), (tabId) =>
+    tabs.closeTab(tabId, wsId),
+  );
+}
+
+/** 批量关闭（关闭其他 / 关闭右侧 / 关闭全部）的确认入口。 */
+function requestCloseBatch(
+  pick: (list: Tab[]) => Tab[],
+  run: () => void,
+): void {
+  closeGuard.requestCloseMany({
+    targets: pick(tabs.workspaceTabs(props.workspace.id)),
     title: t("app.unsaved.closeFileTitle"),
-    content: t("app.unsaved.closeFileContent", {
-      files: tab.path.split(/[\\/]/).pop() ?? tab.path,
-    }),
-    positiveText: t("app.unsaved.closeWithoutSaving"),
-    negativeText: t("common.cancel"),
-    onPositiveClick: () => {
-      tabs.closeTab(id, props.workspace.id);
-      warning.destroy();
-    },
+    contentKey: "app.unsaved.closeFileContent",
+    close: run,
   });
+}
+
+function requestCloseOthers(id: number): void {
+  const wsId = props.workspace.id;
+  requestCloseBatch(
+    (list) => list.filter((tab) => tab.id !== id),
+    () => tabs.closeOthers(id, wsId),
+  );
+}
+
+function requestCloseToRight(id: number): void {
+  const wsId = props.workspace.id;
+  requestCloseBatch(
+    (list) => {
+      const idx = list.findIndex((tab) => tab.id === id);
+      return idx < 0 ? [] : list.slice(idx + 1);
+    },
+    () => tabs.closeToRight(id, wsId),
+  );
+}
+
+function requestCloseAll(): void {
+  const wsId = props.workspace.id;
+  requestCloseBatch(
+    (list) => [...list],
+    () => tabs.closeAll(wsId),
+  );
 }
 
 // 命令系统的面板语义: leftPanelOpen = 源控("更改")标签可见,
@@ -694,10 +724,10 @@ defineExpose({
             :width-mode="prefs.tabWidthMode"
             :fixed-width="prefs.tabFixedWidth"
             @select-tab="(id) => tabs.setActiveId(id, workspace.id)"
-            @close-tab="(id) => tabs.closeTab(id, workspace.id)"
-            @close-others="(id) => tabs.closeOthers(id, workspace.id)"
-            @close-to-right="(id) => tabs.closeToRight(id, workspace.id)"
-            @close-all="tabs.closeAll(workspace.id)"
+            @close-tab="(id) => requestCloseTab(id)"
+            @close-others="(id) => requestCloseOthers(id)"
+            @close-to-right="(id) => requestCloseToRight(id)"
+            @close-all="requestCloseAll()"
             @duplicate-terminal="duplicateTerminalTab"
             @rename-tab="renameTabTitle"
             @request-rename="requestTabRename"

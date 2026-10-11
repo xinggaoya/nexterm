@@ -1,6 +1,8 @@
 # LSP 模块架构
 
-> 状态：**最小实现（实验性）**。已落地：传输层（Tauri Channel + vscode-jsonrpc）、`initialize` 握手、`didOpen`/`didChange`（保存时全文推送）、`publishDiagnostics` → CodeMirror `setDiagnostics` 展示、设置页开关（`editorLspTypescriptMode`）。未落地：按键级增量 didChange、completion/hover/format 等能力。原始设计见 `docs/superpowers/specs/2026-07-16-monaco-lsp-migration-design.md`（编辑器内核现基于 CodeMirror 6）。
+> 状态：**已落地到可日常使用**（0.2.x）。已实现：传输层（Tauri Channel + vscode-jsonrpc）、`initialize` 握手、`didOpen` / 防抖后的 `didChange` / `didSave`（全文推送）、`publishDiagnostics` → CodeMirror `setDiagnostics`（gutter + 行内波浪线）、补全（`textDocument/completion`）、悬浮（`hover`）、跳转定义（`definition`）、重命名（`rename`）、查找引用（`references`）、文档符号（`documentSymbol` → 面包屑跳转）、工作区符号（`workspace/symbol`）、保存时格式化（`textDocument/formatting`，默认关闭）、设置页开关（`editorLspTypescriptMode`）。未落地：按键级增量 didChange、Problems 面板、诊断跨文件聚合。
+>
+> **进程模型**：每个打开的编辑器 tab 起一个 server 子进程，按 `(workspace, language)` 共享是下一步。`lsp_start` 只接受 language —— 可执行文件由后端白名单解析（`lsp::servers::resolve_for_language`），**不接受来自 IPC 的 command**。原始设计见 `docs/superpowers/specs/2026-07-16-monaco-lsp-migration-design.md`（编辑器内核现基于 CodeMirror 6）。
 
 ## 1. 概述
 

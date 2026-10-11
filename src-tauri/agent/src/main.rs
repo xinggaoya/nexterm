@@ -27,14 +27,13 @@ fn main() {
                 Ok(_) => {}
                 Err(_) => std::process::exit(2),
             }
-            let response = match serde_json::from_str::<nexterm_agent::protocol::Request>(
-                line.trim(),
-            ) {
-                Ok(request) => nexterm_agent::handlers::handle(&request),
-                Err(error) => {
-                    nexterm_agent::protocol::Response::err(0, format!("bad request: {error}"))
-                }
-            };
+            let response =
+                match serde_json::from_str::<nexterm_agent::protocol::Request>(line.trim()) {
+                    Ok(request) => nexterm_agent::handlers::handle(&request),
+                    Err(error) => {
+                        nexterm_agent::protocol::Response::err(0, format!("bad request: {error}"))
+                    }
+                };
             let stdout = std::io::stdout();
             let mut lock = stdout.lock();
             use std::io::Write;
@@ -56,7 +55,8 @@ fn main() {
         Some(other) => {
             let _ = std::io::Write::write_all(
                 &mut std::io::stderr().lock(),
-                format!("usage: nexterm-agent [serve|once|watch|--version], got: {other}\n").as_bytes(),
+                format!("usage: nexterm-agent [serve|once|watch|--version], got: {other}\n")
+                    .as_bytes(),
             );
             std::process::exit(2);
         }

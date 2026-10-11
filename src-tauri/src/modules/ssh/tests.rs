@@ -11,9 +11,9 @@ use russh::ChannelId;
 use serde_json::json;
 
 use super::client;
-use crate::modules::pty::TerminalSession;
 use super::profiles::SshProfile;
 use super::terminal;
+use crate::modules::pty::TerminalSession;
 
 const USER: &str = "dev";
 const PASSWORD: &str = "secret-password";
@@ -112,8 +112,7 @@ impl ServerHandler for LoopbackServer {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
-        session
-            .data(channel, format!("echo:{}", String::from_utf8_lossy(data)))?;
+        session.data(channel, format!("echo:{}", String::from_utf8_lossy(data)))?;
         Ok(())
     }
 }
@@ -129,13 +128,15 @@ AAAEBzganAS+fJHoR71yj1+J21cQMqQLAToSqKHIAdCyIgTeaJaPbHtKsQtwk3/YIx4eyj
 
 async fn spawn_server() -> (u16, PathBuf) {
     let mut config = russh::server::Config::default();
-    config.keys.push(
-        russh::keys::decode_secret_key(TEST_HOST_KEY, None).expect("parse test host key"),
-    );
+    config
+        .keys
+        .push(russh::keys::decode_secret_key(TEST_HOST_KEY, None).expect("parse test host key"));
     config.auth_rejection_time = Duration::from_millis(50);
     let config = Arc::new(config);
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
     let port = listener.local_addr().expect("addr").port();
     tokio::spawn(async move {
         loop {
@@ -280,6 +281,11 @@ fn profile_json_matches_frontend_shape() {
         "createdAt": 5
     }))
     .expect("parse");
-    assert_eq!(parsed.auth_method, super::profiles::SshAuthMethod::Key { key_path: "/k".into() });
+    assert_eq!(
+        parsed.auth_method,
+        super::profiles::SshAuthMethod::Key {
+            key_path: "/k".into()
+        }
+    );
     assert_eq!(parsed.created_at, 5);
 }

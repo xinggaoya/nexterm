@@ -137,64 +137,6 @@ pub fn fs_search(params: SearchParams) -> Result<SearchResult, String> {
     })
 }
 
-pub fn fs_list_files(params: ListFilesParams) -> Result<ListFilesResult, String> {
-    const DEFAULT_LIMIT: usize = 2_000;
-    const HARD_LIMIT: usize = 10_000;
-    const DEFAULT_DEPTH: usize = 8;
-    const HARD_DEPTH: usize = 16;
-
-    let cap = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, HARD_LIMIT);
-    let depth = params.max_depth.unwrap_or(DEFAULT_DEPTH).clamp(1, HARD_DEPTH);
-    let show_hidden = params.show_hidden.unwrap_or(false);
-    let root_path = PathBuf::from(&params.root);
-    if !root_path.is_dir() {
-        return Err(format!("not a directory: {}", params.root));
-    }
-
-    let walker = WalkBuilder::new(&root_path)
-        .hidden(!show_hidden)
-        .git_ignore(true)
-        .git_global(true)
-        .git_exclude(true)
-        .ignore(true)
-        .parents(true)
-        .follow_links(false)
-        .max_depth(Some(depth))
-        .filter_entry(prune_filter)
-        .build();
-
-    let mut files: Vec<String> = Vec::with_capacity(cap.min(256));
-    let mut scanned: usize = 0;
-    let mut truncated = false;
-
-    for dent in walker.flatten() {
-        scanned += 1;
-        if scanned > MAX_SCANNED {
-            truncated = true;
-            break;
-        }
-        let is_file = dent.file_type().map(|t| t.is_file()).unwrap_or(false);
-        if !is_file {
-            continue;
-        }
-        let rel = match dent.path().strip_prefix(&root_path) {
-            Ok(rel) => to_canon(rel),
-            Err(_) => continue,
-        };
-        if rel.is_empty() {
-            continue;
-        }
-        files.push(rel);
-        if files.len() >= cap {
-            truncated = true;
-            break;
-        }
-    }
-
-    files.sort_by_key(|a| a.to_lowercase());
-    Ok(ListFilesResult { files, truncated })
-}
-
 fn build_globset(patterns: &[String]) -> Result<Option<GlobSet>, String> {
     if patterns.is_empty() {
         return Ok(None);
@@ -292,9 +234,9 @@ pub fn fs_grep(params: GrepParams) -> Result<GrepResponse, String> {
                 path,
                 UTF8(|line_num, text| {
                     let line_text = text.trim_end_matches('\n').to_string();
-                    let mut guard = hits.lock().map_err(|error| {
-                        std::io::Error::other(error.to_string())
-                    })?;
+                    let mut guard = hits
+                        .lock()
+                        .map_err(|error| std::io::Error::other(error.to_string()))?;
                     if guard.len() >= cap {
                         truncated.store(true, Ordering::Relaxed);
                         return Ok(false);
@@ -386,7 +328,7 @@ pub fn fs_glob(params: GlobParams) -> Result<GlobResponse, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     fn tempdir(label: &str) -> PathBuf {
         let mut path = std::env::temp_dir();
         path.push(format!(

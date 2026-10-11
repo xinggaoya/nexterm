@@ -11,7 +11,9 @@ use serde::Serialize;
 use super::to_canon;
 use crate::modules::fs::wsl_ops;
 use crate::modules::lock::mutex_lock;
-use crate::modules::workspace::{resolve_path, WorkspaceEnv};
+use tauri::State;
+
+use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
 
 const FILE_SIZE_CAP: u64 = 5 * 1024 * 1024;
 const DEFAULT_MAX_RESULTS: usize = 200;
@@ -55,9 +57,21 @@ pub async fn fs_grep(
     case_insensitive: Option<bool>,
     max_results: Option<usize>,
     workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
 ) -> Result<GrepResponse, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    let root =
+        crate::modules::workspace::authorize_access_path(registry.inner(), &root, &workspace)?;
+    let root = to_canon(&root);
     tauri::async_runtime::spawn_blocking(move || {
-        fs_grep_blocking(pattern, root, glob, case_insensitive, max_results, workspace)
+        fs_grep_blocking(
+            pattern,
+            root,
+            glob,
+            case_insensitive,
+            max_results,
+            Some(workspace),
+        )
     })
     .await
     .map_err(|error| format!("fs_grep background task failed: {error}"))?
@@ -290,9 +304,14 @@ pub async fn fs_glob(
     root: String,
     max_results: Option<usize>,
     workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
 ) -> Result<GlobResponse, String> {
+    let workspace = WorkspaceEnv::from_option(workspace);
+    let root =
+        crate::modules::workspace::authorize_access_path(registry.inner(), &root, &workspace)?;
+    let root = to_canon(&root);
     tauri::async_runtime::spawn_blocking(move || {
-        fs_glob_blocking(pattern, root, max_results, workspace)
+        fs_glob_blocking(pattern, root, max_results, Some(workspace))
     })
     .await
     .map_err(|error| format!("fs_glob background task failed: {error}"))?
@@ -317,13 +336,9 @@ fn fs_glob_blocking(
     // Phase 0b/2:agent 路由优先,语义同 fs_grep。
     if let WorkspaceEnv::Wsl { distro } = &workspace {
         if wsl_ops::should_use_wsl_ops(&root, &workspace) {
-            if let Ok((hits, truncated)) = crate::modules::agent::glob(
-                distro,
-                &pattern,
-                &root,
-                Some(cap),
-                &root,
-            ) {
+            if let Ok((hits, truncated)) =
+                crate::modules::agent::glob(distro, &pattern, &root, Some(cap), &root)
+            {
                 let hits = hits
                     .into_iter()
                     .map(|hit| GlobHit {
@@ -336,13 +351,9 @@ fn fs_glob_blocking(
         }
     }
     if let WorkspaceEnv::Ssh { profile_id } = &workspace {
-        let (hits, truncated) = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_glob(
-            profile_id,
-            &pattern,
-            &root,
-            Some(cap),
-            &root,
-        ))?;
+        let (hits, truncated) = tauri::async_runtime::block_on(
+            crate::modules::ssh::remote::remote_glob(profile_id, &pattern, &root, Some(cap), &root),
+        )?;
         let hits = hits
             .into_iter()
             .map(|hit| GlobHit {

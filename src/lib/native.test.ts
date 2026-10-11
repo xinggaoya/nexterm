@@ -480,13 +480,16 @@ describe("native PTY wrappers", () => {
     onData.onmessage("hello\n");
     expect(handlers.onData).toHaveBeenCalledWith("hello\n");
 
-    // Write/resize/close proxy through the session and forward to invoke
+    // 会话句柄只持有 id；写/调整走全局 native 的 id-keyed 通道，
+    // 这里断言的正是「ptyOpen 不再自带第二套 write/resize」。
+    expect(session).toEqual({ id: 7, close: expect.any(Function) });
+
     vi.mocked(invoke).mockResolvedValueOnce(undefined);
-    await session.write("echo");
+    await native.ptyWrite(7, "echo");
     expect(invoke).toHaveBeenLastCalledWith("pty_write", { id: 7, data: "echo" });
 
     vi.mocked(invoke).mockResolvedValueOnce(undefined);
-    await session.resize(120, 30);
+    await native.ptyResize(7, 120, 30);
     expect(invoke).toHaveBeenLastCalledWith("pty_resize", {
       id: 7,
       cols: 120,

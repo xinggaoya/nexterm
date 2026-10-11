@@ -66,7 +66,7 @@ export const TERMINAL_COMMAND_SPECS: CommandSpec[] = [
     id: "terminal.clear",
     titleKey: "commands.items.clearTerminal",
     category: "terminal",
-    defaultKeybinding: null,
+    defaultKeybinding: "Ctrl+Shift+L",
     workspaceRequired: true,
   },
   {
@@ -87,7 +87,7 @@ export const TERMINAL_COMMAND_SPECS: CommandSpec[] = [
     id: "terminal.runSnippet",
     titleKey: "snippets.runSnippetTitle",
     category: "terminal",
-    defaultKeybinding: null,
+    defaultKeybinding: "Ctrl+Shift+Enter",
     workspaceRequired: true,
   },
   {

@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { native } from "@/lib/native";
 import type { WslDistro, WorkspaceEnv } from "./workspaceEnvSnapshot";
+import { normalizeErrorMessage } from "@/lib/error";
 
 /**
  * WSL distro catalog + selection state for the "add workspace" flow.
@@ -39,7 +40,7 @@ export const useWorkspaceEnvPiniaStore = defineStore("workspace-env", () => {
     } catch (err) {
       distros.value = [];
       loading.value = false;
-      error.value = String(err);
+      error.value = normalizeErrorMessage(err);
       return [];
     }
   }

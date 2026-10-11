@@ -1,7 +1,7 @@
 use std::io::{self, BufReader};
 
 use super::errors::LspError;
-use super::framing::{read_frame, write_frame};
+use super::framing::{read_frame, write_frame, Frame};
 
 fn to_io(e: LspError) -> io::Error {
     io::Error::other(e.to_string())
@@ -17,7 +17,7 @@ pub fn run_mock_stdio() -> io::Result<()> {
 
     loop {
         match read_frame(&mut reader) {
-            Ok(Some(frame)) => {
+            Ok(Frame::Frame(frame)) => {
                 if frame.contains("\"method\":\"initialize\"") {
                     let response = r#"{"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}}"#;
                     write_frame(&mut writer, response).map_err(to_io)?;
@@ -31,7 +31,8 @@ pub fn run_mock_stdio() -> io::Result<()> {
                     write_frame(&mut writer, response).map_err(to_io)?;
                 }
             }
-            Ok(None) => return Ok(()),
+            Ok(Frame::Eof) => return Ok(()),
+            Ok(Frame::Incomplete) => continue,
             Err(_) => return Ok(()),
         }
     }
@@ -48,7 +49,9 @@ mod tests {
         let mut bytes: Vec<u8> = Vec::new();
         crate::modules::lsp::framing::write_frame(&mut bytes, request).unwrap();
         let mut reader = Cursor::new(bytes);
-        let frame = read_frame(&mut reader).unwrap().unwrap();
-        assert!(frame.contains("initialize"));
+        match read_frame(&mut reader).unwrap() {
+            Frame::Frame(frame) => assert!(frame.contains("initialize")),
+            other => panic!("expected a frame, got {other:?}"),
+        }
     }
 }

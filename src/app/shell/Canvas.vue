@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PendingEdit, ReferenceGroup } from "@/modules/lsp/lspLanguageSupport";
-import { computed, defineAsyncComponent, ref } from "vue";
+import { computed, defineAsyncComponent } from "vue";
 import { native } from "@/lib/native";
 import { getPtyIdForLeaf, TerminalWorkspace, disposeSession } from "@/modules/terminal";
 import type { PaneStatus } from "@/modules/terminal";
@@ -11,7 +11,7 @@ import GitHistoryStack from "@/modules/git-history/GitHistoryStack.vue";
 import MarkdownStack from "@/modules/markdown/MarkdownStack.vue";
 import PreviewStack from "@/modules/preview/PreviewStack.vue";
 import FilePreviewStack from "@/modules/file-preview/FilePreviewStack.vue";
-import type { Tab, TerminalTab } from "@/modules/tabs/tabsTypes";
+import type { EditorTab, Tab, TerminalTab } from "@/modules/tabs/tabsTypes";
 
 type TabsStoreBinding = {
   focusPane: (tabId: number, leafId: number) => void;
@@ -69,7 +69,29 @@ const emit = defineEmits<{
 
 export type { PaneStatus } from "@/modules/terminal";
 
-const activeEditorPane = ref<InstanceType<typeof EditorPane> | null>(null);
+/** EditorPane 通过 defineExpose 暴露给外部调用的方法子集。 */
+type EditorPaneExpose = InstanceType<typeof EditorPane>;
+
+/**
+ * 每个编辑器 tab 一个常驻实例。
+ *
+ * 原来只有单个实例 + `:path` 驱动重建，带来三件事：
+ * 切标签丢撤销栈/折叠/滚动位置、每切一次闪 loading，以及最严重的 —
+ * 旧 EditorView 被 GC 后 LSP client 永不 dispose，`lsp_stop` 不触发，
+ * Rust 侧的语言服务器子进程一直活着（切 20 次 = 20 个 rust-analyzer）。
+ * 见模板里 editorTabs 那段注释。
+ */
+const editorPaneRefs = new Map<number, EditorPaneExpose>();
+
+function setEditorPaneRef(id: number, pane: EditorPaneExpose | null) {
+  if (pane) editorPaneRefs.set(id, pane);
+  else editorPaneRefs.delete(id);
+}
+
+/** 当前活动编辑器实例（非活动 tab 的实例不响应命令）。 */
+const activeEditorPane = computed<EditorPaneExpose | null>(() =>
+  props.activeTab ? editorPaneRefs.get(props.activeTab.id) ?? null : null,
+);
 
 function isActiveKind(kind: Tab["kind"]): boolean {
   return props.activeTab?.kind === kind;
@@ -114,6 +136,24 @@ async function killTerminal(leafId: number) {
 
 const terminalTabs = computed<TerminalTab[]>(() =>
   props.tabs.filter((tab): tab is TerminalTab => tab.kind === "terminal"),
+);
+
+/**
+ * 常驻挂载的编辑器列表。
+ *
+ * 之前这里只有一个 `EditorPane` 实例，靠 `:path` 变化驱动重建：
+ * `destroyEditor()` → 新 `EditorView`。代价有三：
+ * 1. 切标签会丢撤销栈、折叠状态、滚动位置；
+ * 2. 每个标签都闪一下 loading；
+ * 3. **最严重**：旧 `EditorView` 被 GC 后，`clients` 这个 WeakMap 里的
+ *    client.dispose() 永不执行 → `onDispose → lsp_stop` 永不触发 →
+ *    Rust 侧的 LSP 子进程一直活着。切 20 次标签 = 20 个 rust-analyzer
+ *    常驻并各自做全量索引。
+ *
+ * 与终端层一样用 `v-for` + `v-show`：实例常驻，切换只是显隐。
+ */
+const editorTabs = computed<EditorTab[]>(() =>
+  props.tabs.filter((tab): tab is EditorTab => tab.kind === "editor"),
 );
 
 /** Find in Files 跳转:仅当活动 tab 正是该文件且编辑器已挂载时生效。 */
@@ -243,21 +283,28 @@ defineExpose({
     </div>
 
     <div
-      v-if="activeTab && activeTab.kind === 'editor'"
+      v-if="editorTabs.length > 0"
       data-tab-layer="editor"
       class="absolute inset-0 flex min-h-0 flex-col bg-background"
       :class="isActiveKind('editor') ? '' : 'pointer-events-none invisible'"
       :aria-hidden="!isActiveKind('editor')"
     >
-      <EditorPane
-        ref="activeEditorPane"
-        :path="activeTab.path"
-        :fs-event="workspaceFsEvent"
-        @dirty-change="(dirty) => tabsStore.updateTab(activeTab!.id, { dirty })"
-        @go-to-definition="(target) => emit('go-to-definition', target)"
-        @request-rename="(edits) => emit('request-rename', edits)"
-        @show-references="(groups) => emit('show-references', groups)"
-      />
+      <div
+        v-for="editorTab in editorTabs"
+        v-show="editorTab.id === activeId"
+        :key="editorTab.id"
+        class="absolute inset-0 flex min-h-0 flex-col"
+      >
+        <EditorPane
+          :ref="(el) => setEditorPaneRef(editorTab.id, el as EditorPaneExpose | null)"
+          :path="editorTab.path"
+          :fs-event="workspaceFsEvent"
+          @dirty-change="(dirty) => tabsStore.updateTab(editorTab.id, { dirty })"
+          @go-to-definition="(target) => emit('go-to-definition', target)"
+          @request-rename="(edits) => emit('request-rename', edits)"
+          @show-references="(groups) => emit('show-references', groups)"
+        />
+      </div>
     </div>
   </div>
 </template>

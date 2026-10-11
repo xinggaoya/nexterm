@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { normalizeErrorMessage } from "@/lib/error";
 import { ChevronForwardOutline } from "@vicons/ionicons5";
 import { NIcon, NSpin } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -43,7 +44,18 @@ const globs = computed(() =>
     .filter(Boolean),
 );
 
+/**
+ * 单调递增的请求序号。
+ *
+ * 大仓库上搜索是秒级操作，用户会一边打字一边等。慢查询 A 与后发的快查询 B
+ * 可能乱序 resolve，原来的 `scheduleRun` 只清 timer、不标记在途请求，于是
+ * A 回来后会把 B 的结果覆盖掉 —— 面板显示的是上一次输入的内容，且没有任何
+ * 提示。CommandPalette 的文件搜索早就有同样的 requestId 机制，这里对齐。
+ */
+let requestId = 0;
+
 async function run() {
+  const id = ++requestId;
   if (!props.rootPath || !pattern.value.trim()) {
     hits.value = [];
     truncated.value = false;
@@ -61,20 +73,24 @@ async function run() {
       caseInsensitive: caseInsensitive.value,
       includeGlobs: globs.value,
     });
+    // 已经有更新的请求发出去了：这次的响应是过期数据，丢弃。
+    if (id !== requestId) return;
     hits.value = result.hits;
     truncated.value = result.truncated;
     filesScanned.value = result.filesScanned;
   } catch (error) {
+    if (id !== requestId) return;
     hits.value = [];
     truncated.value = false;
     filesScanned.value = 0;
-    const raw = error instanceof Error ? error.message : String(error);
+    const raw = normalizeErrorMessage(error);
     // 后端三种路由的正则错误措辞不同,统一收敛成一句可读提示。
     errorMessage.value = /bad regex|regex parse/i.test(raw)
       ? t("findInFiles.invalidRegex")
       : raw;
   } finally {
-    loading.value = false;
+    // 同样要判序号：过期请求不能把新请求的 loading 关掉。
+    if (id === requestId) loading.value = false;
   }
 }
 

@@ -10,7 +10,10 @@ use tempfile::NamedTempFile;
 use crate::modules::fs::mutate::{notify_workspace_fs_changed, FsNotifyIntent};
 use crate::modules::fs::watcher::{events::FsChangeKind, FsWatcherState};
 use crate::modules::fs::wsl_ops;
-use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
+use crate::modules::workspace::{
+    authorize_access_path, authorize_access_path_lenient, resolve_path, WorkspaceEnv,
+    WorkspaceRegistry,
+};
 
 const MAX_READ_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
@@ -35,13 +38,25 @@ pub enum ReadResult {
 /// SSH 分支含网络 I/O(超时可达数十秒):整体下沉阻塞线程池,避免冻结
 /// UI;本地/WSL 的同步逻辑原样保留在闭包内。
 #[tauri::command]
-pub async fn fs_read_file(path: String, workspace: Option<WorkspaceEnv>) -> Result<ReadResult, String> {
-    tauri::async_runtime::spawn_blocking(move || fs_read_file_blocking(path, workspace))
+pub async fn fs_read_file(
+    path: String,
+    workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
+) -> Result<ReadResult, String> {
+    // 统一入口校验：没有它，`fs_read_file` 就允许 webview 读磁盘上任意文件
+    // （~/.ssh/id_rsa、浏览器 profile……）。
+    let workspace = WorkspaceEnv::from_option(workspace);
+    let path = authorize_access_path(registry.inner(), &path, &workspace)?;
+    let path = crate::modules::fs::to_canon(&path);
+    tauri::async_runtime::spawn_blocking(move || fs_read_file_blocking(path, Some(workspace)))
         .await
         .map_err(|error| format!("fs_read_file background task failed: {error}"))?
 }
 
-fn fs_read_file_blocking(path: String, workspace: Option<WorkspaceEnv>) -> Result<ReadResult, String> {
+fn fs_read_file_blocking(
+    path: String,
+    workspace: Option<WorkspaceEnv>,
+) -> Result<ReadResult, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     match read_file_bytes(&path, &workspace)? {
         FileBytes::Read { bytes, size } => Ok(bytes_to_read_result(bytes, size)),
@@ -61,8 +76,7 @@ fn read_file_bytes(path: &str, workspace: &WorkspaceEnv) -> Result<FileBytes, St
     if let WorkspaceEnv::Ssh { profile_id } = workspace {
         // Phase 2:远端文件经 SSH 通道上的 agent 读取。
         let stat = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_stat(
-            profile_id,
-            path,
+            profile_id, path,
         ))?;
         if stat.size > MAX_READ_BYTES {
             return Ok(FileBytes::TooLarge {
@@ -71,10 +85,12 @@ fn read_file_bytes(path: &str, workspace: &WorkspaceEnv) -> Result<FileBytes, St
             });
         }
         let bytes = tauri::async_runtime::block_on(crate::modules::ssh::remote::remote_read_file(
-            profile_id,
-            path,
+            profile_id, path,
         ))?;
-        return Ok(FileBytes::Read { bytes, size: stat.size });
+        return Ok(FileBytes::Read {
+            bytes,
+            size: stat.size,
+        });
     }
     if let WorkspaceEnv::Wsl { distro } = workspace {
         if wsl_ops::should_use_wsl_ops(path, workspace) {
@@ -135,8 +151,14 @@ pub enum Base64ReadResult {
     /// `content` 是原始文件字节的 standard base64。图片预览是预期消费方:
     /// webview 把它拼成 `data:` URL 交给 `<img>`。svg 等文本图片也走这里,
     /// `<img>` 渲染不会执行内嵌脚本。
-    Content { content: String, size: u64 },
-    TooLarge { size: u64, limit: u64 },
+    Content {
+        content: String,
+        size: u64,
+    },
+    TooLarge {
+        size: u64,
+        limit: u64,
+    },
 }
 
 /// 与 `fs_read_file` 同源的字节读取,但原样返回内容(base64)而不是做
@@ -146,10 +168,16 @@ pub enum Base64ReadResult {
 pub async fn fs_read_file_base64(
     path: String,
     workspace: Option<WorkspaceEnv>,
+    registry: State<'_, WorkspaceRegistry>,
 ) -> Result<Base64ReadResult, String> {
-    tauri::async_runtime::spawn_blocking(move || fs_read_file_base64_blocking(path, workspace))
-        .await
-        .map_err(|error| format!("fs_read_file_base64 background task failed: {error}"))?
+    let workspace = WorkspaceEnv::from_option(workspace);
+    let path = authorize_access_path(registry.inner(), &path, &workspace)?;
+    let path = crate::modules::fs::to_canon(&path);
+    tauri::async_runtime::spawn_blocking(move || {
+        fs_read_file_base64_blocking(path, Some(workspace))
+    })
+    .await
+    .map_err(|error| format!("fs_read_file_base64 background task failed: {error}"))?
 }
 
 fn fs_read_file_base64_blocking(
@@ -190,6 +218,10 @@ pub async fn fs_write_file(
     watcher: State<'_, FsWatcherState>,
 ) -> Result<(), String> {
     let workspace = WorkspaceEnv::from_option(workspace);
+    // lenient：写入目标可能还不存在（新建文件），此时回退到「最近一个存在的
+    // 祖先」做授权判定，符号链接逃逸仍被 canonicalize 挡住。
+    let path = authorize_access_path_lenient(registry.inner(), &path, &workspace)?;
+    let path = crate::modules::fs::to_canon(&path);
     // FsWatcherState 内部为 Arc,克隆廉价;registry 只在通知阶段读授权根。
     let watcher = watcher.inner().clone();
     let intent = tauri::async_runtime::spawn_blocking(move || {
@@ -224,7 +256,11 @@ fn fs_write_file_blocking(
     if let WorkspaceEnv::Wsl { distro } = &workspace {
         if wsl_ops::should_use_wsl_ops(path, &workspace) {
             let content_b64 = BASE64_STANDARD.encode(content.as_bytes());
-            if crate::modules::agent::write_file(distro, path, &content_b64).is_ok() {
+            if crate::modules::fs::mutate::agent_ok(
+                crate::modules::agent::write_file(distro, path, &content_b64),
+                "write_file",
+                path,
+            ) {
                 return Ok(Some(FsNotifyIntent::new(
                     target,
                     vec![path.to_string()],

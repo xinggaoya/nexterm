@@ -77,6 +77,13 @@ impl BackgroundProc {
         let _ = self.child.kill();
     }
 
+    /// 进程是否已经自行结束（由 wait 线程置位）。
+    ///
+    /// 用于回收表项：跑完的任务没人 kill，表里就永远留着 4 MiB 缓冲。
+    pub fn has_exited(&self) -> bool {
+        self.exited.load(Ordering::Acquire)
+    }
+
     pub fn info(&self, handle: u32) -> BackgroundProcInfo {
         let exited = self.exited.load(Ordering::Acquire);
         let exit_code = if exited && !self.exit_unknown.load(Ordering::Acquire) {

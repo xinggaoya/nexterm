@@ -53,17 +53,11 @@ fn store(path: &PathBuf, stored: &StoredKnownHosts) -> Result<(), String> {
     let raw = serde_json::to_string_pretty(stored).map_err(|error| error.to_string())?;
     let tmp = path.with_extension("json.__nexterm_tmp__");
     std::fs::write(&tmp, raw).map_err(|error| format!("write {}: {error}", tmp.display()))?;
-    std::fs::rename(&tmp, path)
-        .map_err(|error| format!("rename to {}: {error}", path.display()))
+    std::fs::rename(&tmp, path).map_err(|error| format!("rename to {}: {error}", path.display()))
 }
 
 /// 校验远端主机密钥。`host` 为 `host:port` 形式。
-pub fn verify(
-    path: &PathBuf,
-    host: &str,
-    key_type: &str,
-    public_key: &str,
-) -> HostKeyVerdict {
+pub fn verify(path: &PathBuf, host: &str, key_type: &str, public_key: &str) -> HostKeyVerdict {
     let stored = load(path);
     match stored
         .entries
@@ -85,15 +79,14 @@ pub fn verify(
 
 /// 记录(或覆盖同 host 的)主机密钥。仅在 verify 给出 New / 由用户确认
 /// Changed 后调用。
-pub fn record(
-    path: &PathBuf,
-    host: &str,
-    key_type: &str,
-    public_key: &str,
-) -> Result<(), String> {
-    let _guard = file_lock().lock().map_err(|error| format!("known hosts lock poisoned: {error}"))?;
+pub fn record(path: &PathBuf, host: &str, key_type: &str, public_key: &str) -> Result<(), String> {
+    let _guard = file_lock()
+        .lock()
+        .map_err(|error| format!("known hosts lock poisoned: {error}"))?;
     let mut stored = load(path);
-    stored.entries.retain(|entry| !entry.host.eq_ignore_ascii_case(host));
+    stored
+        .entries
+        .retain(|entry| !entry.host.eq_ignore_ascii_case(host));
     stored.entries.push(KnownHostEntry {
         host: host.to_string(),
         key_type: key_type.to_string(),
@@ -104,7 +97,9 @@ pub fn record(
 
 /// 用户在确认主机重建后手动移除条目(Phase 3 由 UI 暴露)。
 pub fn remove(path: &PathBuf, host: &str) -> Result<bool, String> {
-    let _guard = file_lock().lock().map_err(|error| format!("known hosts lock poisoned: {error}"))?;
+    let _guard = file_lock()
+        .lock()
+        .map_err(|error| format!("known hosts lock poisoned: {error}"))?;
     let mut stored = load(path);
     let before = stored.entries.len();
     stored
@@ -141,9 +136,15 @@ mod tests {
     #[test]
     fn new_host_records_then_matches() {
         let path = temp_path("roundtrip");
-        assert_eq!(verify(&path, "h1:22", "ssh-ed25519", "AAA"), HostKeyVerdict::New);
+        assert_eq!(
+            verify(&path, "h1:22", "ssh-ed25519", "AAA"),
+            HostKeyVerdict::New
+        );
         record(&path, "h1:22", "ssh-ed25519", "AAA").expect("record");
-        assert_eq!(verify(&path, "h1:22", "ssh-ed25519", "AAA"), HostKeyVerdict::Match);
+        assert_eq!(
+            verify(&path, "h1:22", "ssh-ed25519", "AAA"),
+            HostKeyVerdict::Match
+        );
         let _ = std::fs::remove_dir_all(path.parent().expect("parent"));
     }
 
@@ -158,7 +159,10 @@ mod tests {
             other => panic!("expected Changed, got {other:?}"),
         }
         // key type 不同同样视为变化
-        assert_ne!(verify(&path, "h2:22", "rsa-sha2-512", "OLD"), HostKeyVerdict::Match);
+        assert_ne!(
+            verify(&path, "h2:22", "rsa-sha2-512", "OLD"),
+            HostKeyVerdict::Match
+        );
         let _ = std::fs::remove_dir_all(path.parent().expect("parent"));
     }
 
@@ -166,7 +170,10 @@ mod tests {
     fn host_comparison_is_case_insensitive_and_record_overwrites() {
         let path = temp_path("case");
         record(&path, "Example.COM:22", "ssh-ed25519", "A").expect("record");
-        assert_eq!(verify(&path, "example.com:22", "ssh-ed25519", "A"), HostKeyVerdict::Match);
+        assert_eq!(
+            verify(&path, "example.com:22", "ssh-ed25519", "A"),
+            HostKeyVerdict::Match
+        );
         record(&path, "example.com:22", "ssh-ed25519", "B").expect("overwrite");
         let entries = list(&path);
         assert_eq!(entries.len(), 1);

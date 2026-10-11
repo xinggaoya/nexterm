@@ -10,7 +10,7 @@ export const EDITOR_COMMAND_SPECS: CommandSpec[] = [
     id: "editor.save",
     titleKey: "commands.items.saveEditor",
     category: "editor",
-    defaultKeybinding: null,
+    defaultKeybinding: "Mod+S",
     workspaceRequired: true,
     when: isEditorActive,
   },

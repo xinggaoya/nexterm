@@ -81,18 +81,20 @@ describe("resolveCaptureInTerminal semantics", () => {
     identity,
     () => {},
   );
-  const stageAll = specToDefinition(
-    ALL_COMMAND_SPECS.find((s) => s.id === "git.stageAll")!,
+  // 刻意挑一个**没有**默认键位的命令（git.stageAll 后来补了快捷键，
+  // 那条用例的语义就变了）：用来验证「无快捷键的命令在终端里不抢键」。
+  const stashSave = specToDefinition(
+    ALL_COMMAND_SPECS.find((s) => s.id === "git.stash.save")!,
     identity,
     () => {},
   );
-  const resolved = buildResolvedKeybindings([close, stageAll], {});
+  const resolved = buildResolvedKeybindings([close, stashSave], {});
 
   it("steals keys in the terminal when the command has a shortcut, and defers when it does not", () => {
     expect(resolved[close.id]).toBe("Mod+W");
-    expect(resolved[stageAll.id]).toBeNull();
+    expect(resolved[stashSave.id]).toBeNull();
     expect(resolveCaptureInTerminal(close, resolved[close.id])).toBe(true);
-    expect(resolveCaptureInTerminal(stageAll, resolved[stageAll.id])).toBe(
+    expect(resolveCaptureInTerminal(stashSave, resolved[stashSave.id])).toBe(
       false,
     );
   });

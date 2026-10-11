@@ -109,7 +109,10 @@ mod tests {
 
     #[test]
     fn nothing_to_commit_matches_stdout_or_stderr() {
-        assert!(nothing_to_commit(&output_with("", "On branch main\nnothing to commit, working tree clean")));
+        assert!(nothing_to_commit(&output_with(
+            "",
+            "On branch main\nnothing to commit, working tree clean"
+        )));
         assert!(nothing_to_commit(&output_with("nothing to commit", "")));
         assert!(!nothing_to_commit(&output_with("", "fatal: bad revision")));
     }

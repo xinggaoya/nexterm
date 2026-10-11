@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { normalizeErrorMessage } from "@/lib/error";
 import {
   DocumentOutline,
   FlashOutline,
@@ -176,7 +177,7 @@ async function runFileSearch(requestId: number, nextQuery: string) {
   } catch (error) {
     if (requestId !== searchRequestId) return;
     fileSearchError.value =
-      error instanceof Error ? error.message : String(error);
+      normalizeErrorMessage(error);
     fileResults.value = [];
     fileResultsTruncated.value = false;
   } finally {

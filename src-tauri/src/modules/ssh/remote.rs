@@ -14,6 +14,8 @@
 //! 连接被替换或驱逐时同步清掉对应缓存。
 
 use std::collections::HashMap;
+
+use super::bounded::BoundedBuffer;
 use std::fmt;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -199,9 +201,7 @@ fn remote_agent_path(version: &str) -> String {
 
 /// agent 存在性探针命令:存在、可执行且字节数与宿主内嵌资产一致才免推送。
 fn agent_probe_command(path: &str, byte_len: usize) -> String {
-    format!(
-        "test -x {path} && test \"$(stat -c %s {path} 2>/dev/null || echo 0)\" -eq {byte_len}"
-    )
+    format!("test -x {path} && test \"$(stat -c %s {path} 2>/dev/null || echo 0)\" -eq {byte_len}")
 }
 
 /// 确保远端已安装当前版本 agent,返回可执行路径。
@@ -266,11 +266,11 @@ async fn push_agent_binary(
         writer.flush().await.ok();
     } // drop writer → stdin EOF
 
-    let mut stderr = Vec::new();
+    let mut stderr = BoundedBuffer::with_prealloc(4 * 1024);
     let wait = tokio::time::timeout(INSTALL_TIMEOUT, async {
         loop {
             match channel.wait().await {
-                Some(ChannelMsg::ExtendedData { ref data, .. }) => stderr.extend_from_slice(data),
+                Some(ChannelMsg::ExtendedData { ref data, .. }) => stderr.push(data),
                 Some(ChannelMsg::Close) | None => break,
                 Some(_) => {}
             }
@@ -282,10 +282,15 @@ async fn push_agent_binary(
             "remote agent install timed out after {INSTALL_TIMEOUT:?}"
         )));
     }
-    if !stderr.is_empty() {
+    if !stderr.as_bytes().is_empty() {
         return Err(RemoteError::other(format!(
-            "remote agent install failed: {}",
-            String::from_utf8_lossy(&stderr).trim()
+            "remote agent install failed: {}{}",
+            String::from_utf8_lossy(stderr.as_bytes()).trim(),
+            if stderr.truncated() {
+                " (output truncated)"
+            } else {
+                ""
+            }
         )));
     }
     log::info!("pushed nexterm-agent to remote: {path}");
@@ -320,13 +325,15 @@ pub(crate) async fn agent_once(
         writer.flush().await.ok();
     } // stdin EOF → agent 处理并退出
 
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
+    // 有上限的累加：远端 agent 的输出是不可信输入，裸 extend 会让
+    // 一个异常远端直接 OOM 掉主进程。
+    let mut stdout = BoundedBuffer::with_prealloc(16 * 1024);
+    let mut stderr = BoundedBuffer::with_prealloc(4 * 1024);
     let wait = tokio::time::timeout(REMOTE_OP_TIMEOUT, async {
         loop {
             match channel.wait().await {
-                Some(ChannelMsg::Data { ref data }) => stdout.extend_from_slice(data),
-                Some(ChannelMsg::ExtendedData { ref data, .. }) => stderr.extend_from_slice(data),
+                Some(ChannelMsg::Data { ref data }) => stdout.push(data),
+                Some(ChannelMsg::ExtendedData { ref data, .. }) => stderr.push(data),
                 Some(ChannelMsg::Close) | None => break,
                 Some(_) => {}
             }
@@ -338,14 +345,22 @@ pub(crate) async fn agent_once(
             "remote agent {method}: timed out after {REMOTE_OP_TIMEOUT:?}"
         )));
     }
-    if stdout.is_empty() {
-        let message = String::from_utf8_lossy(&stderr);
+    if stdout.as_bytes().is_empty() {
+        let message = String::from_utf8_lossy(stderr.as_bytes());
         return Err(RemoteError::other(format!(
             "remote agent produced no response: {}",
             message.trim().chars().take(160).collect::<String>()
         )));
     }
-    let line = String::from_utf8_lossy(&stdout);
+    if stdout.truncated() {
+        // 响应被截断一定意味着协议层出了问题（单行 JSON-RPC 不该有 2 MiB）。
+        // 与其把半截数据喂给 parser，不如给一个可读的错误。
+        return Err(RemoteError::other(format!(
+            "remote agent response exceeded {} bytes",
+            super::bounded::MAX_CHANNEL_OUTPUT_BYTES
+        )));
+    }
+    let line = String::from_utf8_lossy(stdout.as_bytes());
     match crate::modules::agent::protocol::parse_line(line.trim()) {
         crate::modules::agent::protocol::ParsedLine::Response(incoming) => {
             if incoming.ok {
@@ -407,10 +422,7 @@ pub(crate) async fn remote_read_dir(
     .await
 }
 
-pub(crate) async fn remote_stat(
-    profile_id: &str,
-    path: &str,
-) -> Result<WslFileStat, String> {
+pub(crate) async fn remote_stat(profile_id: &str, path: &str) -> Result<WslFileStat, String> {
     with_remote_agent(
         profile_id,
         protocol::METHOD_FS_STAT,
@@ -420,10 +432,7 @@ pub(crate) async fn remote_stat(
     .await
 }
 
-pub(crate) async fn remote_read_file(
-    profile_id: &str,
-    path: &str,
-) -> Result<Vec<u8>, String> {
+pub(crate) async fn remote_read_file(profile_id: &str, path: &str) -> Result<Vec<u8>, String> {
     with_remote_agent(
         profile_id,
         protocol::METHOD_FS_READ_FILE,
@@ -485,10 +494,7 @@ async fn with_timeout_guard<T>(
 // ---- Phase 0b/2:远端写操作与 search 家族 ----
 // 解析复用 modules/agent 的共享函数;返回值即宿主命令要回给前端的形状。
 
-pub(crate) async fn remote_create_file(
-    profile_id: &str,
-    path: &str,
-) -> Result<(), String> {
+pub(crate) async fn remote_create_file(profile_id: &str, path: &str) -> Result<(), String> {
     with_remote_agent(
         profile_id,
         protocol::METHOD_FS_CREATE_FILE,
@@ -498,10 +504,7 @@ pub(crate) async fn remote_create_file(
     .await
 }
 
-pub(crate) async fn remote_create_dir(
-    profile_id: &str,
-    path: &str,
-) -> Result<(), String> {
+pub(crate) async fn remote_create_dir(profile_id: &str, path: &str) -> Result<(), String> {
     with_remote_agent(
         profile_id,
         protocol::METHOD_FS_CREATE_DIR,
@@ -521,11 +524,7 @@ pub(crate) async fn remote_delete(profile_id: &str, path: &str) -> Result<(), St
     .await
 }
 
-pub(crate) async fn remote_rename(
-    profile_id: &str,
-    from: &str,
-    to: &str,
-) -> Result<(), String> {
+pub(crate) async fn remote_rename(profile_id: &str, from: &str, to: &str) -> Result<(), String> {
     with_remote_agent(
         profile_id,
         protocol::METHOD_FS_RENAME,
@@ -613,22 +612,6 @@ pub(crate) async fn remote_search(
     .await
 }
 
-pub(crate) async fn remote_list_files(
-    profile_id: &str,
-    root: &str,
-    limit: Option<usize>,
-    max_depth: Option<usize>,
-    show_hidden: bool,
-) -> Result<(Vec<String>, bool), String> {
-    with_remote_agent(
-        profile_id,
-        protocol::METHOD_FS_LIST_FILES,
-        protocol::fs_list_files_params(root, limit, max_depth, show_hidden),
-        |value| crate::modules::agent::parse_list_files(&value),
-    )
-    .await
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn remote_grep(
     profile_id: &str,
@@ -688,9 +671,7 @@ mod tests {
             "/home/u/.cache/nexterm/agent/nexterm-agent-0.1.2-x86_64",
             1024,
         );
-        assert!(cmd.starts_with(
-            "test -x /home/u/.cache/nexterm/agent/nexterm-agent-0.1.2-x86_64"
-        ));
+        assert!(cmd.starts_with("test -x /home/u/.cache/nexterm/agent/nexterm-agent-0.1.2-x86_64"));
         assert!(cmd.contains("stat -c %s"));
         assert!(cmd.ends_with("-eq 1024"));
     }
@@ -698,8 +679,9 @@ mod tests {
     #[test]
     fn channel_and_timeout_failures_request_eviction_but_agent_errors_do_not() {
         assert!(RemoteError::channel("open ssh channel: disconnected").should_evict());
-        assert!(RemoteError::timeout("remote agent fs.readDir: timed out after 30s")
-            .should_evict());
+        assert!(
+            RemoteError::timeout("remote agent fs.readDir: timed out after 30s").should_evict()
+        );
         assert!(!RemoteError::other("unknown agent error").should_evict());
     }
 
@@ -722,7 +704,10 @@ mod tests {
         cache_agent_path(&profile_id, "stale-version-path");
         assert_eq!(cached_agent_path(&profile_id), None);
         cache_agent_path(&profile_id, &expected);
-        assert_eq!(cached_agent_path(&profile_id).as_deref(), Some(expected.as_str()));
+        assert_eq!(
+            cached_agent_path(&profile_id).as_deref(),
+            Some(expected.as_str())
+        );
         clear_agent_cache(&profile_id);
         assert_eq!(cached_agent_path(&profile_id), None);
     }

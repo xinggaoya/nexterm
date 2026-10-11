@@ -1,5 +1,7 @@
 const enUS = {
   common: {
+    delete: "Delete",
+    edit: "Edit",
     autoDetect: "Auto detect",
     cancel: "Cancel",
     close: "Close",
@@ -114,6 +116,11 @@ const enUS = {
     shortcutRejectedBare: "Add a modifier (Ctrl / Alt / Cmd) to record a shortcut",
   },
   app: {
+    deepLink: {
+      confirmBody:
+        "Authorizing it lets Nexterm read and modify the files inside. Continue only if you trust the source of this link.",
+      confirmTitle: "Nexterm wants to open this folder as a workspace:",
+    },
     dock: {
       rendererWebgl: "WebGL",
       rendererDom: "DOM",
@@ -780,6 +787,12 @@ const enUS = {
       selectProfile: "Select a connection",
       formIncomplete: "Name, host and username are required",
       loadingProfiles: "Loading connections…",
+      deleteConfirm: "Delete this connection profile?",
+      knownHosts: "Known Hosts",
+      knownHostsHint:
+        "First contact records the host key here. If a server is reinstalled its key changes and Nexterm refuses to connect — compare the fingerprint with the server admin, then forget the stale entry and reconnect.",
+      knownHostsEmpty: "No host keys recorded yet.",
+      forget: "Forget",
     },
   },
 

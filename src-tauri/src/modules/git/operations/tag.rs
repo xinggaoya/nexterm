@@ -11,8 +11,8 @@ use crate::modules::git::types::{
 };
 use crate::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
 
-use super::{validate_git_name, with_repo};
 use super::remote::validate_remote_name;
+use super::{validate_git_name, with_repo};
 
 const TAG_LIST_FORMAT_ARG: &str = "--format=%(refname:short)%1f%(refname)%1f%(objectname:short)%1f%(subject)%1f%(creatordate:unix)%1f%(objecttype)";
 
@@ -25,14 +25,21 @@ pub fn tag_list(
         let lines = git_stdout_lines(
             &repo_root.workspace,
             &repo_root.git_path,
-            [
-                "for-each-ref",
-                TAG_LIST_FORMAT_ARG,
-                "--sort=-creatordate",
-                "refs/tags",
-            ],
+            ["for-each-ref", TAG_LIST_FORMAT_ARG, "refs/tags"],
         )?;
-        Ok(parse_tag_lines(&lines.join("\n")))
+        // 排序放在 Rust 侧，而不是交给 `git for-each-ref --sort`。
+        //
+        // CI 会在同一个提交上打一批标签，它们的 creatordate 完全相同；git
+        // 的降序排序在并列时退化成「refname 升序」，于是 `v0.9` 排在
+        // `v1.0` 前面 —— 看起来就像排序坏了。自己排，顺便能做版本号感知的
+        // 比较（`v10.0` 应当排在 `v9.0` 前面，纯字典序做不到）。
+        let mut tags = parse_tag_lines(&lines.join("\n"));
+        tags.sort_by(|a, b| {
+            b.timestamp_secs
+                .cmp(&a.timestamp_secs)
+                .then_with(|| compare_versions_asc(&a.name, &b.name).reverse())
+        });
+        Ok(tags)
     })
 }
 
@@ -120,11 +127,7 @@ pub fn push_tag(
         let output = run_git(
             &repo_root.workspace,
             Some(&repo_root.git_path),
-            [
-                OsStr::new("push"),
-                OsStr::new(&remote),
-                OsStr::new(&name),
-            ],
+            [OsStr::new("push"), OsStr::new(&remote), OsStr::new(&name)],
             NETWORK_TIMEOUT_SECS,
         )?;
         ensure_success(&output, "git push failed")?;
@@ -134,6 +137,63 @@ pub fn push_tag(
             pushed: true,
         })
     })
+}
+
+/// 版本号感知的比较：数字段按数值比，其余按字节序。
+///
+/// `v10.0` 与 `v9.0` 相比，`10 > 9`；字典序给出的相反结论在这里被纠正。
+/// 非数字前缀（`release-1.0`、`2024.01`）走同一条分段逻辑，因此即使所有
+/// 段都相同，末尾的 `left.cmp(right)` 仍保证这是一个全序 —— 排序稳定可测。
+fn compare_versions_asc(left: &str, right: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+
+    #[derive(PartialEq, Eq)]
+    enum Segment<'a> {
+        Number(u128),
+        Text(&'a str),
+    }
+
+    fn split(s: &str) -> Vec<Segment<'_>> {
+        let bytes = s.as_bytes();
+        let mut out = Vec::new();
+        let mut start = 0usize;
+        let mut idx = 0usize;
+        while idx < bytes.len() {
+            if bytes[idx].is_ascii_digit() {
+                if idx > start {
+                    out.push(Segment::Text(&s[start..idx]));
+                }
+                let digits_start = idx;
+                while idx < bytes.len() && bytes[idx].is_ascii_digit() {
+                    idx += 1;
+                }
+                out.push(Segment::Number(
+                    s[digits_start..idx].parse::<u128>().unwrap_or(u128::MAX),
+                ));
+                start = idx;
+            } else {
+                idx += 1;
+            }
+        }
+        if start < bytes.len() {
+            out.push(Segment::Text(&s[start..]));
+        }
+        out
+    }
+
+    let (a, b) = (split(left), split(right));
+    for (x, y) in a.iter().zip(b.iter()) {
+        let ord = match (x, y) {
+            (Segment::Number(m), Segment::Number(n)) => m.cmp(n),
+            (Segment::Number(_), Segment::Text(_)) => Ordering::Greater,
+            (Segment::Text(_), Segment::Number(_)) => Ordering::Less,
+            (Segment::Text(m), Segment::Text(n)) => m.cmp(n),
+        };
+        if ord != Ordering::Equal {
+            return ord;
+        }
+    }
+    a.len().cmp(&b.len()).then_with(|| left.cmp(right))
 }
 
 fn resolve_default_remote(workspace: &WorkspaceEnv, git_path: &str) -> Result<String> {
@@ -151,14 +211,12 @@ fn resolve_default_remote(workspace: &WorkspaceEnv, git_path: &str) -> Result<St
         .into_iter()
         .map(|n| n.trim().to_string())
         .find(|n| !n.is_empty())
-        .ok_or_else(|| {
-            GitError::command("git push", "no remote configured to push tags to")
-        })
+        .ok_or_else(|| GitError::command("git push", "no remote configured to push tags to"))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{create_tag, delete_tag, push_tag, tag_list};
+    use super::{compare_versions_asc, create_tag, delete_tag, push_tag, tag_list};
     use crate::modules::git::operations::test_support::{init_git_repo, make_root, run_git};
     use crate::modules::git::types::GitTagCreateOptions;
     use crate::modules::workspace::WorkspaceEnv;
@@ -172,6 +230,35 @@ mod tests {
             name: name.to_string(),
             message: message.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn version_aware_compare_beats_lexicographic_order() {
+        use std::cmp::Ordering;
+        // 字典序会把 v9.0 排在 v10.0 前面，对用户是错的。
+        assert_eq!(compare_versions_asc("v9.0", "v10.0"), Ordering::Less);
+        assert_eq!(compare_versions_asc("v10.0", "v9.0"), Ordering::Greater);
+        assert_eq!(compare_versions_asc("v1.0", "v1.0"), Ordering::Equal);
+        assert_eq!(
+            compare_versions_asc("release-1.0", "release-1.1"),
+            Ordering::Less
+        );
+        // 前缀不同长度时仍要全序，不能返回 Equal。
+        assert_ne!(compare_versions_asc("v1", "v1.0"), Ordering::Equal);
+    }
+
+    #[test]
+    fn tag_list_orders_same_timestamp_tags_by_version_descending() {
+        let root = make_root("tag-order");
+        init_git_repo(&root.path, "main");
+        for name in ["v1.0", "v2.0", "v10.0"] {
+            run_git(&root.path, &["tag", name]);
+        }
+        let path_str = root.path.to_string_lossy().into_owned();
+
+        let tags = tag_list(&root.registry, &path_str, &local_env()).expect("tag list");
+        let names: Vec<&str> = tags.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, vec!["v10.0", "v2.0", "v1.0"]);
     }
 
     #[test]
@@ -273,8 +360,8 @@ mod tests {
         )
         .expect("create tag");
 
-        let deleted = delete_tag(&root.registry, &path_str, "gone", &local_env())
-            .expect("delete tag");
+        let deleted =
+            delete_tag(&root.registry, &path_str, "gone", &local_env()).expect("delete tag");
         assert_eq!(deleted.name, "gone");
 
         let tags = tag_list(&root.registry, &path_str, &local_env()).expect("tag list");

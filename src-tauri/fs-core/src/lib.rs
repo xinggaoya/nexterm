@@ -203,10 +203,7 @@ fn split_ext(name: &str) -> (&str, &str) {
 ///
 /// `exists` 由调用方注入，这样同一份命名规则能跑在本机、WSL 与远端
 /// 文件系统上（后者根本没有本地 `Path::exists` 可用）。
-pub fn next_free_target(
-    desired: &Path,
-    mut exists: impl FnMut(&Path) -> bool,
-) -> Option<PathBuf> {
+pub fn next_free_target(desired: &Path, mut exists: impl FnMut(&Path) -> bool) -> Option<PathBuf> {
     if !exists(desired) {
         return Some(desired.to_path_buf());
     }
@@ -255,7 +252,10 @@ fn resolve_conflict(
         ConflictPolicy::Rename => next_free_target(desired, &mut *exists)
             .map(Resolution::Rename)
             .ok_or_else(|| {
-                format!("no free copy name for {} after {MAX_RENAME_ATTEMPTS} attempts", desired.display())
+                format!(
+                    "no free copy name for {} after {MAX_RENAME_ATTEMPTS} attempts",
+                    desired.display()
+                )
             }),
     }
 }
@@ -288,10 +288,7 @@ fn copy_dir_recursive_with(
             // map_err 把 io::Error 压成 String。
             copy_file_with_progress(&child_src, &child_dst, on_bytes).map_err(|e| match e {
                 CopyError::Cancelled => CopyError::Cancelled,
-                other => CopyError::Failed(format!(
-                    "copy {}: {other}",
-                    child_src.display()
-                )),
+                other => CopyError::Failed(format!("copy {}: {other}", child_src.display())),
             })?;
         }
         // socket / fifo / device：没有等价物可复制，静默跳过即可。
@@ -304,7 +301,11 @@ fn copy_symlink(src: &Path, dst: &Path, warnings: &mut Vec<String>) {
     match std::fs::read_link(src) {
         Ok(target) => {
             if let Err(e) = std::os::unix::fs::symlink(&target, dst) {
-                warnings.push(format!("symlink {} -> {}: {e}", src.display(), dst.display()));
+                warnings.push(format!(
+                    "symlink {} -> {}: {e}",
+                    src.display(),
+                    dst.display()
+                ));
             }
         }
         Err(e) => warnings.push(format!("readlink {}: {e}", src.display())),
@@ -361,9 +362,8 @@ fn copy_file_with_progress(
     // 目录复制路径本来就会建目录，文件路径也该如此。
     if let Some(parent) = dst.parent() {
         if !parent.as_os_str().is_empty() && !parent.exists() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                CopyError::Failed(format!("mkdir {}: {e}", parent.display()))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| CopyError::Failed(format!("mkdir {}: {e}", parent.display())))?;
         }
     }
     let mut input = std::fs::File::open(src)
@@ -379,9 +379,9 @@ fn copy_file_with_progress(
         if n == 0 {
             break;
         }
-        output.write_all(&buf[..n]).map_err(|e| {
-            CopyError::Failed(format!("write {}: {e}", dst.display()))
-        })?;
+        output
+            .write_all(&buf[..n])
+            .map_err(|e| CopyError::Failed(format!("write {}: {e}", dst.display())))?;
         copied += n as u64;
         // 每块检查一次：取消一个几 GB 的复制才不至于等到文件末尾。
         hook(copied)?;
@@ -442,8 +442,8 @@ fn copy_path_tracked(
 }
 
 fn remove_path(path: &Path) -> Result<(), String> {
-    let meta = std::fs::symlink_metadata(path)
-        .map_err(|e| format!("stat {}: {e}", path.display()))?;
+    let meta =
+        std::fs::symlink_metadata(path).map_err(|e| format!("stat {}: {e}", path.display()))?;
     // 用 symlink_metadata 判型：指向目录的 symlink 必须走 remove_file，
     // 否则 remove_dir_all 会顺着链接把目标目录内容删掉。
     let result = if meta.file_type().is_dir() {
@@ -644,9 +644,7 @@ pub fn transfer_all_with(
                 to: raw.to.clone(),
                 error: "cancelled".to_string(),
             });
-            result
-                .skipped
-                .extend(items[index + 1..].iter().cloned());
+            result.skipped.extend(items[index + 1..].iter().cloned());
             result.warnings.append(&mut warnings);
             break;
         }
@@ -933,7 +931,11 @@ mod tests {
         {
             let mut warnings = Vec::new();
             copy_dir_recursive_with(&src, &dst, &mut warnings, &mut |_| Ok(())).unwrap();
-            assert_eq!(warnings.len(), 1, "windows should warn about the skipped link");
+            assert_eq!(
+                warnings.len(),
+                1,
+                "windows should warn about the skipped link"
+            );
         }
     }
 
@@ -985,9 +987,15 @@ mod tests {
 
     #[test]
     fn cross_device_errors_are_recognised_by_raw_code() {
-        assert!(is_cross_device_error(&std::io::Error::from_raw_os_error(18)));
-        assert!(is_cross_device_error(&std::io::Error::from_raw_os_error(17)));
-        assert!(!is_cross_device_error(&std::io::Error::from_raw_os_error(2)));
+        assert!(is_cross_device_error(&std::io::Error::from_raw_os_error(
+            18
+        )));
+        assert!(is_cross_device_error(&std::io::Error::from_raw_os_error(
+            17
+        )));
+        assert!(!is_cross_device_error(&std::io::Error::from_raw_os_error(
+            2
+        )));
     }
 }
 
@@ -1047,10 +1055,7 @@ mod progress_tests {
         let seen = Arc::new(Mutex::new(Vec::<TransferProgress>::new()));
         let sink = Arc::clone(&seen);
         let dest = tmp.join("dest");
-        let items = vec![
-            item(&a, &dest.join("a.bin")),
-            item(&b, &dest.join("b.bin")),
-        ];
+        let items = vec![item(&a, &dest.join("a.bin")), item(&b, &dest.join("b.bin"))];
         transfer_all_with(
             &items,
             ConflictPolicy::Rename,
@@ -1063,8 +1068,12 @@ mod progress_tests {
 
         let seen = seen.lock().expect("lock").clone();
         // 至少能看到"进入每个条目"和"完成每个条目"两类快照
-        assert!(seen.iter().any(|p| p.current.as_deref() == Some(a.to_str().unwrap())));
-        assert!(seen.iter().any(|p| p.current.as_deref() == Some(b.to_str().unwrap())));
+        assert!(seen
+            .iter()
+            .any(|p| p.current.as_deref() == Some(a.to_str().unwrap())));
+        assert!(seen
+            .iter()
+            .any(|p| p.current.as_deref() == Some(b.to_str().unwrap())));
         let last = seen.last().expect("at least one snapshot");
         assert_eq!(last.total, 2);
         // 总量是所有条目的和（1024 + 2048），不是当前条目的大小
@@ -1119,10 +1128,16 @@ mod progress_tests {
 
         let seen = seen.lock().expect("lock").clone();
         let bytes = seen.iter().map(|p| p.bytes_done).collect::<Vec<_>>();
-        assert!(bytes.windows(2).any(|w| w[0] < w[1]), "byte progress never advanced: {bytes:?}");
+        assert!(
+            bytes.windows(2).any(|w| w[0] < w[1]),
+            "byte progress never advanced: {bytes:?}"
+        );
         assert_eq!(bytes.last().copied(), Some(700 * 1024));
         assert_eq!(seen.last().and_then(|p| p.percent()), Some(100));
-        assert_eq!(fs::metadata(tmp.join("copy.bin")).unwrap().len(), 700 * 1024);
+        assert_eq!(
+            fs::metadata(tmp.join("copy.bin")).unwrap().len(),
+            700 * 1024
+        );
     }
 
     #[test]
@@ -1141,7 +1156,11 @@ mod progress_tests {
 
         assert_eq!(result.completed.len(), 0);
         assert_eq!(result.failed.len(), 0);
-        assert_eq!(result.skipped.len(), 1, "取消不是失败，剩余条目应记入 skipped");
+        assert_eq!(
+            result.skipped.len(),
+            1,
+            "取消不是失败，剩余条目应记入 skipped"
+        );
         assert!(!tmp.join("copy.txt").exists());
     }
 
@@ -1174,7 +1193,11 @@ mod progress_tests {
 
         // 第一个条目完成，第二个被取消（记 skipped 而不是 failed）
         assert_eq!(result.completed.len(), 1, "first item should survive");
-        assert_eq!(result.skipped.len(), 1, "remaining items are skipped, not failed");
+        assert_eq!(
+            result.skipped.len(),
+            1,
+            "remaining items are skipped, not failed"
+        );
         assert_eq!(result.failed.len(), 0);
         assert!(tmp.join("a-copy.txt").exists());
         assert!(!tmp.join("b-copy.txt").exists());
@@ -1192,12 +1215,7 @@ mod progress_tests {
         let first = vec![item(&a, &tmp.join("copy-a.txt"))];
         let second = vec![item(&b, &tmp.join("copy-b.txt"))];
         for items in [&first, &second] {
-            let with = transfer_all_with(
-                items,
-                ConflictPolicy::Rename,
-                TransferMode::Copy,
-                None,
-            );
+            let with = transfer_all_with(items, ConflictPolicy::Rename, TransferMode::Copy, None);
             // 立刻删掉产物再跑第二次：否则它会撞名并改名 —— 那不是
             // no_hook 的差异，是冲突策略生效了。
             for item in &with.completed {

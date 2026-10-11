@@ -25,6 +25,6 @@ export const WORKBENCH_COMMAND_SPECS: CommandSpec[] = [
     id: "settings.open",
     titleKey: "commands.items.openSettings",
     category: "settings",
-    defaultKeybinding: null,
+    defaultKeybinding: "Mod+,",
   },
 ];

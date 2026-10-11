@@ -69,10 +69,29 @@ fn run_wsl_bytes(distro: &str, program: &str, args: &[&str]) -> Result<Vec<u8>, 
     Err("WSL is only available on Windows".into())
 }
 
+/// agent 优先、legacy 兜底：拿结果，并把失败原因记下来。
+///
+/// 旧实现写的是 `if let Ok(x) = agent::y(...) { return Ok(x) }` —— 回退是对的
+/// （agent 熔断时仍能工作），但失败原因一条日志都没有。agent 因为协议 bug /
+/// 权限 / 磁盘满而挂掉时，表现只是「WSL 下操作变慢了」，排查无从下手。
+fn via_agent<T>(result: Result<T, String>, op: &str, path: &str) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(error) => {
+            log::debug!("agent {op} failed for {path}; falling back to wsl.exe: {error}");
+            None
+        }
+    }
+}
+
 /// agent 优先、legacy 兜底:资产缺失/熔断/任何 agent 错误都会落到
 /// 原 `wsl.exe` 路径,错误信息保持不变(测试与前端依赖这些消息)。
 pub fn read_file(distro: &str, path: &str) -> Result<Vec<u8>, String> {
-    if let Ok(bytes) = crate::modules::agent::read_file(distro, path) {
+    if let Some(bytes) = via_agent(
+        crate::modules::agent::read_file(distro, path),
+        "read_file",
+        path,
+    ) {
         return Ok(bytes);
     }
     run_wsl_bytes(distro, "cat", &[path])
@@ -80,7 +99,7 @@ pub fn read_file(distro: &str, path: &str) -> Result<Vec<u8>, String> {
 }
 
 pub fn stat_path(distro: &str, path: &str) -> Result<WslFileStat, String> {
-    if let Ok(stat) = crate::modules::agent::stat(distro, path) {
+    if let Some(stat) = via_agent(crate::modules::agent::stat(distro, path), "stat", path) {
         return Ok(stat);
     }
     let output = run_wsl_bytes(distro, "sh", &["-c", STAT_SCRIPT, "sh", path])
@@ -90,7 +109,11 @@ pub fn stat_path(distro: &str, path: &str) -> Result<WslFileStat, String> {
 }
 
 pub fn read_dir(distro: &str, path: &str) -> Result<Vec<WslDirEntry>, String> {
-    if let Ok(entries) = crate::modules::agent::read_dir(distro, path) {
+    if let Some(entries) = via_agent(
+        crate::modules::agent::read_dir(distro, path),
+        "read_dir",
+        path,
+    ) {
         return Ok(entries);
     }
     let output = run_wsl_bytes(distro, "sh", &["-c", READ_DIR_SCRIPT, "sh", path])

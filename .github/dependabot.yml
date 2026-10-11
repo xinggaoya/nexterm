@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    groups:
+      # xterm 全家必须原子升级：addon 与 core 之间是强 ABI 契约，错配不会
+      # 崩，只会让终端渲染错乱。src/modules/terminal/xtermVersion.test.ts
+      # 是这条约束的测试守护。
+      xterm-family:
+        patterns: ["*xterm*"]
+      # russh / rsa 影响 SSH 的主机密钥与认证路径，单独成组便于 review。
+      ssh-stack:
+        patterns: ["russh", "rsa", "ring", "ssh-key"]
+      rust-patch:
+        update-types: ["patch"]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      codemirror:
+        patterns: ["@codemirror/*", "@lezer/*", "@uiw/*", "@replit/*"]
+      vue-ecosystem:
+        patterns:
+          - "vue"
+          - "vue-i18n"
+          - "pinia"
+          - "naive-ui"
+          - "@vitejs/*"
+          - "vite"
+          - "vitest"
+          - "vue-tsc"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

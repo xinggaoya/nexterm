@@ -176,12 +176,8 @@ export async function attachLspToEditor(
   }>(() => undefined);
 
   const connection = await createLspConnection({
-    spec: {
-      id: language,
-      language,
-      command: resolved.command,
-      args: resolved.args,
-    },
+    language,
+    cwd: options.workspaceRoot ?? null,
     invoke: (cmd: string, args?: Record<string, unknown>) =>
       invoke(cmd, args) as Promise<unknown>,
     openChannel: async () => channel as unknown as never,

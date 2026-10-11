@@ -49,7 +49,9 @@ fn empty_log_page() -> GitLogPage {
 /// `refs/heads` next, then `refs/remotes`, then `refs/tags`. A short name
 /// that exists in two namespaces resolves to the higher-priority kind —
 /// exactly how `git log --decorate` itself displays it.
-fn collect_ref_kind_map(repo_root: &ResolvedGitDirectory) -> Result<std::collections::HashMap<String, &'static str>> {
+fn collect_ref_kind_map(
+    repo_root: &ResolvedGitDirectory,
+) -> Result<std::collections::HashMap<String, &'static str>> {
     let output = run_git(
         &repo_root.workspace,
         Some(&repo_root.git_path),
@@ -71,8 +73,7 @@ fn collect_ref_kind_map(repo_root: &ResolvedGitDirectory) -> Result<std::collect
         return Ok(std::collections::HashMap::new());
     }
     let stdout = std::str::from_utf8(&output.stdout).unwrap_or("");
-    let mut map: std::collections::HashMap<String, &'static str> =
-        std::collections::HashMap::new();
+    let mut map: std::collections::HashMap<String, &'static str> = std::collections::HashMap::new();
     for line in stdout.lines() {
         let line = line.trim_end_matches('\r');
         if line.is_empty() || !line.contains('\x1f') {
@@ -154,7 +155,10 @@ pub fn log(
             if !options.all && options.ref_name.is_some() && stderr.contains("unknown revision") {
                 return Err(GitError::command(
                     "git log",
-                    format!("ref not found: {}", options.ref_name.as_deref().unwrap_or("")),
+                    format!(
+                        "ref not found: {}",
+                        options.ref_name.as_deref().unwrap_or("")
+                    ),
                 ));
             }
             if stderr.contains("does not have any commits yet")
@@ -225,10 +229,7 @@ pub fn log(
         if has_more {
             entries.truncate(bounded as usize);
         }
-        Ok(GitLogPage {
-            entries,
-            has_more,
-        })
+        Ok(GitLogPage { entries, has_more })
     })
 }
 
@@ -601,14 +602,7 @@ mod tests {
         write_file(&root.path, "feature.txt", "feature-v1\n");
         run_git(&root.path, &["checkout", "-b", "feature"]);
         run_git(&root.path, &["add", "feature.txt"]);
-        run_git(
-            &root.path,
-            &[
-                "commit",
-                "-m",
-                "add feature",
-            ],
-        );
+        run_git(&root.path, &["commit", "-m", "add feature"]);
 
         // Main advances independently so the two branches diverge.
         run_git(&root.path, &["checkout", "main"]);
@@ -619,7 +613,13 @@ mod tests {
         // Merge feature back into main so we have a two-parent commit.
         run_git(
             &root.path,
-            &["merge", "--no-ff", "feature", "-m", "merge feature into main"],
+            &[
+                "merge",
+                "--no-ff",
+                "feature",
+                "-m",
+                "merge feature into main",
+            ],
         );
 
         // Tag the latest merge commit so the decoration parser has a tag ref
@@ -668,8 +668,7 @@ mod tests {
         // Newest first ordering — the merge commit should be near the top.
         let head_subject = page.entries[0].subject.as_str();
         assert!(
-            head_subject.contains("merge feature")
-                || head_subject.contains("feature follow-up"),
+            head_subject.contains("merge feature") || head_subject.contains("feature follow-up"),
             "newest commit should be the merge or the feature follow-up, got: {head_subject}",
         );
     }
@@ -682,13 +681,8 @@ mod tests {
         let mut options = default_log_options();
         options.ref_name = Some("feature".to_string());
 
-        let page = super::log(
-            &root.registry,
-            &path_str,
-            &options,
-            &WorkspaceEnv::Local,
-        )
-        .expect("log returns page");
+        let page = super::log(&root.registry, &path_str, &options, &WorkspaceEnv::Local)
+            .expect("log returns page");
 
         // `feature` carries the merge + add feature + init, no `main only`
         // commit. We assert none of the `main only` subjects appear.
@@ -709,13 +703,8 @@ mod tests {
         let mut options = default_log_options();
         options.all = true;
 
-        let page = super::log(
-            &root.registry,
-            &path_str,
-            &options,
-            &WorkspaceEnv::Local,
-        )
-        .expect("log returns page");
+        let page = super::log(&root.registry, &path_str, &options, &WorkspaceEnv::Local)
+            .expect("log returns page");
 
         // `--all` walks every ref. The merge + the feature follow-up should
         // both be reachable — even if HEAD was detached, both would appear.
@@ -735,13 +724,8 @@ mod tests {
         options.all = true;
         options.limit = Some(50);
 
-        let page = super::log(
-            &root.registry,
-            &path_str,
-            &options,
-            &WorkspaceEnv::Local,
-        )
-        .expect("log returns page");
+        let page = super::log(&root.registry, &path_str, &options, &WorkspaceEnv::Local)
+            .expect("log returns page");
 
         // The merge commit on main is the tip — it should carry the HEAD ref, the
         // `main` local-branch, and the `v1.0` tag. HEAD is its own entry
@@ -752,21 +736,26 @@ mod tests {
             .find(|e| e.subject.contains("merge feature"))
             .expect("merge commit must be present");
         assert!(
-            merge_entry.refs.iter().any(|r| r.kind == "head"
-                && r.name == "HEAD"
-                && r.is_head),
+            merge_entry
+                .refs
+                .iter()
+                .any(|r| r.kind == "head" && r.name == "HEAD" && r.is_head),
             "merge commit should carry the HEAD ref: {:?}",
             merge_entry.refs,
         );
         assert!(
-            merge_entry.refs.iter().any(|r| r.kind == "local-branch"
-                && r.name == "main"
-                && !r.is_head),
+            merge_entry
+                .refs
+                .iter()
+                .any(|r| r.kind == "local-branch" && r.name == "main" && !r.is_head),
             "merge commit should carry the main local-branch: {:?}",
             merge_entry.refs,
         );
         assert!(
-            merge_entry.refs.iter().any(|r| r.kind == "tag" && r.name == "v1.0"),
+            merge_entry
+                .refs
+                .iter()
+                .any(|r| r.kind == "tag" && r.name == "v1.0"),
             "merge commit should carry the v1.0 tag ref: {:?}",
             merge_entry.refs,
         );
@@ -778,9 +767,10 @@ mod tests {
             .find(|e| e.subject.contains("feature follow-up"))
             .expect("feature follow-up commit must be present");
         assert!(
-            feature_entry.refs.iter().any(|r| r.kind == "local-branch"
-                && r.name == "feature"
-                && !r.is_head),
+            feature_entry
+                .refs
+                .iter()
+                .any(|r| r.kind == "local-branch" && r.name == "feature" && !r.is_head),
             "feature follow-up should carry the feature local branch: {:?}",
             feature_entry.refs,
         );
@@ -799,20 +789,10 @@ mod tests {
         page_two.limit = Some(2);
         page_two.offset = Some(2);
 
-        let one = super::log(
-            &root.registry,
-            &path_str,
-            &page_one,
-            &WorkspaceEnv::Local,
-        )
-        .expect("first page");
-        let two = super::log(
-            &root.registry,
-            &path_str,
-            &page_two,
-            &WorkspaceEnv::Local,
-        )
-        .expect("second page");
+        let one = super::log(&root.registry, &path_str, &page_one, &WorkspaceEnv::Local)
+            .expect("first page");
+        let two = super::log(&root.registry, &path_str, &page_two, &WorkspaceEnv::Local)
+            .expect("second page");
 
         assert_eq!(one.entries.len(), 2);
         let page_one_shas: std::collections::HashSet<&str> =
@@ -840,15 +820,13 @@ mod tests {
         options.limit = Some(200);
         options.offset = Some(0);
 
-        let page = super::log(
-            &root.registry,
-            &path_str,
-            &options,
-            &WorkspaceEnv::Local,
-        )
-        .expect("log returns page");
+        let page = super::log(&root.registry, &path_str, &options, &WorkspaceEnv::Local)
+            .expect("log returns page");
 
-        assert!(!page.has_more, "limit >> history size => has_more must be false");
+        assert!(
+            !page.has_more,
+            "limit >> history size => has_more must be false"
+        );
     }
 
     #[test]
@@ -859,12 +837,7 @@ mod tests {
         let mut options = default_log_options();
         options.ref_name = Some("does-not-exist".to_string());
 
-        let result = super::log(
-            &root.registry,
-            &path_str,
-            &options,
-            &WorkspaceEnv::Local,
-        );
+        let result = super::log(&root.registry, &path_str, &options, &WorkspaceEnv::Local);
 
         assert!(result.is_err(), "unknown ref must surface an error");
     }
@@ -876,10 +849,7 @@ mod tests {
         // Reset back to the init commit then drop the only commit by deleting
         // the branch tip — easiest path is `update-ref -d HEAD`.
         run_git(&root.path, &["update-ref", "-d", "refs/heads/main"]);
-        run_git(
-            &root.path,
-            &["symbolic-ref", "HEAD", "refs/heads/main"],
-        );
+        run_git(&root.path, &["symbolic-ref", "HEAD", "refs/heads/main"]);
         let path_str = root.path.to_string_lossy().into_owned();
 
         let page = super::log(

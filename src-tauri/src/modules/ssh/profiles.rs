@@ -84,7 +84,8 @@ fn load_profiles(path: &PathBuf) -> Vec<SshProfile> {
 
 fn store_profiles(path: &PathBuf, profiles: &[SshProfile]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| format!("create {}: {error}", parent.display()))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("create {}: {error}", parent.display()))?;
     }
     let stored = StoredProfiles {
         version: 1,
@@ -102,7 +103,9 @@ fn store_profiles(path: &PathBuf, profiles: &[SshProfile]) -> Result<(), String>
 
 pub fn list_profiles(app: &tauri::AppHandle) -> Result<Vec<SshProfile>, String> {
     let path = profiles_path(app)?;
-    let _guard = file_lock().lock().map_err(|error| format!("ssh profiles lock poisoned: {error}"))?;
+    let _guard = file_lock()
+        .lock()
+        .map_err(|error| format!("ssh profiles lock poisoned: {error}"))?;
     Ok(load_profiles(&path))
 }
 
@@ -110,7 +113,9 @@ pub fn list_profiles(app: &tauri::AppHandle) -> Result<Vec<SshProfile>, String> 
 pub fn save_profile(app: &tauri::AppHandle, mut profile: SshProfile) -> Result<SshProfile, String> {
     validate_profile(&profile)?;
     let path = profiles_path(app)?;
-    let _guard = file_lock().lock().map_err(|error| format!("ssh profiles lock poisoned: {error}"))?;
+    let _guard = file_lock()
+        .lock()
+        .map_err(|error| format!("ssh profiles lock poisoned: {error}"))?;
     let mut profiles = load_profiles(&path);
     if profile.id.is_empty() {
         profile.id = generate_profile_id();
@@ -134,7 +139,9 @@ pub fn save_profile(app: &tauri::AppHandle, mut profile: SshProfile) -> Result<S
 
 pub fn delete_profile(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
     let path = profiles_path(app)?;
-    let _guard = file_lock().lock().map_err(|error| format!("ssh profiles lock poisoned: {error}"))?;
+    let _guard = file_lock()
+        .lock()
+        .map_err(|error| format!("ssh profiles lock poisoned: {error}"))?;
     let mut profiles = load_profiles(&path);
     let before = profiles.len();
     profiles.retain(|profile| profile.id != id);
@@ -146,7 +153,9 @@ pub fn delete_profile(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
 
 pub fn find_profile(app: &tauri::AppHandle, id: &str) -> Result<SshProfile, String> {
     let path = profiles_path(app)?;
-    let _guard = file_lock().lock().map_err(|error| format!("ssh profiles lock poisoned: {error}"))?;
+    let _guard = file_lock()
+        .lock()
+        .map_err(|error| format!("ssh profiles lock poisoned: {error}"))?;
     load_profiles(&path)
         .into_iter()
         .find(|profile| profile.id == id)
@@ -243,7 +252,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "nexterm-ssh-profiles-{}-{}",
             std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos()
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
         ));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let path = dir.join("ssh-profiles.json");
@@ -266,7 +278,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "nexterm-ssh-corrupt-{}-{}",
             std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos()
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
         ));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let path = dir.join("ssh-profiles.json");

@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::modules::git::errors::Result;
 use crate::modules::git::process::{ensure_success, run_git};
-use crate::modules::git::types::{DEFAULT_TIMEOUT_SECS, DiscardEntry, GitOutput};
+use crate::modules::git::types::{DiscardEntry, GitOutput, DEFAULT_TIMEOUT_SECS};
 use crate::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
 
 use super::{pathspec_from_input, with_repo};
@@ -106,8 +106,7 @@ pub fn discard(
         }
 
         if !tracked.is_empty() {
-            let mut args: Vec<OsString> =
-                vec!["restore".into(), "--worktree".into(), "--".into()];
+            let mut args: Vec<OsString> = vec!["restore".into(), "--worktree".into(), "--".into()];
             for p in &tracked {
                 args.push(p.clone().into());
             }
@@ -121,7 +120,8 @@ pub fn discard(
         }
 
         if !untracked.is_empty() {
-            let mut args: Vec<OsString> = vec!["clean".into(), "-f".into(), "-d".into(), "--".into()];
+            let mut args: Vec<OsString> =
+                vec!["clean".into(), "-f".into(), "-d".into(), "--".into()];
             for p in &untracked {
                 args.push(p.clone().into());
             }

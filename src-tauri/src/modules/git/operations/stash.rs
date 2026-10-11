@@ -2,7 +2,9 @@ use std::ffi::{OsStr, OsString};
 
 use crate::modules::git::errors::{GitError, Result};
 use crate::modules::git::parser::parse_stash_lines;
-use crate::modules::git::process::{ensure_success, git_stdout_line_opt, git_stdout_lines, run_git};
+use crate::modules::git::process::{
+    ensure_success, git_stdout_line_opt, git_stdout_lines, run_git,
+};
 use crate::modules::git::types::{
     GitStashEntry, GitStashPushOptions, GitStashResult, DEFAULT_TIMEOUT_SECS,
 };
@@ -74,7 +76,14 @@ pub fn stash_pop(
     expected_sha: Option<&str>,
     workspace: &WorkspaceEnv,
 ) -> Result<GitStashResult> {
-    run_stash_selector_command(registry, repo_root, "pop", selector, expected_sha, workspace)
+    run_stash_selector_command(
+        registry,
+        repo_root,
+        "pop",
+        selector,
+        expected_sha,
+        workspace,
+    )
 }
 
 pub fn stash_drop(
@@ -84,7 +93,14 @@ pub fn stash_drop(
     expected_sha: Option<&str>,
     workspace: &WorkspaceEnv,
 ) -> Result<GitStashResult> {
-    run_stash_selector_command(registry, repo_root, "drop", selector, expected_sha, workspace)
+    run_stash_selector_command(
+        registry,
+        repo_root,
+        "drop",
+        selector,
+        expected_sha,
+        workspace,
+    )
 }
 
 pub fn stash_apply(
@@ -194,13 +210,8 @@ mod tests {
             include_untracked: false,
             keep_index: false,
         };
-        super::stash_push(
-            &root.registry,
-            &path_str,
-            &options,
-            &WorkspaceEnv::Local,
-        )
-        .expect("stash push succeeds");
+        super::stash_push(&root.registry, &path_str, &options, &WorkspaceEnv::Local)
+            .expect("stash push succeeds");
 
         // Resolve the stash commit's full SHA directly so we can compare
         // apples to apples — the DTO's `short_sha` is derived from the
@@ -212,17 +223,18 @@ mod tests {
             .env("LC_ALL", "C")
             .output()
             .expect("rev-parse stash@{0}");
-        let resolved_full =
-            String::from_utf8_lossy(&resolved.stdout).trim().to_string();
+        let resolved_full = String::from_utf8_lossy(&resolved.stdout).trim().to_string();
 
-        let entries =
-            super::stash_list(&root.registry, &path_str, &WorkspaceEnv::Local)
-                .expect("stash list succeeds");
+        let entries = super::stash_list(&root.registry, &path_str, &WorkspaceEnv::Local)
+            .expect("stash list succeeds");
         assert_eq!(entries.len(), 1);
         let entry = &entries[0];
         assert_eq!(entry.selector, "stash@{0}");
         assert_eq!(entry.full_sha, resolved_full);
-        assert_eq!(entry.short_sha, resolved_full.chars().take(7).collect::<String>());
+        assert_eq!(
+            entry.short_sha,
+            resolved_full.chars().take(7).collect::<String>()
+        );
         assert!(entry.message.contains("checkpoint"));
     }
 
@@ -241,17 +253,11 @@ mod tests {
             include_untracked: false,
             keep_index: false,
         };
-        super::stash_push(
-            &root.registry,
-            &path_str,
-            &options,
-            &WorkspaceEnv::Local,
-        )
-        .expect("stash push succeeds");
+        super::stash_push(&root.registry, &path_str, &options, &WorkspaceEnv::Local)
+            .expect("stash push succeeds");
 
-        let entries =
-            super::stash_list(&root.registry, &path_str, &WorkspaceEnv::Local)
-                .expect("stash list succeeds");
+        let entries = super::stash_list(&root.registry, &path_str, &WorkspaceEnv::Local)
+            .expect("stash list succeeds");
         let real_sha = entries[0].full_sha.clone();
 
         let wrong = super::stash_pop(
@@ -288,13 +294,8 @@ mod tests {
             include_untracked: false,
             keep_index: false,
         };
-        super::stash_push(
-            &root.registry,
-            &path_str,
-            &options,
-            &WorkspaceEnv::Local,
-        )
-        .expect("stash push succeeds");
+        super::stash_push(&root.registry, &path_str, &options, &WorkspaceEnv::Local)
+            .expect("stash push succeeds");
 
         super::stash_apply(
             &root.registry,
@@ -305,9 +306,8 @@ mod tests {
         )
         .expect("stash apply succeeds");
 
-        let entries =
-            super::stash_list(&root.registry, &path_str, &WorkspaceEnv::Local)
-                .expect("stash list succeeds");
+        let entries = super::stash_list(&root.registry, &path_str, &WorkspaceEnv::Local)
+            .expect("stash list succeeds");
         assert_eq!(entries.len(), 1, "apply must not drop the entry");
     }
 }

@@ -3,10 +3,10 @@ use tauri::{AppHandle, Manager};
 use crate::modules::git::operations;
 use crate::modules::git::types::{
     DiscardEntry, GitBranchInfo, GitBranchResult, GitCommitFileChange, GitCommitResult,
-    GitDiffContentResult, GitDiffResult, GitFetchResult, GitLogOptions, GitLogPage,
-    GitPanelSnapshot, GitPullResult, GitPushResult, GitRemoteInfo, GitRemoteInput,
-    GitRemoteUrlUpdate, GitRepoInfo, GitRepositoryDiscovery, GitStashEntry, GitStashPushOptions,
-    GitStashResult, GitStatusSnapshot, GitTagCreateOptions, GitTagInfo, GitTagResult,
+    GitDiffContentResult, GitFetchResult, GitLogOptions, GitLogPage, GitPanelSnapshot,
+    GitPullResult, GitPushResult, GitRemoteInfo, GitRemoteInput, GitRemoteUrlUpdate, GitRepoInfo,
+    GitRepositoryDiscovery, GitStashEntry, GitStashPushOptions, GitStashResult, GitStatusSnapshot,
+    GitTagCreateOptions, GitTagInfo, GitTagResult,
 };
 use crate::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
 
@@ -88,11 +88,6 @@ git_command!(git_panel_snapshot, panel_snapshot, GitPanelSnapshot :
 git_command!(git_status, status, GitStatusSnapshot :
     repo_root: String => &repo_root,
     untracked_files: Option<String> => untracked_files.as_deref());
-
-git_command!(git_diff, diff, GitDiffResult :
-    repo_root: String => &repo_root,
-    path: Option<String> => path.as_deref(),
-    staged: bool => staged);
 
 git_command!(git_diff_content, diff_content, GitDiffContentResult :
     repo_root: String => &repo_root,
@@ -179,11 +174,6 @@ git_command!(git_stash_apply, stash_apply, GitStashResult :
 git_command!(git_log, log, GitLogPage :
     repo_root: String => &repo_root,
     options: GitLogOptions => &options);
-
-// 命令名是 `git_show_commit`,但实际调用 `show_commit_diff` 操作。
-git_command!(git_show_commit, show_commit_diff, GitDiffResult :
-    repo_root: String => &repo_root,
-    sha: String => &sha);
 
 git_command!(git_commit_files, commit_files, Vec<GitCommitFileChange> :
     repo_root: String => &repo_root,

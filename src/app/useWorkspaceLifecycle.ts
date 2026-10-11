@@ -1,6 +1,6 @@
 import { homeDir } from "@tauri-apps/api/path";
 import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
-import { computed, ref, type ComputedRef } from "vue";
+import { ref, type ComputedRef } from "vue";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import type { WorkspaceNative } from "@/lib/native";
 import {
@@ -59,18 +59,27 @@ export function useWorkspaceLifecycle(options: WorkspaceLifecycleOptions) {
   // while the first one is still awaiting the backend.
   let watcherRestartInFlight: Promise<void> | null = null;
 
-  // Monotonically increasing counter for received FS events. We pair it
-  // with a snapshot of the latest payload so consumers watching
-  // `workspaceFsEvent` always see a fresh object reference (Vue's `watch`
-  // would otherwise skip notifications when two payloads are deeply equal,
-  // and a single-value ref would lose bursts because the second payload
-  // overwrites the first before subscribers process it).
-  const fsEventVersion = ref(0);
-  const fsEventPayload = ref<WorkspaceFsChangedEvent | null>(null);
-  const workspaceFsEvent = computed<WorkspaceFsChangedEvent | null>(() => {
-    if (fsEventVersion.value === 0 || !fsEventPayload.value) return null;
-    return fsEventPayload.value;
-  });
+  // FS 事件的单一出口。
+  //
+  // 必须是**可写**的：`useWorkbenchCommands` 的 `git.refresh` /
+  // `explorer.refresh` / `stageAll` / `fetch` / `pull` / `push` / `stash.*`
+  // 共 9 条命令靠写入一个 `paths: []` 的全量刷新事件来推动面板重绘。之前
+  // 这里是只读 computed，赋值被 Vue 静默丢弃 —— 命令生效了但 UI 不动。
+  //
+  // 每次写入都换一个全新对象：Vue 的 `watch` 对同一引用不会触发，而 fs 事件
+  // 允许 payload 深度相等（连续两次全量刷新就是这种情况），那恰恰是最需要
+  // 刷新的一次。历史实现用 `ref(0)` 版本号绕开这点，但代价是这个语义只藏在
+  // 一个只读 computed 里，下游按可写 ref 用就会翻车。
+  const workspaceFsEvent = ref<WorkspaceFsChangedEvent | null>(null);
+
+  /** 发布一次 FS 事件：始终写入新引用，保证订阅者一定被唤醒。 */
+  function publishWorkspaceFsEvent(payload: WorkspaceFsChangedEvent): void {
+    workspaceFsEvent.value = {
+      ...payload,
+      paths: [...payload.paths],
+      ...(payload.kinds ? { kinds: [...payload.kinds] } : {}),
+    };
+  }
 
   async function restartWorkspaceWatcher(rootPath: string | null) {
     if (!runtimeAvailable()) return;
@@ -117,8 +126,7 @@ export function useWorkspaceLifecycle(options: WorkspaceLifecycleOptions) {
       // their own filtered stream.
       if (!isSameWorkspaceRoot(event.payload.rootPath, options.rootPath.value))
         return;
-      fsEventPayload.value = event.payload;
-      fsEventVersion.value += 1;
+      publishWorkspaceFsEvent(event.payload);
     });
   }
 
@@ -152,6 +160,8 @@ export function useWorkspaceLifecycle(options: WorkspaceLifecycleOptions) {
     startWorkspaceLifecycle,
     stopWorkspaceLifecycle,
     workspaceFsEvent,
+    /** 命令系统推动面板重绘用的入口（git.refresh / explorer.refresh 等）。 */
+    publishWorkspaceFsEvent,
     /**
      * 手动触发 batcher flush。在 workspace 切回时 WorkspaceHost 调,
      * 配合各组件的 flush 钩子,保证切回时 explorer / 终端 / 源码

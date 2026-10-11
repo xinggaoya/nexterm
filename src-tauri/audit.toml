@@ -1,0 +1,27 @@
+# cargo-audit 豁免清单。
+#
+# 规则：每一条都必须写清楚「为什么这条在本项目里不适用」，而不是「先忽略掉」。
+# CI 的 `supply-chain` job 会跑 `cargo audit`；没有被豁免的告警会让流水线变红。
+# 豁免不是沉默，是一次显式的风险接受 —— 每条都附了判断依据。
+
+[advisories]
+ignore = [
+    # rsa: Marvin Attack（通过计时侧信道恢复密钥）。
+    # 依赖链 russh -> rsa，上游**没有**修复版本（patched = []）。
+    # 缓解：客户端算法白名单显式去掉了 `Algorithm::Rsa { hash: None}`
+    # （ssh-rsa / SHA-1），只保留 rsa-sha2-256 / rsa-sha2-512 —— 受影响的
+    # 只有 SHA-1 签名构造。守护见 modules/ssh/client.rs 的
+    # `preferred_algorithms()` 及其单测。
+    "RUSTSEC-2023-0071",
+
+    # rkyv: 反序列化 OOB 读（修复版本 >= 0.8.17，当前 0.7.46）。
+    # 依赖链 russh -> rust_decimal -> rkyv。russh 不会从不可信输入走 rkyv 的
+    # 反序列化路径（远端返回 JSON-RPC 文本，不是 rkyv 归档），因此不可达。
+    "RUSTSEC-2026-0235",
+
+    # quick-xml: 重复属性检查的二次复杂度 / NsReader 命名空间无界分配，
+    # 两条都是构建期传递依赖（plist / tauri-winrt-notification /
+    # wayland-scanner），不在运行时代码路径上。
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]

@@ -1,36 +1,17 @@
+import {
+  loadTextDocument,
+  type TextDocumentState,
+} from "@/lib/documentLoader";
 import type { WorkspaceNative } from "@/lib/native";
 
-export type EditorDocumentState =
-  | { status: "loading" }
-  | { status: "ready"; content: string; size: number }
-  | { status: "binary"; size: number }
-  | { status: "toolarge"; size: number; limit: number }
-  | { status: "error"; message: string };
+/** 编辑器 / Markdown / 通用预览共用同一个读取状态机（见 lib/documentLoader.ts）。 */
+export type EditorDocumentState = TextDocumentState;
 
 export async function readEditorDocument(
   wsNative: WorkspaceNative,
   path: string,
 ): Promise<EditorDocumentState> {
-  try {
-    const result = await wsNative.fsReadFile(path);
-    if (result.kind === "text") {
-      return {
-        status: "ready",
-        content: result.content,
-        size: result.size,
-      };
-    }
-    if (result.kind === "binary") {
-      return { status: "binary", size: result.size };
-    }
-    return {
-      status: "toolarge",
-      size: result.size,
-      limit: result.limit,
-    };
-  } catch (error) {
-    return { status: "error", message: String(error) };
-  }
+  return loadTextDocument(wsNative, path);
 }
 
 export async function writeEditorDocument(

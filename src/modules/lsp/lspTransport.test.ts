@@ -48,20 +48,22 @@ describe("createLspConnection", () => {
     );
 
     const conn = await createLspConnection({
-      spec: {
-        id: "mock",
-        language: "__mock-lsp__",
-        command: "/bin/echo",
-        args: ["--mock-lsp"],
-      },
+      language: "__mock-lsp__",
       invoke,
       openChannel: async () => channel as unknown as never,
     });
 
     expect(invoke).toHaveBeenCalledWith(
       "lsp_start",
-      expect.objectContaining({ spec: expect.any(Object) }),
+      expect.objectContaining({ language: "__mock-lsp__" }),
     );
+    // 安全护栏：可执行文件绝不能从 IPC 参数进来。
+    const startArgs = (invoke as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls.find((call) => call[0] === "lsp_start")?.[1] as
+      | Record<string, unknown>
+      | undefined;
+    expect(startArgs).not.toHaveProperty("command");
+    expect(startArgs).not.toHaveProperty("spec");
 
     conn.listen();
     // 触发 channel 上的 initialize 响应

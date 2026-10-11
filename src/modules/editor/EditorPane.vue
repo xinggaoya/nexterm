@@ -8,19 +8,32 @@ import {
   undo,
 } from "@codemirror/commands";
 import { autocompletion, closeBrackets } from "@codemirror/autocomplete";
-import { bracketMatching, foldGutter } from "@codemirror/language";
+import {
+  bracketMatching,
+  foldAll,
+  foldGutter,
+  foldKeymap,
+  unfoldAll,
+} from "@codemirror/language";
 import { linter } from "@codemirror/lint";
-import { searchKeymap } from "@codemirror/search";
+import {
+  highlightSelectionMatches,
+  searchKeymap,
+  selectMatches,
+  selectNextOccurrence,
+} from "@codemirror/search";
 import {
   EditorState,
   type Extension,
 } from "@codemirror/state";
 import {
   EditorView,
+  drawSelection,
   highlightActiveLine,
   highlightActiveLineGutter,
   keymap,
   lineNumbers,
+  rectangularSelection,
 } from "@codemirror/view";
 import { NSpin, useDialog } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
@@ -54,7 +67,11 @@ import {
 } from "./lib/languageResolver";
 import { themeExtensionFor } from "./lib/themes";
 import { vimHandlersExtension, vimModeExtension } from "./lib/vim";
-import { attachOrDetachLsp, applyCmDiagnostics } from "./lib/editorPaneLsp";
+import {
+  applyCmDiagnostics,
+  attachOrDetachLsp,
+} from "./lib/editorPaneLsp";
+import { detachLspFromEditor } from "@/modules/lsp/manager";
 import {
   lspCompletionExtension,
   lspHoverExtension,
@@ -168,7 +185,16 @@ function setMode(next: EditorViewMode) {
 }
 
 function destroyEditor() {
-  disposeEditor(view.value);
+  const current = view.value;
+  // 先 detach 再销毁 view：`detachLspFromEditor` 走 `connection.dispose()`
+  // → `onDispose → lsp_stop`，Rust 侧的语言服务器子进程随之退出。
+  //
+  // 这一步必须在销毁**之前**完成。clients 是 WeakMap，view 一旦被 GC，
+  // client 就再也拿不到，`lsp_stop` 永远不会发出 —— 切 N 次标签就会常驻
+  // N 个 rust-analyzer，各自做全量索引。原实现在 onBeforeUnmount 里另起
+  // 一个 `void attachOrDetachLsp(...)`，与 destroyEditor 并发，顺序没有保证。
+  if (current) void detachLspFromEditor(current);
+  disposeEditor(current);
   view.value = null;
   if (host.value) host.value.innerHTML = "";
 }
@@ -193,6 +219,12 @@ function editorBaseExtensions(): Extension[] {
     lineNumbers(),
     foldGutter(),
     highlightActiveLineGutter(),
+    // 多光标是 CodeMirror 的内建能力，但**必须显式开 drawSelection**：缺了它
+    // 只画主光标，`Mod-Alt-ArrowUp/Down` 建出来的那些用户根本看不见 ——
+    // 能用，但完全盲。highlightSelectionMatches 让 Ctrl+D 的候选高亮出来。
+    drawSelection(),
+    rectangularSelection(),
+    highlightSelectionMatches(),
     history(),
     bracketMatching(),
     closeBrackets(),
@@ -256,8 +288,17 @@ function editorBaseExtensions(): Extension[] {
         },
       },
       indentWithTab,
+      // Ctrl/Cmd+D「选中下一个相同词」—— VS Code / Zed 的默认动作。缺了它，
+      // 多光标只能靠 Mod-Alt-Arrow 盲操。
+      { key: "Mod-d", run: selectNextOccurrence, preventDefault: true },
+      // Ctrl/Cmd+Shift+L「选中全部相同词」= selectMatches（search 包）。
+      { key: "Mod-Shift-l", run: selectMatches, preventDefault: true },
+      // Ctrl+K Ctrl+0 / Ctrl+K Ctrl+J：折叠全部 / 展开全部。
+      { key: "Mod-k Mod-0", run: foldAll, preventDefault: true },
+      { key: "Mod-k Mod-j", run: unfoldAll, preventDefault: true },
       ...searchKeymap,
       ...historyKeymap,
+      ...foldKeymap,
       ...defaultKeymap,
     ]),
   ];
@@ -680,11 +721,7 @@ onBeforeUnmount(() => {
     clearTimeout(lspSyncTimer);
     lspSyncTimer = null;
   }
-  if (view.value) {
-    void attachOrDetachLsp(view.value, props.path, "builtin").catch(
-      () => undefined,
-    );
-  }
+  // destroyEditor 已经同步 detach 了 LSP，这里不需要再走一遍。
   destroyEditor();
 });
 

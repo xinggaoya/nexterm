@@ -162,18 +162,32 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 
 详细见 [04-security-model.md](./04-security-model.md)。摘要：
 
-1. 所有 fs/pty/shell/git 命令必须过 `WorkspaceRegistry.authorize_*`。
+1. 所有会碰本地文件系统的命令必须过 `workspace::authorize_access_path`
+   这一个 chokepoint（`fs_*` / `lsp_start` 的 cwd / `git_*` 的 repo root）；
+   进程创建走 `authorize_spawn_cwd`，缺省 cwd 回落到当前工作区根而不是
+   「不检查就放行」。守护测试见 `src/lib/commandRegistrationContract.test.ts`。
 2. Windows shell 子进程必须挂 `Job Object`。
-3. PTY 输出走 Tauri `Channel` 流式 + `Transcript` 临时文件双轨制。
-4. Windows ConPTY 必须序列化保护，避免首屏输出管道卡住。
-5. 所有 `nexterm://` URL 在 Rust 端解析为 `DeepLinkOpenRequest` 再发给前端。
-6. Webview 不直接接触 fs/进程/shell。
+3. `lsp_start` **只接受 language**：可执行文件由后端白名单解析，不接受来自
+   IPC 的 `command`（否则它就是一个任意进程创建接口）。
+4. PTY 输出走 Tauri `Channel` 流式。Rust 端**不做 batching**，合并在
+   前端的 rAF 里（`modules/terminal/lib/sessions.ts`）。
+5. Windows ConPTY 必须序列化保护，避免首屏输出管道卡住。
+6. 所有 `nexterm://` URL 在 Rust 端解析为 `DeepLinkOpenRequest` 再发给前端；
+   前端必须先弹确认才 `workspace_authorize` —— 深链是外部输入。
+7. Webview 不直接接触 fs/进程/shell。
+8. release 构建默认**不**编译 WebView 检查器（`features.devtools` 默认关）。
 
 ## 7. 性能考量
 
-1. **PTY chunk 合并**：`FLUSH_COALESCE = 6ms` 把短窗口内的小 chunk 合并，降低 Channel 帧率。
-2. **transcript 上限**：`MAX_TRANSCRIPT_READ = 4 MiB`、`MAX_PENDING = 6 MiB`。
-3. **FS watcher 反压**：`events.rs` 用事件量阈值、根级刷新降级、max batch age、重复签名节流，不特殊化目录名。
+1. **PTY chunk 合并**：Rust 端逐块 `Channel.send`（`pty/session.rs` 的注释解释
+   了为什么不在后端 batching：那会让首次 read 拿到半帧），前端 `sessions.ts`
+   用 `requestAnimationFrame` 合批，一帧一次 write。
+2. **FS watcher 反压**：`events.rs` 用事件量阈值、根级刷新降级、max batch age、
+   重复签名节流。
+3. **遍历排除规则共享**：`modules/fs/exclude.rs` 是搜索 / 文件树 / watcher
+   三处唯一的一份排除目录清单（`node_modules` / `target` / `dist` …）。
+   这不只是性能：Linux `fs.inotify.max_user_watches` 默认 8192，全量递归
+   watch 一个带 node_modules 的工作区会直接失败。
 4. **Vite manualChunks**：`xterm` / `codemirror` / `vue-vendor` 三个分块。
 5. **Tailwind v4** 仅用于布局，不参与组件主题，主题一律走 `AppTokens` 派生。
 6. **Pinia 字段粒度**：`preferencesPinia` 每个偏好独立 `ref`，避免一刀切重渲染。

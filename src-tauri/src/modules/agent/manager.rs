@@ -18,8 +18,7 @@ const FAILURE_LIMIT: u32 = 3;
 const DISABLE_WINDOW: Duration = Duration::from_secs(60);
 
 /// 资产缺失时的快速失败信息(不触碰 wsl.exe)。
-pub(crate) const ASSET_MISSING: &str =
-    "nexterm-agent is not bundled; using legacy wsl.exe path";
+pub(crate) const ASSET_MISSING: &str = "nexterm-agent is not bundled; using legacy wsl.exe path";
 
 /// 每 distro 一格:格内是懒初始化的连接(cell 锁串行化首次 spawn)。
 type SharedCell = Arc<Mutex<Option<Arc<AgentConnection>>>>;
@@ -49,7 +48,12 @@ pub(crate) fn request(
     if !super::install::asset_available() {
         return Err(ASSET_MISSING.into());
     }
-    if let Some(until) = manager().disabled_until.lock().ok().and_then(|guard| guard.get(distro).copied()) {
+    if let Some(until) = manager()
+        .disabled_until
+        .lock()
+        .ok()
+        .and_then(|guard| guard.get(distro).copied())
+    {
         if Instant::now() < until {
             return Err(format!(
                 "nexterm-agent is circuit-opened for {distro}; using legacy path"
@@ -162,6 +166,10 @@ mod tests {
             .copied();
         assert!(until.is_some(), "circuit should open after limit");
         reset_failures("CircuitDistro");
-        manager().disabled_until.lock().unwrap().remove("CircuitDistro");
+        manager()
+            .disabled_until
+            .lock()
+            .unwrap()
+            .remove("CircuitDistro");
     }
 }

@@ -80,7 +80,11 @@ pub(crate) fn init_git_repo(dir: &Path, branch: &str) {
             .arg(value)
             .status()
             .expect("git config");
-        assert!(status.success(), "git config {key} failed for {}", dir.display());
+        assert!(
+            status.success(),
+            "git config {key} failed for {}",
+            dir.display()
+        );
     }
 
     // Create an empty initial commit so the existing resolve path can read

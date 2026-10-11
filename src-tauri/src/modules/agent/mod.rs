@@ -46,7 +46,8 @@ pub fn exec_simple(
     timeout: Duration,
     max_output_bytes: usize,
 ) -> Result<ExecOutcome, String> {
-    let params = protocol::exec_params(cwd.as_deref(), &argv, env, stdin, timeout, max_output_bytes);
+    let params =
+        protocol::exec_params(cwd.as_deref(), &argv, env, stdin, timeout, max_output_bytes);
     let value = manager::request(
         distro,
         protocol::METHOD_EXEC,
@@ -318,41 +319,12 @@ pub(crate) fn parse_search_result(value: &Value) -> Result<SearchResultParsed, S
         }
     }
     Ok(SearchResultParsed {
-        truncated: value.get("truncated").and_then(Value::as_bool).unwrap_or(false),
+        truncated: value
+            .get("truncated")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
         hits,
     })
-}
-
-pub fn list_files(
-    distro: &str,
-    root: &str,
-    limit: Option<usize>,
-    max_depth: Option<usize>,
-    show_hidden: bool,
-) -> Result<(Vec<String>, bool), String> {
-    let value = manager::request(
-        distro,
-        protocol::METHOD_FS_LIST_FILES,
-        protocol::fs_list_files_params(root, limit, max_depth, show_hidden),
-        Duration::from_secs(60),
-    )?;
-    parse_list_files(&value)
-}
-
-pub(crate) fn parse_list_files(value: &Value) -> Result<(Vec<String>, bool), String> {
-    // files 是纯字符串数组。
-    let files = value
-        .get("files")
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.as_str().map(str::to_string))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let truncated = value.get("truncated").and_then(Value::as_bool).unwrap_or(false);
-    Ok((files, truncated))
 }
 
 pub struct GrepHitParsed {
@@ -381,7 +353,14 @@ pub fn grep(
     let value = manager::request(
         distro,
         protocol::METHOD_FS_GREP,
-        protocol::fs_grep_params(pattern, root, glob, case_insensitive, max_results, root_display),
+        protocol::fs_grep_params(
+            pattern,
+            root,
+            glob,
+            case_insensitive,
+            max_results,
+            root_display,
+        ),
         Duration::from_secs(120),
     )?;
     parse_grep_response(&value)
@@ -401,7 +380,10 @@ pub(crate) fn parse_grep_response(value: &Value) -> Result<GrepResponseParsed, S
     }
     Ok(GrepResponseParsed {
         hits,
-        truncated: value.get("truncated").and_then(Value::as_bool).unwrap_or(false),
+        truncated: value
+            .get("truncated")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
         files_scanned: get_u64(value, "filesScanned") as usize,
     })
 }
@@ -437,7 +419,10 @@ pub(crate) fn parse_glob(value: &Value) -> Result<(Vec<GlobHitParsed>, bool), St
             });
         }
     }
-    let truncated = value.get("truncated").and_then(Value::as_bool).unwrap_or(false);
+    let truncated = value
+        .get("truncated")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     Ok((hits, truncated))
 }
 

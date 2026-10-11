@@ -19,7 +19,8 @@ fn deploy_conpty_binaries() {
         std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by Cargo");
     let manifest_dir = std::path::Path::new(&manifest_dir);
     // OUT_DIR = <target>/<profile>/build/<pkg>-<hash>/out,向上三级即 exe 所在目录
-    let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR is set by Cargo"));
+    let out_dir =
+        std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR is set by Cargo"));
     let Some(exe_dir) = out_dir.ancestors().nth(3) else {
         return;
     };
@@ -68,8 +69,5 @@ fn configure_agent_asset() {
     }
 
     println!("cargo:rustc-cfg=nexterm_agent_asset");
-    println!(
-        "cargo:rustc-env=NEXTERM_AGENT_ASSET={}",
-        asset.display()
-    );
+    println!("cargo:rustc-env=NEXTERM_AGENT_ASSET={}", asset.display());
 }

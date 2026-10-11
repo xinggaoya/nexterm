@@ -66,21 +66,19 @@ pub fn build(
     super::apply_common(&mut cmd, cwd);
 
     match resolved.kind {
-        LocalShellKind::Powershell => {
-            match prepare_ps_profile() {
-                Ok(profile) => {
-                    cmd.arg("-NoLogo");
-                    cmd.arg("-NoExit");
-                    cmd.arg("-ExecutionPolicy");
-                    cmd.arg("Bypass");
-                    cmd.arg("-File");
-                    cmd.arg(profile);
-                }
-                Err(e) => {
-                    log::warn!("powershell shell integration disabled: {e}");
-                }
+        LocalShellKind::Powershell => match prepare_ps_profile() {
+            Ok(profile) => {
+                cmd.arg("-NoLogo");
+                cmd.arg("-NoExit");
+                cmd.arg("-ExecutionPolicy");
+                cmd.arg("Bypass");
+                cmd.arg("-File");
+                cmd.arg(profile);
             }
-        }
+            Err(e) => {
+                log::warn!("powershell shell integration disabled: {e}");
+            }
+        },
         LocalShellKind::Bash => {
             // bash 只在交互模式下读 --rcfile，且 -l 会忽略它——集成脚本
             // 自身会链回 /etc/profile 与用户 rc 文件来模拟登录初始化。
@@ -95,7 +93,10 @@ pub fn build(
             }
             cmd.arg("-i");
         }
-        LocalShellKind::Cmd | LocalShellKind::Zsh | LocalShellKind::Fish | LocalShellKind::Other => {
+        LocalShellKind::Cmd
+        | LocalShellKind::Zsh
+        | LocalShellKind::Fish
+        | LocalShellKind::Other => {
             log::info!(
                 "spawning {} without shell integration",
                 resolved.program.display()
@@ -158,8 +159,13 @@ fn build_wsl(cwd: Option<String>, distro: String) -> Result<CommandBuilder, Stri
             WslShellIntegration::None
         }
     };
-    let spec =
-        build_wsl_launch_spec(cwd.as_deref(), &distro, &shell_path, shell_kind, integration);
+    let spec = build_wsl_launch_spec(
+        cwd.as_deref(),
+        &distro,
+        &shell_path,
+        shell_kind,
+        integration,
+    );
     let mut cmd = CommandBuilder::new("wsl.exe");
     for arg in &spec.args {
         cmd.arg(arg);
@@ -296,7 +302,10 @@ fn prepare_wsl_fish_conf_d(distro: &str) -> Result<(), String> {
 
 fn integration_root() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "could not resolve home dir".to_string())?;
-    let root = home.join(".cache").join("nexterm").join("shell-integration");
+    let root = home
+        .join(".cache")
+        .join("nexterm")
+        .join("shell-integration");
     fs::create_dir_all(&root).map_err(|e| format!("create {}: {e}", root.display()))?;
     Ok(root)
 }

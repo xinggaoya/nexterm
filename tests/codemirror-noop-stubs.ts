@@ -31,3 +31,17 @@ export const Vim = {
   map: () => undefined,
 };
 export const vim = () => [];
+
+// 折叠（@codemirror/language）
+export const foldAll = () => true;
+export const unfoldAll = () => true;
+export const foldKeymap: unknown[] = [];
+
+// 多光标选中（@codemirror/search）
+export const selectNextOccurrence = () => false;
+export const selectMatches = () => false;
+
+// 多光标可视化（@codemirror/view）
+export const drawSelection = () => [];
+export const rectangularSelection = () => [];
+export const crosshairCursor = () => [];

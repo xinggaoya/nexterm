@@ -49,27 +49,29 @@ fn resolve_repo_in_authorized(
     registry: &WorkspaceRegistry,
     cwd: &ResolvedGitDirectory,
 ) -> Result<Option<GitRepoInfo>> {
-    let Some(root_line) = git_stdout_line_opt(
+    // 一次 `rev-parse` 拿到 root / HEAD / upstream 三件事。旧实现跑 3 次
+    // rev-parse，而 `git_discover_repositories` 会对每个候选仓库调本函数
+    // （默认上限 32 个）—— 单次面板刷新就是最多 96 次进程创建 + 288 个
+    // OS 线程，全压在同一个 spawn_blocking 里串行执行。
+    let lines = git_stdout_lines(
         &cwd.workspace,
         &cwd.git_path,
-        ["rev-parse", "--show-toplevel"],
-    )?
-    else {
-        return Ok(None);
-    };
+        ["rev-parse", "--show-toplevel", "--abbrev-ref", "HEAD"],
+    )?;
+    let root_line = lines.first().cloned().ok_or(GitError::CommandFailed {
+        context: "failed to resolve repository root",
+        detail: String::new(),
+    })?;
     let canonical_root = canonical_dir(registry, &root_line, &cwd.workspace)?;
     let _ = registry.authorize(&canonical_root.local_path);
 
-    let basics = git_stdout_lines(
-        &canonical_root.workspace,
-        &canonical_root.git_path,
-        ["rev-parse", "--abbrev-ref", "HEAD"],
-    )?;
-    let head = basics.into_iter().next().ok_or(GitError::CommandFailed {
+    let head = lines.get(1).cloned().ok_or(GitError::CommandFailed {
         context: "failed to resolve HEAD",
         detail: String::new(),
     })?;
 
+    // `@{u}` 在没有 upstream 时会让 rev-parse 非零退出，所以必须单独
+    // 问一次 —— 但它只在上游存在时才 spawn。
     let upstream = git_stdout_line_opt(
         &canonical_root.workspace,
         &canonical_root.git_path,

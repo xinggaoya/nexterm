@@ -41,6 +41,19 @@ function isSafeHref(href: string): boolean {
   return SAFE_HREF_SCHEMES.has(match[1].toLowerCase());
 }
 
+// 内联 base64 图片（README 徽章、内嵌截图）是唯一允许的 `data:` 用途。
+// 必须整体匹配：只判断 `startsWith("data:image/")` 会让
+// `![x](data:image/png"onerror="alert(1))` 逃出属性 —— marked 的 image
+// tokenizer 不转义 href 里的 `"`，于是渲染出的 `<img src="...">` 会被
+// 提前闭合，攻击者注入的 onerror 在预览里直接执行（webview 主 origin，
+// 持有全部 IPC 能力）。
+const SAFE_DATA_IMAGE_RE =
+  /^data:image\/(?:png|jpe?g|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon)(?:;[\w-]+=[\w-]+)*;base64,[A-Za-z0-9+/]*={0,2}$/i;
+
+function isSafeDataImageHref(href: string): boolean {
+  return SAFE_DATA_IMAGE_RE.test(href);
+}
+
 const renderer: RendererObject = {
   html({ text }: Tokens.HTML | Tokens.Tag) {
     // Treat raw HTML blocks as text so user-controlled content can never
@@ -63,9 +76,15 @@ const renderer: RendererObject = {
   },
   image({ href, title, text }: Tokens.Image) {
     const alt = escapeHtml(text);
-    if (href.startsWith("data:image/")) {
+    // 顺序很重要：data: 图片走白名单校验，其余走 scheme 校验；两条分支
+    // 都必须经过 escapeHtml —— 属性值里的 `"` 会提前闭合标签。
+    const isDataImage = href.startsWith("data:");
+    if (isDataImage) {
+      if (!isSafeDataImageHref(href)) {
+        return `<span class="md-blocked-image" title="blocked: unsafe image source">[image: ${alt}]</span>`;
+      }
       const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
-      return `<img src="${href}" alt="${alt}"${titleAttr}>`;
+      return `<img src="${escapeHtml(href)}" alt="${alt}"${titleAttr}>`;
     }
     if (!isSafeHref(href)) {
       return `<span class="md-blocked-image" title="blocked: unsafe image source">[image: ${alt}]</span>`;

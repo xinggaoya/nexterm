@@ -28,7 +28,11 @@ fn main() {
     println!("[1/10] exec: mkdir 工作目录 {work}");
     let outcome = exec(
         &distro,
-        vec!["sh".into(), "-c".into(), format!("rm -rf {work} && mkdir -p {work}")],
+        vec![
+            "sh".into(),
+            "-c".into(),
+            format!("rm -rf {work} && mkdir -p {work}"),
+        ],
         None,
     );
     assert_exit(&outcome, "mkdir");
@@ -41,12 +45,20 @@ fn main() {
         .unwrap_or_else(|error| die("writeFile", &error));
     let bytes = nexterm_lib::modules::agent::read_file(&distro, &format!("{work}/note.txt"))
         .unwrap_or_else(|error| die("readFile", &error));
-    assert_eq!(String::from_utf8_lossy(&bytes), "hello nexterm phase-0b", "roundtrip content");
+    assert_eq!(
+        String::from_utf8_lossy(&bytes),
+        "hello nexterm phase-0b",
+        "roundtrip content"
+    );
 
     println!("[3/10] fs.stat");
     let stat = nexterm_lib::modules::agent::stat(&distro, &format!("{work}/note.txt"))
         .unwrap_or_else(|error| die("fs.stat", &error));
-    assert_eq!(stat.size, "hello nexterm phase-0b".len() as u64, "stat size");
+    assert_eq!(
+        stat.size,
+        "hello nexterm phase-0b".len() as u64,
+        "stat size"
+    );
 
     println!("[4/10] fs.readDir");
     let entries = nexterm_lib::modules::agent::read_dir(&distro, &work)
@@ -54,10 +66,18 @@ fn main() {
     assert!(entries.iter().any(|entry| entry.name == "empty.txt"));
 
     println!("[5/10] fs.rename + fs.copy");
-    nexterm_lib::modules::agent::rename(&distro, &format!("{work}/empty.txt"), &format!("{work}/renamed.txt"))
-        .unwrap_or_else(|error| die("rename", &error));
-    nexterm_lib::modules::agent::copy(&distro, &format!("{work}/note.txt"), &format!("{work}/note-copy.txt"))
-        .unwrap_or_else(|error| die("copy", &error));
+    nexterm_lib::modules::agent::rename(
+        &distro,
+        &format!("{work}/empty.txt"),
+        &format!("{work}/renamed.txt"),
+    )
+    .unwrap_or_else(|error| die("rename", &error));
+    nexterm_lib::modules::agent::copy(
+        &distro,
+        &format!("{work}/note.txt"),
+        &format!("{work}/note-copy.txt"),
+    )
+    .unwrap_or_else(|error| die("copy", &error));
 
     println!("[6/10] fs.copyMany + fs.moveMany（冲突策略 / 自动改名）");
     let transfer_items = vec![
@@ -109,13 +129,10 @@ fn main() {
     );
     assert_eq!(moved.completed.len(), 1);
 
-    println!("[7/10] fs.search / fs.listFiles");
+    println!("[7/10] fs.search");
     let hits = nexterm_lib::modules::agent::search(&distro, &work, "note", Some(10), true, &work)
         .unwrap_or_else(|error| die("fs.search", &error));
     assert_eq!(hits.hits.len(), 2, "expect note.txt + note-copy.txt");
-    let (files, _) = nexterm_lib::modules::agent::list_files(&distro, &work, Some(100), Some(4), true)
-        .unwrap_or_else(|error| die("fs.listFiles", &error));
-    assert!(files.contains(&"note.txt".to_string()));
 
     println!("[8/10] fs.grep / fs.glob");
     let grep = nexterm_lib::modules::agent::grep(
@@ -129,8 +146,9 @@ fn main() {
     )
     .unwrap_or_else(|error| die("fs.grep", &error));
     assert_eq!(grep.hits.len(), 2, "both txt copies contain the marker");
-    let (glob_hits, _) = nexterm_lib::modules::agent::glob(&distro, "**/*.txt", &work, Some(50), &work)
-        .unwrap_or_else(|error| die("fs.glob", &error));
+    let (glob_hits, _) =
+        nexterm_lib::modules::agent::glob(&distro, "**/*.txt", &work, Some(50), &work)
+            .unwrap_or_else(|error| die("fs.glob", &error));
     // renamed.txt 也是 .txt(内容为空,glob 不看内容)→ 共 3 个
     assert_eq!(glob_hits.len(), 3);
 
@@ -147,12 +165,21 @@ fn main() {
     assert_exit(&outcome, "git init");
     let outcome = exec(
         &distro,
-        vec!["git".into(), "-C".into(), work.clone(), "status".into(), "--short".into()],
+        vec![
+            "git".into(),
+            "-C".into(),
+            work.clone(),
+            "status".into(),
+            "--short".into(),
+        ],
         Some(&[("GIT_TERMINAL_PROMPT", "0"), ("LC_ALL", "C")]),
     );
     assert_exit(&outcome, "git status");
     let status = String::from_utf8_lossy(&outcome.stdout);
-    assert!(status.contains("A  note.txt"), "staged note expected, got: {status}");
+    assert!(
+        status.contains("A  note.txt"),
+        "staged note expected, got: {status}"
+    );
 
     println!("[10/10] fs.delete 清理");
     nexterm_lib::modules::agent::delete(&distro, &work)
@@ -161,7 +188,11 @@ fn main() {
     println!("agent smoke OK (Phase 0b 全能力通过)");
 }
 
-fn exec(distro: &str, argv: Vec<String>, env: Option<&[(&str, &str)]>) -> nexterm_lib::modules::agent::ExecOutcome {
+fn exec(
+    distro: &str,
+    argv: Vec<String>,
+    env: Option<&[(&str, &str)]>,
+) -> nexterm_lib::modules::agent::ExecOutcome {
     nexterm_lib::modules::agent::exec_simple(
         distro,
         argv,

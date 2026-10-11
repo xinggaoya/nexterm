@@ -1,4 +1,7 @@
 // LSP server spec / 解析结果 / 会话信息（来自 Rust 端 serde 模型）。
+//
+// 注意：`LspServerSpec` 里的 `command`/`args` **不再跨 IPC 传输**。
+// `lsp_start` 只接受 `language`，可执行文件由后端白名单解析。
 export type LspServerSpec = {
   id: string;
   language: string;

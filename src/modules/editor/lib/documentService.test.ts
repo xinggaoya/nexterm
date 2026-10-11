@@ -60,7 +60,8 @@ describe("editor document service", () => {
       readEditorDocument(wsNative, "/repo/missing"),
     ).resolves.toEqual({
       status: "error",
-      message: "Error: missing",
+      // normalizeErrorMessage 去掉 Error 前缀：这些字符串会直接进 UI。
+      message: "missing",
     });
   });
 

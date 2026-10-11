@@ -14,7 +14,9 @@ use crate::modules::git::types::{
     GitOutput, TextSource, DEFAULT_TIMEOUT_SECS, MAX_FILE_BYTES, MAX_OUTPUT_BYTES,
     MAX_TIMEOUT_SECS, MIN_GIT_VERSION,
 };
-use crate::modules::process::{drain_limited, suppress_command_window, wait_with_timeout, WaitFailure};
+use crate::modules::process::{
+    drain_limited, suppress_command_window, wait_with_timeout, WaitFailure,
+};
 #[cfg(windows)]
 use crate::modules::workspace::validate_wsl_distro_name;
 use crate::modules::workspace::WorkspaceEnv;
@@ -293,10 +295,12 @@ where
         .ok_or_else(|| GitError::Spawn("no stderr pipe".into()))?;
 
     // stdout 常见为结构化输出(64KB 预分配),stderr 多为短消息(4KB)。
-    let stdout_handle =
-        thread::spawn(move || drain_limited(&mut stdout_pipe, MAX_OUTPUT_BYTES, 16 * 1024, 64 * 1024));
-    let stderr_handle =
-        thread::spawn(move || drain_limited(&mut stderr_pipe, MAX_OUTPUT_BYTES, 16 * 1024, 4 * 1024));
+    let stdout_handle = thread::spawn(move || {
+        drain_limited(&mut stdout_pipe, MAX_OUTPUT_BYTES, 16 * 1024, 64 * 1024)
+    });
+    let stderr_handle = thread::spawn(move || {
+        drain_limited(&mut stderr_pipe, MAX_OUTPUT_BYTES, 16 * 1024, 4 * 1024)
+    });
 
     let (exit_code, timed_out) = match wait_with_timeout(&child, dur) {
         Ok(result) => result,
@@ -330,9 +334,11 @@ fn run_git_via_remote_agent(
     let mut argv = Vec::with_capacity(args.len() + 1);
     argv.push("git".to_string());
     for arg in args {
-        argv.push(arg.to_str().map(str::to_string).ok_or_else(|| {
-            GitError::command("git over ssh", "non-utf8 argument".to_string())
-        })?);
+        argv.push(
+            arg.to_str().map(str::to_string).ok_or_else(|| {
+                GitError::command("git over ssh", "non-utf8 argument".to_string())
+            })?,
+        );
     }
     let profile_id = profile_id.to_string();
     let cwd = cwd.map(str::to_string);
@@ -652,13 +658,8 @@ mod wsl_agent_e2e {
         }
 
         // 关键验证:status 经 agent 路由,应看到 untracked 文件
-        let output = run_git(
-            &workspace,
-            Some(&repo),
-            ["status", "--short"],
-            30,
-        )
-        .expect("git status via agent");
+        let output = run_git(&workspace, Some(&repo), ["status", "--short"], 30)
+            .expect("git status via agent");
         assert!(!output.timed_out);
         assert_eq!(output.exit_code, Some(0));
         let stdout = String::from_utf8_lossy(&output.stdout);

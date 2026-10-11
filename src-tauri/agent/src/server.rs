@@ -43,17 +43,16 @@ fn write_response<W: Write>(writer: &Arc<Mutex<W>>, response: &Response) -> bool
 
 /// 消费 `input` 里的请求直到 EOF,逐条分发给 worker 线程。
 /// 返回表示 stdin 已读完且所有在途请求都已写回。
-pub fn serve<R: BufRead, W: Write + Send + 'static>(
-    mut input: R,
-    output: W,
-) -> Result<(), String> {
+pub fn serve<R: BufRead, W: Write + Send + 'static>(mut input: R, output: W) -> Result<(), String> {
     let writer = Arc::new(Mutex::new(output));
     let inflight = Arc::new(AtomicUsize::new(0));
     let mut workers = Vec::new();
 
     loop {
         let mut line = String::new();
-        let read = input.read_line(&mut line).map_err(|error| error.to_string())?;
+        let read = input
+            .read_line(&mut line)
+            .map_err(|error| error.to_string())?;
         if read == 0 {
             break;
         }
@@ -63,7 +62,10 @@ pub fn serve<R: BufRead, W: Write + Send + 'static>(
         }
         let Ok(request) = serde_json::from_str::<Request>(trimmed) else {
             // 无法解析(拿不到 id)只能丢弃;stderr 供人诊断,写失败忽略。
-            let _ = writeln!(std::io::stderr(), "nexterm-agent: dropping unparseable request");
+            let _ = writeln!(
+                std::io::stderr(),
+                "nexterm-agent: dropping unparseable request"
+            );
             continue;
         };
 
@@ -152,7 +154,11 @@ mod tests {
                 );
                 break;
             }
-            assert!(std::time::Instant::now() < deadline, "timed out waiting: {}", sink.text());
+            assert!(
+                std::time::Instant::now() < deadline,
+                "timed out waiting: {}",
+                sink.text()
+            );
             let _ = notify.recv_timeout(Duration::from_millis(50));
         }
     }

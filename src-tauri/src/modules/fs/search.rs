@@ -3,7 +3,7 @@ use serde::Serialize;
 
 use super::to_canon;
 use crate::modules::fs::wsl_ops;
-use crate::modules::workspace::{resolve_path, WorkspaceEnv};
+use crate::modules::workspace::{resolve_path, WorkspaceEnv, WorkspaceRegistry};
 
 #[derive(Serialize)]
 pub struct SearchHit {
@@ -30,18 +30,9 @@ const MAX_SCANNED: usize = 50_000;
 
 /// Directory names pruned unconditionally — they're rarely useful in a
 /// file-explorer search and they dominate scan time when present.
-const PRUNE_DIRS: &[&str] = &[
-    "node_modules",
-    ".git",
-    "target",
-    "dist",
-    "build",
-    ".next",
-    ".turbo",
-    ".cache",
-    ".venv",
-    "__pycache__",
-];
+// 排除规则收敛在 mod::exclude：搜索 / 文件树 / watcher 三处共用一份，
+// 否则会出现「搜得到但树里没有」「树里有但 watcher 不报」。
+use super::exclude::should_prune_dir_name;
 
 /// SSH 分支含网络 I/O(超时可达数十秒):整体下沉阻塞线程池,避免冻结
 /// UI;本地/WSL 的同步逻辑原样保留在闭包内。
@@ -52,9 +43,15 @@ pub async fn fs_search(
     limit: Option<usize>,
     workspace: Option<WorkspaceEnv>,
     show_hidden: Option<bool>,
+    registry: tauri::State<'_, WorkspaceRegistry>,
 ) -> Result<SearchResult, String> {
+    // 入口校验：搜索是一个廉价的全盘枚举原语，没有这层就是信息泄露。
+    let workspace = WorkspaceEnv::from_option(workspace);
+    let root =
+        crate::modules::workspace::authorize_access_path(registry.inner(), &root, &workspace)?;
+    let root = crate::modules::fs::to_canon(&root);
     tauri::async_runtime::spawn_blocking(move || {
-        fs_search_blocking(root, query, limit, workspace, show_hidden)
+        fs_search_blocking(root, query, limit, Some(workspace), show_hidden)
     })
     .await
     .map_err(|error| format!("fs_search background task failed: {error}"))?
@@ -149,7 +146,7 @@ fn fs_search_blocking(
                 return true;
             }
             match dent.file_name().to_str() {
-                Some(name) => !PRUNE_DIRS.contains(&name),
+                Some(name) => !should_prune_dir_name(name),
                 None => true,
             }
         })
@@ -202,122 +199,7 @@ fn fs_search_blocking(
     })
 }
 
-#[derive(Serialize)]
-pub struct ListFilesResult {
-    pub files: Vec<String>,
-    pub truncated: bool,
-}
-
 #[tauri::command]
-pub async fn fs_list_files(
-    root: String,
-    limit: Option<usize>,
-    max_depth: Option<usize>,
-    workspace: Option<WorkspaceEnv>,
-    show_hidden: Option<bool>,
-) -> Result<ListFilesResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        fs_list_files_blocking(root, limit, max_depth, workspace, show_hidden)
-    })
-    .await
-    .map_err(|error| format!("fs_list_files background task failed: {error}"))?
-}
-
-fn fs_list_files_blocking(
-    root: String,
-    limit: Option<usize>,
-    max_depth: Option<usize>,
-    workspace: Option<WorkspaceEnv>,
-    show_hidden: Option<bool>,
-) -> Result<ListFilesResult, String> {
-    const DEFAULT_LIMIT: usize = 2_000;
-    const HARD_LIMIT: usize = 10_000;
-    const DEFAULT_DEPTH: usize = 8;
-    const HARD_DEPTH: usize = 16;
-
-    let cap = limit.unwrap_or(DEFAULT_LIMIT).clamp(1, HARD_LIMIT);
-    let depth = max_depth.unwrap_or(DEFAULT_DEPTH).clamp(1, HARD_DEPTH);
-    let show_hidden = show_hidden.unwrap_or(false);
-    let workspace = WorkspaceEnv::from_option(workspace);
-    if let WorkspaceEnv::Wsl { distro } = &workspace {
-        if wsl_ops::should_use_wsl_ops(&root, &workspace) {
-            if let Ok((files, truncated)) =
-                crate::modules::agent::list_files(distro, &root, Some(cap), Some(depth), show_hidden)
-            {
-                return Ok(ListFilesResult { files, truncated });
-            }
-        }
-    }
-    if let WorkspaceEnv::Ssh { profile_id } = &workspace {
-        let (files, truncated) = tauri::async_runtime::block_on(
-            crate::modules::ssh::remote::remote_list_files(
-                profile_id,
-                &root,
-                Some(cap),
-                Some(depth),
-                show_hidden,
-            ),
-        )?;
-        return Ok(ListFilesResult { files, truncated });
-    }
-    let root_path = resolve_path(&root, &workspace);
-    if !root_path.is_dir() {
-        return Err(format!("not a directory: {root}"));
-    }
-
-    let walker = WalkBuilder::new(&root_path)
-        .hidden(!show_hidden)
-        .git_ignore(true)
-        .git_global(true)
-        .git_exclude(true)
-        .ignore(true)
-        .parents(true)
-        .follow_links(false)
-        .max_depth(Some(depth))
-        .filter_entry(|dent| {
-            if dent.depth() == 0 {
-                return true;
-            }
-            match dent.file_name().to_str() {
-                Some(name) => !PRUNE_DIRS.contains(&name),
-                None => true,
-            }
-        })
-        .build();
-
-    let mut files: Vec<String> = Vec::with_capacity(cap.min(256));
-    let mut scanned: usize = 0;
-    let mut truncated = false;
-
-    for dent in walker.flatten() {
-        scanned += 1;
-        if scanned > MAX_SCANNED {
-            truncated = true;
-            break;
-        }
-        let is_file = dent.file_type().map(|t| t.is_file()).unwrap_or(false);
-        if !is_file {
-            continue;
-        }
-        let path = dent.path();
-        let rel = match path.strip_prefix(&root_path) {
-            Ok(r) => to_canon(r),
-            Err(_) => continue,
-        };
-        if rel.is_empty() {
-            continue;
-        }
-        files.push(rel);
-        if files.len() >= cap {
-            truncated = true;
-            break;
-        }
-    }
-
-    files.sort_by_key(|a| a.to_lowercase());
-    Ok(ListFilesResult { files, truncated })
-}
-
 fn display_path(
     path: &std::path::Path,
     root_path: &std::path::Path,

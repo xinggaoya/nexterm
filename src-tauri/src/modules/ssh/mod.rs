@@ -7,13 +7,14 @@
 //!   watcher 与 shell 后台进程暂不支持,由 `workspace::reject_ssh_unsupported`
 //!   统一拒绝并给出清晰错误。
 
+pub mod bounded;
 pub mod client;
 pub mod known_hosts;
-pub mod remote;
 pub mod profiles;
+pub mod remote;
+pub mod terminal;
 #[cfg(test)]
 mod tests;
-pub mod terminal;
 
 use tauri::{AppHandle, Manager};
 

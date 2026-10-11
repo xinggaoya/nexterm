@@ -15,7 +15,9 @@ use crate::modules::workspace::{
     normalize_host_path, resolve_path, WorkspaceEnv, WorkspaceRegistry,
 };
 
-use self::events::{normalize_frontend_path, run_event_batcher, FsChangeKind, WorkspaceFsChangedEvent};
+use self::events::{
+    normalize_frontend_path, run_event_batcher, FsChangeKind, WorkspaceFsChangedEvent,
+};
 
 #[cfg(test)]
 use self::events::{
@@ -109,17 +111,22 @@ pub fn fs_watch_workspace(
         .map_err(|e| format!("spawn workspace event batcher: {e}"))?;
     let source = start_refresh_source(&app, &context, event_tx.clone());
 
-    let mut watchers = mutex_lock(&state.watchers, "fs watcher state")?;
-    watchers.insert(
-        context.key.clone(),
-        ActiveWatcher {
-            root_path: context.root_path.clone(),
-            source: Some(source),
-            event_tx: Some(event_tx),
-            flush_request,
-            batch_thread: Some(batch_thread),
-        },
-    );
+    // 先构造再插入，且插入前把旧值取出后**在锁外** drop：
+    // `ActiveWatcher::drop` 会 join batcher 线程（最多等一个 200ms
+    // 窗口）。若在持锁期间析构，整个 watcher 表会被冻住，
+    // `fs_watch_workspace` / `fs_force_flush_workspace` 一起卡。
+    let entry = ActiveWatcher {
+        root_path: context.root_path.clone(),
+        source: Some(source),
+        event_tx: Some(event_tx),
+        flush_request,
+        batch_thread: Some(batch_thread),
+    };
+    let evicted = {
+        let mut watchers = mutex_lock(&state.watchers, "fs watcher state")?;
+        watchers.insert(context.key.clone(), entry)
+    };
+    drop(evicted);
     log::info!("watching workspace refresh source: {}", context.root_path);
     Ok(())
 }
@@ -136,8 +143,13 @@ pub fn fs_unwatch_workspace(
     crate::modules::workspace::reject_ssh_unsupported(&workspace, "fs watcher")?;
     let root_path = normalize_frontend_path(&root_path);
     let key = workspace_watch_key(&root_path, &workspace);
-    let mut watchers = mutex_lock(&state.watchers, "fs watcher state")?;
-    watchers.remove(&key);
+    // 同上：remove 的返回值是临时值，它在语句结束、guard 仍然存活时
+    // 析构 —— 也就是整个停机流程（含 join）发生在全局 watcher 锁内。
+    let removed = {
+        let mut watchers = mutex_lock(&state.watchers, "fs watcher state")?;
+        watchers.remove(&key)
+    };
+    drop(removed);
     Ok(())
 }
 
@@ -170,6 +182,33 @@ pub fn fs_force_flush_workspace(
     Ok(())
 }
 
+/// 把 `paths` 与 `kinds` 合成同一批 `(path, kind)`，再排序去重，最后
+/// 拆回两条等长的平行向量。
+///
+/// - `kinds` 缺省或长度不匹配时按 `Modify` 处理（向后兼容旧 emitter）
+/// - 同一路径出现多次时，`Delete > Create > Modify`，取「最重」的那个：
+///   文件被删了又被重建时 explorer 必须按 create 走
+pub(crate) fn align_paths_with_kinds(
+    paths: Vec<String>,
+    kinds: Option<Vec<FsChangeKind>>,
+) -> Vec<(String, FsChangeKind)> {
+    let kinds = kinds.unwrap_or_default();
+    let mut merged: Vec<(String, FsChangeKind)> = Vec::with_capacity(paths.len());
+    for (index, path) in paths.into_iter().enumerate() {
+        let kind = kinds.get(index).copied().unwrap_or(FsChangeKind::Modify);
+        match merged.iter_mut().find(|(existing, _)| existing == &path) {
+            Some(slot) => {
+                if kind.severity() > slot.1.severity() {
+                    slot.1 = kind;
+                }
+            }
+            None => merged.push((path, kind)),
+        }
+    }
+    merged.sort_by(|a, b| a.0.cmp(&b.0));
+    merged
+}
+
 /// Emit a workspace-fs-changed event through the active watcher's batcher
 /// channel. Used by app-internal fs commands (`fs_write_file`,
 /// `fs_create_file`, `fs_rename`, `fs_delete`, etc.) so the file explorer
@@ -194,13 +233,13 @@ pub(crate) fn emit_workspace_fs_changed_with_kinds(
         }
     };
     let normalized = normalize_frontend_path(root_path);
-    let mut sorted_paths = paths;
-    sorted_paths.sort();
-    sorted_paths.dedup();
-    let kinds = match kinds {
-        Some(k) => k,
-        None => vec![FsChangeKind::Modify; sorted_paths.len()],
-    };
+    // paths 与 kinds 是位置对齐的两条平行向量，排序/去重必须在**同一个
+    // 结构**上做。分开处理会让二者错位：一次 `fs_copy_many([{A→B},
+    // {A→C}])` 会产生 paths=[A,B,A,C] + kinds=[Del,Cre,Del,Cre]，
+    // paths 去重后只剩 3 条而 kinds 仍是 4 条，前端按 index 取到的变更
+    // 类型全部是错的。
+    let pairs = align_paths_with_kinds(paths, kinds);
+    let (sorted_paths, kinds) = pairs.into_iter().unzip();
     let event = WorkspaceFsChangedEvent {
         root_path: normalized.clone(),
         paths: sorted_paths,
@@ -217,9 +256,7 @@ pub(crate) fn emit_workspace_fs_changed_with_kinds(
         }
         if let Some(event_tx) = watcher.event_tx.as_ref() {
             if event_tx.send(event.clone()).is_err() {
-                log::debug!(
-                    "workspace refresh batch receiver closed during proactive emit"
-                );
+                log::debug!("workspace refresh batch receiver closed during proactive emit");
             }
             delivered = true;
         }
@@ -328,7 +365,12 @@ fn start_refresh_source(
             // batch's `kinds: vec![Modify]` default — see
             // `workspace_fs_event_from_wsl_json_line`.
             let _ = app;
-            match wsl::start_wsl_helper(distro, context.root_path.clone(), has_git_repo, event_tx.clone()) {
+            match wsl::start_wsl_helper(
+                distro,
+                context.root_path.clone(),
+                has_git_repo,
+                event_tx.clone(),
+            ) {
                 Ok(source) => ActiveRefreshSource::Wsl(source),
                 Err(error) => {
                     log::warn!("WSL workspace watcher unavailable; using polling: {error}");
@@ -409,6 +451,96 @@ mod tests {
     use super::*;
     use notify::{Event, EventKind};
     use std::path::Path;
+
+    #[test]
+    fn aligned_paths_and_kinds_stay_equal_length_after_dedup() {
+        // 回归护栏：`fs_copy_many([{A->B},{A->C}])` 走 transfer_intent 时会
+        // 产生 paths=[A,B,A,C] + kinds=[Delete,Create,Delete,Create]。
+        // 旧实现只对 paths 做 sort+dedup，kinds 原样透传，长度变成 4 vs 3，
+        // 前端按 index 取到的变更类型全部错位。
+        let pairs = align_paths_with_kinds(
+            vec!["A".into(), "B".into(), "A".into(), "C".into()],
+            Some(vec![
+                FsChangeKind::Delete,
+                FsChangeKind::Create,
+                FsChangeKind::Delete,
+                FsChangeKind::Create,
+            ]),
+        );
+        assert_eq!(pairs.len(), 3, "duplicate path must collapse to one entry");
+        let (paths, kinds): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
+        assert_eq!(paths, vec!["A", "B", "C"]);
+        assert_eq!(kinds.len(), paths.len());
+        assert_eq!(
+            kinds,
+            vec![
+                FsChangeKind::Delete,
+                FsChangeKind::Create,
+                FsChangeKind::Create
+            ]
+        );
+    }
+
+    #[test]
+    fn missing_kinds_default_to_modify_without_dropping_paths() {
+        let pairs = align_paths_with_kinds(vec!["x".into(), "y".into()], None);
+        assert_eq!(
+            pairs,
+            vec![
+                ("x".to_string(), FsChangeKind::Modify),
+                ("y".to_string(), FsChangeKind::Modify)
+            ]
+        );
+    }
+
+    #[test]
+    fn short_kinds_vector_does_not_drop_trailing_paths() {
+        // 旧 emitter 可能给出比 paths 短的 kinds。zip 会静默丢掉尾部。
+        let pairs = align_paths_with_kinds(
+            vec!["a".into(), "b".into(), "c".into()],
+            Some(vec![FsChangeKind::Create]),
+        );
+        assert_eq!(pairs.len(), 3);
+        assert_eq!(pairs[0].1, FsChangeKind::Create);
+        assert_eq!(pairs[1].1, FsChangeKind::Modify);
+        assert_eq!(pairs[2].1, FsChangeKind::Modify);
+    }
+
+    #[test]
+    fn delete_wins_over_create_and_modify_when_paths_repeat() {
+        // 删了又重建时必须按 create 走，否则 explorer 不会把新文件补进树。
+        let pairs = align_paths_with_kinds(
+            vec!["f".into(), "f".into(), "f".into()],
+            Some(vec![
+                FsChangeKind::Delete,
+                FsChangeKind::Modify,
+                FsChangeKind::Create,
+            ]),
+        );
+        assert_eq!(pairs, vec![("f".to_string(), FsChangeKind::Delete)]);
+
+        let pairs = align_paths_with_kinds(
+            vec!["f".into(), "f".into()],
+            Some(vec![FsChangeKind::Modify, FsChangeKind::Create]),
+        );
+        assert_eq!(pairs, vec![("f".to_string(), FsChangeKind::Create)]);
+    }
+
+    #[test]
+    fn batch_keeps_paths_when_kinds_are_absent() {
+        // `WorkspaceFsEventBatch::add` 以前直接 `paths.zip(kinds)`，
+        // kinds 为空时整批路径会被静默丢弃。
+        let mut batch = WorkspaceFsEventBatch::default();
+        batch.add(WorkspaceFsChangedEvent {
+            root_path: "/repo".into(),
+            paths: vec!["/repo/a.rs".into()],
+            git_related: false,
+            kinds: Vec::new(),
+        });
+        let event = batch.into_event().expect("batch must still carry the path");
+        assert_eq!(event.paths, vec!["/repo/a.rs".to_string()]);
+        assert_eq!(event.kinds, vec![FsChangeKind::Modify]);
+    }
 
     #[test]
     fn maps_local_event_paths_to_frontend_paths() {
@@ -520,7 +652,10 @@ mod tests {
         )
         .expect("notify event should become a workspace event");
 
-        assert!(event.git_related, "source changes inside a git repo must trigger git status refresh");
+        assert!(
+            event.git_related,
+            "source changes inside a git repo must trigger git status refresh"
+        );
         assert_eq!(event.paths, vec!["/tmp/repo/src/main.rs".to_string()]);
         assert_eq!(event.kinds, vec![FsChangeKind::Modify]);
     }

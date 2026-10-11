@@ -2,7 +2,9 @@ use std::ffi::{OsStr, OsString};
 
 use crate::modules::git::errors::Result;
 use crate::modules::git::parser::parse_branch_lines;
-use crate::modules::git::process::{ensure_success, git_stdout_line_opt, git_stdout_lines, run_git};
+use crate::modules::git::process::{
+    ensure_success, git_stdout_line_opt, git_stdout_lines, run_git,
+};
 use crate::modules::git::types::{GitBranchInfo, GitBranchResult, DEFAULT_TIMEOUT_SECS};
 use crate::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
 

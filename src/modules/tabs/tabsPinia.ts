@@ -26,12 +26,13 @@ import {
 } from "@/modules/terminal/lib/sessions";
 import {
   deserializeTerminals,
-  isWorthPersisting,
-  serializeTerminal,
   type PersistedTerminalLayout,
 } from "@/modules/terminal/lib/sessionRestore";
+import { useTerminalLayoutPersistence } from "./useTerminalLayoutPersistence";
 import { setTerminalLayout, loadTerminalLayout } from "@/modules/settings/store";
 import { isDirtyEditorTab } from "./closeGuards";
+import { remapUnderPath } from "./pathRemap";
+import { useLeafOwnership } from "./useLeafOwnership";
 import { reorderTabs, type TabDropPlacement } from "./tabsReorder";
 import {
   MAX_PANES_PER_TAB,
@@ -115,41 +116,22 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
   const closedStackByWorkspace = ref<Record<string, Tab[]>>({});
   const CLOSED_STACK_MAX = 20;
   // workspaceId → leafId → owning tabId. Lets `setLeafCwd` / `setLeafTitle`
-  // find the owning tab in O(1) instead of walking every terminal pane tree
-  // in the workspace. Critical because OSC emits cwd/title at potentially
-  // high frequency, and the previous `.map()` over all tabs in the workspace
-  // produced O(Tab 数) new tab objects per tick.
-  const leafOwnerByWorkspace = ref<Record<string, Record<number, number>>>({});
+  // leaf → tab 的反查表：O(1) 定位，避免每次 OSC 事件都遍历整个工作区的
+  // paneTree。终端狂输出时这是 SessionStrip 是否重渲的关键。
+  // 实现与单测见 useLeafOwnership.ts（纯数据结构，无 store 依赖）。
+  const leafOwnership = useLeafOwnership();
+  const leafOwnerByWorkspace = leafOwnership.byWorkspace;
 
   function registerLeaf(wsId: string, tabId: number, leafId: number): void {
-    const bucket = leafOwnerByWorkspace.value[wsId] ?? {};
-    bucket[leafId] = tabId;
-    leafOwnerByWorkspace.value = { ...leafOwnerByWorkspace.value, [wsId]: bucket };
+    leafOwnership.register(wsId, tabId, leafId);
   }
 
   function unregisterLeaf(wsId: string, leafId: number): void {
-    const bucket = leafOwnerByWorkspace.value[wsId];
-    if (!bucket || !(leafId in bucket)) return;
-    delete bucket[leafId];
-    leafOwnerByWorkspace.value = { ...leafOwnerByWorkspace.value, [wsId]: { ...bucket } };
+    leafOwnership.unregister(wsId, leafId);
   }
 
   function clearLeafOwnersForTab(wsId: string, tabId: number): void {
-    const bucket = leafOwnerByWorkspace.value[wsId];
-    if (!bucket) return;
-    let changed = false;
-    const next: Record<number, number> = {};
-    for (const [leafId, ownerId] of Object.entries(bucket)) {
-      const numLeaf = Number(leafId);
-      if (ownerId === tabId) {
-        changed = true;
-        continue;
-      }
-      next[numLeaf] = ownerId;
-    }
-    if (changed) {
-      leafOwnerByWorkspace.value = { ...leafOwnerByWorkspace.value, [wsId]: next };
-    }
+    leafOwnership.clearForTab(wsId, tabId);
   }
 
   const activeWorkspaceId = computed<string | null>(
@@ -223,52 +205,24 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
    * 写盘是防抖的：终端标题（OSC）高频变化，每次都写偏好会把 store 打满。
    * 读盘只在 initWorkspace 的首次进入时做一次。
    */
-  const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  const LAYOUT_PERSIST_DEBOUNCE_MS = 500;
-
-  /**
-   * 已 hydrate 的布局快照。
-   *
-   * tabs store **不**依赖 preferencesPinia —— 标签恢复发生在 WorkspaceHost
-   * 挂载早期，那一刻偏好可能还没 hydrate，耦合它会带来初始化顺序问题。
-   * 快照由应用入口在 hydrate 之后注入，读不到时走磁盘的异步路径。
-   */
-  let terminalLayoutSnapshot: Record<string, PersistedTerminalLayout> = {};
+  // 防抖写盘与快照读取的实现（以及「为什么 store 不依赖 preferencesPinia」
+  // 的说明）在 useTerminalLayoutPersistence.ts —— 这段逻辑完全不需要响应式。
+  const layoutPersistence = useTerminalLayoutPersistence({
+    readTerminalTabs: (wsId) =>
+      (tabsByWorkspace.value[wsId] ?? []).filter(
+        (tab): tab is TerminalTab => tab.kind === "terminal",
+      ),
+    readActiveTabId: (wsId) => activeIdByWorkspace.value[wsId],
+    write: setTerminalLayout,
+  });
 
   function schedulePersistLayout(wsId: string): void {
-    const existing = persistTimers.get(wsId);
-    if (existing) clearTimeout(existing);
-    persistTimers.set(
-      wsId,
-      setTimeout(() => {
-        persistTimers.delete(wsId);
-        void persistLayoutNow(wsId);
-      }, LAYOUT_PERSIST_DEBOUNCE_MS),
-    );
+    layoutPersistence.schedulePersist(wsId);
   }
 
-  async function persistLayoutNow(wsId: string): Promise<void> {
-    const list = (tabsByWorkspace.value[wsId] ?? []).filter(
-      (tab): tab is TerminalTab => tab.kind === "terminal",
-    );
-    if (!isWorthPersisting(list)) {
-      // 退化回"只有一个裸 shell"时不留痕：否则每次启动都会恢复出一个
-      // 看起来多余的空终端。
-      void setTerminalLayout(wsId, null);
-      return;
-    }
-    const terminals = list
-      .map((tab) => serializeTerminal(tab))
-      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-    if (terminals.length === 0) return;
-    const activeIndex = list.findIndex(
-      (tab) => tab.id === activeIdByWorkspace.value[wsId],
-    );
-    const layout: PersistedTerminalLayout = {
-      terminals,
-      activeTerminalIndex: activeIndex < 0 ? 0 : activeIndex,
-    };
-    void setTerminalLayout(wsId, layout);
+  /** 立即落盘（工作区关闭 / 应用退出时用），跳过防抖窗口。 */
+  function flushLayout(wsId: string): void {
+    layoutPersistence.flush(wsId);
   }
 
   /** 按持久化的布局重建终端标签。返回是否真的恢复了。 */
@@ -279,7 +233,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
    * 由 `restoreLayoutAsync` 走磁盘。
    */
   function restoreLayout(wsId: string, fallbackCwd?: string): boolean {
-    const stored = terminalLayoutSnapshot[wsId];
+    const stored = layoutPersistence.snapshotFor(wsId);
     if (!stored) return false;
     return applyRestoredLayout(wsId, stored, fallbackCwd);
   }
@@ -786,13 +740,9 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     const wsId = resolveWorkspaceId(workspaceId);
     const list = workspaceTabs(wsId);
     if (list.length === 0) return 0;
-    const fromPrefix = `${from}/`;
-    /** `path` 命中 `from` 本身，或位于 `from` 之内（`from` 是目录）。 */
-    const remap = (path: string): string | null => {
-      if (path === from) return to;
-      if (path.startsWith(fromPrefix)) return `${to}/${path.slice(fromPrefix.length)}`;
-      return null;
-    };
+    // 重映射规则与目录删除用的是同一条（见 pathRemap.ts）。关键在于用
+    // **带尾斜杠的前缀**比较：`/repo/src-legacy` 不应该被 `/repo/src` 命中。
+    const remap = (path: string): string | null => remapUnderPath(path, from, to);
     let changed = 0;
     const next = list.map((tab): Tab => {
       switch (tab.kind) {
@@ -1325,9 +1275,7 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     delete nextStack[workspaceId];
     closedStackByWorkspace.value = nextStack;
     // ownership map 也得清理，否则会被 pinia 长期持有造成内存泄漏。
-    const nextOwners = { ...leafOwnerByWorkspace.value };
-    delete nextOwners[workspaceId];
-    leafOwnerByWorkspace.value = nextOwners;
+    leafOwnership.clearWorkspace(workspaceId);
   }
 
   return {
@@ -1345,11 +1293,11 @@ export const useTabsPiniaStore = defineStore("tabs", () => {
     initWorkspace,
     disposeWorkspaceTabs,
     workspaceTabs,
-    persistLayoutNow,
     /** 注入已 hydrate 的布局快照（应用入口在偏好加载完成后调用）。 */
     setTerminalLayoutSnapshot: (layouts: Record<string, PersistedTerminalLayout>) => {
-      terminalLayoutSnapshot = layouts ?? {};
+      layoutPersistence.setSnapshot(layouts);
     },
+    flushLayout,
     // mutations (workspaceId optional → active workspace)
     init,
     setActiveId,

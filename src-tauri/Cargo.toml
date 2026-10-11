@@ -22,11 +22,22 @@ resolver = "2"
 name = "nexterm_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# 默认关闭。启用后 release 构建也会带上 WebView 检查器，且
+# `toggle_devtools` / `is_devtools_open` 两条 IPC 命令会被注册。
+# CI 有一条边界测试断言正式发布配置里不包含它。
+devtools = ["tauri/devtools"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["devtools"] }
+# devtools **不默认开启**。它会让 WebView 检查器可用，而检查器
+# Console 直接提供 `__TAURI_INTERNALS__.invoke` 入口 —— 相当于把
+# 整个 IPC 能力面暴露给任何跑在 webview 里的脚本。开发构建由
+# debug_assertions 自动获得；正式发布需要时用 `--features devtools`
+# 显式构建。见 features.devtools。
+tauri = { version = "2" }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

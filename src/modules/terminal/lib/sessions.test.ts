@@ -2,6 +2,24 @@ import type { Terminal } from "@xterm/xterm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PtyHandlers, WorkspaceNative } from "@/lib/native";
 
+// native 的全局 id-keyed 通道：ptyOpen 只负责开会话，写/调整走这三个。
+const { nativePtyWrite, nativePtyResize } = vi.hoisted(() => ({
+  nativePtyWrite: vi.fn(() => Promise.resolve()),
+  nativePtyResize: vi.fn(() => Promise.resolve()),
+}));
+vi.mock("@/lib/native", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/native")>("@/lib/native");
+  return {
+    ...actual,
+    native: {
+      ...actual.native,
+      ptyWrite: nativePtyWrite,
+      ptyResize: nativePtyResize,
+    },
+  };
+});
+
 import {
   createSession,
   disposeAllSessions,
@@ -41,10 +59,10 @@ describe("terminal sessions", () => {
   it("uses the wsNative PTY adapter and preserves split OSC sequences", async () => {
     let handlers: PtyHandlers | undefined;
     let terminalInput: ((data: string) => void) | undefined;
+    // 会话句柄只持有 id（写/调整走全局 native 的 id-keyed 通道），
+    // 这里断言的正是「没有第二套 pty.write / pty.resize」。
     const pty = {
       id: 17,
-      write: vi.fn().mockResolvedValue(undefined),
-      resize: vi.fn().mockResolvedValue(undefined),
       close: vi.fn().mockResolvedValue(undefined),
     };
     const ptyOpen = vi.fn().mockImplementation(
@@ -103,9 +121,9 @@ describe("terminal sessions", () => {
     expect(callbacks.onCwd).toHaveBeenCalledWith("/tmp/project");
 
     terminalInput?.("typed input");
-    expect(pty.write).toHaveBeenCalledWith("typed input");
+    expect(nativePtyWrite).toHaveBeenCalledWith(17, "typed input");
     session.resize(120, 40);
-    expect(pty.resize).toHaveBeenCalledWith(120, 40);
+    expect(nativePtyResize).toHaveBeenCalledWith(17, 120, 40);
     // restart 现在是 best-effort 的 close（不再通过全局 ptyKill），因此
     // 断言 PTY 的 close 被触发。
     session.restart();
@@ -117,8 +135,6 @@ describe("terminal sessions", () => {
   it("passes shellProfileId through to ptyOpen", async () => {
     const pty = {
       id: 7,
-      write: vi.fn().mockResolvedValue(undefined),
-      resize: vi.fn().mockResolvedValue(undefined),
       close: vi.fn().mockResolvedValue(undefined),
     };
     const ptyOpen = vi.fn().mockResolvedValue(pty);
@@ -149,8 +165,6 @@ describe("terminal sessions", () => {
   it("partitions sessions by workspace id", async () => {
     const pty = {
       id: 42,
-      write: vi.fn().mockResolvedValue(undefined),
-      resize: vi.fn().mockResolvedValue(undefined),
       close: vi.fn().mockResolvedValue(undefined),
     };
     const ptyOpen = vi.fn().mockResolvedValue(pty);
@@ -260,8 +274,6 @@ describe("terminal sessions", () => {
     let handlers: PtyHandlers | undefined;
     const pty = {
       id: 9,
-      write: vi.fn().mockResolvedValue(undefined),
-      resize: vi.fn().mockResolvedValue(undefined),
       close: vi.fn().mockResolvedValue(undefined),
     };
     const ptyOpen = vi.fn().mockImplementation(
@@ -299,7 +311,7 @@ describe("terminal sessions", () => {
     expect(termA.__subs.size).toBe(1);
     const termAInput = [...termA.__subs][0];
     termAInput("typed-A");
-    expect(pty.write).toHaveBeenLastCalledWith("typed-A");
+    expect(nativePtyWrite).toHaveBeenLastCalledWith(pty.id, "typed-A");
 
     // 真实场景:split 触发 remount 时,旧 TerminalPane.onBeforeUnmount
     // 会 dispose renderer,renderer 会 dispose xterm,xterm 内部把所有
@@ -322,9 +334,9 @@ describe("terminal sessions", () => {
     const termBInput = [...termB.__subs][0];
     termAInput("after-rebind-A");
     termBInput("typed-B");
-    expect(pty.write).toHaveBeenLastCalledWith("typed-B");
-    expect(pty.write).not.toHaveBeenCalledWith("after-rebind-A");
-    expect(pty.write).toHaveBeenCalledTimes(2); // 初始 1 + termB 1
+    expect(nativePtyWrite).toHaveBeenLastCalledWith(pty.id, "typed-B");
+    expect(nativePtyWrite).not.toHaveBeenCalledWith(pty.id, "after-rebind-A");
+    expect(nativePtyWrite).toHaveBeenCalledTimes(2); // 初始 1 + termB 1
 
     // 连续 rebind A→B→C:每次都要正确解绑前一次的输入订阅,不能累积。
     termB.__deactivate();
@@ -336,16 +348,16 @@ describe("terminal sessions", () => {
     expect(termC.write).toHaveBeenCalledWith("hello-C");
     expect(termA.write).toHaveBeenCalledTimes(1);
     expect(termB.write).toHaveBeenCalledTimes(1);
-    // 在 termCInput 触发前,pty.write 应只有 typed-A / typed-B 两次。
-    expect(pty.write).toHaveBeenCalledTimes(2);
+    // 在 termCInput 触发前,写入应只有 typed-A / typed-B 两次。
+    expect(nativePtyWrite).toHaveBeenCalledTimes(2);
     const termCInput = [...termC.__subs][0];
     termAInput("stale-A");
     termBInput("stale-B");
     termCInput("typed-C");
     // 只有 termCInput 真正到达 PTY,旧 term 的键入因 xterm 已 dispose 而
     // 失效(session 内部也已 dispose 旧订阅)。
-    expect(pty.write).toHaveBeenLastCalledWith("typed-C");
-    expect(pty.write).toHaveBeenCalledTimes(3);
+    expect(nativePtyWrite).toHaveBeenLastCalledWith(pty.id, "typed-C");
+    expect(nativePtyWrite).toHaveBeenCalledTimes(3);
 
     // rebind 到相同 term 是 no-op(防御性短路),不能重复挂订阅。
     session.rebindTerm(termC);

@@ -5,14 +5,14 @@ export const EXPLORER_COMMAND_SPECS: CommandSpec[] = [
     id: "panel.explorer.toggle",
     titleKey: "commands.items.toggleExplorer",
     category: "panel",
-    defaultKeybinding: null,
+    defaultKeybinding: "Ctrl+Shift+E",
     workspaceRequired: true,
   },
   {
     id: "explorer.refresh",
     titleKey: "commands.items.refreshExplorer",
     category: "explorer",
-    defaultKeybinding: null,
+    defaultKeybinding: "F5",
     workspaceRequired: true,
   },
   {
@@ -26,7 +26,7 @@ export const EXPLORER_COMMAND_SPECS: CommandSpec[] = [
     id: "files.recent",
     titleKey: "commands.items.openRecentFile",
     category: "explorer",
-    defaultKeybinding: null,
+    defaultKeybinding: "Ctrl+R",
     workspaceRequired: true,
   },
 ];

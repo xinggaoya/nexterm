@@ -15,6 +15,7 @@ import { createApp } from "vue";
 import MainApp from "./app/MainApp.vue";
 import { applyLanguagePreference, i18n } from "./modules/i18n";
 import { onDeepLinkOpen, type DeepLinkOpenRequest } from "@/lib/native";
+import { confirmDeepLinkWorkspace } from "@/lib/confirmDeepLink";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
@@ -65,6 +66,11 @@ app.mount("#root");
 // through the Rust plugin's setup hook into this `nexterm://deep-link-open`
 // event. A deep link adds the workspace to the multi-workspace set (or
 // focuses it if already open) rather than replacing the current workspace.
+//
+// 深链是**外部输入**：诱导用户点击 `nexterm://open?workspacePath=C:\Users\x\.ssh`
+// 就能把凭据目录变成工作区 —— 也就是一次「授权」，而授权等于后续 fs 读写
+// 的通行证。所以这里必须先弹确认，用户点了才走 addWorkspace。已打开的
+// 工作区不需要确认（只是切焦点，不扩大权限面）。
 if (hasTauriInternals()) {
   const workspacesStore = useWorkspacesPiniaStore(pinia);
   void onDeepLinkOpen((request: DeepLinkOpenRequest) => {
@@ -72,8 +78,17 @@ if (hasTauriInternals()) {
       request.env === "wsl" && request.wslDistro
         ? { kind: "wsl", distro: request.wslDistro }
         : { kind: "local" };
-    void workspacesStore.addWorkspace(request.path, env).catch((error: unknown) => {
-      console.warn("Failed to open workspace from deep link", error);
-    });
+    void (async () => {
+      try {
+        const confirmed = await confirmDeepLinkWorkspace(request.path);
+        if (!confirmed) {
+          console.info("deep link workspace rejected by user", request.path);
+          return;
+        }
+        await workspacesStore.addWorkspace(request.path, env);
+      } catch (error: unknown) {
+        console.warn("Failed to open workspace from deep link", error);
+      }
+    })();
   });
 }

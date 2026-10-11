@@ -106,7 +106,12 @@ fn make_profile(id: &str, name: &str, program: PathBuf, kind: ShellKind) -> Shel
 pub fn detected_profiles_windows() -> Vec<ShellProfile> {
     let mut out = Vec::new();
     if let Some(p) = find_pwsh() {
-        out.push(make_profile("pwsh", "PowerShell 7", p, ShellKind::Powershell));
+        out.push(make_profile(
+            "pwsh",
+            "PowerShell 7",
+            p,
+            ShellKind::Powershell,
+        ));
     }
     if let Some(p) = find_windows_powershell() {
         out.push(make_profile(
@@ -126,7 +131,12 @@ pub fn detected_profiles_windows() -> Vec<ShellProfile> {
         out.push(make_profile("nu", "Nushell", p, ShellKind::Other));
     }
     if let Some(p) = find_cygwin_bash() {
-        out.push(make_profile("cygwin-bash", "Cygwin Bash", p, ShellKind::Bash));
+        out.push(make_profile(
+            "cygwin-bash",
+            "Cygwin Bash",
+            p,
+            ShellKind::Bash,
+        ));
     }
     out
 }
@@ -155,10 +165,7 @@ pub fn resolve_local_shell(shell_id: Option<&str>) -> ResolvedLocalShell {
         None | Some("") | Some("auto") => return auto(),
         Some(other) => other,
     };
-    match detected_profiles_windows()
-        .into_iter()
-        .find(|p| p.id == id)
-    {
+    match detected_profiles_windows().into_iter().find(|p| p.id == id) {
         Some(profile) => {
             let program = PathBuf::from(&profile.program);
             let kind = ShellKind::from_program(&program);
@@ -197,8 +204,8 @@ fn windows_shell_path_from(
         return p;
     }
 
-    if let Some(candidate) = program_files
-        .map(|pf| pf.join("PowerShell").join("7").join("pwsh.exe"))
+    if let Some(candidate) =
+        program_files.map(|pf| pf.join("PowerShell").join("7").join("pwsh.exe"))
     {
         if candidate.is_file() {
             return candidate;

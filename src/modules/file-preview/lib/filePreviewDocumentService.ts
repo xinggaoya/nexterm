@@ -1,3 +1,4 @@
+import { normalizeErrorMessage } from "@/lib/error";
 import type { WorkspaceNative } from "@/lib/native";
 import { imageMimeFromPath, isPreviewableImagePath } from "./imageFiles";
 
@@ -32,6 +33,6 @@ export async function readFilePreview(
       size: result.size,
     };
   } catch (error) {
-    return { status: "error", message: String(error) };
+    return { status: "error", message: normalizeErrorMessage(error) };
   }
 }

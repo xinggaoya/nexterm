@@ -1,8 +1,11 @@
+use std::collections::HashMap;
 use std::ffi::OsString;
 
 use crate::modules::git::errors::{GitError, Result};
 use crate::modules::git::parser::{parse_fetch_summary, parse_pull_summary};
-use crate::modules::git::process::{ensure_success, git_stdout_line_opt, git_stdout_lines, run_git};
+use crate::modules::git::process::{
+    ensure_success, git_stdout_line_opt, git_stdout_lines, run_git,
+};
 use crate::modules::git::types::{
     GitFetchResult, GitPullResult, GitRemoteInfo, GitRemoteInput, GitRemoteUrlUpdate,
     DEFAULT_TIMEOUT_SECS, NETWORK_TIMEOUT_SECS,
@@ -35,32 +38,65 @@ pub fn remote_list(
     workspace: &WorkspaceEnv,
 ) -> Result<Vec<GitRemoteInfo>> {
     with_repo(registry, repo_root, workspace, |repo_root| {
-        let names = git_stdout_lines(&repo_root.workspace, &repo_root.git_path, ["remote"])?;
-        let mut out: Vec<GitRemoteInfo> = Vec::with_capacity(names.len());
-        for raw in names {
-            let name = parse_remote_name(&raw);
-            if name.is_empty() || !name.chars().all(is_remote_name_char) || name.len() > 64 {
+        // 一次 `git config --get-regexp` 取代 `git remote` + 每个 remote
+        // 两次 `git config --get`。旧实现是 1 + 2N 次进程创建，而每次
+        // git 调用还会再派生 3 个 OS 线程（2 个 drain + 1 个 wait）——
+        // 一个配了 5 个 remote 的仓库，光是列 remote 就要 33 个线程。
+        let entries = git_stdout_lines(
+            &repo_root.workspace,
+            &repo_root.git_path,
+            ["config", "--get-regexp", r"^remote\..*\.(url|pushurl)$"],
+        )
+        .unwrap_or_default();
+
+        // `remote.<name>.url <value>` —— 保留最后一次出现（多值 config 时
+        // git 自身也是后者生效）。
+        let mut urls: HashMap<String, String> = HashMap::new();
+        let mut push_urls: HashMap<String, String> = HashMap::new();
+        for line in entries {
+            let Some((key, value)) = line.split_once(char::is_whitespace) else {
+                continue;
+            };
+            let key = key.trim();
+            let value = value.trim().to_string();
+            if value.is_empty() {
                 continue;
             }
-            let fetch_url = git_stdout_line_opt(
-                &repo_root.workspace,
-                &repo_root.git_path,
-                ["config", "--get", &format!("remote.{name}.url")],
-            )?
-            .unwrap_or_default();
-            let push_url = git_stdout_line_opt(
-                &repo_root.workspace,
-                &repo_root.git_path,
-                ["config", "--get", &format!("remote.{name}.pushurl")],
-            )?
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| fetch_url.clone());
-            out.push(GitRemoteInfo {
-                name,
-                fetch_url,
-                push_url,
-            });
+            let Some(rest) = key.strip_prefix("remote.") else {
+                continue;
+            };
+            let Some((name, field)) = rest.rsplit_once('.') else {
+                continue;
+            };
+            match field {
+                "url" => {
+                    urls.insert(name.to_string(), value);
+                }
+                "pushurl" => {
+                    push_urls.insert(name.to_string(), value);
+                }
+                _ => {}
+            }
         }
+
+        let mut out: Vec<GitRemoteInfo> = urls
+            .iter()
+            // remote name 后面会被拼进 `git push <name> <ref>`，非法字符必须
+            // 在这里挡掉（校验规则与旧实现一致）。
+            .filter(|(name, _)| {
+                !name.is_empty() && name.len() <= 64 && name.chars().all(is_remote_name_char)
+            })
+            .map(|(name, fetch_url)| GitRemoteInfo {
+                name: name.clone(),
+                fetch_url: fetch_url.clone(),
+                // 没有单独配置 pushurl 时，git 推送就用 fetch url。
+                push_url: push_urls
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| fetch_url.clone()),
+            })
+            .collect();
+        out.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(out)
     })
 }
@@ -179,7 +215,10 @@ pub(super) fn validate_remote_name(name: &str) -> Result<()> {
     // 首字符必须为字母或下划线;`is_some_and` 同时覆盖空串与首字符校验,
     // 避免 unwrap。
     let mut chars = name.chars();
-    if !chars.next().is_some_and(|first| first.is_ascii_alphanumeric() || first == '_') {
+    if !chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphanumeric() || first == '_')
+    {
         return Err(GitError::command(
             "git remote",
             format!("invalid remote name: {name}"),
@@ -192,30 +231,6 @@ pub(super) fn validate_remote_name(name: &str) -> Result<()> {
         ));
     }
     Ok(())
-}
-
-/// `git remote` may wrap names containing special characters in double quotes
-/// and escape inner quotes / backslashes; strip that wrapper so the caller
-/// gets the literal name. Empty lines (e.g. trailing newline) yield an empty
-/// string, which the caller will skip via the validity check.
-fn parse_remote_name(raw: &str) -> String {
-    let trimmed = raw.trim();
-    if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
-        let inner = &trimmed[1..trimmed.len() - 1];
-        let mut out = String::with_capacity(inner.len());
-        let mut iter = inner.chars().peekable();
-        while let Some(c) = iter.next() {
-            if c == '\\' {
-                if let Some(next) = iter.next() {
-                    out.push(next);
-                }
-            } else {
-                out.push(c);
-            }
-        }
-        return out;
-    }
-    trimmed.to_string()
 }
 
 pub fn fetch(
@@ -276,7 +291,14 @@ mod tests {
 
     #[test]
     fn validate_remote_name_accepts_common_names() {
-        for name in ["origin", "upstream", "remote_1", "a.b-c", "origin1", "_internal"] {
+        for name in [
+            "origin",
+            "upstream",
+            "remote_1",
+            "a.b-c",
+            "origin1",
+            "_internal",
+        ] {
             super::validate_remote_name(name)
                 .unwrap_or_else(|e| panic!("expected {name} to be valid, got {e}"));
         }
@@ -302,36 +324,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_remote_name_passes_plain_names_through() {
-        assert_eq!(super::parse_remote_name("origin"), "origin");
-        assert_eq!(super::parse_remote_name("  origin  "), "origin");
-    }
-
-    #[test]
-    fn parse_remote_name_unwraps_double_quoted_names() {
-        assert_eq!(
-            super::parse_remote_name("\"weird name\""),
-            "weird name"
-        );
-        // Escapes inside the quoted form should be unescaped exactly once.
-        assert_eq!(
-            super::parse_remote_name("\"a\\\\b\\\"c\""),
-            "a\\b\"c"
-        );
-    }
-
-    #[test]
     fn remote_list_on_empty_repo_returns_empty() {
         let root = make_root("remote-list-empty");
         init_git_repo(&root.path, "main");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let list = super::remote_list(
-            &root.registry,
-            &path_str,
-            &WorkspaceEnv::Local,
-        )
-        .expect("remote list succeeds");
+        let list = super::remote_list(&root.registry, &path_str, &WorkspaceEnv::Local)
+            .expect("remote list succeeds");
 
         assert!(list.is_empty());
     }
@@ -377,17 +376,16 @@ mod tests {
             ],
         );
 
-        let list = super::remote_list(
-            &root.registry,
-            &path_str,
-            &WorkspaceEnv::Local,
-        )
-        .expect("remote list succeeds");
+        let list = super::remote_list(&root.registry, &path_str, &WorkspaceEnv::Local)
+            .expect("remote list succeeds");
         assert_eq!(list.len(), 2);
         let origin = list.iter().find(|r| r.name == "origin").expect("origin");
         assert_eq!(origin.fetch_url, "git@github.com:test/test.git");
         assert_eq!(origin.push_url, origin.fetch_url);
-        let upstream = list.iter().find(|r| r.name == "upstream").expect("upstream");
+        let upstream = list
+            .iter()
+            .find(|r| r.name == "upstream")
+            .expect("upstream");
         assert_eq!(upstream.fetch_url, "git@github.com:up/up.git");
         assert_eq!(upstream.push_url, "git@github.com:up/push.git");
 
@@ -410,16 +408,10 @@ mod tests {
         );
 
         // Remove origin.
-        super::remote_remove(
-            &root.registry,
-            &path_str,
-            "origin",
-            &WorkspaceEnv::Local,
-        )
-        .expect("remote remove succeeds");
-        let list_after =
-            super::remote_list(&root.registry, &path_str, &WorkspaceEnv::Local)
-                .expect("remote list after remove");
+        super::remote_remove(&root.registry, &path_str, "origin", &WorkspaceEnv::Local)
+            .expect("remote remove succeeds");
+        let list_after = super::remote_list(&root.registry, &path_str, &WorkspaceEnv::Local)
+            .expect("remote list after remove");
         assert_eq!(list_after.len(), 1);
         assert_eq!(list_after[0].name, "upstream");
     }
@@ -460,13 +452,8 @@ mod tests {
         init_git_repo(&root.path, "main");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let err = super::remote_remove(
-            &root.registry,
-            &path_str,
-            "missing",
-            &WorkspaceEnv::Local,
-        )
-        .expect_err("removing missing remote must fail");
+        let err = super::remote_remove(&root.registry, &path_str, "missing", &WorkspaceEnv::Local)
+            .expect_err("removing missing remote must fail");
         assert!(err.to_string().contains("git remote remove"));
     }
 

@@ -6,9 +6,9 @@ use std::io::Read;
 #[cfg(unix)]
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 #[cfg(unix)]
 use std::time::Instant;
-use std::time::Duration;
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine as _;
@@ -103,22 +103,15 @@ fn dispatch(method: &str, params: Value) -> Result<Value, String> {
         }
         "fs.moveMany" => {
             let params: TransferManyParams = parse_params(params)?;
-            Ok(serde_json::to_value(fs_move_many(params)?)
-                .map_err(|error| error.to_string())?)
+            Ok(serde_json::to_value(fs_move_many(params)?).map_err(|error| error.to_string())?)
         }
         "fs.copyMany" => {
             let params: TransferManyParams = parse_params(params)?;
-            Ok(serde_json::to_value(fs_copy_many(params)?)
-                .map_err(|error| error.to_string())?)
+            Ok(serde_json::to_value(fs_copy_many(params)?).map_err(|error| error.to_string())?)
         }
         "fs.search" => {
             let params: SearchParams = parse_params(params)?;
             Ok(serde_json::to_value(crate::search::fs_search(params)?)
-                .map_err(|error| error.to_string())?)
-        }
-        "fs.listFiles" => {
-            let params: ListFilesParams = parse_params(params)?;
-            Ok(serde_json::to_value(crate::search::fs_list_files(params)?)
                 .map_err(|error| error.to_string())?)
         }
         "fs.grep" => {
@@ -173,7 +166,8 @@ fn mtime_ms(meta: &std::fs::Metadata) -> u64 {
 
 pub fn fs_read_dir(params: ReadDirParams) -> Result<ReadDirResult, String> {
     let root = params.path;
-    let meta = std::fs::metadata(&root).map_err(|error| format!("not a directory: {root}: {error}"))?;
+    let meta =
+        std::fs::metadata(&root).map_err(|error| format!("not a directory: {root}: {error}"))?;
     if !meta.is_dir() {
         return Err(format!("not a directory: {root}"));
     }
@@ -194,7 +188,12 @@ pub fn fs_read_dir(params: ReadDirParams) -> Result<ReadDirResult, String> {
             .chars()
             .map(|c| if c == '\t' || c == '\n' { ' ' } else { c })
             .collect();
-        entries.push(DirEntry { name, kind, size, mtime });
+        entries.push(DirEntry {
+            name,
+            kind,
+            size,
+            mtime,
+        });
     }
     entries.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(ReadDirResult { entries })
@@ -207,14 +206,20 @@ pub fn fs_stat(params: StatParams) -> Result<StatResult, String> {
 
 pub fn fs_read_file(params: ReadFileParams) -> Result<ReadFileResult, String> {
     let max = params.max_bytes.unwrap_or(DEFAULT_READ_FILE_MAX_BYTES);
-    let meta = std::fs::metadata(&params.path).map_err(|error| format!("{}: {error}", params.path))?;
+    let meta =
+        std::fs::metadata(&params.path).map_err(|error| format!("{}: {error}", params.path))?;
     if meta.is_dir() {
         return Err(format!("{}: is a directory", params.path));
     }
     if meta.len() > max {
-        return Err(format!("{}: file too large ({} > {max})", params.path, meta.len()));
+        return Err(format!(
+            "{}: file too large ({} > {max})",
+            params.path,
+            meta.len()
+        ));
     }
-    let mut bytes = std::fs::read(&params.path).map_err(|error| format!("{}: {error}", params.path))?;
+    let mut bytes =
+        std::fs::read(&params.path).map_err(|error| format!("{}: {error}", params.path))?;
     // stat 与 read 之间文件可能增长;宁可截断也不越过上限。
     let truncated = bytes.len() as u64 > max;
     if truncated {
@@ -228,8 +233,13 @@ pub fn fs_read_file(params: ReadFileParams) -> Result<ReadFileResult, String> {
 
 #[cfg(unix)]
 pub fn exec(params: ExecParams) -> Result<ExecResult, String> {
-    let program = params.argv.first().ok_or_else(|| "exec: argv is empty".to_string())?;
-    let max_output = params.max_output_bytes.unwrap_or(DEFAULT_EXEC_MAX_OUTPUT_BYTES);
+    let program = params
+        .argv
+        .first()
+        .ok_or_else(|| "exec: argv is empty".to_string())?;
+    let max_output = params
+        .max_output_bytes
+        .unwrap_or(DEFAULT_EXEC_MAX_OUTPUT_BYTES);
     let timeout = params
         .timeout_ms
         .map(Duration::from_millis)
@@ -250,7 +260,9 @@ pub fn exec(params: ExecParams) -> Result<ExecResult, String> {
     }
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    let mut child = cmd.spawn().map_err(|error| format!("exec {program}: {error}"))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|error| format!("exec {program}: {error}"))?;
     if let Some(data) = params.stdin_base64 {
         let bytes = BASE64_STANDARD
             .decode(data.as_bytes())
@@ -265,8 +277,14 @@ pub fn exec(params: ExecParams) -> Result<ExecResult, String> {
         drop(stdin);
     }
 
-    let mut stdout_pipe = child.stdout.take().ok_or_else(|| "exec: no stdout".to_string())?;
-    let mut stderr_pipe = child.stderr.take().ok_or_else(|| "exec: no stderr".to_string())?;
+    let mut stdout_pipe = child
+        .stdout
+        .take()
+        .ok_or_else(|| "exec: no stdout".to_string())?;
+    let mut stderr_pipe = child
+        .stderr
+        .take()
+        .ok_or_else(|| "exec: no stderr".to_string())?;
     let stdout_reader = std::thread::spawn(move || drain_capped(&mut stdout_pipe, max_output));
     let stderr_reader = std::thread::spawn(move || drain_capped(&mut stderr_pipe, max_output));
 
@@ -402,15 +420,11 @@ fn transfer_many(
     ))
 }
 
-pub fn fs_move_many(
-    params: TransferManyParams,
-) -> Result<nexterm_fs_core::TransferResult, String> {
+pub fn fs_move_many(params: TransferManyParams) -> Result<nexterm_fs_core::TransferResult, String> {
     transfer_many(params, TransferMode::Move)
 }
 
-pub fn fs_copy_many(
-    params: TransferManyParams,
-) -> Result<nexterm_fs_core::TransferResult, String> {
+pub fn fs_copy_many(params: TransferManyParams) -> Result<nexterm_fs_core::TransferResult, String> {
     transfer_many(params, TransferMode::Copy)
 }
 
@@ -496,8 +510,7 @@ mod tests {
         assert_eq!(stat["kind"], "file");
         assert_eq!(stat["size"], 5);
 
-        let listing =
-            dispatch("fs.readDir", json!({ "path": root })).expect("readDir ok");
+        let listing = dispatch("fs.readDir", json!({ "path": root })).expect("readDir ok");
         let entries = listing["entries"].as_array().expect("entries array");
         let names: Vec<&str> = entries
             .iter()
@@ -520,7 +533,10 @@ mod tests {
             max_bytes: None,
         };
         let result = fs_read_file(params).expect("read ok");
-        assert_eq!(BASE64_STANDARD.decode(&result.content_base64).expect("b64"), vec![1, 2, 3]);
+        assert_eq!(
+            BASE64_STANDARD.decode(&result.content_base64).expect("b64"),
+            vec![1, 2, 3]
+        );
         assert!(!result.truncated);
 
         let dir_params = ReadFileP {
@@ -555,8 +571,14 @@ mod tests {
         }))
         .expect("params");
         let result = exec(params).expect("exec ok");
-        assert_eq!(BASE64_STANDARD.decode(&result.stdout_base64).expect("b64"), b"hello");
-        assert_eq!(BASE64_STANDARD.decode(&result.stderr_base64).expect("b64"), b"oops");
+        assert_eq!(
+            BASE64_STANDARD.decode(&result.stdout_base64).expect("b64"),
+            b"hello"
+        );
+        assert_eq!(
+            BASE64_STANDARD.decode(&result.stderr_base64).expect("b64"),
+            b"oops"
+        );
         assert_eq!(result.exit_code, Some(3));
         assert!(!result.timed_out);
     }

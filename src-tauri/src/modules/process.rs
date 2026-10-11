@@ -155,6 +155,9 @@ mod tests {
         assert!(timed_out, "child must be reported as timed out");
         assert_eq!(exit_code, None, "killed child has no exit code");
         // 远小于 30s 的进程自然寿命,说明确实在截止时间被杀掉。
-        assert!(elapsed < Duration::from_secs(10), "kill took too long: {elapsed:?}");
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "kill took too long: {elapsed:?}"
+        );
     }
 }

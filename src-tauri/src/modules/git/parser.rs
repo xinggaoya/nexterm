@@ -400,10 +400,7 @@ pub fn parse_log_refs(
         // path-like tag reference.
         if let Some(rest) = token.strip_prefix("tag: ") {
             let raw = rest.trim();
-            let name = raw
-                .strip_prefix("refs/tags/")
-                .unwrap_or(raw)
-                .to_string();
+            let name = raw.strip_prefix("refs/tags/").unwrap_or(raw).to_string();
             refs.push(crate::modules::git::types::GitLogRef {
                 name,
                 kind: "tag".to_string(),
@@ -596,7 +593,10 @@ mod tests {
 
         assert_eq!(stashes.len(), 2);
         assert_eq!(stashes[0].selector, "stash@{0}");
-        assert_eq!(stashes[0].full_sha, "0123456789abcdef0123456789abcdef01234567");
+        assert_eq!(
+            stashes[0].full_sha,
+            "0123456789abcdef0123456789abcdef01234567"
+        );
         assert_eq!(stashes[0].short_sha, "abcdef1");
         assert_eq!(stashes[0].message, "WIP on main: change source control");
     }
@@ -689,12 +689,12 @@ mod tests {
         );
         assert_eq!(stashes[0].short_sha, "abcdef1");
         assert_eq!(stashes[0].relative_time, "2 hours ago");
-        assert_eq!(
-            stashes[0].message,
-            "WIP on main: change source control"
-        );
+        assert_eq!(stashes[0].message, "WIP on main: change source control");
 
-        assert_eq!(stashes[1].full_sha, "ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00");
+        assert_eq!(
+            stashes[1].full_sha,
+            "ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00"
+        );
         assert_eq!(stashes[1].short_sha, "ff00ff0");
     }
 

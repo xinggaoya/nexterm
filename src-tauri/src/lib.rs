@@ -3,7 +3,10 @@ mod panic_report;
 
 use modules::{fs, git, lsp, pty, shell, ssh, workspace};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+// `Manager` 只被 devtools 命令用到；release 默认不编译那两条命令。
+#[cfg(any(debug_assertions, feature = "devtools"))]
+use tauri::Manager;
+use tauri::{AppHandle, Emitter, Runtime, State};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 /// Drained on first read so HMR / re-mounts can't replay the launch dir.
@@ -103,7 +106,11 @@ fn parse_deep_link_query(url: &url::Url) -> Option<DeepLinkOpenRequest> {
         let env = params.remove("workspaceEnv");
         let wsl_distro = params.remove("wslDistro");
         if let (Some(path), Some(env)) = (path, env) {
-            return Some(DeepLinkOpenRequest { path, env, wsl_distro });
+            return Some(DeepLinkOpenRequest {
+                path,
+                env,
+                wsl_distro,
+            });
         }
     }
     // `nexterm:///absolute/path` or `nexterm://host/absolute/path` style URLs
@@ -127,8 +134,15 @@ fn emit_deep_link_open<R: Runtime>(app: &AppHandle<R>, request: DeepLinkOpenRequ
 
 /// Toggle the webview DevTools for the main window. Lets users inspect the
 /// frontend without right-click (which the app disables for its custom
-/// context menus). Works in debug builds by default; in release builds the
-/// `devtools` Cargo feature must be enabled on the `tauri` dependency.
+/// context menus).
+///
+/// **Release builds do not register this at all.** DevTools Console is a
+/// direct entry to `__TAURI_INTERNALS__.invoke`, i.e. the whole IPC surface,
+/// reachable by any script running in the webview. Shipping it by default put
+/// an XSS one keystroke away from full host access. Debug builds get it via
+/// `debug_assertions`; a release build that really wants it must ask for
+/// `--features devtools`.
+#[cfg(any(debug_assertions, feature = "devtools"))]
 #[tauri::command]
 fn toggle_devtools(app: tauri::AppHandle) -> bool {
     // The main window's label is the app identifier in Tauri 2.
@@ -155,7 +169,18 @@ fn toggle_devtools(app: tauri::AppHandle) -> bool {
     window.is_devtools_open()
 }
 
+/// Whether this build can toggle DevTools.
+///
+/// Always registered, unlike its siblings: the settings panel needs to know
+/// whether to render the row at all, and a "command not found" rejection is
+/// not a usable capability probe.
+#[tauri::command]
+fn devtools_available() -> bool {
+    cfg!(any(debug_assertions, feature = "devtools"))
+}
+
 /// Whether DevTools is currently open for the main window.
+#[cfg(any(debug_assertions, feature = "devtools"))]
 #[tauri::command]
 fn is_devtools_open(app: tauri::AppHandle) -> bool {
     let label = app.config().identifier.clone();
@@ -253,18 +278,19 @@ pub fn run() {
             fs::mutate::fs_copy_many,
             fs::mutate::fs_cancel_transfer,
             fs::search::fs_search,
-            fs::search::fs_list_files,
             fs::grep::fs_grep,
             fs::grep::fs_glob,
             fs::watcher::fs_watch_workspace,
             fs::watcher::fs_unwatch_workspace,
             fs::watcher::fs_force_flush_workspace,
+            #[cfg(any(debug_assertions, feature = "devtools"))]
             toggle_devtools,
+            #[cfg(any(debug_assertions, feature = "devtools"))]
             is_devtools_open,
+            devtools_available,
             git::commands::git_resolve_repo,
             git::commands::git_panel_snapshot,
             git::commands::git_status,
-            git::commands::git_diff,
             git::commands::git_diff_content,
             git::commands::git_stage,
             git::commands::git_unstage,
@@ -286,7 +312,6 @@ pub fn run() {
             git::commands::git_stash_drop,
             git::commands::git_stash_apply,
             git::commands::git_log,
-            git::commands::git_show_commit,
             git::commands::git_commit_files,
             git::commands::git_commit_file_diff,
             git::commands::git_remote_url,
@@ -295,7 +320,6 @@ pub fn run() {
             git::commands::git_remote_remove,
             git::commands::git_remote_set_url,
             git::commands::git_discover_repositories,
-            shell::shell_run_command,
             shell::shell_bg_spawn,
             shell::shell_bg_logs,
             shell::shell_bg_kill,
@@ -314,6 +338,7 @@ pub fn run() {
             lsp::commands::lsp_start,
             lsp::commands::lsp_write,
             lsp::commands::lsp_stop,
+            lsp::commands::lsp_stop_all,
             lsp::commands::lsp_list,
             lsp::commands::lsp_resolve_command,
             get_launch_dir,
@@ -336,8 +361,10 @@ mod tests {
 
     #[test]
     fn deep_link_query_style_parses_path_env_and_distro() {
-        let request = parse("nexterm://open?workspacePath=%2Fhome%2Fu%2Frepo&workspaceEnv=wsl&wslDistro=Ubuntu")
-            .expect("request");
+        let request = parse(
+            "nexterm://open?workspacePath=%2Fhome%2Fu%2Frepo&workspaceEnv=wsl&wslDistro=Ubuntu",
+        )
+        .expect("request");
         assert_eq!(request.path, "/home/u/repo");
         assert_eq!(request.env, "wsl");
         assert_eq!(request.wsl_distro.as_deref(), Some("Ubuntu"));
@@ -345,7 +372,8 @@ mod tests {
 
     #[test]
     fn deep_link_query_style_without_distro_omits_field() {
-        let request = parse("nexterm://open?workspacePath=%2Frepo&workspaceEnv=local").expect("request");
+        let request =
+            parse("nexterm://open?workspacePath=%2Frepo&workspaceEnv=local").expect("request");
         assert_eq!(request.path, "/repo");
         assert_eq!(request.env, "local");
         assert!(request.wsl_distro.is_none());
@@ -376,8 +404,7 @@ mod tests {
             .and_then(serde_json::Value::as_str)
             .expect("identifier field");
         assert_eq!(
-            identifier,
-            "app.xinggaoya.nexterm",
+            identifier, "app.xinggaoya.nexterm",
             "should_restore_window_state 里的 BUNDLE_IDENTIFIER 与 tauri.conf.json 不同步"
         );
     }

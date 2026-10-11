@@ -61,6 +61,22 @@ const settingsOpen = ref(false);
 const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
 const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
 
+// 关闭守卫必须看到**所有**工作区的标签。
+//
+// 之前传的是 `tabs.tabs`（仅活动工作区），于是后台工作区里未保存的编辑器
+// 在关窗口时被静默丢弃 —— 多工作区场景下这是真实的数据丢失。
+const allWorkspaceTabs = computed(() =>
+  workspaces.workspaces.flatMap((ws) => tabs.workspaceTabs(ws.id)),
+);
+
+// 按 id 找到标签所属的工作区再关；tab id 只在工作区内唯一。
+function closeTabAnywhere(id: number) {
+  const owner = workspaces.workspaces.find((ws) =>
+    tabs.workspaceTabs(ws.id).some((tab) => tab.id === id),
+  );
+  if (owner) tabs.closeTab(id, owner.id);
+}
+
 // ── Window-close PTY teardown listener. WorkspaceHost.onBeforeUnmount already
 // reclaims sessions when a workspace is removed, and a normal close unmounts
 // every host — but we register an additional best-effort `disposeAllSessions`
@@ -320,8 +336,8 @@ watch(
           <NotificationBridge />
           <div class="flex h-screen flex-col overflow-hidden bg-background text-foreground select-none">
             <UnsavedCloseGuard
-              :tabs="tabs.tabs"
-              @close-tab="(id) => tabs.closeTab(id)"
+              :tabs="allWorkspaceTabs"
+              @close-tab="(id) => closeTabAnywhere(id)"
             />
             <WorkspaceRemoveGuard ref="workspaceRemoveGuard" />
             <div class="relative flex min-h-0 flex-1 flex-col">

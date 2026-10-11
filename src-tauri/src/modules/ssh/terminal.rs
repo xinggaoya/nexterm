@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use russh::client::Msg;
-use russh::{ChannelMsg, ChannelWriteHalf};
 use russh::Disconnect;
+use russh::{ChannelMsg, ChannelWriteHalf};
 use tauri::ipc::Channel;
 
 use super::client::{self, SshConnection};
@@ -124,14 +124,15 @@ pub async fn open(
         .request_pty(true, "xterm-256color", cols as u32, rows as u32, 0, 0, &[])
         .await
         .map_err(|error| format!("request pty: {error}"))?;
-    match cwd.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    match cwd
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         Some(cwd) => {
             // request_shell 无法指定启动目录;用 exec 包一层 cd。失败退回
             // 登录 shell 语义:`cd 失败时 exec $SHELL -l` 仍在(home)。
-            let command = format!(
-                "cd {} 2>/dev/null; exec $SHELL -l",
-                shell_single_quote(cwd)
-            );
+            let command = format!("cd {} 2>/dev/null; exec $SHELL -l", shell_single_quote(cwd));
             channel
                 .exec(true, command)
                 .await
@@ -158,13 +159,19 @@ pub async fn open(
         loop {
             match reader.wait().await {
                 Some(ChannelMsg::Data { ref data }) => {
-                    if on_data.send(String::from_utf8_lossy(data).into_owned()).is_err() {
+                    if on_data
+                        .send(String::from_utf8_lossy(data).into_owned())
+                        .is_err()
+                    {
                         break;
                     }
                 }
                 Some(ChannelMsg::ExtendedData { ref data, .. }) => {
                     // stderr 并入主流:ConPTY 本来就不区分,行为对齐。
-                    if on_data.send(String::from_utf8_lossy(data).into_owned()).is_err() {
+                    if on_data
+                        .send(String::from_utf8_lossy(data).into_owned())
+                        .is_err()
+                    {
                         break;
                     }
                 }

@@ -36,7 +36,11 @@ if (
     disconnect() {}
   };
 }
-if (typeof globalThis.requestAnimationFrame !== "function") {
+// vueuc 的测量循环用 rAF 驱动。jsdom 的原生实现是 ~16ms 的帧定时器，
+// 与本文件其余的定时等待交错后时序不稳（这个文件历史上就是随机红的）。
+// 这里**无条件**换成微任务版，让「测量 → 渲染」在同一个 tick 内完成。
+// 注意不能写成 setTimeout(0)：那会让测量循环空转，反而挤掉用例自己的等待。
+{
   globalThis.requestAnimationFrame = (cb: FrameRequestCallback): number => {
     queueMicrotask(() => cb(performance.now()));
     return 0;
@@ -146,17 +150,23 @@ function mockListings(): void {
 }
 
 /**
- * 等待虚拟列表渲染出视口行：@juggle ResizeObserver polyfill 依赖
- * MutationObserver 感知测量时机，主动制造一次属性变更有界轮询，
- * 避免首屏用例与初始广播竞态。
+ * 等待虚拟列表渲染出视口行。
+ *
+ * NVirtualList（vueuc）要先拿到一次视口测量才会渲染任何一行，而这里的
+ * `ResizeObserver` 是空壳 stub（不发回调）。原先的实现是「造一个属性变更
+ * + 30 × 10ms 有界轮询」—— 轮询预算刚好压在测量发生的时刻上，于是这个文件
+ * 在不同并发度下会随机失败（实测 forks 下偶尔红、threads 下更频繁）。
+ *
+ * 改成对**真实条件**重试：行出现就返回，不出现就一直重试到超时。用固定
+ * 睡眠次数去赌一个异步时序，本质上就是把 flake 写进测试里。
  */
 async function waitForVirtualRows(): Promise<void> {
-  for (let i = 0; i < 30; i += 1) {
-    if (document.body.querySelectorAll('[role="option"]').length > 0) return;
-    document.body.setAttribute("data-picker-probe", String(i));
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    await flushPromises();
-  }
+  await vi.waitFor(
+    () => {
+      expect(document.body.querySelectorAll('[role="option"]').length).toBeGreaterThan(0);
+    },
+    { timeout: 4_000, interval: 25 },
+  );
 }
 
 async function mountPicker(
