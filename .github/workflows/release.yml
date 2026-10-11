@@ -50,7 +50,7 @@ jobs:
       - name: Verify agent asset
         run: test -f src-tauri/target/x86_64-unknown-linux-musl/release/nexterm-agent
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: nexterm-agent-musl
           path: src-tauri/target/x86_64-unknown-linux-musl/release/nexterm-agent
