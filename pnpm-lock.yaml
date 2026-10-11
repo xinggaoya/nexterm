@@ -12,8 +12,8 @@ importers:
         specifier: ^3.0.5
         version: 3.0.5
       '@babel/runtime':
-        specifier: ^8.0.0
-        version: 8.0.0
+        specifier: ^8.0.7
+        version: 8.0.7
       '@codemirror/autocomplete':
         specifier: ^6.20.1
         version: 6.20.3
@@ -387,8 +387,8 @@ packages:
     peerDependencies:
       '@babel/core': ^7.0.0-0
 
-  '@babel/runtime@8.0.0':
-    resolution: {integrity: sha512-sL6cvO2IfkSu/iU+zs2S/w01B7A8V7suXSIKEN4hPFFdZoiPGxrj5pAG0lCaqLWiEIrjKzdznIWuaLcxPR53qw==}
+  '@babel/runtime@8.0.7':
+    resolution: {integrity: sha512-k0hagDDq/6w4v+0Sp4wFvIz/yswH5O7Va6aRTnD7N62Tnborp4X+YB+H3XUcWVSR4aE47WPEXiIIZchBs0GmYg==}
 
   '@babel/template@7.28.6':
     resolution: {integrity: sha512-YA6Ma2KsCdGb+WC6UpBVFJGXL58MDA6oyONbjyF/+5sBgxY/dwkhLogbMT2GXXyU84/IhRw/2D1Os1B/giz+BQ==}
@@ -3663,7 +3663,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@babel/runtime@8.0.0': {}
+  '@babel/runtime@8.0.7': {}
 
   '@babel/template@7.28.6':
     dependencies:
