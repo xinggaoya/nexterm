@@ -17,6 +17,7 @@ import { applyLanguagePreference, i18n } from "./modules/i18n";
 import { onDeepLinkOpen, type DeepLinkOpenRequest } from "@/lib/native";
 import { confirmDeepLinkWorkspace } from "@/lib/confirmDeepLink";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
+import { suppressDevtoolsNativeContextMenu } from "@/lib/devtoolsContextMenu";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
@@ -37,6 +38,10 @@ import {
 if (USE_CUSTOM_WINDOW_CONTROLS) {
   document.documentElement.dataset.chrome = "borderless";
 }
+
+// Keep Nexterm's own right-click menus: the CrabNebula DevTools plugin injects
+// a script that pops its native context menu on every `contextmenu` event.
+suppressDevtoolsNativeContextMenu();
 
 const pinia = createPinia();
 const app = createApp(MainApp);

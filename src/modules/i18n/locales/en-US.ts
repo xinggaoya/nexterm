@@ -308,6 +308,9 @@ const enUS = {
       toggleDevtools: "Open DevTools",
       toggleDevtoolsHint: "Toggle the Webview inspector (DevTools) to debug UI issues.",
       devtoolsUnavailable: "DevTools unavailable (requires a debug build or the devtools feature).",
+      openBackendDevtools: "Open backend debug panel",
+      openBackendDevtoolsHint:
+        "Open CrabNebula DevTools inside the app to inspect backend IPC calls, logs and timings; requires the CrabNebula DevTools desktop app.",
       terminal: "Terminal",
       terminalContextMenu: "Terminal context menu",
       terminalConfirmMultilinePaste: "Confirm multi-line paste",

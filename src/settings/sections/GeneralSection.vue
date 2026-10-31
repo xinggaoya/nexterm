@@ -17,8 +17,13 @@ const devtoolsError = ref<string | null>(null);
 // 与其渲染一个点了就报错按钮，不如整行不渲染。
 const devtoolsAvailable = ref(false);
 
+const backendDevtoolsAvailable = ref(false);
+const backendDevtoolsBusy = ref(false);
+const backendDevtoolsError = ref<string | null>(null);
+
 onMounted(() => {
   void syncDevtoolsState();
+  void syncBackendDevtoolsState();
 });
 
 async function syncDevtoolsState() {
@@ -43,6 +48,29 @@ async function toggleDevtools() {
     devtoolsError.value = normalizeErrorMessage(error);
   } finally {
     devtoolsBusy.value = false;
+  }
+}
+
+async function syncBackendDevtoolsState() {
+  if (!hasTauriInternals()) return;
+  try {
+    backendDevtoolsAvailable.value = await native.crabnebulaDevtoolsAvailable();
+    backendDevtoolsError.value = null;
+  } catch (error) {
+    backendDevtoolsError.value = String(error);
+  }
+}
+
+async function openBackendDevtools() {
+  if (!hasTauriInternals() || backendDevtoolsBusy.value) return;
+  backendDevtoolsBusy.value = true;
+  try {
+    await native.toggleCrabnebulaDevtools();
+    backendDevtoolsError.value = null;
+  } catch (error) {
+    backendDevtoolsError.value = String(error);
+  } finally {
+    backendDevtoolsBusy.value = false;
   }
 }
 </script>
@@ -106,6 +134,32 @@ async function toggleDevtools() {
             </span>
             <span v-if="devtoolsError" class="text-[11px] text-destructive">
               {{ devtoolsError }}
+            </span>
+          </div>
+        </NFormItem>
+        <NFormItem
+          v-if="backendDevtoolsAvailable"
+          :label="t('settings.general.openBackendDevtools')"
+        >
+          <div class="flex flex-col gap-1">
+            <NButton
+              size="small"
+              type="primary"
+              :loading="backendDevtoolsBusy"
+              data-open-backend-devtools
+              @click="openBackendDevtools"
+            >
+              <template #icon><NIcon :component="BugOutline" /></template>
+              {{ t("settings.general.openBackendDevtools") }}
+            </NButton>
+            <span class="text-[11px] text-muted-foreground">
+              {{ t("settings.general.openBackendDevtoolsHint") }}
+            </span>
+            <span
+              v-if="backendDevtoolsError"
+              class="text-[11px] text-destructive"
+            >
+              {{ backendDevtoolsError }}
             </span>
           </div>
         </NFormItem>

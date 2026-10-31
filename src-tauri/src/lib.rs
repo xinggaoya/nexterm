@@ -1,6 +1,8 @@
 pub mod modules;
 mod panic_report;
 
+#[cfg(debug_assertions)]
+use modules::devtools;
 use modules::{fs, git, lsp, pty, shell, ssh, workspace};
 use std::sync::Mutex;
 // `Manager` 只被 devtools 命令用到；release 默认不编译那两条命令。
@@ -189,20 +191,56 @@ fn is_devtools_open(app: tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Whether the CrabNebula DevTools integration is compiled in.
+///
+/// The plugins are only registered for debug builds, so the frontend uses this
+/// to decide whether to offer the DevTools entry points. Note this is about the
+/// backend instrumentation panel, not the WebView inspector probed by
+/// `devtools_available`.
+#[tauri::command]
+fn crabnebula_devtools_available() -> bool {
+    cfg!(debug_assertions)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     panic_report::install_panic_hook();
     workspace::init_launch_cwd();
     let launch_dir = parse_launch_dir();
 
+    let context = tauri::generate_context!();
+
+    // CrabNebula DevTools 必须在 Builder 之前初始化：插件会安装全局 tracing
+    // subscriber 与全局 `log` logger，越早安装能捕获到的启动期事件越多。
+    #[cfg(debug_assertions)]
+    let devtools_plugins = devtools::init(&context.config().identifier);
+
+    let builder = tauri::Builder::default();
+
+    // devtools 必须先于其它插件注册：它要在 setup 阶段安装全局 subscriber，
+    // 嵌入式插件在窗口就绪时会读取 devtools 插件管理的状态。
+    #[cfg(debug_assertions)]
+    let builder = builder
+        .plugin(devtools_plugins.devtools)
+        .plugin(devtools_plugins.devtools_app);
+
     // restoreWindowState 偏好关掉时不注册 window-state 插件：既不恢复也
     // 不保存窗口几何（插件注册即生效，没有运行时开关）。
-    let builder = tauri::Builder::default();
     let builder = if should_restore_window_state() {
         builder.plugin(tauri_plugin_window_state::Builder::default().build())
     } else {
         builder
     };
+
+    let log_plugin =
+        tauri_plugin_log::Builder::new().level(tauri_plugin_log::log::LevelFilter::Info);
+
+    // debug 构建下全局 `log` logger 归 devtools 所有（否则两边抢同一个槽位，
+    // 后注册的会失败导致应用起不来），输出改由 devtools 的日志桥接负责；
+    // release 构建保持 tauri-plugin-log 的默认行为（stdout + 日志文件）。
+    #[cfg(debug_assertions)]
+    let log_plugin = log_plugin.skip_logger();
+
     if let Err(error) = builder
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -210,11 +248,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(tauri_plugin_log::log::LevelFilter::Info)
-                .build(),
-        )
+        .plugin(log_plugin.build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
@@ -288,6 +322,7 @@ pub fn run() {
             #[cfg(any(debug_assertions, feature = "devtools"))]
             is_devtools_open,
             devtools_available,
+            crabnebula_devtools_available,
             git::commands::git_resolve_repo,
             git::commands::git_panel_snapshot,
             git::commands::git_status,
@@ -343,7 +378,7 @@ pub fn run() {
             lsp::commands::lsp_resolve_command,
             get_launch_dir,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
     {
         log::error!("error while running tauri application: {error}");
         eprintln!("[nexterm] error while running tauri application: {error}");
