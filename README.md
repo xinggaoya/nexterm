@@ -87,6 +87,7 @@ cargo test --locked
 - [NEXTERM.md](./NEXTERM.md) — 工程记忆与架构总览
 - [docs/architecture/overview.md](./docs/architecture/overview.md) — 系统架构
 - [docs/architecture/01-overview.md](./docs/architecture/01-overview.md) — 模块总览
+- [docs/architecture/06-crabnebula-devtools.md](./docs/architecture/06-crabnebula-devtools.md) — 后端调试面板（CrabNebula DevTools）
 - [CODE_WIKI.md](./CODE_WIKI.md) — 代码 Wiki
 - [CHANGELOG.md](./CHANGELOG.md) — 版本变更日志
 

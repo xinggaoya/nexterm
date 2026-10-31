@@ -902,6 +902,12 @@ export const native = {
   devtoolsAvailable: () => invoke<boolean>("devtools_available"),
   toggleDevtools: () => invoke<boolean>("toggle_devtools"),
   isDevtoolsOpen: () => invoke<boolean>("is_devtools_open"),
+
+  // CrabNebula DevTools — 后端插桩调试面板（与上面的 WebView 检查器不是一回事）。
+  // 插件只在 debug 构建注册，前端先用 crabnebulaDevtoolsAvailable 探测能力。
+  crabnebulaDevtoolsAvailable: () =>
+    invoke<boolean>("crabnebula_devtools_available"),
+  toggleCrabnebulaDevtools: () => invoke<void>("plugin:devtools-app|toggle"),
 };
 /**
  * SSH 连接档案与探针(全局资源,不绑定单个 workspace env)。

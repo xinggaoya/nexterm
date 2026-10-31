@@ -46,7 +46,21 @@ pnpm i
 - panic 由 `panic_report::install_panic_hook` 统一结构化输出：`[nexterm] panic in thread <name>: <message> at <file:line:col>`。
 - `log::LevelFilter::Info` 是默认级别（可在 `lib.rs` 调整）。
 
-### 3.3 常见问题
+### 3.3 后端调试面板（CrabNebula DevTools）
+
+debug 构建（`pnpm tauri dev`）会启动 CrabNebula DevTools 插桩服务，终端打印连接链接：
+
+```
+   Tauri Devtools v2.2.3
+   → https://devtools.crabnebula.dev/dash/127.0.0.1/3033
+```
+
+- 浏览器打开该链接，或按 `Ctrl+Shift+M`（macOS `Cmd+Alt+M`）/ 设置 → 通用 → 开发者 →「打开后端调试面板」打开嵌入式面板。
+- 面板可查看 Tauri 命令调用（入参 / 返回值 / 耗时）、事件、后端 `log::` 日志，用于排查 IPC 与性能问题。
+- release 构建不启用插桩。
+- 完整说明（含与 `tauri-plugin-log` 的全局 logger 冲突处理、常见问题）见 [06-crabnebula-devtools.md](./06-crabnebula-devtools.md)。
+
+### 3.4 常见问题
 
 - **PTY 没输出 / 卡住**：检查 ConPTY 序列化保护（`pty_open` 互斥），不要并发启动两个 PTY。
 - **WSL 文件变化漏掉**：watcher 由 `nexterm-agent watch` 提供，确认其 stdout JSON 行格式没改。

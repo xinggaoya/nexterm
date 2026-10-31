@@ -308,6 +308,9 @@ const zhCN = {
       toggleDevtools: "打开开发者工具",
       toggleDevtoolsHint: "切换 Webview 检查器（DevTools），用于排查界面问题。",
       devtoolsUnavailable: "开发者工具不可用（需要 debug 构建或开启 devtools 特性）。",
+      openBackendDevtools: "打开后端调试面板",
+      openBackendDevtoolsHint:
+        "在应用内打开 CrabNebula DevTools，查看后端 IPC 调用、日志与耗时；需先安装 CrabNebula DevTools 桌面端。",
       terminal: "终端",
       terminalContextMenu: "终端右键菜单",
       terminalConfirmMultilinePaste: "多行粘贴前确认",

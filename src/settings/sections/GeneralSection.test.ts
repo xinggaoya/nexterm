@@ -1,16 +1,45 @@
 // @vitest-environment jsdom
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { NSelect } from "naive-ui";
 import { createPinia } from "pinia";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { applyLanguagePreference, i18n, setI18nLanguage } from "@/modules/i18n";
 import AppearanceSection from "./AppearanceSection.vue";
 import GeneralSection from "./GeneralSection.vue";
 import TerminalSection from "./TerminalSection.vue";
 
+const { nativeMock } = vi.hoisted(() => ({
+  nativeMock: {
+    devtoolsAvailable: vi.fn(async () => true),
+    isDevtoolsOpen: vi.fn(async () => false),
+    toggleDevtools: vi.fn(async () => true),
+    crabnebulaDevtoolsAvailable: vi.fn(async () => false),
+    toggleCrabnebulaDevtools: vi.fn(async () => undefined),
+  },
+}));
+
+vi.mock("@/lib/native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/native")>();
+  return {
+    ...actual,
+    native: {
+      ...actual.native,
+      ...nativeMock,
+    },
+  };
+});
+
+vi.mock("@/lib/tauriRuntime", () => ({
+  hasTauriInternals: () => true,
+}));
+
 describe("GeneralSection.vue", () => {
   beforeEach(() => {
     setI18nLanguage("en-US");
+    nativeMock.devtoolsAvailable.mockResolvedValue(true);
+    nativeMock.crabnebulaDevtoolsAvailable.mockResolvedValue(false);
+    nativeMock.isDevtoolsOpen.mockResolvedValue(false);
+    vi.clearAllMocks();
   });
 
   it("renders language preference options in the appearance section", () => {
@@ -83,5 +112,32 @@ describe("GeneralSection.vue", () => {
     expect(wrapper.text()).toContain("通用");
     expect(wrapper.text()).toContain("恢复窗口");
     expect(wrapper.text()).toContain("显示隐藏文件");
+  });
+
+  it("offers the backend DevTools entry only when the integration is available", async () => {
+    nativeMock.crabnebulaDevtoolsAvailable.mockResolvedValue(false);
+
+    const unavailable = mount(GeneralSection, {
+      global: { plugins: [createPinia(), i18n] },
+    });
+    await flushPromises();
+
+    // 不可用时不渲染这一行：与其留一个点了就报错的按钮，不如整行不出现。
+    expect(unavailable.find("[data-open-backend-devtools]").exists()).toBe(
+      false,
+    );
+
+    nativeMock.crabnebulaDevtoolsAvailable.mockResolvedValue(true);
+    const wrapper = mount(GeneralSection, {
+      global: { plugins: [createPinia(), i18n] },
+    });
+    await flushPromises();
+
+    const button = wrapper.find("[data-open-backend-devtools]");
+    expect(button.exists()).toBe(true);
+    expect(button.attributes("disabled")).toBeUndefined();
+
+    await button.trigger("click");
+    expect(nativeMock.toggleCrabnebulaDevtools).toHaveBeenCalledTimes(1);
   });
 });

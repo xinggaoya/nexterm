@@ -53,8 +53,11 @@ grep-matcher = "0.1"
 globset = "0.4"
 shared_child = "1"
 notify = "8.2"
-tokio = { version = "1", features = ["time"] }
+# `tauri-plugin-devtools-app` 依赖的 interprocess 仍调用 tokio 1.52 已移除的
+# `AsyncFd::register_with_interest`，因此把 tokio 限制在 1.52 之前。
+tokio = { version = ">=1.38, <1.52", features = ["time"] }
 which = "6"
+time = { version = "0.3", features = ["formatting", "macros"] }
 tauri-plugin-log = "2"
 tauri-plugin-os = "2"
 tauri-plugin-store = "2"
@@ -65,6 +68,9 @@ tauri-plugin-notification = "2"
 russh = { version = "0.63.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 # 搬运语义（移动/复制/冲突策略）在本地、WSL agent、SSH 远端 agent 三处共用同一份实现。
 nexterm-fs-core = { path = "fs-core" }
+# CrabNebula DevTools: 后端插桩（仅 debug 构建注册插件）
+tauri-plugin-devtools = "2.2"
+tauri-plugin-devtools-app = "2.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -86,7 +92,9 @@ tauri-plugin-deep-link = "2"
 tauri-plugin-updater = "2"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = ">=1.38, <1.52", features = ["rt-multi-thread", "macros", "time"] }
+# `tauri::test` 提供无窗口的 mock runtime，用于验证插件组合能否正常启动。
+tauri = { version = "2", features = ["test"] }
 
 [profile.dev]
 incremental = true

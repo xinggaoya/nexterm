@@ -11,7 +11,7 @@
 | 新增前端业务模块 | [02-module-contracts.md](./02-module-contracts.md) -> [03-development-workflow.md](./03-development-workflow.md) -> 相似模块的 README（参考） |
 | 新增 / 修改 Tauri 命令 | [01-overview.md](./01-overview.md) -> [04-security-model.md](./04-security-model.md) -> 对应后端模块的 `detailed-design.md` |
 | 排查前端 bug | [02-module-contracts.md](./02-module-contracts.md) -> [03-development-workflow.md](./03-development-workflow.md) 调试章节 -> 模块 README |
-| 排查后端 bug | [04-security-model.md](./04-security-model.md) -> [03-development-workflow.md](./03-development-workflow.md) 调试章节 -> 对应模块 `detailed-design.md` |
+| 排查后端 bug | [06-crabnebula-devtools.md](./06-crabnebula-devtools.md) -> [03-development-workflow.md](./03-development-workflow.md) 调试章节 -> 对应模块 `detailed-design.md` |
 
 ## 文件清单
 
@@ -22,6 +22,7 @@
 | [03-development-workflow.md](./03-development-workflow.md) | 开发、调试、日志、提交、新增模块、WSL 构建 |
 | [04-security-model.md](./04-security-model.md) | WorkspaceRegistry、Job Object、Transcript、ConPTY 序列化、深链解析 |
 | [05-glossary.md](./05-glossary.md) | 术语表 |
+| [06-crabnebula-devtools.md](./06-crabnebula-devtools.md) | CrabNebula DevTools：后端插桩调试面板的用途、启用方式、使用流程与日志体系配合 |
 | [overview.md](./overview.md) | 与 01-overview.md 主题相同，更偏概览图；推荐直接读 01 |
 
 ## 模块索引
