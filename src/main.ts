@@ -17,7 +17,7 @@ import { applyLanguagePreference, i18n } from "./modules/i18n";
 import { onDeepLinkOpen, type DeepLinkOpenRequest } from "@/lib/native";
 import { confirmDeepLinkWorkspace } from "@/lib/confirmDeepLink";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
-import { suppressDevtoolsNativeContextMenu } from "@/lib/devtoolsContextMenu";
+import { installDevtoolsContextMenuRejectionGuard } from "@/lib/devtoolsContextMenuGuard";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
@@ -41,7 +41,10 @@ if (USE_CUSTOM_WINDOW_CONTROLS) {
 
 // Keep Nexterm's own right-click menus: the CrabNebula DevTools plugin injects
 // a script that pops its native context menu on every `contextmenu` event.
-suppressDevtoolsNativeContextMenu();
+// We deliberately do NOT allow `plugin:devtools-app|show_context_menu`, so the
+// native menu can never appear; the plugin script does not catch the rejection,
+// so we swallow that one error here.
+installDevtoolsContextMenuRejectionGuard();
 
 const pinia = createPinia();
 const app = createApp(MainApp);
