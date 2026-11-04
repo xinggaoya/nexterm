@@ -19,7 +19,7 @@ jobs:
     name: Frontend (typecheck + test + build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # 两个 lockfile 各自浮动，Rust 侧的 tauri crate 可能先跑到下一个 minor，
       # 而 npm 侧的 @tauri-apps/api 没跟上 —— Tauri CLI 会在 `tauri build`
@@ -58,7 +58,7 @@ jobs:
     # 此前只有在发版当天才会被编译一次。这里给一个提前两周的廉价预警。
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v6
         with:
@@ -90,7 +90,7 @@ jobs:
       run:
         working-directory: src-tauri
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -142,7 +142,7 @@ jobs:
     name: Supply chain
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
