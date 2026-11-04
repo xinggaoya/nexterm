@@ -82,6 +82,20 @@ fn should_restore_window_state() -> bool {
 /// query parameters parsed by `src/lib/launchDir.ts`.
 pub const DEEP_LINK_OPEN_EVENT: &str = "nexterm://deep-link-open";
 
+/// 调试桥允许的浏览器来源（写进 CORS 的 `Access-Control-Allow-Origin`）。
+///
+/// 必须与 `tauri.conf.json` 的 `build.devUrl` 同源：浏览器里的页面由 vite
+/// dev server 提供，只有同源请求才会带上这个 Origin。收紧到具体 origin 是
+/// 为了防止「随便打开一个网站就能驱动本机 nexterm」—— nexterm 的 IPC 能
+/// 写文件、起进程、走 SSH。
+///
+/// 注意：CORS 只约束浏览器。非浏览器客户端（curl 等）不受它约束，本机任意
+/// 进程仍可调用完整 IPC 面。这是 localhost 调试桥的固有属性，只能靠
+/// 「桥是 opt-in 且生命周期短」来收敛。
+/// 详见 `docs/architecture/07-web-dev-bridge.md`。
+#[cfg_attr(not(feature = "web-dev-bridge"), allow(dead_code))]
+const DEV_BRIDGE_ALLOWED_ORIGIN: &str = "http://localhost:3180";
+
 /// Subset of a deep-link URL the frontend cares about. Serialized into the
 /// `nexterm://deep-link-open` event so the launching workspace can be opened
 /// without further parsing in the webview.
@@ -235,6 +249,22 @@ pub fn run() {
         builder
     };
 
+    // 浏览器调试桥（feature `web-dev-bridge`，默认关闭）。
+    //
+    // 它在本机开一个只监听 127.0.0.1 的 HTTP 服务，把浏览器发来的
+    // `POST /invoke` 合成为一条真实的 Tauri IPC 消息投喂给**本进程**，
+    // 于是普通浏览器也能驱动运行中的 nexterm（拿到真实数据）。
+    //
+    // `enabled(cfg!(debug_assertions))` 是第二道保险：即便有人用
+    // `--release --features web-dev-bridge` 构建，release 产物也不会监听端口。
+    #[cfg(feature = "web-dev-bridge")]
+    let builder = builder.plugin(
+        tauri_plugin_web_dev_bridge::Builder::new()
+            .allow_origin(DEV_BRIDGE_ALLOWED_ORIGIN)
+            .enabled(cfg!(debug_assertions))
+            .build(),
+    );
+
     let log_plugin =
         tauri_plugin_log::Builder::new().level(tauri_plugin_log::log::LevelFilter::Info);
 
@@ -283,6 +313,21 @@ pub fn run() {
                     if let Some(request) = parse_deep_link_query(&url) {
                         emit_deep_link_open(&app_handle, request);
                     }
+                }
+            }
+            // 启动浏览器调试桥。必须放在 setup 里而不是插件的 initialize 钩子：
+            // 插件需要 `App<Wry>` 才能取到 invoke_key，且此时 webview 已创建完毕。
+            //
+            // 起桥失败不该拖垮应用（它只是开发期调试工具），记日志继续。
+            #[cfg(feature = "web-dev-bridge")]
+            {
+                if let Err(error) = tauri_plugin_web_dev_bridge::start(app) {
+                    log::error!("启动浏览器调试桥失败: {error}");
+                } else {
+                    log::info!(
+                        "浏览器调试桥已启动：普通浏览器可直连本机 nexterm（仅 127.0.0.1，\
+                         允许来源 {DEV_BRIDGE_ALLOWED_ORIGIN}）"
+                    );
                 }
             }
             Ok(())
@@ -449,6 +494,23 @@ mod tests {
         assert_eq!(
             identifier, "app.xinggaoya.nexterm",
             "should_restore_window_state 里的 BUNDLE_IDENTIFIER 与 tauri.conf.json 不同步"
+        );
+    }
+
+    #[test]
+    fn dev_bridge_allowed_origin_matches_tauri_dev_url() {
+        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let raw = std::fs::read_to_string(manifest_dir.join("tauri.conf.json"))
+            .expect("tauri.conf.json readable");
+        let config: serde_json::Value = serde_json::from_str(&raw).expect("valid json");
+        let dev_url = config
+            .pointer("/build/devUrl")
+            .and_then(serde_json::Value::as_str)
+            .expect("build.devUrl");
+        assert_eq!(
+            dev_url, DEV_BRIDGE_ALLOWED_ORIGIN,
+            "DEV_BRIDGE_ALLOWED_ORIGIN 必须与 tauri.conf.json 的 build.devUrl 同源，\
+             否则浏览器里的页面会被 CORS 拦掉"
         );
     }
 }
