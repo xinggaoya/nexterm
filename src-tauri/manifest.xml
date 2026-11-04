@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Common Controls v6 的 SxS manifest。
+
+  内容与 tauri-build 自带的 `windows-app-manifest.xml` 一致，但由 build.rs
+  统一给**所有**产物嵌入（应用二进制 + lib 单测 harness + 集成测试）：
+
+  - 应用侧：tauri-build 用 `Attributes::new_without_app_manifest()` 不再塞它
+    那一份，避免 `CVT1100: duplicate resource. type:MANIFEST`；
+  - 测试侧：Rust 的 test harness 默认没有 manifest，缺了它，链接了
+    `TaskDialogIndirect`（仅 v6 导出）的二进制会在**进程启动时**失败：
+
+        STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)
+
+    加载器会绑定到 System32 里那个不含该导出的 comctl32 v5，
+    于是 `cargo test` 一个用例都跑不了。
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>

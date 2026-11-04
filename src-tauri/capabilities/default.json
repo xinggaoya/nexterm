@@ -35,7 +35,6 @@
     "deep-link:allow-get-current",
     "process:default",
     "updater:default",
-    "notification:default",
-    "devtools-app:allow-toggle"
+    "notification:default"
   ]
 }

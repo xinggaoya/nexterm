@@ -48,16 +48,26 @@ pnpm i
 
 ### 3.3 后端调试面板（CrabNebula DevTools）
 
-debug 构建（`pnpm tauri dev`）会启动 CrabNebula DevTools 插桩服务，终端打印连接链接：
+**默认不启用** —— 插桩插件由 Cargo feature `crabnebula-devtools` 控制，默认为关。
+需要排查后端 IPC / 性能问题时显式开启：
+
+```bash
+pnpm tauri dev -- --features crabnebula-devtools
+```
+
+开启后终端会打印连接链接：
 
 ```
    Tauri Devtools v2.2.3
    → https://devtools.crabnebula.dev/dash/127.0.0.1/3033
 ```
 
-- 浏览器打开该链接，或按 `Ctrl+Shift+M`（macOS `Cmd+Alt+M`）/ 设置 → 通用 → 开发者 →「打开后端调试面板」打开嵌入式面板。
+- 浏览器打开该链接，或按 `Ctrl+Shift+M`（macOS `Cmd+Alt+M`）/ 设置 → 通用 → 开发者 →「打开后端调试面板」打开嵌入式窗口。
 - 面板可查看 Tauri 命令调用（入参 / 返回值 / 耗时）、事件、后端 `log::` 日志，用于排查 IPC 与性能问题。
-- release 构建不启用插桩。
+- release 构建同样不启用插桩（feature 默认关闭）。
+- ⚠️ 该 feature 会连带启用 `tauri/tracing`，进而把 `tauri-runtime-wry` 的 `eval_script` 变成
+  阻塞式 UI 线程往返，与 IPC handler 互锁成**永久死锁**（窗口"未响应"）。**不要在正式构建里开**，
+  原因与证据见 [06-crabnebula-devtools.md](./06-crabnebula-devtools.md) §3.1。
 - 完整说明（含与 `tauri-plugin-log` 的全局 logger 冲突处理、常见问题）见 [06-crabnebula-devtools.md](./06-crabnebula-devtools.md)。
 
 ### 3.4 常见问题

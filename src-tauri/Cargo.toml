@@ -27,6 +27,24 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # `toggle_devtools` / `is_devtools_open` 两条 IPC 命令会被注册。
 # CI 有一条边界测试断言正式发布配置里不包含它。
 devtools = ["tauri/devtools"]
+# CrabNebula 后端调试面板（后端插桩 + 嵌入式 UI）。**默认关闭**。
+#
+# 为什么默认关闭：`tauri-plugin-devtools` 依赖 `tauri/tracing` feature，
+# 而该 feature 会把 `tauri-runtime-wry` 的 `eval_script` 从 fire-and-forget
+# 改成「发消息给 UI 线程并阻塞等回执」。于是任何在 IPC handler 里
+# `app.emit` 的命令（tauri-plugin-store 的 set、tauri-plugin-event 的 emit）
+# 都会与 WebView2 的 `WebResourceRequested` 回调互等 —— UI 线程等命令返回，
+# 命令等 UI 线程执行脚本，**互锁成永久死锁**（窗口变「未响应」，所有 IPC 停摆）。
+#
+# 实测：同一份设置下，关掉本 feature 应用正常；打开必挂。详见
+# `docs/architecture/06-crabnebula-devtools.md`。
+#
+# 需要后端插桩时显式开启：`cargo build --features crabnebula-devtools`
+# 或 `pnpm tauri dev -- --features crabnebula-devtools`。
+crabnebula-devtools = [
+	"dep:tauri-plugin-devtools",
+	"dep:tauri-plugin-devtools-app",
+]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -37,7 +55,7 @@ tauri-build = { version = "2", features = [] }
 # 整个 IPC 能力面暴露给任何跑在 webview 里的脚本。开发构建由
 # debug_assertions 自动获得；正式发布需要时用 `--features devtools`
 # 显式构建。见 features.devtools。
-tauri = { version = "2" }
+tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -68,9 +86,11 @@ tauri-plugin-notification = "2"
 russh = { version = "0.63.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 # 搬运语义（移动/复制/冲突策略）在本地、WSL agent、SSH 远端 agent 三处共用同一份实现。
 nexterm-fs-core = { path = "fs-core" }
-# CrabNebula DevTools: 后端插桩（仅 debug 构建注册插件）
-tauri-plugin-devtools = "2.2"
-tauri-plugin-devtools-app = "2.1"
+# CrabNebula DevTools: 后端插桩 + 嵌入式 UI。
+# 两者是可选依赖（feature `crabnebula-devtools`，默认关闭）——
+# 开启会连带启用 `tauri/tracing`，从而引入 IPC 死锁风险，详见上面的 features 说明。
+tauri-plugin-devtools = { version = "2.2", optional = true }
+tauri-plugin-devtools-app = { version = "2.1", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

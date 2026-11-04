@@ -28,3 +28,6 @@ dist-ssr
 # Local agent tooling
 .zcode/
 .worktrees/
+
+# CrabNebula DevTools capability（由 build.rs 按 feature 生成，不入库）
+src-tauri/capabilities/crabnebula-devtools.json

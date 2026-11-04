@@ -115,6 +115,11 @@ jobs:
       - name: cargo check
         run: cargo check --all-targets
 
+      # CrabNebula 后端插桩是可选 feature（默认关闭）。默认路径检查不到它，
+      # 所以单独跑一次，免得 opt-in 构建悄悄坏掉。
+      - name: cargo check (crabnebula-devtools feature)
+        run: cargo check --all-targets --features crabnebula-devtools
+
       - name: cargo clippy
         run: cargo clippy --all-targets -- -D warnings
 

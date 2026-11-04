@@ -150,7 +150,7 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 | `src-tauri/src/modules/git/` | `commands.rs` 为 Tauri 包装层；`operations/` 按 status/stage/commit/branch/stash/log/remote/discover 分文件实现 git 能力 |
 | `src-tauri/src/modules/workspace/` | Workspace auth/registry (`mod.rs`, `registry.rs`), env 与 SSH 守卫 (`env.rs`), WSL 路径与进程助手 (`wsl.rs`) |
 | `src-tauri/src/modules/lock.rs` | Mutex/RwLock poison error wrappers |
-| `src-tauri/src/modules/devtools.rs` | CrabNebula DevTools 插桩插件初始化 + 日志桥接（debug 构建启用） |
+| `src-tauri/src/modules/devtools.rs` | CrabNebula DevTools 插桩插件初始化 + 日志桥接（`crabnebula-devtools` feature，默认关闭） |
 | `vite.config.ts` | Vite 7 config with Vue, Tailwind 4, auto-imports, chunk splitting |
 | `docs/architecture/06-crabnebula-devtools.md` | 后端调试面板（CrabNebula DevTools）说明：启用方式、使用流程、日志体系配合 |
 
@@ -174,7 +174,7 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 - **Before PRs**: Run `pnpm test` + `pnpm build` + `cargo clippy --all-targets --locked -- -D warnings`
 - **CI 门禁**: `.github/workflows/ci.yml` 在 push(main)/PR 上运行相同的前端与 Rust 检查（Ubuntu + Windows 双矩阵）
 - **Add boundary tests** when changing: module ownership, framework migration rules, IPC contracts, or security-sensitive behavior
-- **Backend debugging**: debug builds (`pnpm tauri dev`) start the CrabNebula DevTools instrumentation; the terminal prints `https://devtools.crabnebula.dev/dash/<host>/<port>`, or press `Ctrl+Shift+M` (macOS `Cmd+Alt+M`) for the embedded panel. See `docs/architecture/06-crabnebula-devtools.md`. Do NOT remove `skip_logger()` from `tauri-plugin-log` in debug builds: devtools and the log plugin compete for the single global `log` logger, and dropping it breaks app startup.
+- **Backend debugging**: the CrabNebula DevTools instrumentation is behind the **opt-in** Cargo feature `crabnebula-devtools` (default OFF). Enable it with `pnpm tauri dev -- --features crabnebula-devtools`; the terminal then prints `https://devtools.crabnebula.dev/dash/<host>/<port>`, or press `Ctrl+Shift+M` (macOS `Cmd+Alt+M`) for the embedded window. See `docs/architecture/06-crabnebula-devtools.md`. **Do NOT enable it in release builds**: it turns on `tauri/tracing`, which makes `tauri-runtime-wry`'s `eval_script` a blocking UI-thread round trip and deadlocks the app against the WebView2 `WebResourceRequested` handler (see that doc §3.1). Do NOT remove `skip_logger()` from `tauri-plugin-log` when the feature IS on: devtools and the log plugin compete for the single global `log` logger, and dropping it breaks app startup.
 
 ## Commit & Pull Request Guidelines
 

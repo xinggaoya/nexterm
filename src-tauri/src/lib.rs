@@ -1,7 +1,7 @@
 pub mod modules;
 mod panic_report;
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "crabnebula-devtools")]
 use modules::devtools;
 use modules::{fs, git, lsp, pty, shell, ssh, workspace};
 use std::sync::Mutex;
@@ -193,13 +193,16 @@ fn is_devtools_open(app: tauri::AppHandle) -> bool {
 
 /// Whether the CrabNebula DevTools integration is compiled in.
 ///
-/// The plugins are only registered for debug builds, so the frontend uses this
-/// to decide whether to offer the DevTools entry points. Note this is about the
-/// backend instrumentation panel, not the WebView inspector probed by
-/// `devtools_available`.
+/// The plugins are only compiled when the `crabnebula-devtools` feature is on
+/// (off by default — it enables `tauri/tracing`, which turns
+/// `tauri-runtime-wry`'s `eval_script` into a blocking UI-thread round trip and
+/// can deadlock the app against the WebView2 `WebResourceRequested` handler).
+/// The frontend uses this to decide whether to offer the DevTools entry points.
+/// Note this is about the backend instrumentation panel, not the WebView
+/// inspector probed by `devtools_available`.
 #[tauri::command]
 fn crabnebula_devtools_available() -> bool {
-    cfg!(debug_assertions)
+    cfg!(feature = "crabnebula-devtools")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -212,14 +215,14 @@ pub fn run() {
 
     // CrabNebula DevTools 必须在 Builder 之前初始化：插件会安装全局 tracing
     // subscriber 与全局 `log` logger，越早安装能捕获到的启动期事件越多。
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "crabnebula-devtools")]
     let devtools_plugins = devtools::init(&context.config().identifier);
 
     let builder = tauri::Builder::default();
 
     // devtools 必须先于其它插件注册：它要在 setup 阶段安装全局 subscriber，
     // 嵌入式插件在窗口就绪时会读取 devtools 插件管理的状态。
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "crabnebula-devtools")]
     let builder = builder
         .plugin(devtools_plugins.devtools)
         .plugin(devtools_plugins.devtools_app);
@@ -235,10 +238,15 @@ pub fn run() {
     let log_plugin =
         tauri_plugin_log::Builder::new().level(tauri_plugin_log::log::LevelFilter::Info);
 
-    // debug 构建下全局 `log` logger 归 devtools 所有（否则两边抢同一个槽位，
-    // 后注册的会失败导致应用起不来），输出改由 devtools 的日志桥接负责；
-    // release 构建保持 tauri-plugin-log 的默认行为（stdout + 日志文件）。
-    #[cfg(debug_assertions)]
+    // 编译了 CrabNebula 插桩时，全局 `log` logger 归 devtools 所有
+    // （否则两边抢同一个槽位，后注册的会失败导致应用起不来），输出改由
+    // devtools 的日志桥接负责；没编译时保持 tauri-plugin-log 的默认行为
+    // （stdout + 日志文件）。
+    //
+    // 注意这里的判据是 feature 而不是 `debug_assertions`：devtools 集成
+    // 默认关闭，若仍按 debug 判定，debug 构建就会**一个 logger 都没有**，
+    // 日志全部丢失。
+    #[cfg(feature = "crabnebula-devtools")]
     let log_plugin = log_plugin.skip_logger();
 
     if let Err(error) = builder

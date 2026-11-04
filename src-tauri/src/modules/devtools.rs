@@ -1,24 +1,41 @@
-//! CrabNebula DevTools 集成（仅 debug 构建注册插件）。
+//! CrabNebula DevTools 集成（feature `crabnebula-devtools`，**默认关闭**）。
 //!
 //! 组成：
 //! - `tauri-plugin-devtools`：后端插桩，把 Tauri IPC 调用、事件、`log::` 记录
 //!   暴露给本机插桩服务（默认 `127.0.0.1:3033`）。
-//! - `tauri-plugin-devtools-app`：嵌入式 DevTools UI（应用内抽屉），需要本机
+//! - `tauri-plugin-devtools-app`：嵌入式 DevTools UI（独立窗口），需要本机
 //!   安装 CrabNebula DevTools 桌面端。
+//!
+//! ## 为什么默认关闭
+//!
+//! `tauri-plugin-devtools` 依赖 `tauri/tracing` feature。该 feature 会把
+//! `tauri-runtime-wry` 的 `eval_script` 从 fire-and-forget 改成「发消息给
+//! WebView2 UI 线程并阻塞等回执」。于是任何在 IPC handler 里 `app.emit` 的
+//! 命令（`tauri-plugin-store` 的 `set`、`tauri-plugin-event` 的 `emit`）都会
+//! 与 WebView2 的 `WebResourceRequested` 回调互等：
+//!
+//! - UI 线程：在 `WebResourceRequested` 里等这条 IPC 命令返回；
+//! - 命令：在 `ExecuteScript` 的完成回调里等 UI 线程执行。
+//!
+//! 两边互等 ⇒ 永久死锁（窗口「未响应」，所有 IPC 停摆）。实测：同一份设置下，
+//! 关掉本 feature 应用正常，打开必挂。
+//!
+//! 需要后端插桩时显式开启：`--features crabnebula-devtools`。
 //!
 //! ## 为什么需要日志桥接
 //!
 //! `tauri-plugin-devtools` 初始化时会安装全局 tracing subscriber，并通过
 //! `tracing-log` 的 `LogTracer` **抢占全局 `log` logger**；而
 //! `tauri-plugin-log` 的 setup 也要 `log::set_boxed_logger` 抢占同一个槽位。
-//! 全局 logger 只能有一个，二者直接共存会让 debug 构建启动失败。
+//! 全局 logger 只能有一个，二者直接共存会让启动失败。
 //!
 //! 本项目的约定：
 //! 1. devtools 先初始化，拿到全局 `log` logger —— backend 的 `log::` 记录被转成
 //!    tracing event，既进入 DevTools UI，也经 `attach_logger` 桥接回 stdout / 日志文件；
-//! 2. debug 构建下 `tauri-plugin-log` 使用 `skip_logger()`，放弃全局 logger 槽位，
+//! 2. 编译了本 feature 时 `tauri-plugin-log` 使用 `skip_logger()`，放弃全局 logger 槽位，
 //!    只保留 `plugin:log|log` 命令（前端日志经 `log::logger()` 依然能进 tracing）；
-//! 3. release 构建不注册 devtools，`tauri-plugin-log` 保持原样（自带 stdout + 日志文件）。
+//! 3. 没编译本 feature 时 devtools 不存在，`tauri-plugin-log` 保持原样
+//!    （自带 stdout + 日志文件）。
 
 use std::path::PathBuf;
 
