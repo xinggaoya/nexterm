@@ -20,6 +20,13 @@ describe("DevBridgeUnavailable", () => {
     expect(wrapper.text()).toContain("pnpm tauri dev -- --features web-dev-bridge");
   });
 
+  it("提示必须用 localhost 打开页面（CORS 白名单只认它）", () => {
+    const wrapper = mount(DevBridgeUnavailable);
+
+    expect(wrapper.text()).toContain("http://localhost:3180");
+    expect(wrapper.text()).toContain("http://127.0.0.1:3180");
+  });
+
   it("点击重新检测：桥仍未就绪时保持提示状态且不刷新", async () => {
     const reload = vi.fn();
     const wrapper = mount(DevBridgeUnavailable, { props: { reload } });

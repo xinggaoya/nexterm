@@ -51,7 +51,9 @@ async function retry(): Promise<void> {
       <p class="bridge-hint">
         启动后回到这个页面点「重新检测」。调试桥只在
         <code>127.0.0.1</code> 上监听，且仅接受来自
-        <code>http://localhost:3180</code> 的浏览器请求。
+        <code>http://localhost:3180</code> 的浏览器请求 ——
+        若你是用 <code>http://127.0.0.1:3180</code> 打开的，请改用
+        <code>http://localhost:3180</code>。
       </p>
 
       <div class="bridge-actions">

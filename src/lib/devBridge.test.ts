@@ -17,36 +17,77 @@ import {
   resolveDevBridgeBoot,
 } from "./devBridge";
 
-/** 构造一个只关心 `port` 字段的 fetch 替身。 */
-function fetchReturning(port: number | null): typeof fetch {
-  return vi.fn(async () => ({
-    ok: true,
-    json: async () => ({ port }),
-  })) as unknown as typeof fetch;
+/**
+ * 构造一个按 URL 分流的 fetch 替身。
+ *
+ * @param descriptor 发现路由返回的描述文件内容
+ * @param healthOk 桥的 `/health` 是否可达
+ */
+function fetchStub(
+  descriptor: { port?: number | null; url?: string | null },
+  healthOk = true,
+): typeof fetch {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === DEV_BRIDGE_DISCOVERY_ROUTE) {
+      return {
+        ok: true,
+        json: async () => descriptor,
+      };
+    }
+    return {
+      ok: healthOk,
+      json: async () => ({ pid: 1, webview: "main" }),
+    };
+  }) as unknown as typeof fetch;
+}
+
+/** 取出 fetch 替身被调用时用过的 URL 列表。 */
+function calledUrls(fetchImpl: typeof fetch): string[] {
+  return (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.map(
+    (call) => String(call[0]),
+  );
 }
 
 describe("probeDevBridge", () => {
-  it("发现路由返回正整数端口时判定桥已就绪", async () => {
-    const fetchImpl = fetchReturning(6222);
+  it("桥可达时判定为已就绪", async () => {
+    const fetchImpl = fetchStub({ port: 6222, url: "http://127.0.0.1:6222" });
 
     await expect(probeDevBridge({ fetchImpl })).resolves.toBe(true);
-    // 必须打**相对路径**：同源才不受 CORS 约束，也不挑 localhost / 127.0.0.1
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe(
+  });
+
+  it("先打同源发现路由，再打桥自己的 /health 确认存活", async () => {
+    const fetchImpl = fetchStub({ port: 6222, url: "http://127.0.0.1:6222" });
+
+    await probeDevBridge({ fetchImpl });
+
+    expect(calledUrls(fetchImpl)).toEqual([
       DEV_BRIDGE_DISCOVERY_ROUTE,
-    );
+      "http://127.0.0.1:6222/health",
+    ]);
   });
 
   it("端口为 null（桌面应用未启动）时判定桥不可用", async () => {
     await expect(
-      probeDevBridge({ fetchImpl: fetchReturning(null) }),
+      probeDevBridge({ fetchImpl: fetchStub({ port: null }) }),
     ).resolves.toBe(false);
   });
 
   it("端口为 0 时判定桥不可用", async () => {
     await expect(
-      probeDevBridge({ fetchImpl: fetchReturning(0) }),
+      probeDevBridge({ fetchImpl: fetchStub({ port: 0 }) }),
     ).resolves.toBe(false);
+  });
+
+  it("描述文件是上次运行的残留（/health 不通）时判定桥不可用", async () => {
+    // 应用被强杀时不会清理描述文件 —— 端口还在，进程没了。
+    // 只看发现路由会误判成「已就绪」，随后每次 invoke 都连接被拒 → 白屏。
+    const fetchImpl = fetchStub(
+      { port: 6222, url: "http://127.0.0.1:6222" },
+      false,
+    );
+
+    await expect(probeDevBridge({ fetchImpl })).resolves.toBe(false);
   });
 
   it("请求失败时判定桥不可用且不向上抛错", async () => {
@@ -74,7 +115,7 @@ describe("resolveDevBridgeBoot", () => {
 
   it("运行在 Tauri 里时返回 desktop，且不发起任何请求", async () => {
     runtimeMock.hasTauriInternals.mockReturnValue(true);
-    const fetchImpl = fetchReturning(6222);
+    const fetchImpl = fetchStub({ port: 6222 });
 
     await expect(resolveDevBridgeBoot({ fetchImpl })).resolves.toBe("desktop");
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -82,13 +123,15 @@ describe("resolveDevBridgeBoot", () => {
 
   it("运行在浏览器里且桥已就绪时返回 browser-bridge", async () => {
     await expect(
-      resolveDevBridgeBoot({ fetchImpl: fetchReturning(6222) }),
+      resolveDevBridgeBoot({
+        fetchImpl: fetchStub({ port: 6222, url: "http://127.0.0.1:6222" }),
+      }),
     ).resolves.toBe("browser-bridge");
   });
 
   it("运行在浏览器里但桥未就绪时返回 browser-unavailable", async () => {
     await expect(
-      resolveDevBridgeBoot({ fetchImpl: fetchReturning(null) }),
+      resolveDevBridgeBoot({ fetchImpl: fetchStub({ port: null }) }),
     ).resolves.toBe("browser-unavailable");
   });
 });

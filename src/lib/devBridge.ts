@@ -46,11 +46,16 @@ export interface DevBridgeProbeOptions {
 /**
  * 探测本机调试桥是否已就绪。
  *
- * 打的是 vite 的**同源**发现路由：相对路径不受 CORS 约束，也不挑
- * `localhost` 还是 `127.0.0.1`。
+ * 两步：
  *
- * 判定规则与插件自身的描述文件校验保持一致：`port` 必须是正整数
- * （Rust 侧在默认端口被占用时会退化为系统随机端口，所以不能假设端口号）。
+ * 1. 打 vite 的**同源**发现路由，拿到桥的端口（Rust 侧在默认端口被占用时
+ *    会退化为系统随机端口，所以不能假设端口号）。相对路径不受 CORS 约束，
+ *    也不挑 `localhost` 还是 `127.0.0.1`。
+ * 2. 再打一次桥自己的 `/health`，确认它**真的活着**。描述文件是应用启动时
+ *    写下的，应用被强杀时不会清理 —— 于是「端口在、进程没了」的残留会让
+ *    第一步误判为已就绪，随后每一次 invoke 都会连接被拒，页面又变成白屏。
+ *
+ * 判定规则与插件自身的描述文件校验保持一致：`port` 必须是正整数。
  */
 export async function probeDevBridge(
   options: DevBridgeProbeOptions = {},
@@ -68,12 +73,24 @@ export async function probeDevBridge(
       signal: controller.signal,
     });
     if (!response.ok) return false;
-    const payload = (await response.json()) as { port?: number | null };
-    return (
-      typeof payload.port === "number" &&
-      Number.isFinite(payload.port) &&
-      payload.port > 0
-    );
+    const descriptor = (await response.json()) as {
+      port?: number | null;
+      url?: string | null;
+    };
+    const port = descriptor.port;
+    if (
+      typeof port !== "number" ||
+      !Number.isFinite(port) ||
+      port <= 0
+    ) {
+      return false;
+    }
+
+    const base = descriptor.url ?? `http://127.0.0.1:${port}`;
+    const health = await fetchImpl(`${base}/health`, {
+      signal: controller.signal,
+    });
+    return health.ok;
   } catch {
     // 桥没起来 / dev server 没开 / 请求超时 —— 一律当作「不可用」。
     return false;
