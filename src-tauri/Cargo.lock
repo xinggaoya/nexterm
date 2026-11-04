@@ -3691,6 +3691,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-store",
  "tauri-plugin-updater",
+ "tauri-plugin-web-dev-bridge",
  "tauri-plugin-window-state",
  "tempfile",
  "time",
@@ -6951,6 +6952,19 @@ dependencies = [
  "url",
  "windows-sys 0.60.2",
  "zip",
+]
+
+[[package]]
+name = "tauri-plugin-web-dev-bridge"
+version = "0.1.0"
+source = "git+https://github.com/xinggaoya/tauri-plugin-web-dev-bridge?rev=13d894827b14b9e7c510535b8a957383a4972dcd#13d894827b14b9e7c510535b8a957383a4972dcd"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]

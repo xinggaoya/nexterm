@@ -45,6 +45,18 @@ crabnebula-devtools = [
 	"dep:tauri-plugin-devtools",
 	"dep:tauri-plugin-devtools-app",
 ]
+# 浏览器调试桥：把**运行中**的应用的真实 IPC 暴露给本机普通浏览器，
+# 用于前端 UI 调试与浏览器自动化测试。**默认关闭**。
+#
+# 为什么默认关闭：桥一旦启动，本机就多了一个能写文件、起进程、走 SSH 的
+# HTTP 端点（只监听 127.0.0.1，但仍需显式 opt-in）。
+#
+# Rust 侧还有一道 `cfg!(debug_assertions)` 兜底 —— 即便用
+# `--release --features web-dev-bridge` 构建，release 产物也不会监听端口。
+#
+# 启用方式：`pnpm tauri dev -- --features web-dev-bridge`
+# 详见 `docs/architecture/07-web-dev-bridge.md`。
+web-dev-bridge = ["dep:tauri-plugin-web-dev-bridge"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -91,6 +103,9 @@ nexterm-fs-core = { path = "fs-core" }
 # 开启会连带启用 `tauri/tracing`，从而引入 IPC 死锁风险，详见上面的 features 说明。
 tauri-plugin-devtools = { version = "2.2", optional = true }
 tauri-plugin-devtools-app = { version = "2.1", optional = true }
+# 浏览器调试桥（feature `web-dev-bridge`，默认不编译进任何产物）。
+# 插件尚未发布到 crates.io，锁定 commit：13d894827b14b9e7c510535b8a957383a4972dcd
+tauri-plugin-web-dev-bridge = { git = "https://github.com/xinggaoya/tauri-plugin-web-dev-bridge", rev = "13d894827b14b9e7c510535b8a957383a4972dcd", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
