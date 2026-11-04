@@ -97,6 +97,7 @@
     "jsdom": "^29.1.1",
     "shadcn": "^4.3.1",
     "tailwindcss": "^4.2.3",
+    "tauri-plugin-web-dev-bridge": "https://github.com/xinggaoya/tauri-plugin-web-dev-bridge.git#13d894827b14b9e7c510535b8a957383a4972dcd",
     "typescript": "~5.8.3",
     "unplugin-auto-import": "^21.0.0",
     "unplugin-vue-components": "^32.0.0",
