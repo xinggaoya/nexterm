@@ -139,6 +139,17 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # cargo audit **不是 rustup 的内置组件** —— 不装的话下面那句
+      # `cargo audit` 会直接报 "no such command: `audit`"，job 变红，
+      # 却从来没真的审过任何东西（这个洞存在了很久）。
+      #
+      # 从 crates.io 装（而不是引入第三方 Action）：审计工具本身也在供应链里，
+      # 不该为它新增一个 GitHub Action 依赖。锁死版本 + --locked 保证可复现。
+      - name: Install cargo-audit
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo audit --version
+
       # scripts/audit.sh 以 src-tauri/audit.toml 为唯一事实来源读取豁免清单
       # （cargo-audit 0.22 的配置文件发现在不同环境下不一致，所以不依赖它）。
       # 每条豁免都必须在 audit.toml 里写明判断依据，review 时看得见。
