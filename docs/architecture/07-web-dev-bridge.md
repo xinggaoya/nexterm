@@ -117,6 +117,21 @@ pnpm tauri dev -- --features web-dev-bridge
 - 关掉桌面应用，端口就没了；
 - 桥本身不落盘任何凭据，`invoke_key` 只在进程内存里。
 
+### 4.2 供应链
+
+插件尚未发布到 crates.io，走 git 依赖并锁定 commit：
+
+```toml
+tauri-plugin-web-dev-bridge = { git = "https://github.com/xinggaoya/tauri-plugin-web-dev-bridge", rev = "13d894827b14b9e7c510535b8a957383a4972dcd", optional = true }
+```
+
+它自己声明的依赖（`tauri` / `serde` / `serde_json` / `tokio` / `tracing` / `url`）在
+Nexterm 的依赖图里**本来就有**，所以 `Cargo.lock` 只多出插件自身一个条目 ——
+供应链审计面不扩大。
+
+边界测试（`src-tauri/tests/web_dev_bridge_feature_boundary.rs`）守着三条：依赖保持
+`optional = true`、feature 不在默认集合、git 依赖必须锁 `rev`（不许用 branch / tag）。
+
 ## 5. 已知边界
 
 ### 5.1 PTY / LSP 的流式输出过不了桥
@@ -169,7 +184,56 @@ app 级事件（如 `nexterm://workspace-fs-changed`、`nexterm://deep-link-open
 桥的事件通道是**短轮询**（`GET /events`）而不是 SSE / WebSocket —— 长连接会让浏览器
 自动化工具的 *networkidle* 判定永远无法达成（`agent-browser open` 之类的命令会一直挂起）。
 
-## 6. 常见问题
+## 6. 用它做前端调试与自动化测试
+
+桥的存在意义不只是「看一眼页面」，而是让**后续的测试与调试都跑在浏览器里**。
+
+### 6.1 手工调试
+
+1. `pnpm tauri dev -- --features web-dev-bridge`
+2. 浏览器打开 <http://localhost:3180>
+3. 正常用 DevTools：断点、热重载、Network / Application 面板都能用，
+   且面板里的每一次后端调用都是**真实**的。
+
+### 6.2 AI 浏览器自动化（agent-browser / Playwright / CDP）
+
+桥的事件通道刻意用**短轮询**而不是 SSE / WebSocket —— 长连接会让自动化工具的
+*networkidle* 判定永远无法达成（实测 `agent-browser open` 从挂起 >300s 降到约 1.1s）。
+
+仓库里已经装了 `agent-browser`，可以直接用：
+
+```bash
+# 1) 起带桥的桌面应用（另一个终端）
+pnpm tauri dev -- --features web-dev-bridge
+
+# 2) 用独立会话驱动浏览器（别用默认共享会话）
+export AGENT_BROWSER_SESSION="$(agent-browser session id --scope worktree --prefix nexterm)"
+agent-browser open http://localhost:3180
+agent-browser read          # 读页面文本 —— 拿到的是真实工作区 / 文件树 / Git 状态
+agent-browser screenshot out.png
+agent-browser console       # 看控制台
+agent-browser errors        # 看未处理错误
+```
+
+拿来做的事：
+
+- **回归验证**：文件树、Git 面板、设置项的渲染与交互，脚本化跑一遍；
+- **窄屏调试**：把视口调窄，验证响应式布局（WebView 窗口尺寸不好精确控制）；
+- **真实数据断言**：页面上的工作区名、文件列表就是磁盘上的真实状态，可以直接断言。
+
+⚠️ 自动化脚本跑在浏览器里，它**能驱动本机 nexterm 的完整 IPC 面**（写文件、起进程）。
+只对自己的 `localhost:3180` 跑，别把脚本指向别的站点。
+
+### 6.3 什么时候**不**用桥
+
+| 场景 | 原因 |
+|------|------|
+| 验证终端输出 / LSP 诊断 | 流式通道过不了桥（见 §5.1），必须回桌面端 |
+| 验证 OS 文件拖放 | webview 作用域的 API 不可用（见 §5.2） |
+| 验证窗口行为（最小化 / 置顶 / 关闭） | `plugin:window:*` 作用的是**真实桌面窗口**（见 §5.4） |
+| 性能剖析 | 桥多了一层 HTTP 往返，测不出真实耗时 |
+
+## 7. 常见问题
 
 | 现象 | 原因与处理 |
 |------|-----------|
@@ -181,7 +245,7 @@ app 级事件（如 `nexterm://workspace-fs-changed`、`nexterm://deep-link-open
 | 终端没有输出 | 见 §5.1，这是已知边界，不是配置问题。 |
 | 应用日志里看不到插件自己的日志 | 插件用 `tracing` 打日志，Nexterm 只装了 `log` 的 logger。Nexterm 自己那条 `浏览器调试桥已启动` 是 `log::info!`，能看到。 |
 
-## 7. 相关文件
+## 8. 相关文件
 
 | 文件 | 作用 |
 |------|------|

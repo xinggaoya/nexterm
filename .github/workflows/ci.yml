@@ -120,6 +120,11 @@ jobs:
       - name: cargo check (crabnebula-devtools feature)
         run: cargo check --all-targets --features crabnebula-devtools
 
+      # 浏览器调试桥同样是可选 feature（默认关闭）。它走 git 依赖，
+      # 默认路径不会编译它 —— 单独跑一次，免得 opt-in 构建悄悄坏掉。
+      - name: cargo check (web-dev-bridge feature)
+        run: cargo check --all-targets --features web-dev-bridge
+
       - name: cargo clippy
         run: cargo clippy --all-targets -- -D warnings
 

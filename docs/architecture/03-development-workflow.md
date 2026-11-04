@@ -91,7 +91,7 @@ pnpm tauri dev -- --features web-dev-bridge
   （能写文件、起进程、走 SSH）。这是 localhost 调试桥的固有属性，靠「默认关闭 + 仅 debug」收敛；
 - PTY / LSP 的流式输出过不了桥（终端在浏览器里没有输出），仍需在桌面端验证。
 
-完整说明（含安全模型、已知边界、故障排查）见 [07-web-dev-bridge.md](./07-web-dev-bridge.md)。
+完整说明（含安全模型、已知边界、**用它做自动化测试**、故障排查）见 [07-web-dev-bridge.md](./07-web-dev-bridge.md)。
 
 ### 3.5 常见问题
 
