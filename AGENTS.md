@@ -152,7 +152,9 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 | `src-tauri/src/modules/lock.rs` | Mutex/RwLock poison error wrappers |
 | `src-tauri/src/modules/devtools.rs` | CrabNebula DevTools 插桩插件初始化 + 日志桥接（`crabnebula-devtools` feature，默认关闭） |
 | `vite.config.ts` | Vite 7 config with Vue, Tailwind 4, auto-imports, chunk splitting |
+| `src/lib/devBridge.ts` | 浏览器调试桥前端封装：探测桥就绪、安装 shim、决定启动模式 |
 | `docs/architecture/06-crabnebula-devtools.md` | 后端调试面板（CrabNebula DevTools）说明：启用方式、使用流程、日志体系配合 |
+| `docs/architecture/07-web-dev-bridge.md` | 浏览器调试桥说明：启用方式、安全模型、已知边界 |
 
 ## Runtime/Tooling Preferences
 
@@ -175,6 +177,7 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 - **CI 门禁**: `.github/workflows/ci.yml` 在 push(main)/PR 上运行相同的前端与 Rust 检查（Ubuntu + Windows 双矩阵）
 - **Add boundary tests** when changing: module ownership, framework migration rules, IPC contracts, or security-sensitive behavior
 - **Backend debugging**: the CrabNebula DevTools instrumentation is behind the **opt-in** Cargo feature `crabnebula-devtools` (default OFF). Enable it with `pnpm tauri dev -- --features crabnebula-devtools`; the terminal then prints `https://devtools.crabnebula.dev/dash/<host>/<port>`, or press `Ctrl+Shift+M` (macOS `Cmd+Alt+M`) for the embedded window. See `docs/architecture/06-crabnebula-devtools.md`. **Do NOT enable it in release builds**: it turns on `tauri/tracing`, which makes `tauri-runtime-wry`'s `eval_script` a blocking UI-thread round trip and deadlocks the app against the WebView2 `WebResourceRequested` handler (see that doc §3.1). Do NOT remove `skip_logger()` from `tauri-plugin-log` when the feature IS on: devtools and the log plugin compete for the single global `log` logger, and dropping it breaks app startup.
+- **Browser debugging**: the web dev bridge is behind the **opt-in** Cargo feature `web-dev-bridge` (default OFF). Enable it with `pnpm tauri dev -- --features web-dev-bridge`, then open `http://localhost:3180` in a plain browser — it drives the running app's **real** IPC (real files, Git, preferences). See `docs/architecture/07-web-dev-bridge.md`. It listens on `127.0.0.1` only, but **CORS never protects you from other local processes** (curl et al. can call the full IPC surface: file writes, process spawning, SSH) — that is inherent to localhost bridges, so keep the feature off by default. Use `http://localhost:3180`, not `127.0.0.1:3180` (the CORS allow-list only covers the former). PTY/LSP streaming does **not** cross the bridge (Rust `Channel` sends via `webview.eval` into the desktop webview), so terminal output still has to be verified in the desktop app.
 
 ## Commit & Pull Request Guidelines
 
