@@ -116,7 +116,18 @@ mod tests {
         let resolved = resolve_authorized_cwd(Some(&raw), &WorkspaceEnv::Local, &reg)
             .expect("authorized")
             .expect("some");
-        assert_eq!(Path::new(&resolved), dir.as_path());
+        // 被测函数返回的是 **canonical** 路径（`authorize_access_path` 内部
+        // 走 `canonicalize_cached`），而临时目录本身未必是 canonical 的。
+        //
+        // 直接拿原始路径去比，断言在 macOS 上永远失败：`/var` 是指向
+        // `/private/var` 的符号链接，于是 `resolved` 是
+        // `/private/var/folders/...` 而 `dir` 是 `/var/folders/...`。
+        //
+        // 所以两边都取 canonical 形式再比。Windows 上 `canonicalize` 会加
+        // `\\?\` 前缀，两边同样加上，不受影响。
+        let expected = std::fs::canonicalize(&dir).expect("canonicalize tempdir");
+        let actual = std::fs::canonicalize(Path::new(&resolved)).expect("canonicalize resolved");
+        assert_eq!(actual, expected);
     }
 
     #[test]
