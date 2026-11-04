@@ -21,6 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # 两个 lockfile 各自浮动，Rust 侧的 tauri crate 可能先跑到下一个 minor，
+      # 而 npm 侧的 @tauri-apps/api 没跟上 —— Tauri CLI 会在 `tauri build`
+      # 时直接失败。CI 跑的是 `pnpm build`（不经过 CLI），所以这道检查必须
+      # 单独存在，否则漂移只能等发版才暴露（v0.3.0 就这么炸过一次）。
+      - name: Check Tauri package version sync
+        run: ./.github/scripts/check-tauri-version-sync.sh
+
       - uses: pnpm/action-setup@v6
         with:
           version: 11.1.3
