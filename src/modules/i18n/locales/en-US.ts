@@ -103,6 +103,7 @@ const enUS = {
     notSet: "Not set",
     partialFileResults: "Showing partial file results. Refine your query.",
     quickOpenTitle: "Quick Open",
+    quickOpenHint: "Type a file name to open it. ↑↓ to select, Enter to open.",
     searchCommands: "Search commands...",
     searchFiles: "Search files...",
     searchingFiles: "Searching files...",
@@ -145,6 +146,7 @@ const enUS = {
       splitRight: "Split right",
       terminal: "Terminal",
       toggleExplorer: "Toggle file explorer panel",
+      togglePanel: "Toggle side panel",
       toggleSourceControl: "Toggle source control panel",
     },
     status: {
@@ -308,6 +310,10 @@ const enUS = {
       toggleDevtools: "Open DevTools",
       toggleDevtoolsHint: "Toggle the Webview inspector (DevTools) to debug UI issues.",
       devtoolsUnavailable: "DevTools unavailable (requires a debug build or the devtools feature).",
+      devtoolsLabel: "Webview DevTools",
+      backendDevtoolsLabel: "Backend debug panel",
+      openAction: "Open",
+      closeAction: "Close",
       openBackendDevtools: "Open backend debug panel",
       openBackendDevtoolsHint:
         "Open CrabNebula DevTools inside the app to inspect backend IPC calls, logs and timings; requires the CrabNebula DevTools desktop app.",
@@ -417,6 +423,7 @@ const enUS = {
     paste: "Paste",
     delete: "Delete",
     deleteFailed: "Delete failed",
+    retry: "Retry",
     deleteSelected: "Delete {count} items",
     deletedWithUnsaved: "Deleted, unsaved edits kept",
     deletedWithUnsavedDetail: "{count} unsaved file(s) stay open — save to write them back to disk.",
@@ -728,6 +735,8 @@ const enUS = {
     moveToNewWindowHint: "Multi-window support is coming soon.",
   },
   terminal: {
+    bridgeModeNotice:
+      "Browser debug bridge mode: terminal output does not cross the bridge. View terminals in the desktop app.",
     kill: "Kill Process",
     rename: "Rename Terminal",
     renamePlaceholder: "Terminal name",

@@ -14,6 +14,7 @@ import {
 } from "./lib/theme";
 import { attachClipboardShortcuts } from "./lib/shortcuts";
 import { t } from "@/modules/i18n/translate";
+import { isBrowserBridgeMode } from "@/lib/devBridge";
 import { attachTerminalBell } from "./lib/bell";
 import { useDialog } from "naive-ui";
 import {
@@ -70,6 +71,13 @@ const emit = defineEmits<{
 const container = ref<HTMLElement>();
 const state = ref<SessionState>("connecting");
 const exitCode = ref<number | undefined>(undefined);
+/**
+ * 是否跑在「浏览器 + 调试桥」模式。
+ *
+ * 该模式下 PTY 输出不经过桥（输出通道是 Tauri `Channel`，直接投喂桌面
+ * WebView），浏览器里看不到终端内容 —— 面板会明确说明，而不是留一块黑屏。
+ */
+const bridgeMode = isBrowserBridgeMode();
 
 // ── 回到底部 ──────────────────────────────────────────────────────────
 /**
@@ -312,33 +320,39 @@ async function ensureSession(): Promise<void> {
     shellProfileId: prefs.terminalShellId,
     // 启动 watchdog 检测到 shell 假死（WSL 冷启动常见）时的回调：销毁坏
     // session 并延迟重建。第二次 pty_open 命中已预热的 WSL，会成功。
-    onDeadStart: () => {
-      if (deadStartInFlight) return;
-      deadStartInFlight = true;
-      // 销毁坏 session 并从 registry 移除。dispose() 内部已会清 watchdog。
-      disposeSession(wsCtx!.workspace.id, props.leafId);
-      session = null;
-      state.value = "connecting";
-      if (deadStartRetries >= MAX_DEAD_START_RETRIES) {
-        console.warn(
-          "[terminal] dead-start rebuild exhausted after " +
-            `${MAX_DEAD_START_RETRIES} retries`,
-        );
-        state.value = "exited";
-        deadStartInFlight = false;
-        return;
-      }
-      deadStartRetries += 1;
-      if (deadStartRetryTimer !== null) clearTimeout(deadStartRetryTimer);
-      deadStartRetryTimer = setTimeout(() => {
-        deadStartRetryTimer = null;
-        if (mountRevision !== currentMountRevision()) return;
-        deadStartInFlight = false;
-        void ensureSession().catch((err) => {
-          console.warn("[terminal] dead-start rebuild failed:", err);
-        });
-      }, DEAD_START_RETRY_DELAY_MS);
-    },
+    //
+    // 浏览器调试桥模式下**不挂** watchdog：PTY 的输出通道不经过桥，浏览器
+    // 里永远收不到输出，watchdog 只会把每个终端标签重试 3 次（多开 3 个
+    // PTY 进程），最后还报一个假的「已退出」。
+    onDeadStart: bridgeMode
+      ? undefined
+      : () => {
+          if (deadStartInFlight) return;
+          deadStartInFlight = true;
+          // 销毁坏 session 并从 registry 移除。dispose() 内部已会清 watchdog。
+          disposeSession(wsCtx!.workspace.id, props.leafId);
+          session = null;
+          state.value = "connecting";
+          if (deadStartRetries >= MAX_DEAD_START_RETRIES) {
+            console.warn(
+              "[terminal] dead-start rebuild exhausted after " +
+                `${MAX_DEAD_START_RETRIES} retries`,
+            );
+            state.value = "exited";
+            deadStartInFlight = false;
+            return;
+          }
+          deadStartRetries += 1;
+          if (deadStartRetryTimer !== null) clearTimeout(deadStartRetryTimer);
+          deadStartRetryTimer = setTimeout(() => {
+            deadStartRetryTimer = null;
+            if (mountRevision !== currentMountRevision()) return;
+            deadStartInFlight = false;
+            void ensureSession().catch((err) => {
+              console.warn("[terminal] dead-start rebuild failed:", err);
+            });
+          }, DEAD_START_RETRY_DELAY_MS);
+        },
   });
   session = handle;
   trackSession(wsCtx!.workspace.id, props.leafId, handle);
@@ -626,7 +640,7 @@ defineExpose({
 
 <template>
   <div
-    class="terminal-pane flex flex-col"
+    class="terminal-pane relative flex flex-col"
     :class="{ focused: isFocused, exited: state === 'exited' }"
     :style="{ flex: String(flex) }"
     data-terminal-pane
@@ -647,6 +661,20 @@ defineExpose({
       @split="(d: 'row' | 'col') => emit('split', d)"
     />
     <div ref="container" class="terminal-pane-body" />
+
+    <!--
+      浏览器调试桥模式：PTY 输出不经过桥，浏览器里收不到终端内容。
+      与其留一块黑屏让人以为终端坏了，不如说清楚原因和去处。
+    -->
+    <div
+      v-if="bridgeMode"
+      class="pointer-events-none absolute inset-0 grid place-items-center p-6"
+      data-terminal-bridge-notice
+    >
+      <p class="max-w-sm text-center text-[12px] leading-relaxed text-muted-foreground">
+        {{ t("terminal.bridgeModeNotice") }}
+      </p>
+    </div>
 
     <!-- 终端内查找：Ctrl+F。面板自身不占布局宽度，浮在右上角。 -->
     <TerminalSearch

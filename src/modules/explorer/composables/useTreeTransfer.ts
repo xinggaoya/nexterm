@@ -2,6 +2,7 @@ import { basename, dirname } from "@/lib/path";
 import { useEventListener } from "@/lib/useEventListener";
 import { usePointerDragReorder } from "@/lib/usePointerDragReorder";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
+import { isBrowserBridgeMode } from "@/lib/devBridge";
 import { onFsTransferProgress, onOsFileDragDrop } from "@/lib/native";
 import type {
   FsConflictPolicy,
@@ -476,6 +477,7 @@ export function useTreeTransfer(options: TreeTransferOptions) {
       dropTargetDir.value = null;
       dropAllowed.value = false;
       dropLine.value = null;
+      dragSources.value = [];
       cancelHoverExpand();
     },
     onDrop: (sourceId, targetId) => {
@@ -680,7 +682,11 @@ export function useTreeTransfer(options: TreeTransferOptions) {
 
   // 部分 Linux Wayland 组合不支持 drag-drop：订阅失败就降级为“不支持拖入”，
   // 而不是让整棵文件树挂掉。
-  if (hasTauriInternals()) {
+  //
+  // 浏览器调试桥模式下**直接跳过**：那不是 Tauri WebView，没有 OS 级
+  // drag-drop 通道，去订阅只会打出一条「Cannot read properties of
+  // undefined」的噪音警告。
+  if (hasTauriInternals() && !isBrowserBridgeMode()) {
     void onOsFileDragDrop(handleOsDragEvent)
       .then((unlisten) => {
         unlistenOsDrag = unlisten;
@@ -719,7 +725,16 @@ export function useTreeTransfer(options: TreeTransferOptions) {
   }
 
   // ── 行级视觉判定（virtual 与非 virtual 两处循环共用）─────────────
+  /**
+   * 该行是否处于「正在被拖走」的视觉态。
+   *
+   * 关键：**只在真的拖起来时才算**。`dragSources` 在 pointerdown 时就被
+   * 填上了（为了算多选拖拽集合），而普通点击根本不会触发拖拽 —— 早期
+   * 实现只看 `dragSources` 包含与否，于是**点一下文件它就永久变暗**
+   * （opacity-50 + aria-grabbed=true），看上去像被禁用了。
+   */
   function isRowDragSource(path: string): boolean {
+    if (treeDrag.draggingId.value === null) return false;
     return dragSources.value.includes(path);
   }
 

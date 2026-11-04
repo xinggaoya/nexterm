@@ -36,6 +36,30 @@ export type DevBridgeBootMode =
   | "browser-bridge"
   | "browser-unavailable";
 
+/**
+ * 本次启动的模式。
+ *
+ * `resolveDevBridgeBoot()` 在启动时写入，之后各处（终端面板等）读它来决定
+ * 「当前跑在桌面端还是浏览器里」。
+ */
+let bootMode: DevBridgeBootMode = "desktop";
+
+/** 当前启动模式（`resolveDevBridgeBoot()` 之后才有意义）。 */
+export function devBridgeBootMode(): DevBridgeBootMode {
+  return bootMode;
+}
+
+/**
+ * 是否跑在「浏览器 + 调试桥」模式下。
+ *
+ * 这个模式下**终端输出不会回流**：PTY 的输出通道是 Tauri `Channel`，
+ * 直接把数据喂给桌面 WebView，浏览器侧收不到（详见
+ * `docs/architecture/07-web-dev-bridge.md`）。
+ */
+export function isBrowserBridgeMode(): boolean {
+  return bootMode === "browser-bridge";
+}
+
 export interface DevBridgeProbeOptions {
   /** 探测超时（毫秒），默认 {@link DEV_BRIDGE_PROBE_TIMEOUT_MS}。 */
   timeoutMs?: number;
@@ -119,8 +143,12 @@ export function installDevBridge(): void {
 export async function resolveDevBridgeBoot(
   options: DevBridgeProbeOptions = {},
 ): Promise<DevBridgeBootMode> {
-  if (hasTauriInternals()) return "desktop";
-  return (await probeDevBridge(options))
+  if (hasTauriInternals()) {
+    bootMode = "desktop";
+    return bootMode;
+  }
+  bootMode = (await probeDevBridge(options))
     ? "browser-bridge"
     : "browser-unavailable";
+  return bootMode;
 }

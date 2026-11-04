@@ -247,7 +247,7 @@ onBeforeUnmount(clearSearchTimer);
     @mousedown.self="close"
   >
     <section
-      class="nexterm-overlay flex max-h-[70vh] w-full max-w-170 flex-col overflow-hidden"
+      class="nexterm-overlay relative flex max-h-[70vh] w-full max-w-170 flex-col overflow-hidden"
       role="dialog"
       :aria-label="title"
     >
@@ -279,6 +279,19 @@ onBeforeUnmount(clearSearchTimer);
         >
           <NSpin size="small" />
           <span>{{ t("commands.searchingFiles") }}</span>
+        </div>
+
+        <!--
+          快速打开的空查询态：之前是一个**完全空白**的框，用户不知道
+          该输入什么。给一句引导语。
+        -->
+        <div
+          v-else-if="mode === 'files' && !query.trim()"
+          class="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground"
+          data-command-palette-hint
+        >
+          <NIcon :component="SearchOutline" :size="14" />
+          <span>{{ t("commands.quickOpenHint") }}</span>
         </div>
 
         <div
@@ -348,6 +361,16 @@ onBeforeUnmount(clearSearchTimer);
           {{ t("commands.partialFileResults") }}
         </div>
       </div>
+
+      <!--
+        底部渐隐：列表被 max-h 截断时，最后一行会硬生生切一半，看上去像
+        渲染坏了。一层从背景色渐变到透明的遮罩让截断看起来是「还有更多」。
+      -->
+      <div
+        v-if="results.length > 0"
+        class="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-popover to-transparent"
+        aria-hidden="true"
+      />
     </section>
   </div>
   </Transition>

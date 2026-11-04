@@ -7,6 +7,7 @@ import {
   SearchOutline,
   SettingsOutline,
 } from "@vicons/ionicons5";
+import { FolderOpenOutline } from "@vicons/ionicons5";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { NDropdown, NIcon, type DropdownOption } from "naive-ui";
 import { computed, h, type VNode } from "vue";
@@ -25,6 +26,14 @@ const props = defineProps<{
   gitBranch: string | null;
   showWindowControls: boolean;
   canSplit: boolean;
+  /** 宽度偏窄：隐藏环境徽章，把空间让给会话条与动作区。 */
+  compact?: boolean;
+  /** 宽度很窄：连分支名也不再显示。 */
+  dense?: boolean;
+  /** 极窄窗口下显示「切换侧面板」按钮（覆盖层模式）。 */
+  showPanelToggle?: boolean;
+  /** 覆盖层面板当前是否展开。 */
+  panelOpen?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -32,6 +41,7 @@ const emit = defineEmits<{
   "split-pane": [dir: SplitDir];
   "open-command-palette": [];
   "open-settings": [];
+  "toggle-panel": [];
 }>();
 
 async function handleRootPointerDown(event: PointerEvent) {
@@ -77,25 +87,31 @@ function handleSplitSelect(key: string | number) {
     @pointerdown="handleRootPointerDown"
   >
     <!-- 左:工作区身份(也是拖拽区) -->
+    <!--
+      身份区必须**可收缩**：窄窗口下它带着 `shrink-0` 会把右侧动作区
+      （新建终端 / 分屏 / 命令中心 / 设置）整体挤出可视区——按钮看得见
+      却点不到。
+    -->
     <div
-      class="flex min-w-0 max-w-72 shrink-0 items-center gap-2 rounded-lg px-2 py-1"
+      class="flex min-w-0 max-w-[min(18rem,45%)] shrink items-center gap-2 rounded-lg px-2 py-1"
       data-workspace-identity
       :title="workspacePath"
     >
       <span class="v2-dot-glow size-1.5 shrink-0 rounded-full bg-primary" />
       <span class="truncate font-medium text-foreground">{{ workspaceName }}</span>
       <span
+        v-if="!compact"
         class="shrink-0 rounded-full bg-surface-hover px-1.5 py-px text-[10px] leading-4 text-muted-foreground"
         :data-env-badge="env.kind"
       >
         {{ envLabel }}
       </span>
       <span
-        v-if="gitBranch"
-        class="flex min-w-0 shrink-0 items-center gap-1 text-[11px] text-muted-foreground"
+        v-if="gitBranch && !dense"
+        class="flex min-w-0 shrink items-center gap-1 text-[11px] text-muted-foreground"
         :title="gitBranch"
       >
-        <NIcon :component="GitBranchOutline" :size="11" />
+        <NIcon :component="GitBranchOutline" :size="11" class="shrink-0" />
         <span class="max-w-28 truncate">{{ gitBranch }}</span>
       </span>
     </div>
@@ -133,6 +149,19 @@ function handleSplitSelect(key: string | number) {
             <NIcon :component="DuplicateOutline" :size="14" />
           </NextermIconButton>
         </NDropdown>
+      </TooltipTitle>
+      <TooltipTitle
+        v-if="showPanelToggle"
+        :label="t('app.header.togglePanel')"
+      >
+        <NextermIconButton
+          data-toggle-panel
+          :aria-label="t('app.header.togglePanel')"
+          :aria-pressed="panelOpen"
+          @click="emit('toggle-panel')"
+        >
+          <NIcon :component="FolderOpenOutline" :size="14" />
+        </NextermIconButton>
       </TooltipTitle>
       <TooltipTitle :label="t('app.header.openCommandCenter')">
         <NextermIconButton

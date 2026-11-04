@@ -117,7 +117,7 @@ async function openBackendDevtools() {
       embedded
     >
       <NForm label-placement="left" label-width="150" size="small">
-        <NFormItem :label="t('settings.general.toggleDevtools')">
+        <NFormItem :label="t('settings.general.devtoolsLabel')">
           <div class="flex flex-col gap-1">
             <NButton
               size="small"
@@ -127,7 +127,11 @@ async function openBackendDevtools() {
               @click="toggleDevtools"
             >
               <template #icon><NIcon :component="BugOutline" /></template>
-              {{ devtoolsOpen ? "✓ " : "" }}{{ t("settings.general.toggleDevtools") }}
+              {{
+                devtoolsOpen
+                  ? t("settings.general.closeAction")
+                  : t("settings.general.openAction")
+              }}
             </NButton>
             <span class="text-[11px] text-muted-foreground">
               {{ t("settings.general.toggleDevtoolsHint") }}
@@ -139,7 +143,7 @@ async function openBackendDevtools() {
         </NFormItem>
         <NFormItem
           v-if="backendDevtoolsAvailable"
-          :label="t('settings.general.openBackendDevtools')"
+          :label="t('settings.general.backendDevtoolsLabel')"
         >
           <div class="flex flex-col gap-1">
             <NButton
@@ -150,7 +154,7 @@ async function openBackendDevtools() {
               @click="openBackendDevtools"
             >
               <template #icon><NIcon :component="BugOutline" /></template>
-              {{ t("settings.general.openBackendDevtools") }}
+              {{ t("settings.general.openAction") }}
             </NButton>
             <span class="text-[11px] text-muted-foreground">
               {{ t("settings.general.openBackendDevtoolsHint") }}

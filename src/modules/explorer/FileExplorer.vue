@@ -115,6 +115,18 @@ const {
   commitRename,
 } = tree;
 
+/**
+ * 根目录加载失败后的重试。
+ *
+ * 失败态之前只是一行红字：用户只能关掉工作区再打开才能恢复。现在给一个
+ * 显式的重试按钮 —— 授权/挂载这类瞬时失败重试一次就好。
+ */
+function retryRoot(): void {
+  const root = props.rootPath;
+  if (!root) return;
+  void loadChildren(root);
+}
+
 const selection = useTreeSelection({
   entryPaths: entryPaths,
   entryIndexByPath: entryIndexByPath,
@@ -617,9 +629,18 @@ defineExpose({
         </div>
         <div
           v-else-if="rootState?.status === 'error'"
-          class="px-3 py-2 text-[11px] text-destructive"
+          class="flex items-start gap-2 px-3 py-2 text-[11px] text-destructive"
+          data-explorer-root-error
         >
-          {{ rootState.message }}
+          <span class="min-w-0 flex-1 break-words">{{ rootState.message }}</span>
+          <button
+            type="button"
+            class="shrink-0 rounded border border-destructive/40 px-1.5 py-px text-[10px] text-destructive transition-colors duration-[var(--dur-fast)] hover:bg-destructive/10"
+            data-explorer-retry
+            @click="retryRoot"
+          >
+            {{ t("explorer.retry") }}
+          </button>
         </div>
         <div v-else-if="rootState?.status === 'loaded'">
           <!--

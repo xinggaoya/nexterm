@@ -105,6 +105,7 @@ const zhCN = {
     notSet: "未设置",
     partialFileResults: "仅显示部分文件结果。请缩小搜索范围。",
     quickOpenTitle: "快速打开",
+    quickOpenHint: "输入文件名以快速打开，↑↓ 选择，Enter 打开。",
     searchCommands: "搜索命令...",
     searchFiles: "搜索文件...",
     searchingFiles: "正在搜索文件...",
@@ -147,6 +148,7 @@ const zhCN = {
       splitRight: "向右拆分",
       terminal: "终端",
       toggleExplorer: "切换文件资源管理器",
+      togglePanel: "切换侧面板",
       toggleSourceControl: "切换源代码管理面板",
     },
     status: {
@@ -308,6 +310,10 @@ const zhCN = {
       toggleDevtools: "打开开发者工具",
       toggleDevtoolsHint: "切换 Webview 检查器（DevTools），用于排查界面问题。",
       devtoolsUnavailable: "开发者工具不可用（需要 debug 构建或开启 devtools 特性）。",
+      devtoolsLabel: "Webview 开发者工具",
+      backendDevtoolsLabel: "后端调试面板",
+      openAction: "打开",
+      closeAction: "关闭",
       openBackendDevtools: "打开后端调试面板",
       openBackendDevtoolsHint:
         "在应用内打开 CrabNebula DevTools，查看后端 IPC 调用、日志与耗时；需先安装 CrabNebula DevTools 桌面端。",
@@ -415,6 +421,7 @@ const zhCN = {
     paste: "粘贴",
     delete: "删除",
     deleteFailed: "删除失败",
+    retry: "重试",
     deleteSelected: "删除 {count} 项",
     deletedWithUnsaved: "已删除，未保存的改动已保留",
     deletedWithUnsavedDetail: "{count} 个未保存的文件仍开着标签，保存即可重新写回磁盘。",
@@ -721,6 +728,8 @@ const zhCN = {
     moveToNewWindowHint: "多窗口支持即将推出。",
   },
   terminal: {
+    bridgeModeNotice:
+      "浏览器调试桥模式：终端输出不经过调试桥，请在桌面端查看终端内容。",
     kill: "终止进程",
     rename: "重命名终端",
     renamePlaceholder: "终端名称",

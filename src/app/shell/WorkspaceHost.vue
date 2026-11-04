@@ -47,6 +47,7 @@ import {
 } from "@/app/workspaceContext";
 import { useWorkspaceLifecycle } from "@/app/useWorkspaceLifecycle";
 import { useWorkbenchCommands } from "@/app/useWorkbenchCommands";
+import { useResponsiveLayout } from "@/app/useResponsiveLayout";
 import { isBinaryImagePath } from "@/modules/file-preview/lib/imageFiles";
 import { normalizePreviewUrl } from "@/modules/preview/previewUrl";
 import { t, tLoose } from "@/modules/i18n/translate";
@@ -124,6 +125,89 @@ const gitBranch = ref<string | null>(null);
 // ── 停靠面板状态(标签持久化在偏好;宽度沿用 explorerPanelWidth)────────
 const panelTab = computed(() => prefs.workspacePanelTab);
 const panelWidth = ref(prefs.explorerPanelWidth);
+
+// ── 响应式收敛 ────────────────────────────────────────────────────────
+// 三栏（侧栏 + 画布 + 停靠面板）在窄窗口下会把画布挤没、把顶栏动作按钮
+// 挤出屏幕。判定集中在 useResponsiveLayout，这里只消费结论。
+const shellRef = ref<HTMLElement | null>(null);
+const responsive = useResponsiveLayout(shellRef);
+
+/** 侧栏展开态的宽度（与 Sidebar.vue 的 w-[248px] 保持一致）。 */
+const SIDEBAR_EXPANDED_WIDTH = 248;
+/** 侧栏折叠轨道宽度（与 Sidebar.vue 的 w-[52px] 保持一致）。 */
+const SIDEBAR_RAIL_WIDTH = 52;
+
+/**
+ * 生效的折叠态。
+ *
+ * 窄窗口下自动折叠成轨道，但**不写回偏好**：用户的显式选择要在窗口变宽
+ * 后原样恢复，否则「我明明展开了」会被窄窗口永久改掉。
+ *
+ * `sidebarOverride` 记的是「用户在窄窗口下手动展开过」：自动折叠是默认值，
+ * 不是硬约束 —— 用户想看完整侧栏时必须能展开（哪怕画布会因此变窄）。
+ */
+const sidebarOverride = ref<boolean | null>(null);
+const sidebarCollapsed = computed(() => {
+  if (sidebarOverride.value !== null) return !sidebarOverride.value;
+  return prefs.sidebarCollapsed || responsive.compact.value;
+});
+
+/** 离开紧凑模式后丢弃手动覆盖，回到用户偏好的折叠态。 */
+watch(
+  () => responsive.compact.value,
+  (compact) => {
+    if (!compact) sidebarOverride.value = null;
+  },
+);
+
+function handleSidebarToggle(): void {
+  if (responsive.compact.value) {
+    sidebarOverride.value = !sidebarCollapsed.value;
+    return;
+  }
+  toggleSidebarCollapsed();
+}
+
+const sidebarWidth = computed(() =>
+  sidebarCollapsed.value ? SIDEBAR_RAIL_WIDTH : SIDEBAR_EXPANDED_WIDTH,
+);
+
+/**
+ * 停靠面板的最终宽度。
+ *
+ * 固定 328px 在 800px 宽的窗口里会吃掉四成空间。收窄时按「容器宽度减去
+ * 侧栏」的可用量取比例，保证画布始终拿得到该有的份额。覆盖层模式下按
+ * 容器宽度算（面板浮在画布之上，不占布局）。
+ */
+const effectivePanelWidth = computed(() =>
+  responsive.resolvePanelWidth(
+    panelWidth.value,
+    responsive.tight.value
+      ? responsive.width.value
+      : responsive.width.value - sidebarWidth.value,
+  ),
+);
+
+/**
+ * 极窄窗口（< 640px）下面板改为覆盖层：不占布局宽度，画布保持满宽，
+ * 面板由顶栏按钮唤出。否则 420px 宽的窗口里画布会被压到 0。
+ */
+const panelOverlay = computed(() => responsive.tight.value);
+const panelOverlayOpen = ref(false);
+/** 覆盖层模式下默认收起面板，把空间让给画布。 */
+const panelVisible = computed(() => !panelOverlay.value || panelOverlayOpen.value);
+
+function togglePanelOverlay(): void {
+  panelOverlayOpen.value = !panelOverlayOpen.value;
+}
+
+/** 离开极窄模式后收起覆盖层面板（下次再变窄时仍是默认收起）。 */
+watch(
+  () => responsive.tight.value,
+  (tight) => {
+    if (!tight) panelOverlayOpen.value = false;
+  },
+);
 // 拖拽过程中频繁 emit,持久化做 400ms 防抖;数值本身即时生效。
 let widthSaveTimer: ReturnType<typeof setTimeout> | null = null;
 function persistPanelWidth(width: number): void {
@@ -687,13 +771,14 @@ defineExpose({
 
 <template>
   <div
+    ref="shellRef"
     class="flex h-full min-h-0 bg-shell-bg"
     :data-workspace-id="workspace.id"
   >
     <Sidebar
       :workspaces="workspaces.workspaces"
       :active-workspace-id="workspaces.activeWorkspaceId"
-      :collapsed="prefs.sidebarCollapsed"
+      :collapsed="sidebarCollapsed"
       @select-workspace="(id) => workspaces.setActive(id)"
       @close-workspace="(id) => emit('request-remove-workspace', id)"
       @add-workspace="(env) => emit('add-workspace', env)"
@@ -701,7 +786,7 @@ defineExpose({
       @reorder-workspace="(sourceId, targetId, placement) => workspaces.reorderByTarget(sourceId, targetId, placement)"
       @open-settings="() => emit('request-settings')"
       @open-command-palette="() => emit('request-command-palette', 'commands')"
-      @toggle-collapse="toggleSidebarCollapsed"
+      @toggle-collapse="handleSidebarToggle"
     />
 
     <div class="flex min-w-0 flex-1 flex-col">
@@ -712,10 +797,15 @@ defineExpose({
         :git-branch="gitBranch"
         :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
         :can-split="canSplitActiveTab"
+        :compact="responsive.narrow.value"
+        :dense="responsive.tight.value"
+        :show-panel-toggle="panelOverlay"
+        :panel-open="panelOverlayOpen"
         @new-terminal="newTerminalTab"
         @split-pane="splitActivePane"
         @open-command-palette="() => emit('request-command-palette', 'commands')"
         @open-settings="() => emit('request-settings')"
+        @toggle-panel="togglePanelOverlay"
       >
         <template #center>
           <SessionStrip
@@ -737,7 +827,7 @@ defineExpose({
         </template>
       </TopBar>
 
-      <div class="flex min-h-0 flex-1">
+      <div class="relative flex min-h-0 flex-1">
         <Canvas
           ref="canvas"
           :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
@@ -760,9 +850,11 @@ defineExpose({
         />
 
         <WorkspacePanel
+          v-show="panelVisible"
           ref="panel"
           :tab="panelTab"
-          :width="panelWidth"
+          :width="effectivePanelWidth"
+          :overlay="panelOverlay"
           :workspace-id="workspace.id"
           :workspace-root="workspaceRoot"
           :workspace-scope="workspaceScope"
