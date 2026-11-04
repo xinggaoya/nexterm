@@ -154,7 +154,7 @@ jobs:
 
       # 把 agent job 产出的 musl 静态二进制放到 build.rs 默认探测路径,
       # 这样 build.rs 即使不显式传入 NEXTERM_AGENT 环境变量也能找到。
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: nexterm-agent-musl
           path: src-tauri/target/x86_64-unknown-linux-musl/release/
