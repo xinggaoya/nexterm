@@ -56,6 +56,40 @@ src-tauri/src/modules/fs/watcher.rs  # FsWatcherState: HashMap<key, ActiveWatche
 
 `FsWatcherState` 从 `Mutex<Option<ActiveWatcher>>` 改为 `Mutex<HashMap<String, ActiveWatcher>>`。`fs_unwatch_workspace` 现在接收 rootPath + workspace 参数，精确移除单个 watcher。
 
+### 3.5 恢复的工作区要重新授权
+
+后端的 `WorkspaceRegistry` 是**进程内**的：应用重启后授权集归零。而工作区
+列表是持久化的（`prefs.openWorkspaces`），启动时会直接恢复。
+
+于是启动后会出现这个窗口期：**工作区已经在列表里，但它的根还没被授权**。
+文件树的第一次 `fs_read_dir` 撞上这个窗口期就会拿到
+`PathNotAuthorized: <root>`；而注册表往往要等到某个 Git 命令顺手把仓库根
+`registry.authorize(...)` 进去才恢复 —— 文件树**不会自动重试**，于是面板
+永久停在那条红色报错上，看起来像「这个工作区坏了」。
+
+**做法**：`workspacesPinia.bootstrap()` 在恢复列表后，对每个根并行调一次
+`authorizeWorkspace(rootPath, env)`。时机很关键 —— `main.ts` 在
+`app.mount()` **之前** await 这个 store，所以首帧的 fs 调用一定发生在
+授权之后，时序是确定的，不靠运气。
+
+授权失败（目录已被删除/改名）只记日志、不阻断启动：那属于面板级错误，
+用户可以把这条工作区删掉。
+
+### 3.6 WSL 路径语义：授权看宿主，路径给 Linux
+
+`authorize_access_path()` 是所有 fs 命令的统一入口（见
+[04-security-model.md](../04-security-model.md)）。对 `Wsl` 工作区：
+
+- **授权判定**在宿主侧的 canonical 路径上做 —— 「这个路径在已授权根之下」
+  的真实含义只能在宿主文件系统上判定；
+- **返回给调用方的**是 **Linux 路径**（`/home/user/repo`），不是宿主侧的
+  UNC 形式（`\\wsl.localhost\Ubuntu\home\user\repo`）。
+
+原因：WSL 的 fs 命令最终由 `wsl.exe` / WSL agent 执行，那两边只认 Linux
+路径。早期实现一律返回 UNC 形式，Linux 那边 `stat` 根本不认识它 —— WSL
+工作区的文件树永远报 `not a directory`。路径还原由
+`wsl::wsl_client_path()` 完成（宿主 UNC → Linux 绝对路径）。
+
 ## 4. 数据契约
 
 ### 4.1 公共类型
@@ -106,7 +140,8 @@ interface WorkspaceContext {
 
 ## 6. 测试
 
-- `workspacesPinia.test.ts` — 多工作区增删切、隔离、去重、reorder
+- `workspacesPinia.test.ts` — 多工作区增删切、隔离、去重、reorder、**启动时重新授权**
 - `tabsPinia.test.ts` — 按工作区分组的 tab 管理、隔离、销毁
 - `useWorkspaceLifecycle.test.ts` — per-workspace watcher 生命周期
 - `sessions.test.ts` — 按工作区分片的终端 session 注册表
+- `src-tauri/.../workspace/wsl.rs` — `wsl_client_path` 的 Linux 路径还原、UTF-16LE 解码

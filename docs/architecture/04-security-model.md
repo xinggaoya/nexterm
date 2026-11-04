@@ -56,10 +56,25 @@ registry.canonicalize_cached(path) -> io::Result<PathBuf>
 | 触发 | 命令 |
 |------|------|
 | 用户在 UI 打开工作区 | `workspace_authorize`（Rust 侧无用户交互校验，所以**深链路径必须由前端先确认**） |
+| **应用重启后恢复已打开的工作区** | `workspace_authorize`（由 `workspacesPinia.bootstrap()` 逐个调用；授权集是**进程内**的，不重新授权的话文件树会永久停在 `PathNotAuthorized`） |
 | 应用冷启动带 launch_dir | `bootstrap_registry_with_launch_dir` |
 | PTY 启动子进程 | `authorize_spawn_cwd` |
 | 文件命令 | `authorize_access_path`（写路径用 `_lenient` 版本，允许目标尚不存在） |
 | shell / pty / lsp 的 cwd | `authorize_spawn_cwd`（缺省 cwd 落到当前工作区根，不是「不检查」） |
+
+### 3.4 WSL 工作区：授权看宿主，路径给 Linux
+
+`authorize_access_path()` 对 `Wsl` 工作区做**两件事**：
+
+1. **授权判定在宿主侧的 canonical 路径上做** —— 「这个路径在已授权根之下」
+   的真实含义只能在宿主文件系统上判定（`\\wsl.localhost\Ubuntu\home\...`）；
+2. **返回给调用方的是 Linux 路径**（`/home/user/repo`）。
+
+第 2 点不是可选的：WSL 的 fs 命令最终由 `wsl.exe` / WSL agent 执行，那两边
+只认 Linux 路径。把宿主侧的 UNC 形式传过去，Linux 那边 `stat` 根本不认识
+它。路径还原由 `wsl::wsl_client_path()` 完成。
+
+SSH 工作区同理：宿主注册表不参与，路径原样交给远端鉴权。
 
 ## 4. Windows Job Object
 

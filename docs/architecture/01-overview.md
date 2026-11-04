@@ -127,6 +127,29 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
    - 50ms / 500ms 后 `window.show()`（双保险，避免透明窗口闪烁）。
    - 订阅 `nexterm://deep-link-open` 处理冷启动 / 运行期深链。
 
+> **恢复的工作区必须重新授权。** 后端的 `WorkspaceRegistry` 是**进程内**的，
+> 重启后归零。`workspacesPinia.bootstrap()` 在 `app.mount()` **之前**对每个
+> 恢复出来的根并行调一次 `workspace_authorize`；否则文件树的第一次
+> `fs_read_dir` 会打回 `PathNotAuthorized`，而注册表往往要等到某个 Git 命令
+> 顺手授权了仓库根才恢复 —— 面板会永久停在那条红色报错上（后续不再重试）。
+> 详见 [workspace/README.md](./workspace/README.md) §3.5。
+
+### 4.1.1 壳层响应式收敛
+
+三栏结构（侧栏 + 画布 + 停靠面板）在窄窗口下会把画布挤没、把顶栏动作按钮
+挤出可视区（按钮看得见却点不到）。断点判定集中在
+`src/app/useResponsiveLayout.ts`，各壳层只消费结论：
+
+| 断点 | 容器宽度 | 行为 |
+|------|----------|------|
+| `compact` | < 900px | 侧栏自动折叠成 52px 轨道（**不覆盖**用户偏好；窗口变宽后自动恢复） |
+| `narrow` | < 760px | 顶栏隐藏环境徽章；停靠面板按可用宽度的 45% 收窄 |
+| `tight` | < 640px | 停靠面板改为**覆盖层**（画布保持满宽），由顶栏按钮唤出 |
+
+停靠面板的宽度上限与下限由 `resolveResponsivePanelWidth()` 统一计算
+（纯函数，有单测）；顶栏身份区必须可收缩（`min-w-0` + `shrink`），
+否则窄窗口下它会把动作区整体挤出屏幕。
+
 ### 4.2 业务调用
 
 1. 用户在 Vue 组件中操作 -> 调用组件本地方法 / composable。
