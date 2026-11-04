@@ -1,6 +1,7 @@
 import { basename } from "@/lib/path";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
+import { hasTauriInternals } from "@/lib/tauriRuntime";
 import {
   DEFAULT_PREFERENCES,
   setOpenWorkspaces,
@@ -294,8 +295,18 @@ export const useWorkspacesPiniaStore = defineStore("workspaces", () => {
 
   /**
    * Rehydrate the open workspace set + active id from persisted prefs. Called
-   * once at app boot. Does NOT authorize paths or start watchers — the
-   * WorkspaceHost layer does that per-workspace as it mounts.
+   * once at app boot.
+   *
+   * **同时重新授权**每个恢复出来的根：后端的授权注册表是**进程内**的，
+   * 重启后归零。不重新授权的话，文件树的第一次 `fs_read_dir` 会打回
+   * `PathNotAuthorized` —— 而且注册表里往往要等到某个 Git 命令顺手把仓库
+   * 根授权进去才恢复，于是面板会**永久停在那条红色报错上**（后续不再重试）。
+   *
+   * 授权在这里而不是各面板自己做，是为了让时序确定：`main.ts` 在
+   * `app.mount()` 之前 await 本函数，所以首帧的 fs 调用一定发生在授权之后。
+   *
+   * 授权失败（目录已被删除/改名）不阻断启动：工作区仍留在列表里，面板会
+   * 自己报错，用户可以把这条工作区删掉。
    */
   async function bootstrap(): Promise<void> {
     if (hydrated.value) return;
@@ -329,6 +340,34 @@ export const useWorkspacesPiniaStore = defineStore("workspaces", () => {
         null;
     }
     hydrated.value = true;
+    await authorizeRestoredWorkspaces(workspaces.value);
+  }
+
+  /**
+   * 重新授权恢复出来的工作区根。
+   *
+   * 并行发起：多个工作区时逐个 await 会把启动时间线性拉长。
+   * 失败只记日志 —— 目录可能真的没了，那属于用户可见的面板错误，不该
+   * 把整个应用卡在启动阶段。
+   */
+  async function authorizeRestoredWorkspaces(
+    instances: readonly WorkspaceInstance[],
+  ): Promise<void> {
+    if (instances.length === 0) return;
+    // 纯浏览器（无 Tauri 运行时）没有后端可授权；探测一下免得抛未处理拒绝。
+    if (!hasTauriInternals()) return;
+    await Promise.all(
+      instances.map(async (instance) => {
+        try {
+          await authorizeWorkspace(instance.rootPath, instance.env);
+        } catch (error) {
+          console.warn(
+            `[workspace] failed to authorize restored workspace ${instance.rootPath}:`,
+            error,
+          );
+        }
+      }),
+    );
   }
 
   return {
