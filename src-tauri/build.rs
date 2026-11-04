@@ -35,6 +35,20 @@ fn main() {
 /// 塞它那份，改由本函数统一给所有产物嵌同一份 —— 应用行为不变，
 /// 测试二进制从此也能启动。
 fn embed_common_controls_manifest() {
+    // `/MANIFEST:EMBED` + `/MANIFESTINPUT:` 是 **MSVC link.exe 专有**的链接参数。
+    // Linux / macOS 的链接器（cc / rust-lld）不认它们，会把这两个参数当成
+    // **普通输入文件路径**，于是链接直接失败：
+    //
+    // ```text
+    // rust-lld: error: cannot open /MANIFEST:EMBED: No such file or directory
+    // ```
+    //
+    // 所以这里必须先判平台再发参数 —— 下面的 `find_mt_dir()` 也判了，
+    // 但它只管 PATH，链接参数是在它之前无条件发出的。
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+
     let manifest_dir =
         std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by Cargo");
     let manifest_path = std::path::Path::new(&manifest_dir).join("manifest.xml");
