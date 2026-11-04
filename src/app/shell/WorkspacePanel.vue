@@ -191,6 +191,7 @@ defineExpose({
           :fs-event="fsEvent"
           :show-branches-modal="showBranchesModal"
           :workspace-id="workspaceId"
+          :visible="tab === 'changes'"
           @open-diff="(input) => emit('open-source-diff', input)"
           @open-history="(input) => emit('open-source-history', input)"
           @repo-selected="(repoRoot) => emit('repo-selected', repoRoot)"

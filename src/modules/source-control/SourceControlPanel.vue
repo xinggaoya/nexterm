@@ -36,8 +36,20 @@ const props = withDefaults(
     fsEvent?: WorkspaceFsChangedEvent | null;
     showBranchesModal?: Ref<boolean>;
     workspaceId?: string;
+    /**
+     * 面板自身是否可见（工作区面板的「更改」页签是否选中）。
+     *
+     * 面板用 v-show 挂载：看不见时它依然活着。隐藏期间不跑 git status，
+     * 重新可见时补一次刷新。
+     */
+    visible?: boolean;
   }>(),
-  { activeRepoRoot: null, workspaceScope: "local", workspaceId: "" },
+  {
+    activeRepoRoot: null,
+    workspaceScope: "local",
+    workspaceId: "",
+    visible: true,
+  },
 );
 
 const emit = defineEmits<{
@@ -72,6 +84,7 @@ const workspaceScope = toRef(props, "workspaceScope");
 const fsEvent = toRef(props, "fsEvent");
 const selectedRepoRoot = toRef(props, "activeRepoRoot");
 const workspaceId = toRef(props, "workspaceId");
+const visible = toRef(props, "visible");
 // 不活跃 workspace 关闭自动 git status 刷新(由 workspacesPinia 派生)。
 // 切回时由 WorkspaceHost 派发的 `nexterm:workspace-activated` 事件
 // 触发 `reloadCurrent()` 立即补一次。
@@ -104,6 +117,8 @@ const state = useSourceControlState({
   wsNative: wsCtx.wsNative,
   t: tLoose,
   isActive,
+  scope: () => workspaceScope.value,
+  visible: () => visible.value,
   untrackedMode: untrackedModeGetter,
 });
 const gitMetadata = useSourceControlGitMetadata({
@@ -132,6 +147,16 @@ function onWorkspaceActivated(event: Event): void {
   if (!isActive()) return;
   void state.reloadCurrent();
 }
+// 面板重新可见时补一次刷新。
+//
+// 隐藏期间（用户在看「文件树」页签）面板不跑 git status —— 那是纯粹的
+// 后台开销。但隐藏期间仓库可能变了，所以重新可见时必须补一次，
+// 否则用户会看到过期的改动列表。
+watch(visible, (isVisible) => {
+  if (!isVisible) return;
+  if (!isActive()) return;
+  void state.reloadCurrent();
+});
 onMounted(() => {
   window.addEventListener("nexterm:workspace-activated", onWorkspaceActivated);
 });
