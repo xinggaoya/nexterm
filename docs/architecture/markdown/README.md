@@ -24,6 +24,7 @@ src/modules/markdown/
 - `@/lib/native` -- `fsReadFile`
 - `@/modules/tabs` -- MarkdownTab 状态
 - `@/modules/notifications/notificationCenter` -- 错误提示
+- `@/modules/icons` -- 预览头部文件类型图标
 
 ## 4. 数据契约
 

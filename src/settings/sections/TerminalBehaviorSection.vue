@@ -10,11 +10,12 @@ import {
   NSpace,
   NSwitch,
 } from "naive-ui";
-import { computed, onMounted, ref } from "vue";
+import { computed, h, onMounted, ref, type VNode } from "vue";
 import { IS_WINDOWS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { native, type ShellProfileInfo } from "@/lib/native";
 import { currentLocale, t } from "@/modules/i18n/translate";
+import { shellIconUrl } from "@/modules/icons";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import {
   TERMINAL_FAST_SCROLL_MODIFIER_VALUES,
@@ -73,6 +74,35 @@ const selectedShellProgram = computed(() => {
       ?.program ?? null
   );
 });
+
+/** 下拉选项前的 shell 图标（PowerShell / Bash …）。识别不出时只给文字。 */
+function shellIconOf(shellId: string): string {
+  return shellIconUrl(shellId, IS_WINDOWS ? "windows" : "unix");
+}
+
+/** NSelect 选中值的渲染：带 shell 图标。 */
+function renderShellLabel(option: { label?: string; value?: string | number }) {
+  const label = String(option.label ?? "");
+  const icon = shellIconOf(String(option.value ?? ""));
+  if (!icon) return label;
+  return h("span", { class: "flex items-center gap-2" }, [
+    h("img", { src: icon, alt: "", class: "size-4 nexterm-file-icon" }),
+    h("span", label),
+  ]);
+}
+
+/** NSelect 下拉列表项的渲染：选项文字前加 shell 图标。 */
+function renderShellOption(info: {
+  node: VNode;
+  option: { label?: string; value?: string | number };
+}) {
+  const icon = shellIconOf(String(info.option.value ?? ""));
+  if (!icon) return info.node;
+  return h("span", { class: "flex items-center gap-2" }, [
+    h("img", { src: icon, alt: "", class: "size-4 nexterm-file-icon" }),
+    info.node,
+  ]);
+}
 </script>
 
 <template>
@@ -85,6 +115,8 @@ const selectedShellProgram = computed(() => {
               class="w-60"
               :value="prefs.terminalShellId"
               :options="shellOptions"
+              :render-label="renderShellLabel"
+              :render-option="renderShellOption"
               @update:value="(value) => prefs.updateTerminalShellId(String(value))"
             />
             <NButton

@@ -8,9 +8,10 @@ import {
 } from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import { fileIconUrl } from "@/modules/icons";
+import { fileIconUrl, shellIconUrl } from "@/modules/icons";
 import { tabLabel } from "@/modules/tabs/tabLabel";
 import { t } from "@/modules/i18n/translate";
+import { IS_WINDOWS } from "@/lib/platform";
 import {
   usePointerDragReorder,
   type DragPlacement,
@@ -27,6 +28,10 @@ const props = defineProps<{
   activeId: number;
   widthMode: TabWidthMode;
   fixedWidth: number;
+  /** 工作区环境：只有 local 能确定终端用的 shell，WSL / SSH 走通用终端图标。 */
+  envKind?: "local" | "wsl" | "ssh";
+  /** 本地终端的 shell profile id（"auto" 表示后端默认顺序）。 */
+  shellId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -67,6 +72,17 @@ const kindLabelByTabKind = computed(() => {
 function tabKindLabel(tab: Tab): string {
   return kindLabelByTabKind.value.get(tab.kind) ?? "";
 }
+
+/**
+ * 终端标签的 shell 图标（PowerShell / Bash …）。
+ *
+ * 只有本地工作区能确定 shell（`shellId` 来自终端偏好）；WSL / SSH 的登录
+ * shell 前端无从得知，返回空串 → 标签回落到通用终端图标。
+ */
+const terminalShellIcon = computed(() => {
+  if (props.envKind !== "local") return "";
+  return shellIconUrl(props.shellId ?? "", IS_WINDOWS ? "windows" : "unix");
+});
 
 function tabWidthStyle(): Record<string, string> | undefined {
   if (props.widthMode !== "fixed") return undefined;
@@ -300,6 +316,13 @@ onBeforeUnmount(() => {
                   v-memo="[tab.kind, tab.title]"
                   :src="fileIconUrl(tab.title)"
                   alt=""
+                  class="size-3.5 shrink-0 nexterm-file-icon"
+                />
+                <img
+                  v-else-if="tab.kind === 'terminal' && terminalShellIcon"
+                  :src="terminalShellIcon"
+                  alt=""
+                  data-terminal-shell-icon
                   class="size-3.5 shrink-0 nexterm-file-icon"
                 />
                 <NIcon

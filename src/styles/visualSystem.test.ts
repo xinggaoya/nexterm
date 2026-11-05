@@ -128,15 +128,44 @@ describe("visual system contract", () => {
     for (const path of [
       "../app/shell/SessionStrip.vue",
       "../modules/commands/CommandPalette.vue",
+      "../modules/editor/EditorStatusBar.vue",
+      "../modules/editor/EditorToolbar.vue",
+      "../modules/editor/GitDiffPane.vue",
       "../modules/explorer/ExplorerSearch.vue",
       "../modules/explorer/FileExplorer.vue",
       "../modules/explorer/FileTreeRow.vue",
       "../modules/git-history/GitHistoryPane.vue",
+      "../modules/markdown/MarkdownPreviewPane.vue",
       "../modules/picker/FilePickerDialog.vue",
       "../modules/search/FindInFilesPanel.vue",
+      "../settings/sections/AboutSection.vue",
+      "../settings/sections/TerminalBehaviorSection.vue",
       "../modules/source-control/SourceControlChangeRow.vue",
     ]) {
       expect(readSource(path)).toContain("nexterm-file-icon");
+    }
+  });
+
+  it("routes every file type icon through the icons module", () => {
+    // 文件 / 语言 / 品牌图标只能从 @/modules/icons 取，避免各模块各写一套。
+    for (const path of [
+      "../app/shell/SessionStrip.vue",
+      "../modules/commands/CommandPalette.vue",
+      "../modules/editor/EditorPane.vue",
+      "../modules/editor/EditorToolbar.vue",
+      "../modules/editor/GitDiffPane.vue",
+      "../modules/explorer/ExplorerSearch.vue",
+      "../modules/explorer/FileExplorer.vue",
+      "../modules/explorer/FileTreeRow.vue",
+      "../modules/git-history/GitHistoryPane.vue",
+      "../modules/markdown/MarkdownPreviewPane.vue",
+      "../modules/picker/FilePickerDialog.vue",
+      "../modules/search/FindInFilesPanel.vue",
+      "../settings/sections/AboutSection.vue",
+      "../settings/sections/TerminalBehaviorSection.vue",
+      "../modules/source-control/SourceControlChangeRow.vue",
+    ]) {
+      expect(readSource(path)).toContain("@/modules/icons");
     }
   });
 

@@ -69,6 +69,7 @@ src/modules/terminal/
 - `@/modules/notifications/notificationCenter` -- 终端错误提示 / 响铃 toast
 - `@/lib/osNotifications` -- 窗口失焦时的系统级响铃通知
 - `@/modules/tabs` -- TerminalTab 形态
+- `@/modules/icons` -- 终端标签的 shell 图标（`shellIconUrl`，仅本地工作区可确定）
 
 ### 3.2 外部
 

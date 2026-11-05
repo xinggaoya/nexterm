@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { NButton, NButtonGroup } from "naive-ui";
+import { computed } from "vue";
 import { t } from "@/modules/i18n/translate";
+import { fileIconUrl } from "@/modules/icons";
 import type { EditorViewMode } from "./editorTypes";
 
 const props = defineProps<{
@@ -18,11 +20,20 @@ const emit = defineEmits<{
   save: [];
   modeChange: [mode: EditorViewMode];
 }>();
+
+/** 标题栏展示的文件类型图标（编程语言 / 框架 Logo）。 */
+const fileIcon = computed(() => fileIconUrl(props.fileName));
 </script>
 
 <template>
   <div class="nexterm-toolbar flex h-8 shrink-0 items-center justify-between gap-3 px-3">
     <div class="flex min-w-0 items-center gap-2">
+      <img
+        :src="fileIcon"
+        alt=""
+        data-editor-file-icon
+        class="size-4 shrink-0 nexterm-file-icon"
+      />
       <div class="min-w-0">
         <div class="truncate text-[12px] font-medium leading-4">{{ props.fileName }}</div>
         <div class="truncate text-[10px] leading-3 text-muted-foreground">

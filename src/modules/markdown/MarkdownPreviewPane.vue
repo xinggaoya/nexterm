@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { DocumentTextOutline } from "@vicons/ionicons5";
-import { NIcon, NSpin } from "naive-ui";
+import { NSpin } from "naive-ui";
 import { computed, ref, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
+import { fileIconUrl } from "@/modules/icons";
 import { useWorkspaceContext } from "@/app/workspaceContext";
 import {
   readMarkdownDocument,
@@ -22,6 +22,9 @@ const fileName = computed(() => {
   const parts = props.path.split(/[\\/]/).filter(Boolean);
   return parts.length > 0 ? parts[parts.length - 1] : props.path;
 });
+
+/** 头部展示的文件类型图标（Markdown Logo）。 */
+const fileIcon = computed(() => fileIconUrl(props.path));
 
 const renderedHtml = computed(() =>
   doc.value.status === "ready" ? renderMarkdownToHtml(doc.value.content) : "",
@@ -47,7 +50,12 @@ watch(() => props.path, () => void load(), { immediate: true });
     :style="{ pointerEvents: props.visible ? 'auto' : 'none' }"
   >
     <div class="nexterm-toolbar flex h-8 shrink-0 items-center gap-2 px-3">
-      <NIcon :component="DocumentTextOutline" :size="15" class="shrink-0 text-muted-foreground" />
+      <img
+        :src="fileIcon"
+        alt=""
+        data-markdown-file-icon
+        class="size-3.5 shrink-0 nexterm-file-icon"
+      />
       <div class="min-w-0 flex-1 truncate text-[12px] font-medium">{{ fileName }}</div>
     </div>
 

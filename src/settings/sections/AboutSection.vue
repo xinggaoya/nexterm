@@ -15,6 +15,7 @@ import { computed } from "vue";
 import { APP_VERSION } from "@/lib/appInfo";
 import { relaunchApp } from "@/lib/native";
 import { t } from "@/modules/i18n/translate";
+import { logoIconUrl } from "@/modules/icons";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { useAppUpdater } from "@/app/useAppUpdater";
 
@@ -88,10 +89,21 @@ function restartToUpdate(): void {
           {{ APP_VERSION }}
         </NDescriptionsItem>
         <NDescriptionsItem :label="t('settings.about.frontend')">
-          Vue 3 · Naive UI · Vite
+          <span class="flex items-center gap-1.5">
+            <img :src="logoIconUrl('vue')" alt="" class="size-3.5 nexterm-file-icon" />
+            <span>Vue 3</span>
+            <span class="text-muted-foreground">·</span>
+            <span>Naive UI</span>
+            <span class="text-muted-foreground">·</span>
+            <img :src="logoIconUrl('vite')" alt="" class="size-3.5 nexterm-file-icon" />
+            <span>Vite</span>
+          </span>
         </NDescriptionsItem>
         <NDescriptionsItem :label="t('settings.about.runtime')">
-          Tauri 2
+          <span class="flex items-center gap-1.5">
+            <img :src="logoIconUrl('tauri')" alt="" class="size-3.5 nexterm-file-icon" />
+            <span>Tauri 2</span>
+          </span>
         </NDescriptionsItem>
       </NDescriptions>
     </NCard>

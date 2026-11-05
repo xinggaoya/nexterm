@@ -37,6 +37,7 @@ src/modules/editor/
 - `@/modules/settings/preferencesPinia` -- 字号 / 缩进 / 换行 / vim
 - `@/modules/tabs` -- EditorTab 状态
 - `@/modules/source-control` -- Git diff 数据源
+- `@/modules/icons` -- 文件类型图标（工具栏 / 状态栏语言 Logo / diff 头部）
 
 ### 3.2 外部
 

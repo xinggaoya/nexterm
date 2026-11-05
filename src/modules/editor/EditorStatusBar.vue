@@ -3,6 +3,8 @@ import { t } from "@/modules/i18n/translate";
 
 const props = defineProps<{
   languageLabel: string;
+  /** 语言 Logo 的 data-URL；空串表示不展示图标。 */
+  languageIcon: string;
   sizeLabel: string;
   dirty: boolean;
   line: number;
@@ -14,7 +16,16 @@ const props = defineProps<{
 <template>
   <div class="flex h-6 shrink-0 items-center justify-between gap-3 border-t border-border/30 bg-panel-bg px-3 text-[11px] text-muted-foreground">
     <div class="flex min-w-0 items-center gap-3">
-      <span class="truncate">{{ props.languageLabel }}</span>
+      <span class="flex min-w-0 items-center gap-1.5">
+        <img
+          v-if="props.languageIcon"
+          :src="props.languageIcon"
+          alt=""
+          data-editor-language-icon
+          class="size-3.5 shrink-0 nexterm-file-icon"
+        />
+        <span class="truncate">{{ props.languageLabel }}</span>
+      </span>
       <span>{{ props.sizeLabel }}</span>
       <span v-if="props.dirty" class="text-foreground">
         {{ t("editor.unsaved") }}

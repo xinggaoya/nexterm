@@ -12,6 +12,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 vi.mock("@/modules/icons", () => ({
   fileIconUrl: vi.fn(() => "file-icon.png"),
+  shellIconUrl: vi.fn(() => "shell-icon.png"),
 }));
 
 vi.mock("./TabContextMenu.vue", () => ({
@@ -59,13 +60,18 @@ function editorTab(id: number, path: string, dirty = false): Tab {
   };
 }
 
-function mountStrip(tabs: Tab[], activeId = tabs[0]?.id ?? 0) {
+function mountStrip(
+  tabs: Tab[],
+  activeId = tabs[0]?.id ?? 0,
+  extra: Record<string, unknown> = {},
+) {
   return mount(SessionStrip, {
     props: {
       tabs,
       activeId,
       widthMode: "auto",
       fixedWidth: 160,
+      ...extra,
     },
   });
 }
@@ -97,6 +103,28 @@ afterEach(() => {
 });
 
 describe("SessionStrip.vue", () => {
+  it("本地终端标签显示 shell 图标", () => {
+    const wrapper = mountStrip(
+      [terminalTab(1), editorTab(2, "/repo/a.ts")],
+      1,
+      { envKind: "local", shellId: "git-bash" },
+    );
+    const icon = wrapper.find("[data-terminal-shell-icon]");
+
+    expect(icon.exists()).toBe(true);
+    expect(icon.attributes("src")).toBe("shell-icon.png");
+  });
+
+  it("WSL / SSH 工作区拿不到登录 shell,回落通用终端图标", () => {
+    const wrapper = mountStrip(
+      [terminalTab(1), editorTab(2, "/repo/a.ts")],
+      1,
+      { envKind: "wsl", shellId: "git-bash" },
+    );
+
+    expect(wrapper.find("[data-terminal-shell-icon]").exists()).toBe(false);
+  });
+
   it("单终端 tab 时进入极简模式:渲染面包屑而不是标签", async () => {
     const wrapper = mountStrip([terminalTab(1)]);
     expect(wrapper.find("[data-session-minimal]").exists()).toBe(true);

@@ -52,6 +52,8 @@ describe("icons module boundary", () => {
       "folderIcons.ts",
       "iconSet.ts",
       "languageIds.ts",
+      "programLogos.ts",
+      "shellLogos.ts",
     ];
 
     expect(readdirSync(iconsLib).sort()).toEqual(expected);

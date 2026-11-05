@@ -723,6 +723,8 @@ defineExpose({
             :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
             :width-mode="prefs.tabWidthMode"
             :fixed-width="prefs.tabFixedWidth"
+            :env-kind="workspace.env.kind"
+            :shell-id="prefs.terminalShellId"
             @select-tab="(id) => tabs.setActiveId(id, workspace.id)"
             @close-tab="(id) => requestCloseTab(id)"
             @close-others="(id) => requestCloseOthers(id)"

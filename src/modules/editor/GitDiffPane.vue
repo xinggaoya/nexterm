@@ -2,6 +2,7 @@
 import { NSpin, NTag } from "naive-ui";
 import { computed, defineAsyncComponent, ref, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
+import { fileIconUrl } from "@/modules/icons";
 import { useWorkspaceContext } from "@/app/workspaceContext";
 const DiffCodeMirror = defineAsyncComponent(() => import("./DiffCodeMirror.vue"));
 import {
@@ -49,6 +50,9 @@ const props = defineProps<{
 
 const LARGE_FILE_THRESHOLD = 256 * 1024;
 const state = ref<LoadState>({ kind: "idle" });
+
+/** 头部展示的文件类型图标（编程语言 / 框架 Logo）。 */
+const fileIcon = computed(() => fileIconUrl(props.source.path));
 
 // 获取当前 workspace 上下文，用于 diff 缓存的 env 作用域键与 native 调用。
 const wsCtx = useWorkspaceContext();
@@ -160,6 +164,12 @@ watch(
         <NTag v-else-if="isTooLarge" size="small" :bordered="false">
           Large file / patch view
         </NTag>
+        <img
+          :src="fileIcon"
+          alt=""
+          data-diff-file-icon
+          class="size-3.5 shrink-0 nexterm-file-icon"
+        />
         <span
           class="truncate font-mono text-[11px] text-muted-foreground"
           :title="props.source.path"

@@ -38,6 +38,7 @@ import {
 import { NSpin, useDialog } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
+import { languageIconUrlForPath } from "@/modules/icons";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { useWorkspaceContext } from "@/app/workspaceContext";
 import type { WorkspaceFsChangedEvent } from "@/lib/native";
@@ -59,12 +60,7 @@ import {
   vimCompartment,
 } from "./lib/extensions";
 import { disposeEditor, mountCodeMirrorEditor, safeReplaceValue } from "./lib/editorRuntime";
-import {
-  isMarkdownPath,
-  languageLabelForPath,
-  resolveLanguage,
-  resolveLanguageSync,
-} from "./lib/languageResolver";
+import { isMarkdownPath, languageLabelForPath, resolveLanguage, resolveLanguageSync } from "./lib/languageResolver";
 import { themeExtensionFor } from "./lib/themes";
 import { vimHandlersExtension, vimModeExtension } from "./lib/vim";
 import {
@@ -149,6 +145,8 @@ const fileName = computed(() => {
 
 const markdown = computed(() => isMarkdownPath(props.path));
 const languageLabel = computed(() => languageLabelForPath(props.path));
+/** 状态栏展示的语言 Logo（Rust / TypeScript / Python …）。 */
+const languageIcon = computed(() => languageIconUrlForPath(props.path));
 
 const sourcePaneClass = computed(() => {
   if (!markdown.value || mode.value === "source") return "h-full w-full";
@@ -862,6 +860,7 @@ defineExpose({
     <EditorStatusBar
       v-if="doc.status === 'ready'"
       :language-label="languageLabel"
+      :language-icon="languageIcon"
       :size-label="sizeLabel"
       :dirty="dirty"
       :line="line"
