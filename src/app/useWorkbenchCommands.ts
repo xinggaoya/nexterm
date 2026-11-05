@@ -40,6 +40,7 @@ import {
 import type { SplitDir } from "@/modules/terminal/lib/layout";
 import { createTerminalSessionHandle } from "@/modules/terminal";
 import type { SettingsTab } from "@/modules/settings/tabs";
+import type { WorkspacePanelTab } from "@/modules/settings/store";
 import { DEFAULT_TERMINAL_SNIPPETS } from "@/modules/snippets";
 import type { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { Tab } from "@/modules/tabs/tabsTypes";
@@ -60,6 +61,14 @@ type WorkbenchCommandOptions = {
   paneNeighbour: ComputedRef<Record<PaneDirection, boolean>>;
   leftPanelOpen: Ref<boolean>;
   rightPanelOpen: Ref<boolean>;
+  /**
+   * 切换停靠面板的视图（文件树 / 更改）。
+   *
+   * 与 `leftPanelOpen` / `rightPanelOpen` 的「直接切到某个视图」不同，
+   * 这里带「toggle」语义：面板收起时要先把它唤出来，否则命令看起来
+   * 毫无反应。落点规则见 `shell/panelVisibility.ts`。
+   */
+  togglePanelView: (tab: WorkspacePanelTab) => void;
   workspaceFsEvent: Ref<WorkspaceFsChangedEvent | null>;
   openBranchesModal: Ref<boolean>;
   tabs: ReturnType<typeof useTabsPiniaStore>;
@@ -348,10 +357,10 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
       }
     },
     "panel.sourceControl.toggle": async () => {
-      options.leftPanelOpen.value = !options.leftPanelOpen.value;
+      options.togglePanelView("changes");
     },
     "panel.explorer.toggle": async () => {
-      options.rightPanelOpen.value = !options.rightPanelOpen.value;
+      options.togglePanelView("explorer");
     },
     "explorer.refresh": async () => {
       refreshExplorerFromCommand();

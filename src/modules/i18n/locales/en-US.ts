@@ -146,7 +146,6 @@ const enUS = {
       splitRight: "Split right",
       terminal: "Terminal",
       toggleExplorer: "Toggle file explorer panel",
-      togglePanel: "Toggle side panel",
       toggleSourceControl: "Toggle source control panel",
     },
     status: {
@@ -167,11 +166,6 @@ const enUS = {
         sourceControl: "Source Control",
         changes: "Changes",
       },
-    },
-    sidebar: {
-      search: "Search",
-      collapse: "Collapse sidebar",
-      expand: "Expand sidebar",
     },
     dashboard: {
       tagline: "A terminal-first development environment",

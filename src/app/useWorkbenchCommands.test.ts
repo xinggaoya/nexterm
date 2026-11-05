@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { describe, expect, it, vi } from "vitest";
 import type { GitRepoInfo } from "@/lib/native";
+import type { WorkspacePanelTab } from "@/modules/settings/store";
 import type { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import { useWorkbenchCommands } from "./useWorkbenchCommands";
 import { notifyInfo } from "@/modules/notifications/notificationCenter";
@@ -33,6 +34,7 @@ function createHarness(activeRepoRoot: string | null) {
   const resolveGitRepo = vi.fn<(root: string) => Promise<GitRepoInfo | null>>();
   const leftPanelOpen = ref(false);
   const openBranchesModal = ref(false);
+  const togglePanelView = vi.fn<(tab: WorkspacePanelTab) => void>();
   const options = {
     t: (key: string) => key,
     keybindings: computed(() => ({})),
@@ -48,6 +50,7 @@ function createHarness(activeRepoRoot: string | null) {
     })),
     leftPanelOpen,
     rightPanelOpen: ref(false),
+    togglePanelView,
     workspaceFsEvent: ref(null),
     openBranchesModal,
     tabs,
@@ -87,6 +90,7 @@ function createHarness(activeRepoRoot: string | null) {
     resolveGitRepo,
     leftPanelOpen,
     openBranchesModal,
+    togglePanelView,
   };
 }
 
@@ -185,5 +189,17 @@ describe("useWorkbenchCommands branch workflow commands", () => {
       "sourceControl.branches",
       expect.anything(),
     );
+  });
+});
+
+describe("useWorkbenchCommands panel visibility", () => {
+  it("面板视图切换命令走 togglePanelView(收起时也能被唤出)", async () => {
+    const harness = createHarness("/workspace/apps/web");
+
+    await harness.commands.executeCommandFromPalette("panel.explorer.toggle");
+    expect(harness.togglePanelView).toHaveBeenCalledWith("explorer");
+
+    await harness.commands.executeCommandFromPalette("panel.sourceControl.toggle");
+    expect(harness.togglePanelView).toHaveBeenCalledWith("changes");
   });
 });

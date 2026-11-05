@@ -148,7 +148,6 @@ const zhCN = {
       splitRight: "向右拆分",
       terminal: "终端",
       toggleExplorer: "切换文件资源管理器",
-      togglePanel: "切换侧面板",
       toggleSourceControl: "切换源代码管理面板",
     },
     status: {
@@ -169,11 +168,6 @@ const zhCN = {
         sourceControl: "源代码管理",
         changes: "更改",
       },
-    },
-    sidebar: {
-      search: "搜索",
-      collapse: "折叠侧栏",
-      expand: "展开侧栏",
     },
     dashboard: {
       tagline: "终端优先的现代化开发环境",

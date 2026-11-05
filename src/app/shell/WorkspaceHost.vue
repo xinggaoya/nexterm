@@ -50,6 +50,7 @@ import {
 import { useWorkspaceLifecycle } from "@/app/useWorkspaceLifecycle";
 import { useWorkbenchCommands } from "@/app/useWorkbenchCommands";
 import { useResponsiveLayout } from "@/app/useResponsiveLayout";
+import { resolvePanelTabToggle } from "@/app/shell/panelVisibility";
 import { isBinaryImagePath } from "@/modules/file-preview/lib/imageFiles";
 import { normalizePreviewUrl } from "@/modules/preview/previewUrl";
 import { t, tLoose } from "@/modules/i18n/translate";
@@ -695,6 +696,16 @@ const rightPanelOpen = computed<boolean>({
   set: (open) => setPanelTab(open ? "explorer" : "changes"),
 });
 
+/**
+ * 面板视图的「切换」命令语义。
+ *
+ * 面板可见时在两个视图之间来回切；面板收起时切到指定视图并展开 ——
+ * 收起状态下按「切换资源管理器」，用户期待在文件树里看到它。
+ */
+function togglePanelView(tab: WorkspacePanelTab): void {
+  setPanelTab(resolvePanelTabToggle(panelTab.value, tab, panelVisible.value));
+}
+
 const commandApi = useWorkbenchCommands({
   t: tLoose,
   keybindings: computed(() => prefs.keybindings ?? {}),
@@ -705,6 +716,7 @@ const commandApi = useWorkbenchCommands({
   paneNeighbour,
   leftPanelOpen,
   rightPanelOpen,
+  togglePanelView,
   workspaceFsEvent,
   openBranchesModal: showBranchesModal,
   tabs,
