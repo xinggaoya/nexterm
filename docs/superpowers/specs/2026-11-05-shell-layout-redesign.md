@@ -71,6 +71,42 @@ WorkspaceHost (flex h-full flex-col)
 - 移除偏好 `sidebarCollapsed`（侧栏已不存在）。旧数据残留为孤儿键，不被 `loadPreferences()` 读取，无功能影响。
 - 命令 `panel.explorer.toggle` / `panel.sourceControl.toggle` 语义统一为：**切标签，并保证面板可见** —— 消除「面板折叠了但命令把它切出来」的矛盾态。
 
+### 3.6 v3.3：左右双侧面板（追加需求）
+
+v3.2 落地后反馈两点：画布变得过宽（1920px 下近 1600px），以及「为少数项目腾出的一整列」应该换成真正有用的内容。于是把右侧那一个面板拆成**左右各一个**，两侧都能放文件树或 git 面板。
+
+| 约束 | 规则 |
+|---|---|
+| 视图种类 | 只有两种：文件树（explorer）、更改（changes） |
+| 左右分配 | **全局**设置（偏好 `panelLayout`），不是按项目 |
+| 不能重复 | 同一个视图不允许同时出现在两侧 —— 两边都开文件树没有意义 |
+| 冲突处理 | 选到另一侧已占用的视图时**两侧对调**（`assignPanelView`） |
+| 视图 / 显隐 | 两个独立维度：收起时顶栏分段控件仍高亮当前视图 |
+| 宽度预算 | 单侧 ≤ 容器宽 45%；两侧合计不得把画布挤到 `MIN_CANVAS_WIDTH`(360px) 以下 |
+| 旧数据迁移 | `workspacePanelTab` / `workspacePanelVisible` / `explorerPanelWidth` 降级为 legacy 源，右侧面板原样保留 |
+
+**配置入口**（两处，共用同一条 `assignPanelView` 路径）：
+- 「设置 → 通用 → 停靠面板布局」：左侧面板 / 右侧面板两个下拉。
+- 顶栏左右两端各一个控制簇：分段控件选视图、chevron 折叠该侧。
+
+**壳层骨架（最终形态）：**
+
+```
+WorkspaceHost (flex h-full flex-col)
+├─ TopBar (44px, 全宽)
+│   ├─ 左: WorkspaceSwitcher + 左侧面板控制簇
+│   ├─ 身份区: env 徽标 / 分支
+│   ├─ 中: SessionStrip (flex-1)
+│   └─ 右: 动作区 + 右侧面板控制簇
+├─ 主体 (flex flex-1 min-h-0)
+│   ├─ 左侧 WorkspacePanel | Canvas | 右侧 WorkspacePanel
+└─ StatusDock (24px, 全宽)
+```
+
+### 3.7 附带修复：Ctrl+Shift+V 冲突
+
+`preview.open`（打开 URL 预览）的默认键位 `Ctrl+Shift+V` 与终端粘贴撞车：命令分发器默认「有绑定就抢」，于是终端里按下 Ctrl+Shift+V 会**既粘贴又弹预览框**。修复用 spec 的 `captureInTerminal: false` —— 终端里归粘贴（xterm 的快捷键层自己拦），终端之外（文件树 / 面板 / 命令面板）归预览。
+
 ### 3.6 响应式重整
 
 断点保留（`compact: 900` / `narrow: 760` / `tight: 640`），语义重新分配：
