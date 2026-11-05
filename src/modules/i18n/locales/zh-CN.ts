@@ -190,6 +190,7 @@ const zhCN = {
       },
     },
     titleBar: {
+      switchWorkspace: "切换工作区",
       workspaces: "工作区",
     },
     workspaceBar: {

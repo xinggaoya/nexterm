@@ -188,6 +188,7 @@ const enUS = {
       },
     },
     titleBar: {
+      switchWorkspace: "Switch workspace",
       workspaces: "Workspaces",
     },
     workspaceBar: {
