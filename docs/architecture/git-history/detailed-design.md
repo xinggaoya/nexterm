@@ -256,6 +256,6 @@ type RemoteWebHost = "github" | "gitlab" | "bitbucket" | "unknown";
 
 - 前端: `src/modules/git-history/`
 - 后端: `src-tauri/src/modules/git/`（commands / operations / parser / types）
-- 图标: `src/modules/explorer/lib/iconResolver`
+- 图标: `src/modules/icons`
 - Tabs: `src/modules/tabs/tabsPinia.ts` (`openCommitHistoryTab` / `updateGitHistoryTabRef`)
 - Tauri IPC 出口: `src/lib/native.ts`

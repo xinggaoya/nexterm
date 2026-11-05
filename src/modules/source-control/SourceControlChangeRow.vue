@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { AddOutline, DocumentOutline, RemoveOutline, TrashOutline } from "@vicons/ionicons5";
+import { AddOutline, RemoveOutline, TrashOutline } from "@vicons/ionicons5";
 import { NButton, NCheckbox, NIcon, NTag } from "naive-ui";
 import { computed, inject, type Ref } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t, tLoose } from "@/modules/i18n/translate";
+import { fileIconUrl } from "@/modules/icons";
+import { splitPathLabel } from "@/lib/path";
 import {
   stageLabel,
   statusClass,
@@ -37,6 +39,15 @@ const busyActionRef = inject<Ref<BusyAction | null>>(
 const discardKey = computed(() => `discard:${props.entry.path}`);
 const unstageKey = computed(() => `unstage:${props.entry.path}`);
 const stageKey = computed(() => `stage:${props.entry.path}`);
+
+/**
+ * 路径拆成“文件名 + 目录”两段：文件名紧跟图标，目录用弱化色后置，
+ * 与 Git 历史面板保持同一展示约定。
+ */
+const label = computed(() => splitPathLabel(props.entry.path));
+
+/** 文件类型图标（编程语言 Logo / 通用文件图标）。 */
+const iconUrl = computed(() => fileIconUrl(label.value.name));
 
 const isDiscarding = computed(() => busyActionRef.value === discardKey.value);
 const isUnstaging = computed(() => busyActionRef.value === unstageKey.value);
@@ -76,18 +87,41 @@ defineOptions({
       :data-source-file="entry.path"
       @click="emit('openDiff', entry)"
     >
-      <NIcon
-        :component="DocumentOutline"
-        :size="14"
-        :class="['shrink-0', statusClass(entry.statusKind)]"
+      <img
+        :src="iconUrl"
+        alt=""
+        data-source-file-icon
+        class="size-3.5 shrink-0 nexterm-file-icon"
       />
-      <span :class="['min-w-0 flex-1 truncate', statusClass(entry.statusKind)]">
-        {{ entry.path }}
+      <span
+        data-source-file-label
+        class="flex min-w-0 flex-1 items-baseline gap-1.5"
+      >
+        <span
+          data-source-file-name
+          :class="['min-w-0 truncate', statusClass(entry.statusKind)]"
+        >
+          {{ label.name }}
+        </span>
+        <span
+          v-if="label.dir"
+          data-source-file-dir
+          class="min-w-0 flex-1 truncate text-[10px] text-muted-foreground"
+        >
+          {{ label.dir }}
+        </span>
       </span>
-      <NTag size="small" :type="statusTone(entry.statusCode)">
+      <NTag
+        size="small"
+        :type="statusTone(entry.statusCode)"
+        data-source-status-code
+      >
         {{ entry.statusCode }}
       </NTag>
-      <span class="w-14 shrink-0 text-right text-[10px] text-muted-foreground">
+      <span
+        data-source-stage-label
+        class="w-14 shrink-0 text-right text-[10px] text-muted-foreground"
+      >
         {{ stageLabel(entry, tLoose) }}
       </span>
     </button>

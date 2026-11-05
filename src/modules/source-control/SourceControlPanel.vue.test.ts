@@ -413,7 +413,9 @@ describe("SourceControlPanel.vue", () => {
     expect(mockWsNative.workspaceAuthorize).toHaveBeenCalledWith("/repo");
     expect(mockWsNative.gitPanelSnapshot).toHaveBeenCalledWith("/repo", "normal");
     expect(wrapper.text()).toContain("main");
-    expect(wrapper.text()).toContain("src/main.ts");
+    // 变更行按“文件名 + 目录”两段展示（完整路径仍在 data-source-file 上）。
+    expect(wrapper.find("[data-source-file-name]").text()).toBe("main.ts");
+    expect(wrapper.find("[data-source-file-dir]").text()).toBe("src");
 
     await wrapper.find("[data-source-file='src/main.ts']").trigger("click");
     await wrapper.find("[data-open-history]").trigger("click");

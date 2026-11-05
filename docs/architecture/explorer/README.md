@@ -34,8 +34,6 @@ src/modules/explorer/
     fileClipboard.ts                  # per-instance 内存剪贴板
     fileClipboard.test.ts
     contextActions.ts                 # 右键菜单动作（复制路径 / 在文件管理器中显示）
-    fileIcons.ts / folderIcons.ts / iconResolver.ts
-    constants.ts
     menuItemClass.ts                  # Naive UI 菜单 class 工具
 ```
 
@@ -45,6 +43,7 @@ src/modules/explorer/
 
 - `@/lib/native` -- `fsReadDir` / `fsSearch` / `fsCreate*` / `fsRename` / `fsDelete` / `fsMoveMany` / `fsCopyMany` / `onOsFileDragDrop`
 - `@/lib/path` -- `basename` / `dirname` / `joinPath`（跨平台分隔符）
+- `@/modules/icons` -- 文件 / 目录类型图标（图标实现归 `icons` 模块所有，本模块只消费）
 - `@/lib/usePointerDragReorder` -- 指针拖拽手势（与标签重排、工作区重排共用）
 - `@/lib/useVirtualWindow` -- 定高行虚拟滚动
 - `@/lib/useEventListener` -- 修饰键监听

@@ -24,7 +24,7 @@ src/modules/source-control/
   SourceControlGitWorkflows.vue     # 分支 + Stash 面板
   SourceControlRemotes.vue          # 远程仓库管理模态（列表 + 新增/编辑/删除）
   SourceControlChangeList.vue       # 变更列表（虚拟滚动 + 分组）
-  SourceControlChangeRow.vue        # 单行
+  SourceControlChangeRow.vue        # 单行（文件类型图标 + 文件名 / 目录两段式展示）
   SourceControlCommitBox.vue        # 提交输入
   sourceControlCommands.ts          # 注册到 commands
   sourceControlModel.ts             # 数据模型 + 分组
@@ -43,7 +43,8 @@ src/modules/source-control/
 
 - `@/lib/native` -- `git*` 命令（包括 `git_discover_repositories`）
 - `@/modules/workspace/workspaceEnvSnapshot` -- 当前 `WorkspaceEnv`（local / wsl）
-- `@/modules/explorer/lib/iconResolver` -- 文件图标
+- `@/modules/icons` -- 文件类型图标（变更行展示编程语言 Logo）
+- `@/lib/path` -- `splitPathLabel`（路径拆成“文件名 + 目录”两段）
 - `@/modules/i18n/translate` -- 国际化
 - `@/modules/notifications/notificationCenter`
 - `@/modules/commands/types` -- `CommandSpec`
@@ -176,6 +177,7 @@ type GitRepositoryDiscovery = {
 - `useSourceControlState.test.ts` / `useSourceControlActions.test.ts`（含 addRemote / updateRemote / removeRemote / listRemotes 4 个用例）
 - `useGitRepositoryRegistry.test.ts`
 - `SourceControlPanel.vue.test.ts`
+- `SourceControlChangeRow.vue.test.ts`（变更行：文件类型图标 + 文件名 / 目录两段式展示）
 - `SourceControlGitWorkflows.vue.test.ts`
 - `SourceControlRemotes.vue.test.ts`（覆盖空态、列表、添加、编辑、删除、名称校验）
 - `sourceControlVueBoundary.test.ts`

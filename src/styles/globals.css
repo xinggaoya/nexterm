@@ -341,6 +341,12 @@
     border-radius: 8px;
     box-shadow: var(--overlay-shadow);
   }
+  /* 文件 / 目录类型图标的统一钩子。
+     Catppuccin 图标内置的是写死的 Latte 浅色调色板：深色主题下正好，
+     浅色主题下几乎与背景同色，必须压暗提亮才能看清。 */
+  .light .nexterm-file-icon {
+    filter: brightness(0.6) saturate(1.2);
+  }
   .nexterm-settings-group.n-card {
     background: transparent !important;
     border: 0 !important;

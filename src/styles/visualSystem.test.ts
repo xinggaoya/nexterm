@@ -116,6 +116,30 @@ describe("visual system contract", () => {
     }
   });
 
+  it("keeps file type icons legible in the light theme", () => {
+    // Catppuccin 图标内置 Latte 浅色调色板，浅色主题下必须压暗提亮，
+    // 否则文件图标几乎与背景同色（深色主题无需处理）。
+    expect(globalsCss).toContain(".nexterm-file-icon");
+    expect(globalsCss).toMatch(
+      /\.light\s+\.nexterm-file-icon\s*{[^}]*filter:/,
+    );
+
+    // 每个展示文件类型图标的面都必须挂上这个钩子。
+    for (const path of [
+      "../app/shell/SessionStrip.vue",
+      "../modules/commands/CommandPalette.vue",
+      "../modules/explorer/ExplorerSearch.vue",
+      "../modules/explorer/FileExplorer.vue",
+      "../modules/explorer/FileTreeRow.vue",
+      "../modules/git-history/GitHistoryPane.vue",
+      "../modules/picker/FilePickerDialog.vue",
+      "../modules/search/FindInFilesPanel.vue",
+      "../modules/source-control/SourceControlChangeRow.vue",
+    ]) {
+      expect(readSource(path)).toContain("nexterm-file-icon");
+    }
+  });
+
   it("uses continuous surfaces for editor-adjacent content panes", () => {
     for (const path of [
       "../modules/editor/GitDiffPane.vue",

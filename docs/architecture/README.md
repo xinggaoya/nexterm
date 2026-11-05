@@ -31,6 +31,7 @@
 | 终端 terminal | [terminal/README.md](./terminal/README.md) | [terminal/detailed-design.md](./terminal/detailed-design.md) |
 | 编辑器 editor | [editor/README.md](./editor/README.md) | [editor/detailed-design.md](./editor/detailed-design.md) |
 | 文件浏览 explorer | [explorer/README.md](./explorer/README.md) | [explorer/detailed-design.md](./explorer/detailed-design.md) |
+| 文件图标 icons | [icons/README.md](./icons/README.md) | — |
 | 源代码控制 source-control | [source-control/README.md](./source-control/README.md) | [source-control/detailed-design.md](./source-control/detailed-design.md) |
 | Git 历史 git-history | [git-history/README.md](./git-history/README.md) | [git-history/detailed-design.md](./git-history/detailed-design.md) |
 | 标签页 tabs | [tabs/README.md](./tabs/README.md) | [tabs/detailed-design.md](./tabs/detailed-design.md) |
@@ -46,6 +47,7 @@
 | WSL 常驻代理 agent | [agent/README.md](./agent/README.md) | — |
 | SSH ssh | [ssh/README.md](./ssh/README.md) | — |
 | Pinia 状态管理 pinia | [pinia/README.md](./pinia/README.md) | [pinia/detailed-design.md](./pinia/detailed-design.md) |
+| 性能监控 perf | [perf/README.md](./perf/README.md) | — |
 
 ## 文档维护约定
 

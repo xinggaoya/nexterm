@@ -36,7 +36,7 @@ src/modules/git-history/
 
 - `@/lib/native` -- `git_log` / `git_commit_files` / `git_commit_file_diff` / `git_remote_url` / `git_branch_list`
 - `@/lib/clipboard` -- 复制 SHA
-- `@/modules/explorer/lib/iconResolver` -- 文件图标
+- `@/modules/icons` -- 文件图标
 - `@/modules/i18n/translate` -- 国际化
 - `@/modules/notifications/notificationCenter`
 - `@/modules/tabs` -- `GitHistoryTab` / `GitCommitFileDiffTab` 状态（含 `openCommitHistoryTab` / `updateGitHistoryTabRef`）

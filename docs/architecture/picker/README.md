@@ -28,7 +28,7 @@ src/modules/picker/
   `native.getWslHome / getLaunchDir`（初始目录探测）
 - `@/modules/workspace/workspaceEnvSnapshot` -- `WorkspaceEnv` 类型（仅类型）
 - `@/modules/workspace/workspacePath` -- `normalizeWorkspacePath`（仅纯函数）
-- `@/modules/explorer/lib/iconResolver` -- 文件 / 文件夹图标（Catppuccin）
+- `@/modules/icons` -- 文件 / 文件夹图标（Catppuccin）
 - `@/modules/theme/naiveTheme` -- 独立挂载时读取当前 Naive UI 主题
 
 ### 3.2 外部依赖

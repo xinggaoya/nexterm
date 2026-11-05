@@ -112,7 +112,8 @@ nexterm/
 |------|------|----------|
 | `terminal` | 终端面板、xterm.js 渲染、PTY 桥接、pane 树 | `TerminalPane.vue` / `TerminalStack.vue` / `PaneTreeV2.vue` / `lib/panes.ts` / `lib/pty-bridge.ts` / `lib/rendererPool.ts` / `lib/terminalSessionCore.ts` |
 | `editor` | CodeMirror 6 编辑器、diff、状态条 | `EditorPane.vue` / `EditorToolbar.vue` / `EditorStatusBar.vue` / `DiffCodeMirror.vue` / `GitDiffPane.vue` / `GitDiffStack.vue` / `MarkdownEditorPreview.vue` / `lib/*` |
-| `explorer` | 文件树、搜索、右键菜单、内联重命名 | `FileExplorer.vue` / `FileTreeRow.vue` / `ExplorerContextMenu.vue` / `ExplorerSearch.vue` / `InlineTreeInput.vue` / `lib/fileIcons.ts` / `lib/fileTreeRows.ts` / `lib/iconResolver.ts` |
+| `explorer` | 文件树、搜索、右键菜单、内联重命名 | `FileExplorer.vue` / `FileTreeRow.vue` / `ExplorerContextMenu.vue` / `ExplorerSearch.vue` / `InlineTreeInput.vue` / `lib/fileTreeRows.ts` |
+| `icons` | 文件 / 目录类型图标（编程语言 Logo） | `fileIcon.ts` / `lib/iconSet.ts` / `lib/fileIcons.ts` / `lib/folderIcons.ts` |
 | `tabs` | 标签状态、类型、拖拽、关闭守卫、pane split | `tabsPinia.ts` / `tabsTypes.ts` / `tabsReorder.ts` / `closeGuards.ts` / `tabLabel.ts` / `terminalDisposal.ts` |
 | `source-control` | Git 状态、暂存、提交、分支工作流 | `SourceControlPanel.vue` / `SourceControlChangeList.vue` / `SourceControlChangeRow.vue` / `SourceControlCommitBox.vue` / `SourceControlGitWorkflows.vue` / `SourceControlToolbar.vue` / `useSourceControlState.ts` / `useSourceControlActions.ts` / `useSourceControlGitMetadata.ts` / `sourceControlModel.ts` / `gitDecorations.ts` |
 | `git-history` | 提交历史、提交详情、diff drawer、远程 web 跳转 | `GitHistoryPane.vue` / `GitHistoryStack.vue` / `GraphRail.vue` / `lib/graph.ts` / `lib/remoteWebUrl.ts` |
