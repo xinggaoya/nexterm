@@ -42,6 +42,16 @@ describe("PREF_SPECS 表", () => {
       expect(twice).toEqual(once);
     }
   });
+
+  it("停靠面板显隐偏好：默认可见；侧栏折叠偏好已随左栏下线", () => {
+    // 面板默认展开 —— 折叠是用户显式选择，不是默认状态。
+    expect(DEFAULT_PREFERENCES.workspacePanelVisible).toBe(true);
+    expect(PREF_SPECS.workspacePanelVisible.read(undefined)).toBe(true);
+    expect(PREF_SPECS.workspacePanelVisible.read(false)).toBe(false);
+    // 侧栏已从壳层移除：偏好键必须一并下线，不能留下永不生效的孤儿开关。
+    expect("sidebarCollapsed" in DEFAULT_PREFERENCES).toBe(false);
+    expect("sidebarCollapsed" in PREF_SPECS).toBe(false);
+  });
 });
 
 describe("数值 clamp", () => {

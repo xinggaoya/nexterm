@@ -206,9 +206,9 @@ export type Preferences = {
   terminalLayouts: Record<string, PersistedTerminalLayout>;
   leftSidebar: LeftSidebarPref;
   panelVisibility: PanelVisibilityPref;
-  /** v3.1 壳层:全局侧栏折叠为 52px 轨道。 */
-  sidebarCollapsed: boolean;
-  /** v3.1 壳层:停靠工作区面板的当前标签。 */
+  /** 壳层:停靠工作区面板（文件树 / 更改）是否可见。 */
+  workspacePanelVisible: boolean;
+  /** 壳层:停靠工作区面板的当前标签。 */
   workspacePanelTab: WorkspacePanelTab;
   tabWidthMode: TabWidthMode;
   tabFixedWidth: number;
@@ -485,7 +485,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     sourceControl: true,
     explorer: true,
   },
-  sidebarCollapsed: false,
+  workspacePanelVisible: true,
   workspacePanelTab: "explorer",
   tabWidthMode: "auto",
   tabFixedWidth: TAB_FIXED_WIDTH_DEFAULT,
@@ -741,7 +741,7 @@ export const PREF_SPECS: PrefSpecMap = {
   ),
   leftSidebar: spec("layout.leftSidebar", normalizeLeftSidebarPref, normalizeLeftSidebarPref),
   panelVisibility: spec("layout.panels", normalizePanelVisibilityPref, normalizePanelVisibilityPref),
-  sidebarCollapsed: spec("sidebarCollapsed", boolPref(DEFAULT_PREFERENCES.sidebarCollapsed)),
+  workspacePanelVisible: spec("workspacePanelVisible", boolPref(DEFAULT_PREFERENCES.workspacePanelVisible)),
   workspacePanelTab: spec("workspacePanelTab", normalizeWorkspacePanelTab, normalizeWorkspacePanelTab),
   tabWidthMode: spec("tabWidthMode", normalizeTabWidthMode, normalizeTabWidthMode),
   tabFixedWidth: spec("tabFixedWidth", numberPref(DEFAULT_PREFERENCES.tabFixedWidth), clampTabFixedWidth),
