@@ -94,8 +94,8 @@ vi.mock("./TopBar.vue", () => ({
       "dense",
       "workspaces",
       "activeWorkspaceId",
-      "panelTab",
-      "panelVisible",
+      "leftPanel",
+      "rightPanel",
     ],
     emits: [
       "new-terminal",
@@ -107,8 +107,8 @@ vi.mock("./TopBar.vue", () => ({
       "add-workspace",
       "open-workspace-in-new-window",
       "reorder-workspace",
-      "update:panel-tab",
-      "toggle-panel",
+      "update:left-panel",
+      "update:right-panel",
     ],
     template: "<header class='topbar-stub'><slot name='center' /></header>",
   },
@@ -123,8 +123,9 @@ vi.mock("./SessionStrip.vue", () => ({
 vi.mock("./WorkspacePanel.vue", () => ({
   default: {
     name: "WorkspacePanelStub",
-    props: ["tab", "width", "gitDecorations", "workspaceRoot"],
+    props: ["view", "side", "width", "gitDecorations", "workspaceRoot"],
     emits: [
+      "request-view",
       "resize-width",
       "branch-change",
       "decorations-change",
@@ -197,7 +198,7 @@ describe("WorkspaceHost.vue", () => {
     expect(tabsStore.disposeWorkspaceTabs).toHaveBeenCalledWith("w1");
   });
 
-  it("侧栏下线后:窄窗口下面板不再被侧栏宽度二次收窄", async () => {
+  it("窄窗口下两侧面板等比压缩,画布仍留得住最小宽度", async () => {
     const original = window.innerWidth;
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -207,10 +208,14 @@ describe("WorkspaceHost.vue", () => {
     try {
       const wrapper = mountHost();
       await nextTick();
-      const panel = wrapper.findComponent({ name: "WorkspacePanelStub" });
-      // 旧口径：可用宽度 = 容器 680 - 侧栏轨道 52 = 628，面板上限 628×45% = 282。
-      // 新口径：侧栏已下线，可用宽度就是容器宽 680，上限 680×45% = 306。
-      expect(panel.props("width")).toBe(306);
+      const panels = wrapper.findAllComponents({ name: "WorkspacePanelStub" });
+      const left = panels[0]?.props("width") as number;
+      const right = panels[1]?.props("width") as number;
+      // 两侧请求 320+320 超出「容器 680 − 画布最小 360 = 320」的预算，
+      // 等比压缩后各 160，画布还剩 360。
+      expect(left).toBe(160);
+      expect(right).toBe(160);
+      expect(680 - left - right).toBeGreaterThanOrEqual(360);
       wrapper.unmount();
     } finally {
       Object.defineProperty(window, "innerWidth", {
@@ -221,51 +226,7 @@ describe("WorkspaceHost.vue", () => {
     }
   });
 
-  it("停靠面板标签写入偏好并回传面板(默认文件树)", async () => {    const pinia = createPinia();
-    const prefs = usePreferencesPiniaStore(pinia);
-    const wrapper = mount(WorkspaceHost, {
-      props: { workspace },
-      global: { plugins: [pinia] },
-    });
-    await nextTick();
-    const panel = wrapper.findComponent({ name: "WorkspacePanelStub" });
-    expect(panel.props("tab")).toBe("explorer");
-
-    // 标签切换已上移到顶栏：面板自身不再有头部。
-    await wrapper
-      .findComponent({ name: "TopBarStub" })
-      .vm.$emit("update:panel-tab", "changes");
-    await nextTick();
-    expect(prefs.workspacePanelTab).toBe("changes");
-    expect(wrapper.findComponent({ name: "WorkspacePanelStub" }).props("tab")).toBe("changes");
-    wrapper.unmount();
-  });
-
-  it("面板折叠时切标签会把面板唤出来(动作不能看不见)", async () => {
-    const pinia = createPinia();
-    const prefs = usePreferencesPiniaStore(pinia);
-    prefs.workspacePanelVisible = false;
-    const wrapper = mount(WorkspaceHost, {
-      props: { workspace },
-      global: { plugins: [pinia] },
-    });
-    await nextTick();
-    expect(wrapper.findComponent({ name: "TopBarStub" }).props("panelVisible")).toBe(
-      false,
-    );
-
-    await wrapper
-      .findComponent({ name: "TopBarStub" })
-      .vm.$emit("update:panel-tab", "changes");
-    await nextTick();
-    expect(prefs.workspacePanelVisible).toBe(true);
-    expect(wrapper.findComponent({ name: "TopBarStub" }).props("panelVisible")).toBe(
-      true,
-    );
-    wrapper.unmount();
-  });
-
-  it("顶栏折叠按钮切换面板显隐并持久化偏好", async () => {
+  it("左右两侧各渲染一个停靠面板,各自选自己的视图", async () => {
     const pinia = createPinia();
     const prefs = usePreferencesPiniaStore(pinia);
     const wrapper = mount(WorkspaceHost, {
@@ -273,14 +234,73 @@ describe("WorkspaceHost.vue", () => {
       global: { plugins: [pinia] },
     });
     await nextTick();
-    expect(prefs.workspacePanelVisible).toBe(true);
 
-    await wrapper.findComponent({ name: "TopBarStub" }).vm.$emit("toggle-panel");
+    const panels = wrapper.findAllComponents({ name: "WorkspacePanelStub" });
+    expect(panels).toHaveLength(2);
+    expect(panels[0]?.props("side")).toBe("left");
+    expect(panels[1]?.props("side")).toBe("right");
+    // 默认：左文件树 + 右 git。
+    expect(panels[0]?.props("view")).toBe("explorer");
+    expect(panels[1]?.props("view")).toBe("changes");
+    expect(prefs.panelLayout).toEqual({ left: "explorer", right: "changes" });
+    wrapper.unmount();
+  });
+
+  it("顶栏左侧控制簇的改动只落在左侧", async () => {
+    const pinia = createPinia();
+    const prefs = usePreferencesPiniaStore(pinia);
+    const wrapper = mount(WorkspaceHost, {
+      props: { workspace },
+      global: { plugins: [pinia] },
+    });
     await nextTick();
-    expect(prefs.workspacePanelVisible).toBe(false);
-    expect(wrapper.findComponent({ name: "TopBarStub" }).props("panelVisible")).toBe(
-      false,
+
+    await wrapper
+      .findComponent({ name: "TopBarStub" })
+      .vm.$emit("update:panel-layout", { left: "changes", right: "explorer" });
+    await nextTick();
+
+    expect(prefs.panelLayout).toEqual({ left: "changes", right: "explorer" });
+    expect(wrapper.findAllComponents({ name: "WorkspacePanelStub" })[0]?.props("view")).toBe(
+      "changes",
     );
+    wrapper.unmount();
+  });
+
+  it("顶栏右侧控制簇的折叠只落在右侧", async () => {
+    const pinia = createPinia();
+    const prefs = usePreferencesPiniaStore(pinia);
+    const wrapper = mount(WorkspaceHost, {
+      props: { workspace },
+      global: { plugins: [pinia] },
+    });
+    await nextTick();
+
+    await wrapper
+      .findComponent({ name: "TopBarStub" })
+      .vm.$emit("toggle:right-panel");
+    await nextTick();
+
+    expect(prefs.rightPanelOpen).toBe(false);
+    expect(prefs.leftPanelOpen).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("面板请求换视图时由宿主落到对应一侧", async () => {
+    const pinia = createPinia();
+    const prefs = usePreferencesPiniaStore(pinia);
+    const wrapper = mount(WorkspaceHost, {
+      props: { workspace },
+      global: { plugins: [pinia] },
+    });
+    await nextTick();
+
+    const panels = wrapper.findAllComponents({ name: "WorkspacePanelStub" });
+    // 右侧面板请求「文件树」，而文件树挂在左侧 → 两侧对调。
+    await panels[1]?.vm.$emit("request-view", "explorer");
+    await nextTick();
+
+    expect(prefs.panelLayout).toEqual({ left: "changes", right: "explorer" });
     wrapper.unmount();
   });
 

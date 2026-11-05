@@ -1,14 +1,36 @@
 <script setup lang="ts">
 import { normalizeErrorMessage } from "@/lib/error";
 import { BugOutline } from "@vicons/ionicons5";
-import { NButton, NCard, NForm, NFormItem, NIcon, NSwitch } from "naive-ui";
-import { onMounted, ref } from "vue";
+import { NButton, NCard, NForm, NFormItem, NIcon, NSelect, NSwitch } from "naive-ui";
+import { computed, onMounted, ref } from "vue";
 import { t } from "@/modules/i18n/translate";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { native } from "@/lib/native";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
+import type { PanelLayoutPref, PanelView } from "@/modules/settings/store";
+import { assignPanelView } from "@/app/shell/panelVisibility";
 
 const prefs = usePreferencesPiniaStore();
+
+// ── 停靠面板的左右分配 ────────────────────────────────────────────────
+// 面板只有两种视图（文件树 / 更改），左右各一个，且**不允许重复** ——
+// 两边都开文件树没有意义。所以选到另一侧已经占着的视图时两侧对调。
+const panelViewOptions = computed(() => [
+  { label: t("settings.general.panelExplorer"), value: "explorer" },
+  { label: t("settings.general.panelChanges"), value: "changes" },
+]);
+
+function setPanelSide(side: "left" | "right", view: PanelView): void {
+  const layout: PanelLayoutPref = assignPanelView(
+    prefs.panelLayout,
+    side,
+    view,
+  );
+  prefs.panelLayout = layout;
+  // 乐观更新本地 store，持久化仅在 Tauri 环境执行（与壳层同款守卫：
+  // 纯浏览器 / 测试环境里写盘必然失败）。
+  if (hasTauriInternals()) void prefs.updatePanelLayout(layout);
+}
 
 const devtoolsOpen = ref(false);
 const devtoolsBusy = ref(false);
@@ -106,6 +128,30 @@ async function openBackendDevtools() {
             @update:value="prefs.updateShowHidden"
           />
         </NFormItem>
+      </NForm>
+    </NCard>
+
+    <NCard class="nexterm-settings-group" size="small" :title="t('settings.general.panelLayout')" embedded>
+      <NForm label-placement="left" label-width="150" size="small">
+        <NFormItem :label="t('settings.general.leftPanel')">
+          <NSelect
+            :value="prefs.panelLayout.left"
+            :options="panelViewOptions"
+            class="w-40"
+            @update:value="(value) => setPanelSide('left', value)"
+          />
+        </NFormItem>
+        <NFormItem :label="t('settings.general.rightPanel')">
+          <NSelect
+            :value="prefs.panelLayout.right"
+            :options="panelViewOptions"
+            class="w-40"
+            @update:value="(value) => setPanelSide('right', value)"
+          />
+        </NFormItem>
+        <p class="mt-1 text-[12px] text-muted-foreground">
+          {{ t("settings.general.panelLayoutHint") }}
+        </p>
       </NForm>
     </NCard>
 

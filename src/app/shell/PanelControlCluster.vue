@@ -3,11 +3,12 @@
  * 停靠面板的控制簇（顶栏左端 / 右端各一个）。
  *
  * 一个簇管一侧面板的两个动作：
- * - **分段控件**：文件树 / 更改 —— 选哪个视图。选中即展开面板
- *   （「选它」就是想看它，收着的话点了没反应会让人困惑）。
+ * - **分段控件**：文件树 / 更改 —— 选这一侧显示哪个视图。
+ *   同一个视图不允许同时出现在两侧，所以点另一个侧已经占着的视图时
+ *   两侧**对调**（见 `shell/panelVisibility.ts` 的 `assignPanelView`）。
  * - **折叠按钮**：开 / 关当前这一侧。视图选择保留，关掉再打开还是它。
  *
- * 视图与显隐是**两个独立维度**（`view` 与 `open`），所以收起时分段控件
+ * 视图与显隐是**两个独立维度**（`layout` 与 `open`），所以收起时分段控件
  * 仍然高亮着当前视图 —— 用户知道自己关掉的是什么。
  */
 import {
@@ -22,32 +23,32 @@ import NextermIconButton from "@/components/NextermIconButton.vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t } from "@/modules/i18n/translate";
 import type { PanelView } from "@/modules/settings/store";
-
-/** 一侧面板的状态：当前视图 + 是否展开。 */
-export interface PanelSlotState {
-  view: PanelView;
-  open: boolean;
-}
-
+import { assignPanelView, type PanelSide } from "./panelVisibility";
 const props = defineProps<{
   /** 面板停靠在哪一侧 —— 决定折叠箭头的朝向。 */
-  side: "left" | "right";
-  view: PanelView;
+  side: PanelSide;
+  /** 全局的左右视图分配。 */
+  layout: { left: PanelView; right: PanelView };
+  /** 这一侧是否展开。 */
   open: boolean;
 }>();
 
 const emit = defineEmits<{
-  "update:slot": [slot: PanelSlotState];
+  "update:layout": [layout: { left: PanelView; right: PanelView }];
+  toggle: [];
 }>();
 
-/** 选视图即展开。 */
+/** 这一侧当前显示的视图。 */
+const currentView = computed<PanelView>(() => props.layout[props.side]);
+
+/** 选视图：另一侧已经占着就两侧对调，绝不出现重复视图。 */
 function selectView(view: PanelView) {
-  emit("update:slot", { view, open: true });
+  emit("update:layout", assignPanelView(props.layout, props.side, view));
 }
 
 /** 折叠 / 展开当前这一侧，视图选择保持不变。 */
 function toggleOpen() {
-  emit("update:slot", { view: props.view, open: !props.open });
+  emit("toggle");
 }
 
 /**
@@ -71,7 +72,7 @@ const collapseIcon = computed(() =>
     <TooltipTitle :label="t('app.rail.tool.explorer')">
       <NextermIconButton
         data-panel-tab="explorer"
-        :aria-pressed="view === 'explorer'"
+        :aria-pressed="currentView === 'explorer'"
         :aria-label="t('app.rail.tool.explorer')"
         @click="selectView('explorer')"
       >
@@ -81,7 +82,7 @@ const collapseIcon = computed(() =>
     <TooltipTitle :label="t('app.rail.tool.changes')">
       <NextermIconButton
         data-panel-tab="changes"
-        :aria-pressed="view === 'changes'"
+        :aria-pressed="currentView === 'changes'"
         :aria-label="t('app.rail.tool.changes')"
         @click="selectView('changes')"
       >

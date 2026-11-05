@@ -298,6 +298,13 @@ const enUS = {
         "Focus a field and press a shortcut. Disable removes the active shortcut; Default restores the built-in binding.",
       language: "Language",
       letterSpacing: "Letter spacing",
+      leftPanel: "Left panel",
+      panelChanges: "Changes",
+      panelExplorer: "File tree",
+      panelLayout: "Docked panel layout",
+      panelLayoutHint:
+        "One panel per side, and the same view cannot be used twice — picking a view already on the other side swaps the two.",
+      rightPanel: "Right panel",
       restoreWindow: "Restore window",
       scrollback: "Scrollback",
       showHiddenFiles: "Show hidden files",

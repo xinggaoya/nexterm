@@ -205,12 +205,12 @@ export type Preferences = {
   terminalLayouts: Record<string, PersistedTerminalLayout>;
   leftSidebar: LeftSidebarPref;
   panelVisibility: PanelVisibilityPref;
-  /** 壳层:左侧停靠面板。 */
-  leftPanelView: PanelView;
+  /** 壳层:停靠面板的左右分配（左右各一个视图，不能重复）。 */
+  panelLayout: PanelLayoutPref;
+  /** 壳层:左侧停靠面板是否展开。 */
   leftPanelOpen: boolean;
   leftPanelWidth: number;
-  /** 壳层:右侧停靠面板。 */
-  rightPanelView: PanelView;
+  /** 壳层:右侧停靠面板是否展开。 */
   rightPanelOpen: boolean;
   rightPanelWidth: number;
   tabWidthMode: TabWidthMode;
@@ -226,6 +226,50 @@ export type WorkspacePanelTab = "explorer" | "changes";
  * 「左边目录 + 右边 git」是最常见的组合，但用户也可以两边都放同一个视图。
  */
 export type PanelView = WorkspacePanelTab;
+
+/**
+ * 停靠面板的左右分配。
+ *
+ * 面板只有两种视图（文件树 / 更改），左右各一个。**同一个视图不允许同时
+ * 出现在两侧** —— 两边都开文件树没有意义，两边都开 git 面板更没有。
+ * 所以分配永远是「左一个、右一个，各不相同」。
+ */
+export type PanelLayoutPref = {
+  left: PanelView;
+  right: PanelView;
+};
+
+const PANEL_LAYOUT_DEFAULTS: PanelLayoutPref = {
+  left: "explorer",
+  right: "changes",
+};
+
+/**
+ * 规范化左右分配。
+ *
+ * 兼容旧数据：v3.2 只有一个右侧面板，它的「当前标签」是一个字符串
+ * （`workspacePanelTab`）。把它当成右侧的视图，左侧补上另一个视图。
+ */
+export function normalizePanelLayoutPref(raw: unknown): PanelLayoutPref {
+  if (raw === "explorer" || raw === "changes") {
+    // 旧数据：只记录了右侧的视图。
+    return raw === "explorer"
+      ? { left: "changes", right: "explorer" }
+      : { left: "explorer", right: "changes" };
+  }
+  const value = (raw ?? {}) as Partial<PanelLayoutPref>;
+  const left =
+    value.left === "explorer" || value.left === "changes"
+      ? value.left
+      : PANEL_LAYOUT_DEFAULTS.left;
+  let right =
+    value.right === "explorer" || value.right === "changes"
+      ? value.right
+      : PANEL_LAYOUT_DEFAULTS.right;
+  // 不变量：左右不能是同一个视图。
+  if (left === right) right = left === "explorer" ? "changes" : "explorer";
+  return { left, right };
+}
 
 export type LeftSidebarPref = {
   activity: "workspace" | "sourceControl";
@@ -277,9 +321,9 @@ const PANEL_VIEW_VALUES: readonly PanelView[] = [
 ];
 
 /**
- * 规范化面板视图。
+ * 规范化单个面板视图。
  *
- * v3.3：面板视图从「全局唯一的 tab」变成「左右两侧各选一个」，
+ * v3.3：面板视图从「全局唯一的 tab」变成「左右两侧各一个」，
  * 所以这个类型与规范化函数不再绑定某一侧。
  */
 export function normalizePanelView(value: unknown, fallback: PanelView): PanelView {
@@ -501,10 +545,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
     sourceControl: true,
     explorer: true,
   },
-  leftPanelView: "explorer",
+  panelLayout: { left: "explorer", right: "changes" },
   leftPanelOpen: true,
   leftPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
-  rightPanelView: "changes",
   rightPanelOpen: true,
   rightPanelWidth: SIDE_PANEL_WIDTH_DEFAULT,
   tabWidthMode: "auto",
@@ -761,21 +804,16 @@ export const PREF_SPECS: PrefSpecMap = {
   leftSidebar: spec("layout.leftSidebar", normalizeLeftSidebarPref, normalizeLeftSidebarPref),
   panelVisibility: spec("layout.panels", normalizePanelVisibilityPref, normalizePanelVisibilityPref),
   // v3.3 双侧面板：旧的单侧字段（workspacePanelTab / workspacePanelVisible /
-  // explorerPanelWidth）降级为**右侧**的 legacy 源 —— 老用户升级后右侧
-  // 面板的视图、显隐与宽度都原样保留。
-  leftPanelView: spec(
-    "leftPanelView",
-    (raw) => normalizePanelView(raw, DEFAULT_PREFERENCES.leftPanelView),
-    (value) => normalizePanelView(value, DEFAULT_PREFERENCES.leftPanelView),
+  // explorerPanelWidth）降级为 legacy 源 —— 老用户升级后右侧面板的视图、
+  // 显隐与宽度都原样保留。
+  panelLayout: spec(
+    "layout.panelLayout",
+    normalizePanelLayoutPref,
+    normalizePanelLayoutPref,
+    "workspacePanelTab",
   ),
   leftPanelOpen: spec("leftPanelOpen", boolPref(DEFAULT_PREFERENCES.leftPanelOpen)),
   leftPanelWidth: spec("leftPanelWidth", numberPref(DEFAULT_PREFERENCES.leftPanelWidth), clampSidePanelWidth),
-  rightPanelView: spec(
-    "rightPanelView",
-    (raw) => normalizePanelView(raw, DEFAULT_PREFERENCES.rightPanelView),
-    (value) => normalizePanelView(value, DEFAULT_PREFERENCES.rightPanelView),
-    "workspacePanelTab",
-  ),
   rightPanelOpen: spec(
     "rightPanelOpen",
     boolPref(DEFAULT_PREFERENCES.rightPanelOpen),

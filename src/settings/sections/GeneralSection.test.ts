@@ -4,6 +4,7 @@ import { NSelect } from "naive-ui";
 import { createPinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { applyLanguagePreference, i18n, setI18nLanguage } from "@/modules/i18n";
+import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import AppearanceSection from "./AppearanceSection.vue";
 import GeneralSection from "./GeneralSection.vue";
 import TerminalSection from "./TerminalSection.vue";
@@ -33,7 +34,40 @@ vi.mock("@/lib/tauriRuntime", () => ({
   hasTauriInternals: () => true,
 }));
 
+// 写盘走 Tauri store 插件，测试环境里直接 mock 掉（与其它设置分节测试同款）。
+vi.mock("@/modules/settings/store", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/modules/settings/store")>();
+  return {
+    ...mod,
+    setPreference: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 describe("GeneralSection.vue", () => {
+  it("左侧/右侧面板各选一个视图,选到另一侧已占用的视图时两侧对调", async () => {
+    const wrapper = mount(GeneralSection, {
+      global: { plugins: [createPinia(), i18n] },
+    });
+
+    const selects = wrapper.findAllComponents(NSelect);
+    // 左右各一个下拉,选项都是文件树 / 更改。
+    const panelSelects = selects.filter((select) =>
+      (select.props("options") as Array<{ value: string }> | undefined)?.some(
+        (option) => option.value === "explorer",
+      ),
+    );
+    expect(panelSelects).toHaveLength(2);
+    expect(panelSelects[0]?.props("value")).toBe("explorer");
+    expect(panelSelects[1]?.props("value")).toBe("changes");
+
+    // 左侧改成「更改」→ 与右侧对调,不会出现两个相同的视图。
+    await panelSelects[0]?.vm.$emit("update:value", "changes");
+    await flushPromises();
+
+    const prefs = usePreferencesPiniaStore();
+    expect(prefs.panelLayout).toEqual({ left: "changes", right: "explorer" });
+  });
+
   beforeEach(() => {
     setI18nLanguage("en-US");
     nativeMock.devtoolsAvailable.mockResolvedValue(true);

@@ -6,15 +6,15 @@
  * 右端承接「停靠面板控制簇」（文件树 / 更改 + 折叠）。停靠面板自己不再有
  * 独立头部 —— 面板头与顶栏割裂成两条视觉带，纵向也白白多占 44px。
  *
+ * v3.3：左右两侧各一个停靠面板，标题栏左端与右端各一个控制簇，
+ * 两边各自选视图、各自折叠。
+ *
  * 顶栏是全窗口唯一的一条 chrome 带：工作区身份、会话条、面板控制、动作区
  * 全在这里，面板与画布紧贴其下。
  */
 import {
   AddOutline,
-  ChevronBackOutline,
-  ChevronForwardOutline,
   DuplicateOutline,
-  FolderOpenOutline,
   GitBranchOutline,
   ReorderTwoOutline,
   SearchOutline,
@@ -29,10 +29,11 @@ import WindowControls from "@/components/WindowControls.vue";
 import { IS_MAC } from "@/lib/platform";
 import { t } from "@/modules/i18n/translate";
 import type { WorkspaceEnv, WorkspaceInstance } from "@/modules/workspace";
-import type { WorkspacePanelTab } from "@/modules/settings/store";
 import type { SplitDir } from "@/modules/terminal/lib/layout";
 import type { DragPlacement } from "@/lib/usePointerDragReorder";
 import WorkspaceSwitcher from "./WorkspaceSwitcher.vue";
+import PanelControlCluster from "./PanelControlCluster.vue";
+import type { PanelLayoutPref } from "@/modules/settings/store";
 
 const props = defineProps<{
   workspaceName: string;
@@ -48,10 +49,12 @@ const props = defineProps<{
   /** 顶栏左端的工作区切换器数据源。 */
   workspaces: WorkspaceInstance[];
   activeWorkspaceId: string | null;
-  /** 停靠面板当前标签（文件树 / 更改）。 */
-  panelTab: WorkspacePanelTab;
-  /** 停靠面板当前是否可见。 */
-  panelVisible: boolean;
+  /** 停靠面板的左右视图分配（左右各一个，不允许重复）。 */
+  panelLayout: PanelLayoutPref;
+  /** 左侧停靠面板是否展开。 */
+  leftPanelOpen: boolean;
+  /** 右侧停靠面板是否展开。 */
+  rightPanelOpen: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -64,8 +67,9 @@ const emit = defineEmits<{
   "add-workspace": [env: WorkspaceEnv];
   "open-workspace-in-new-window": [id: string];
   "reorder-workspace": [sourceId: string, targetId: string, placement: DragPlacement];
-  "update:panel-tab": [tab: WorkspacePanelTab];
-  "toggle-panel": [];
+  "update:panel-layout": [layout: PanelLayoutPref];
+  "toggle:left-panel": [];
+  "toggle:right-panel": [];
 }>();
 
 async function handleRootPointerDown(event: PointerEvent) {
@@ -104,11 +108,6 @@ function renderSplitIcon(option: DropdownOption): VNode {
 function handleSplitSelect(key: string | number) {
   emit("split-pane", key === "col" ? "col" : "row");
 }
-
-// ── 停靠面板控制簇 ──────────────────────────────────────────────────────
-function selectPanelTab(tab: WorkspacePanelTab) {
-  emit("update:panel-tab", tab);
-}
 </script>
 
 <template>
@@ -118,7 +117,7 @@ function selectPanelTab(tab: WorkspacePanelTab) {
     data-top-bar
     @pointerdown="handleRootPointerDown"
   >
-    <!-- 左:工作区切换器(顶栏与侧栏合并后的落点) -->
+    <!-- 左:工作区切换器 + 左侧面板控制簇 -->
     <WorkspaceSwitcher
       :workspaces="workspaces"
       :active-workspace-id="activeWorkspaceId"
@@ -127,6 +126,14 @@ function selectPanelTab(tab: WorkspacePanelTab) {
       @add-workspace="(env) => emit('add-workspace', env)"
       @open-workspace-in-new-window="(id) => emit('open-workspace-in-new-window', id)"
       @reorder-workspace="(sourceId, targetId, placement) => emit('reorder-workspace', sourceId, targetId, placement)"
+    />
+
+    <PanelControlCluster
+      side="left"
+      :layout="panelLayout"
+      :open="leftPanelOpen"
+      @update:layout="(layout) => emit('update:panel-layout', layout)"
+      @toggle="emit('toggle:left-panel')"
     />
 
     <!--
@@ -210,54 +217,18 @@ function selectPanelTab(tab: WorkspacePanelTab) {
       </TooltipTitle>
 
       <!--
-        停靠面板控制簇:贴在右端,正好落在面板上方。
+        右侧面板控制簇:贴在右端,正好落在面板上方。
         面板本体不再有独立头部 —— 原来顶栏 44px 之上还叠着面板自己的 44px,
         右侧区域白白多占一条 chrome 带。
       -->
-      <div
-        data-panel-tab-switch
-        class="ml-1 flex items-center gap-0.5 rounded-lg bg-surface-subtle p-0.5"
-      >
-        <TooltipTitle :label="t('app.rail.tool.explorer')">
-          <NextermIconButton
-            data-panel-tab="explorer"
-            :aria-pressed="panelTab === 'explorer'"
-            :aria-label="t('app.rail.tool.explorer')"
-            @click="selectPanelTab('explorer')"
-          >
-            <NIcon :component="FolderOpenOutline" :size="14" />
-          </NextermIconButton>
-        </TooltipTitle>
-        <TooltipTitle :label="t('app.rail.tool.changes')">
-          <NextermIconButton
-            data-panel-tab="changes"
-            :aria-pressed="panelTab === 'changes'"
-            :aria-label="t('app.rail.tool.changes')"
-            @click="selectPanelTab('changes')"
-          >
-            <NIcon :component="GitBranchOutline" :size="14" />
-          </NextermIconButton>
-        </TooltipTitle>
-        <TooltipTitle
-          :label="
-            panelVisible ? t('app.titleBar.panelHide') : t('app.titleBar.panelShow')
-          "
-        >
-          <NextermIconButton
-            data-toggle-panel
-            :aria-pressed="panelVisible"
-            :aria-label="
-              panelVisible ? t('app.titleBar.panelHide') : t('app.titleBar.panelShow')
-            "
-            @click="emit('toggle-panel')"
-          >
-            <NIcon
-              :component="panelVisible ? ChevronForwardOutline : ChevronBackOutline"
-              :size="14"
-            />
-          </NextermIconButton>
-        </TooltipTitle>
-      </div>
+      <PanelControlCluster
+        side="right"
+        class="ml-1"
+        :layout="panelLayout"
+        :open="rightPanelOpen"
+        @update:layout="(layout) => emit('update:panel-layout', layout)"
+        @toggle="emit('toggle:right-panel')"
+      />
 
       <WindowControls v-if="showWindowControls && !IS_MAC" />
     </div>

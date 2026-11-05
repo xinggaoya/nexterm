@@ -50,7 +50,13 @@ import {
 import { useWorkspaceLifecycle } from "@/app/useWorkspaceLifecycle";
 import { useWorkbenchCommands } from "@/app/useWorkbenchCommands";
 import { useResponsiveLayout } from "@/app/useResponsiveLayout";
-import { resolvePanelTabToggle } from "@/app/shell/panelVisibility";
+import {
+  assignPanelView,
+  resolvePanelViewToggle,
+  resolvePanelWidths,
+  sideOfView,
+  type PanelSide,
+} from "@/app/shell/panelVisibility";
 import { isBinaryImagePath } from "@/modules/file-preview/lib/imageFiles";
 import { normalizePreviewUrl } from "@/modules/preview/previewUrl";
 import { t, tLoose } from "@/modules/i18n/translate";
@@ -62,7 +68,7 @@ import type { PaneStatus } from "./Canvas.vue";
 import StatusDock from "./StatusDock.vue";
 import { useWorkspacesPiniaStore } from "@/modules/workspace/workspacesPinia";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
-import type { WorkspacePanelTab } from "@/modules/settings/store";
+import type { PanelLayoutPref, PanelView } from "@/modules/settings/store";
 import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import type { SettingsTab } from "@/modules/settings/tabs";
@@ -124,102 +130,156 @@ function onDecorationChange(decorations: GitDecorationMap): void {
 // 分支状态由活动工作区的源控面板上抛,面板头部与状态坞就地显示。
 const gitBranch = ref<string | null>(null);
 
-// ── 停靠面板状态(标签持久化在偏好;宽度沿用 explorerPanelWidth)────────
-const panelTab = computed(() => prefs.workspacePanelTab);
-const panelWidth = ref(prefs.explorerPanelWidth);
+// ── 停靠面板状态（左右各一个，持久化在偏好） ─────────────────────────
+const leftPanelWidth = ref(prefs.leftPanelWidth);
+const rightPanelWidth = ref(prefs.rightPanelWidth);
+
+/** 停靠面板的左右视图分配（全局设置，左右各一个，不允许重复）。 */
+const panelLayout = computed<PanelLayoutPref>(() => prefs.panelLayout);
 
 // ── 响应式收敛 ────────────────────────────────────────────────────────
-// 两栏（画布 + 停靠面板）在窄窗口下会把画布挤没、把顶栏动作按钮挤出屏幕。
+// 三栏（面板 + 画布 + 面板）在窄窗口下会把画布挤没、把顶栏动作按钮挤出屏幕。
 // 判定集中在 useResponsiveLayout，这里只消费结论。
 const shellRef = ref<HTMLElement | null>(null);
 const responsive = useResponsiveLayout(shellRef);
-
-/**
- * 停靠面板的最终宽度。
- *
- * 固定 328px 在 800px 宽的窗口里会吃掉四成空间。收窄时按容器宽度的比例
- * 取上限，保证画布始终拿得到该有的份额。覆盖层模式下按容器宽度算
- * （面板浮在画布之上，不占布局）。
- */
-const effectivePanelWidth = computed(() =>
-  responsive.resolvePanelWidth(panelWidth.value, responsive.width.value),
-);
 
 /**
  * 极窄窗口（< 640px）下面板改为覆盖层：不占布局宽度，画布保持满宽，
  * 面板由顶栏按钮唤出。否则 420px 宽的窗口里画布会被压到 0。
  */
 const panelOverlay = computed(() => responsive.tight.value);
-const panelOverlayOpen = ref(false);
+/** 覆盖层模式下当前浮出来的是哪一侧（同时只能浮一个）。 */
+const overlaySide = ref<PanelSide | null>(null);
 
 /**
- * 面板当前是否可见。
- *
- * 普通宽度下由偏好 `workspacePanelVisible` 决定（顶栏折叠按钮可持久化）；
- * 极窄窗口下叠加一个临时的覆盖层开关 —— 覆盖层是「临时浮出来看一眼」，
- * 不能写回偏好，否则用户回到大窗口时会发现面板莫名消失了。
+ * 左侧面板当前是否可见（覆盖层模式下由浮层开关决定）。
  */
-const panelVisible = computed(
-  () =>
-    prefs.workspacePanelVisible &&
-    (!panelOverlay.value || panelOverlayOpen.value),
+const leftPanelVisible = computed(() =>
+  panelOverlay.value ? overlaySide.value === "left" : prefs.leftPanelOpen,
 );
 
-/** 把面板唤出来（不改变当前标签）。 */
-function showPanel(): void {
-  if (panelOverlay.value) {
-    panelOverlayOpen.value = true;
-    return;
-  }
-  if (!prefs.workspacePanelVisible) {
-    prefs.workspacePanelVisible = true;
-    if (hasTauriInternals()) {
-      void prefs.updateWorkspacePanelVisible(true);
-    }
-  }
+/** 右侧面板当前是否可见。 */
+const rightPanelVisible = computed(() =>
+  panelOverlay.value ? overlaySide.value === "right" : prefs.rightPanelOpen,
+);
+
+/**
+ * 两侧面板的最终宽度。
+ *
+ * 两侧加起来不能把画布挤没了 —— 画布才是主体。收窄规则集中在
+ * `shell/panelVisibility.ts`（纯函数，有单测）。
+ */
+const panelWidths = computed(() =>
+  resolvePanelWidths(
+    responsive.width.value,
+    { requested: leftPanelWidth.value, open: leftPanelVisible.value },
+    { requested: rightPanelWidth.value, open: rightPanelVisible.value },
+  ),
+);
+
+/** 应用新的左右视图分配（设置项与顶栏控制簇共用这条路径）。 */
+function setPanelLayout(layout: PanelLayoutPref): void {
+  prefs.panelLayout = layout;
+  if (hasTauriInternals()) void prefs.updatePanelLayout(layout);
 }
 
-/** 顶栏折叠按钮：普通宽度切偏好，极窄窗口切覆盖层。 */
-function togglePanelVisibility(): void {
+/**
+ * 设置一侧的显隐。
+ *
+ * 覆盖层模式下（极窄窗口）这是**临时**的：覆盖层是「浮出来看一眼」，
+ * 写回偏好会让用户回到大窗口时发现面板莫名消失。
+ */
+function setPanelOpen(side: PanelSide, open: boolean): void {
   if (panelOverlay.value) {
-    panelOverlayOpen.value = !panelOverlayOpen.value;
+    overlaySide.value = open ? side : null;
     return;
   }
-  prefs.workspacePanelVisible = !prefs.workspacePanelVisible;
-  if (hasTauriInternals()) {
-    void prefs.updateWorkspacePanelVisible(prefs.workspacePanelVisible);
+  if (side === "left") {
+    prefs.leftPanelOpen = open;
+    if (hasTauriInternals()) void prefs.updateLeftPanelOpen(open);
+    return;
   }
+  prefs.rightPanelOpen = open;
+  if (hasTauriInternals()) void prefs.updateRightPanelOpen(open);
 }
 
 /** 离开极窄模式后收起覆盖层面板（下次再变窄时仍是默认收起）。 */
 watch(
   () => responsive.tight.value,
   (tight) => {
-    if (!tight) panelOverlayOpen.value = false;
+    if (!tight) overlaySide.value = null;
   },
 );
 // 拖拽过程中频繁 emit,持久化做 400ms 防抖;数值本身即时生效。
-let widthSaveTimer: ReturnType<typeof setTimeout> | null = null;
-function persistPanelWidth(width: number): void {
-  panelWidth.value = width;
-  if (widthSaveTimer) clearTimeout(widthSaveTimer);
-  widthSaveTimer = setTimeout(() => {
-    widthSaveTimer = null;
-    if (hasTauriInternals()) void prefs.updateExplorerPanelWidth(width);
+const widthSaveTimers: Partial<Record<PanelSide, ReturnType<typeof setTimeout>>> =
+  {};
+function persistPanelWidth(side: PanelSide, width: number): void {
+  if (side === "left") leftPanelWidth.value = width;
+  else rightPanelWidth.value = width;
+  const timer = widthSaveTimers[side];
+  if (timer) clearTimeout(timer);
+  widthSaveTimers[side] = setTimeout(() => {
+    delete widthSaveTimers[side];
+    if (!hasTauriInternals()) return;
+    if (side === "left") void prefs.updateLeftPanelWidth(width);
+    else void prefs.updateRightPanelWidth(width);
   }, 400);
 }
 onBeforeUnmount(() => {
-  if (widthSaveTimer) clearTimeout(widthSaveTimer);
+  for (const side of ["left", "right"] as PanelSide[]) {
+    const timer = widthSaveTimers[side];
+    if (timer) clearTimeout(timer);
+  }
 });
 
-function setPanelTab(tab: WorkspacePanelTab): void {
-  // 乐观更新本地 store,持久化仅在 Tauri 环境执行(与旧布局守卫一致,
-  // 避免纯浏览器/测试环境的未处理拒绝)。
-  prefs.workspacePanelTab = tab;
-  if (hasTauriInternals()) void prefs.updateWorkspacePanelTab(tab);
-  // 面板折叠着的时候切标签是「看不见的动作」——顺手把它唤出来，
-  // 否则命令面板里的「打开源代码管理」看起来毫无反应。
-  if (!panelVisible.value) showPanel();
+// 命令系统的面板语义:按**视图**（而不是某一侧）寻址面板。
+// 每个视图恰好挂在一侧，操作的就是那一侧。
+const leftPanelOpenView = computed<boolean>({
+  get: () => panelLayout.value.left === "changes" && leftPanelVisible.value,
+  set: (open) => {
+    if (open) showPanelView("changes");
+  },
+});
+const rightPanelOpenView = computed<boolean>({
+  get: () => panelLayout.value.left === "explorer" && leftPanelVisible.value,
+  set: (open) => {
+    if (open) showPanelView("explorer");
+  },
+});
+
+/**
+ * 「切换某个视图」（命令面板里的「打开源代码管理」等）。
+ *
+ * 视图已经挂在某一侧 → 切换那一侧的显隐；两边都没挂 → 挂到它的默认侧
+ * 并展开（文件树→左，更改→右）。
+ */
+function togglePanelView(view: PanelView): void {
+  const { side, open } = resolvePanelViewToggle(
+    panelLayout.value,
+    { left: prefs.leftPanelOpen, right: prefs.rightPanelOpen },
+    view,
+  );
+  setPanelOpen(side, open);
+}
+
+/** 「展开某个视图」：它挂在哪一侧就展开哪一侧。 */
+function showPanelView(view: PanelView): void {
+  setPanelOpen(sideOfView(panelLayout.value, view), true);
+}
+
+/**
+ * 面板请求换视图：把它放到**自己那一侧**（另一侧已经占着就两侧对调）
+ * 并展开。
+ */
+function requestViewOnSide(side: PanelSide, view: PanelView): void {
+  setPanelLayout(assignPanelView(panelLayout.value, side, view));
+  setPanelOpen(side, true);
+}
+
+/** 顶栏折叠按钮：切换一侧的显隐。 */
+function togglePanelOpen(side: PanelSide): void {
+  const open = side === "left" ? prefs.leftPanelOpen : prefs.rightPanelOpen;
+  setPanelOpen(side, !open);
 }
 
 const canSplitActiveTab = computed(() => {
@@ -485,7 +545,15 @@ function onHistoryRefChange(input: {
 }
 
 const canvas = ref<InstanceType<typeof Canvas> | null>(null);
+/** 右侧停靠面板。 */
 const panel = ref<InstanceType<typeof WorkspacePanel> | null>(null);
+/** 左侧停靠面板。 */
+const leftPanelRef = ref<InstanceType<typeof WorkspacePanel> | null>(null);
+
+/** 当前挂着文件树的那一侧（每个视图恰好挂在一侧）。 */
+function explorerPanelRef() {
+  return panelLayout.value.left === "explorer" ? leftPanelRef.value : panel.value;
+}
 
 async function saveActiveEditor(): Promise<void> {
   await canvas.value?.saveActiveEditor();
@@ -496,8 +564,13 @@ function openGotoLine(): void {
 }
 
 function openFindInFiles(): void {
-  // Find in Files 依托停靠面板的文件树搜索模式(内部会先切到 explorer 标签)。
-  panel.value?.openFindInFiles();
+  // Find in Files 依托停靠面板的文件树搜索模式。文件树挂在哪一侧就用哪一侧；
+  // 面板收着的话先展开 —— 收着的面板设了搜索模式也看不见。
+  const side = sideOfView(panelLayout.value, "explorer");
+  if (side === "left" ? !prefs.leftPanelOpen : !prefs.rightPanelOpen) {
+    setPanelOpen(side, true);
+  }
+  (side === "left" ? leftPanelRef.value : panel.value)?.openFindInFiles();
 }
 
 async function killActiveTerminal(): Promise<void> {
@@ -559,7 +632,7 @@ function requestTabRename(tabId: number): void {
  * 源控立即补跑 git status。
  */
 function onWorkspaceActivated(): void {
-  panel.value?.activate();
+  explorerPanelRef()?.activate();
   forceFlushNow();
   refreshSourceControlOnActivate();
 }
@@ -685,27 +758,6 @@ function requestCloseAll(): void {
   );
 }
 
-// 命令系统的面板语义: leftPanelOpen = 源控("更改")标签可见,
-// rightPanelOpen = 文件树标签可见。写入即切换停靠面板的标签。
-const leftPanelOpen = computed<boolean>({
-  get: () => panelTab.value === "changes",
-  set: (open) => setPanelTab(open ? "changes" : "explorer"),
-});
-const rightPanelOpen = computed<boolean>({
-  get: () => panelTab.value === "explorer",
-  set: (open) => setPanelTab(open ? "explorer" : "changes"),
-});
-
-/**
- * 面板视图的「切换」命令语义。
- *
- * 面板可见时在两个视图之间来回切；面板收起时切到指定视图并展开 ——
- * 收起状态下按「切换资源管理器」，用户期待在文件树里看到它。
- */
-function togglePanelView(tab: WorkspacePanelTab): void {
-  setPanelTab(resolvePanelTabToggle(panelTab.value, tab, panelVisible.value));
-}
-
 const commandApi = useWorkbenchCommands({
   t: tLoose,
   keybindings: computed(() => prefs.keybindings ?? {}),
@@ -714,10 +766,10 @@ const commandApi = useWorkbenchCommands({
   activeRepoRoot,
   activeTab,
   paneNeighbour,
-  leftPanelOpen,
-  rightPanelOpen,
-  togglePanelView,
-  workspaceFsEvent,
+  leftPanelOpen: leftPanelOpenView,
+  rightPanelOpen: rightPanelOpenView,
+  showPanelView,
+  togglePanelView,  workspaceFsEvent,
   openBranchesModal: showBranchesModal,
   tabs,
   newTerminalTab,
@@ -786,8 +838,9 @@ defineExpose({
         :dense="responsive.compact.value"
         :workspaces="workspaces.workspaces"
         :active-workspace-id="workspaces.activeWorkspaceId"
-        :panel-tab="panelTab"
-        :panel-visible="panelVisible"
+        :panel-layout="panelLayout"
+        :left-panel-open="leftPanelVisible"
+        :right-panel-open="rightPanelVisible"
         @new-terminal="newTerminalTab"
         @split-pane="splitActivePane"
         @open-command-palette="() => emit('request-command-palette', 'commands')"
@@ -797,8 +850,9 @@ defineExpose({
         @add-workspace="(env) => emit('add-workspace', env)"
         @open-workspace-in-new-window="openThisWorkspaceInNewWindow"
         @reorder-workspace="(sourceId, targetId, placement) => workspaces.reorderByTarget(sourceId, targetId, placement)"
-        @update:panel-tab="setPanelTab"
-        @toggle-panel="togglePanelVisibility"
+        @update:panel-layout="setPanelLayout"
+        @toggle:left-panel="togglePanelOpen('left')"
+        @toggle:right-panel="togglePanelOpen('right')"
       >
         <template #center>
           <SessionStrip
@@ -823,6 +877,37 @@ defineExpose({
       </TopBar>
 
       <div class="relative flex min-h-0 flex-1">
+        <!-- 左侧停靠面板（文件树 / 更改） -->
+        <WorkspacePanel
+          v-show="leftPanelVisible"
+          ref="leftPanelRef"
+          side="left"
+          :view="panelLayout.left"
+          :width="panelWidths.left"
+          :overlay="panelOverlay"
+          :workspace-id="workspace.id"
+          :workspace-root="workspaceRoot"
+          :workspace-scope="workspaceScope"
+          :active-repo-root="activeRepoRoot"
+          :git-decorations="gitDecorations"
+          :show-branches-modal="showBranchesModalProp"
+          :fs-event="normalizedFsEvent"
+          @request-view="(view) => requestViewOnSide('left', view)"
+          @resize-width="(width) => persistPanelWidth('left', width)"
+          @open-file="openFileTab"
+          @open-file-preview="openFilePreview"
+          @open-markdown-preview="openMarkdownPreview"
+          @open-in-terminal="openTerminalInDir"
+          @open-search-result="openSearchResult"
+          @path-renamed="onPathRenamed"
+          @path-deleted="onPathDeleted"
+          @open-source-diff="openSourceDiff"
+          @open-source-history="openSourceHistory"
+          @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
+          @branch-change="(branch) => gitBranch = branch"
+          @decorations-change="onDecorationChange"
+        />
+
         <Canvas
           ref="canvas"
           :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
@@ -844,11 +929,13 @@ defineExpose({
           @pane-status="onPaneStatus"
         />
 
+        <!-- 右侧停靠面板（文件树 / 更改） -->
         <WorkspacePanel
-          v-show="panelVisible"
+          v-show="rightPanelVisible"
           ref="panel"
-          :tab="panelTab"
-          :width="effectivePanelWidth"
+          side="right"
+          :view="panelLayout.right"
+          :width="panelWidths.right"
           :overlay="panelOverlay"
           :workspace-id="workspace.id"
           :workspace-root="workspaceRoot"
@@ -857,8 +944,8 @@ defineExpose({
           :git-decorations="gitDecorations"
           :show-branches-modal="showBranchesModalProp"
           :fs-event="normalizedFsEvent"
-          @request-tab="setPanelTab"
-          @resize-width="persistPanelWidth"
+          @request-view="(view) => requestViewOnSide('right', view)"
+          @resize-width="(width) => persistPanelWidth('right', width)"
           @open-file="openFileTab"
           @open-file-preview="openFilePreview"
           @open-markdown-preview="openMarkdownPreview"

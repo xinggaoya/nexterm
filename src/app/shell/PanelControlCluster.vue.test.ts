@@ -9,7 +9,7 @@ function mountCluster(
   return mount(PanelControlCluster, {
     props: {
       side: "right",
-      view: "explorer",
+      layout: { left: "explorer", right: "changes" },
       open: true,
       ...props,
     },
@@ -17,41 +17,46 @@ function mountCluster(
 }
 
 describe("PanelControlCluster.vue", () => {
-  it("分段控件按当前视图高亮", () => {
-    const wrapper = mountCluster({ view: "changes" });
+  it("分段控件高亮这一侧当前显示的视图", () => {
+    const wrapper = mountCluster({ layout: { left: "changes", right: "explorer" } });
 
-    expect(wrapper.find("[data-panel-tab='changes']").attributes("aria-pressed")).toBe(
-      "true",
-    );
-    expect(wrapper.find("[data-panel-tab='explorer']").attributes("aria-pressed")).toBe(
-      "false",
-    );
+    expect(
+      wrapper.find("[data-panel-tab='explorer']").attributes("aria-pressed"),
+    ).toBe("true");
+    expect(
+      wrapper.find("[data-panel-tab='changes']").attributes("aria-pressed"),
+    ).toBe("false");
   });
 
-  it("选视图即展开面板", async () => {
-    const wrapper = mountCluster({ view: "explorer", open: false });
+  it("选视图时另一侧已占用就两侧对调（不允许重复视图）", async () => {
+    const wrapper = mountCluster({
+      side: "left",
+      layout: { left: "explorer", right: "changes" },
+    });
 
+    // 右侧已是「更改」，左侧点「更改」→ 两侧对调。
     await wrapper.find("[data-panel-tab='changes']").trigger("click");
 
-    expect(wrapper.emitted("update:slot")).toEqual([[{ view: "changes", open: true }]]);
-  });
-
-  it("折叠按钮切换显隐并保留视图选择", async () => {
-    const wrapper = mountCluster({ view: "changes", open: true });
-
-    await wrapper.find("[data-toggle-panel]").trigger("click");
-
-    expect(wrapper.emitted("update:slot")).toEqual([
-      [{ view: "changes", open: false }],
+    expect(wrapper.emitted("update:layout")).toEqual([
+      [{ left: "changes", right: "explorer" }],
     ]);
   });
 
-  it("收起时分段控件仍高亮着当前视图", () => {
-    const wrapper = mountCluster({ view: "explorer", open: false });
+  it("折叠按钮发出 toggle（视图选择保持不变）", async () => {
+    const wrapper = mountCluster({ open: true });
 
-    expect(wrapper.find("[data-panel-tab='explorer']").attributes("aria-pressed")).toBe(
-      "true",
-    );
+    await wrapper.find("[data-toggle-panel]").trigger("click");
+
+    expect(wrapper.emitted("toggle")).toHaveLength(1);
+    expect(wrapper.emitted("update:layout")).toBeUndefined();
+  });
+
+  it("收起时分段控件仍高亮着当前视图", () => {
+    const wrapper = mountCluster({ open: false });
+
+    expect(
+      wrapper.find("[data-panel-tab='changes']").attributes("aria-pressed"),
+    ).toBe("true");
     expect(wrapper.find("[data-toggle-panel]").attributes("aria-pressed")).toBe(
       "false",
     );

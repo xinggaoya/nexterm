@@ -45,10 +45,17 @@ describe("visual system contract", () => {
     expect(topBar).toContain("h-11");
     expect(topBar).toContain(`:aria-label="t('app.header.openCommandCenter')"`);
     expect(topBar).toContain(`:aria-label="t('common.settings')"`);
-    // 工作区切换器与面板控制簇都挂在顶栏上。
+    // 工作区切换器与两侧面板控制簇都挂在顶栏上。
     expect(topBar).toContain("WorkspaceSwitcher");
-    expect(topBar).toContain("data-panel-tab-switch");
-    expect(topBar).toContain("data-toggle-panel");
+    expect(topBar).toContain("PanelControlCluster");
+    expect(topBar).toContain('side="left"');
+    expect(topBar).toContain('side="right"');
+    // 控制簇自身提供分段控件与折叠按钮。
+    const cluster = readSource("../app/shell/PanelControlCluster.vue");
+    expect(cluster).toContain("data-panel-cluster-side");
+    expect(cluster).toContain("data-panel-tab=\"explorer\"");
+    expect(cluster).toContain("data-panel-tab=\"changes\"");
+    expect(cluster).toContain("data-toggle-panel");
 
     expect(readSource("../app/shell/SessionStrip.vue")).toContain("h-7");
     expect(readSource("../app/shell/StatusDock.vue")).toContain("h-6");
@@ -64,11 +71,14 @@ describe("visual system contract", () => {
     const panel = readSource("../app/shell/WorkspacePanel.vue");
     const canvas = readSource("../app/shell/Canvas.vue");
 
-    // Host 组合:顶栏(含工作区切换器与会话条) → 画布 | 停靠面板 → 状态坞。
+    // Host 组合:顶栏(含工作区切换器与会话条) → 左面板 | 画布 | 右面板 → 状态坞。
     expect(host).toMatch(/<TopBar[\s\S]*?<SessionStrip/);
-    expect(host).toMatch(/<Canvas[\s\S]*?<WorkspacePanel[\s\S]*?<StatusDock/);
+    expect(host).toMatch(/<WorkspacePanel[\s\S]*?<Canvas[\s\S]*?<WorkspacePanel[\s\S]*?<StatusDock/);
     // 常驻左栏已下线：壳层里不再有侧栏。
     expect(host).not.toContain("<Sidebar");
+    // 两侧各一个面板，各自选自己的视图。
+    expect(host).toContain('side="left"');
+    expect(host).toContain('side="right"');
 
     // 面板停靠在画布右侧(非浮层):双标签内容全部挂载在面板内,
     // 拖宽手柄在面板左缘(向左拖加宽)。

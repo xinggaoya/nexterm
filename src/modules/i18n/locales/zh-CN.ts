@@ -298,6 +298,13 @@ const zhCN = {
         "聚焦输入框后按下快捷键。禁用会移除当前快捷键；默认会恢复内置绑定。",
       language: "语言",
       letterSpacing: "字间距",
+      leftPanel: "左侧面板",
+      panelChanges: "更改",
+      panelExplorer: "文件树",
+      panelLayout: "停靠面板布局",
+      panelLayoutHint:
+        "左右各放一个面板，视图不能重复；选到另一侧已占用的视图时两侧对调。",
+      rightPanel: "右侧面板",
       restoreWindow: "恢复窗口",
       scrollback: "回滚行数",
       showHiddenFiles: "显示隐藏文件",

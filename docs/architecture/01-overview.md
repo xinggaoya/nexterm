@@ -79,10 +79,12 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 
 ```
 +------------------------------------------------------+
-|  Vue 3 Webview                                       |
-|  MainApp.vue -> WorkspaceHost(TopBar/WorkspaceSwitcher|
-|  + SessionStrip + WorkspacePanel + Canvas + StatusDock)|
-|  Pinia stores <-> native.ts <-> Tauri IPC            |
++----------------------------------------------------+
+|  Vue 3 Webview                                     |
+|  MainApp.vue -> WorkspaceHost(TopBar + SessionStrip|
+|  + 2xWorkspacePanel + Canvas + StatusDock)         |
+|  Pinia stores <-> native.ts <-> Tauri IPC          |
++----------------------------------------------------+
 +--------------------------+---------------------------+
                            | Tauri IPC + Channel
 +--------------------------v---------------------------+
@@ -151,18 +153,27 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 否则窄窗口下它会把动作区整体挤出屏幕。
 
 > v3.2 起全局侧栏下线，`compact` 断点的含义从「侧栏折叠成轨道」
-> 变为「顶栏紧凑」；面板宽度的可用量也不再扣减侧栏宽度（侧栏已不存在，
-> 可用宽度就是容器宽）。
+> 变为「顶栏紧凑」。
 
 ### 4.1.2 壳层空间分配
 
-停靠面板的显隐由偏好 `workspacePanelVisible` 持久化（顶栏右侧折叠按钮），
-`tight` 断点下的覆盖层开关则是临时的 —— 覆盖层是「浮出来看一眼」，
-写回偏好会让用户回到大窗口时发现面板莫名消失。
+壳层是「顶栏 + 左面板 | 画布 | 右面板 + 状态坞」：
 
-切换面板标签（顶栏控制簇或命令）时，面板若处于收起状态会被一并展开：
-收起着切标签是「看不见的动作」，命令面板里的「打开源代码管理」看起来
-毫无反应。落点规则见 `src/app/shell/panelVisibility.ts`。
+- **左右各一个停靠面板**，每个面板显示文件树（explorer）或更改（changes）
+  之一。分配是**全局**设置（偏好 `panelLayout`），可在「设置 → 通用 →
+  停靠面板布局」里改，��栏的控制簇也能改。
+- **同一个视图不允许同时出现在两侧** —— 两边都开文件树没有意义，两边都开
+  git 面板更没有。所以选到另一侧已经占着的视图时两侧**对调**
+  （`shell/panelVisibility.ts` 的 `assignPanelView`）。
+- 两侧面板的显隐各自持久化（`leftPanelOpen` / `rightPanelOpen`），宽度也各自
+  记忆（`leftPanelWidth` / `rightPanelWidth`）。`tight` 断点下的覆盖层开关
+  则是临时的 —— 覆盖层是「浮出来看一眼」，写回偏好会让用户回到大窗口时
+  发现面板莫名消失。
+- **宽度预算**：单侧不超过容器宽的 45%；两侧加起来不能把画布挤到
+  `MIN_CANVAS_WIDTH`（360px）以下，超了就等比压缩。画布才是主体。
+
+切换面板视图（顶栏控制簇或命令）时，面板若处于收起状态会被一并展开：
+收着用是「看不见的动作」，命令面板里的「打开源代码管理」看起来毫无反应。
 
 ### 4.2 业务调用
 

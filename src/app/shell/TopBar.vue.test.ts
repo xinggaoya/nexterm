@@ -28,8 +28,9 @@ function mountTopBar(
       canSplit: true,
       workspaces: [],
       activeWorkspaceId: null,
-      panelTab: "explorer",
-      panelVisible: true,
+      panelLayout: { left: "explorer", right: "changes" },
+      leftPanelOpen: true,
+      rightPanelOpen: true,
       ...props,
     },
     global: { plugins: [createPinia()] },
@@ -46,34 +47,58 @@ describe("TopBar.vue", () => {
     expect(wrapper.find("[data-workspace-switcher]").exists()).toBe(true);
   });
 
-  it("面板控制簇:分段控件按当前标签高亮", () => {
-    const wrapper = mountTopBar({ panelTab: "changes" });
+  it("左右两侧各有一个面板控制簇", () => {
+    const wrapper = mountTopBar();
 
-    expect(wrapper.find("[data-panel-tab-switch]").exists()).toBe(true);
-    expect(wrapper.find("[data-panel-tab='changes']").attributes("aria-pressed")).toBe(
+    expect(wrapper.find("[data-panel-cluster-side='left']").exists()).toBe(true);
+    expect(wrapper.find("[data-panel-cluster-side='right']").exists()).toBe(true);
+  });
+
+  it("左侧控制簇按左侧面板的视图高亮", () => {
+    const wrapper = mountTopBar({
+      panelLayout: { left: "changes", right: "explorer" },
+      leftPanelOpen: true,
+      rightPanelOpen: true,
+    });
+
+    const left = wrapper.find("[data-panel-cluster-side='left']");
+    expect(left.find("[data-panel-tab='changes']").attributes("aria-pressed")).toBe(
       "true",
     );
-    expect(wrapper.find("[data-panel-tab='explorer']").attributes("aria-pressed")).toBe(
+    expect(left.find("[data-panel-tab='explorer']").attributes("aria-pressed")).toBe(
       "false",
+    );
+
+    const right = wrapper.find("[data-panel-cluster-side='right']");
+    expect(right.find("[data-panel-tab='explorer']").attributes("aria-pressed")).toBe(
+      "true",
     );
   });
 
-  it("点击分段控件发出 update:panel-tab", async () => {
-    const wrapper = mountTopBar({ panelTab: "explorer" });
+  it("左侧控制簇改视图只上抛布局变更", async () => {
+    const wrapper = mountTopBar();
 
-    await wrapper.find("[data-panel-tab='changes']").trigger("click");
+    await wrapper
+      .find("[data-panel-cluster-side='left'] [data-panel-tab='changes']")
+      .trigger("click");
 
-    expect(wrapper.emitted("update:panel-tab")).toEqual([["changes"]]);
+    expect(wrapper.emitted("update:panel-layout")).toEqual([
+      [{ left: "changes", right: "explorer" }],
+    ]);
   });
 
-  it("折叠按钮发出 toggle-panel,aria-pressed 反映面板可见性", async () => {
-    const wrapper = mountTopBar({ panelVisible: false });
+  it("两侧折叠按钮各自上抛", async () => {
+    const wrapper = mountTopBar();
 
-    const toggle = wrapper.find("[data-toggle-panel]");
-    expect(toggle.attributes("aria-pressed")).toBe("false");
+    await wrapper
+      .find("[data-panel-cluster-side='right'] [data-toggle-panel]")
+      .trigger("click");
+    await wrapper
+      .find("[data-panel-cluster-side='left'] [data-toggle-panel]")
+      .trigger("click");
 
-    await toggle.trigger("click");
-    expect(wrapper.emitted("toggle-panel")).toHaveLength(1);
+    expect(wrapper.emitted("toggle:right-panel")).toHaveLength(1);
+    expect(wrapper.emitted("toggle:left-panel")).toHaveLength(1);
   });
 
   it("按在工作区切换器上不触发窗口拖动", async () => {

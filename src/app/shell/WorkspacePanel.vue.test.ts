@@ -83,7 +83,7 @@ describe("WorkspacePanel.vue", () => {
   });
 
   it("文件树标签层接收根路径并转发 open-file", async () => {
-    const wrapper = mountPanel({ tab: "explorer" });
+    const wrapper = mountPanel({ view: "explorer" });
 
     const explorer = wrapper.findComponent({ name: "FileExplorerStub" });
     expect(explorer.props("rootPath")).toBe("/repo");
@@ -95,7 +95,7 @@ describe("WorkspacePanel.vue", () => {
   // 回归：这三类事件曾经只声明不转发，导致重命名后编辑器标签指向失效路径、
   // 图片预览从文件树完全打不开。
   it("转发 open-file-preview / path-renamed / path-deleted", async () => {
-    const wrapper = mountPanel({ tab: "explorer" });
+    const wrapper = mountPanel({ view: "explorer" });
     const explorer = wrapper.findComponent({ name: "FileExplorerStub" });
 
     await explorer.vm.$emit("open-file-preview", "/repo/logo.png");
@@ -110,7 +110,7 @@ describe("WorkspacePanel.vue", () => {
   });
 
   it("更改标签的 branch-change / decorations-change 逐层上抛", async () => {
-    const wrapper = mountPanel({ tab: "changes" });
+    const wrapper = mountPanel({ view: "changes" });
     const panel = wrapper.findComponent({ name: "SourceControlPanelStub" });
     expect(panel.props("workspaceId")).toBe("w1");
 

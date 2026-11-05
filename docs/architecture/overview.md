@@ -31,7 +31,7 @@ graph TB
         A[MainApp.vue] --> B[WorkspaceHost × N v-show 常驻栈]
         B --> R[WorkspaceSwitcher 工作区切换器(顶栏弹出浮层)]
         B --> T2[TopBar + SessionStrip]
-        B --> WP[WorkspacePanel 停靠面板]
+        B --> WP[WorkspacePanel 停靠面板(左/右各一个)]
         B --> C[Canvas 终端画布]
         C --> E[terminal module]
         C --> F[editor module]

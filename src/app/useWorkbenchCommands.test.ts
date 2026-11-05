@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import { describe, expect, it, vi } from "vitest";
 import type { GitRepoInfo } from "@/lib/native";
-import type { WorkspacePanelTab } from "@/modules/settings/store";
+import type { PanelView } from "@/modules/settings/store";
 import type { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import { useWorkbenchCommands } from "./useWorkbenchCommands";
 import { notifyInfo } from "@/modules/notifications/notificationCenter";
@@ -34,7 +34,8 @@ function createHarness(activeRepoRoot: string | null) {
   const resolveGitRepo = vi.fn<(root: string) => Promise<GitRepoInfo | null>>();
   const leftPanelOpen = ref(false);
   const openBranchesModal = ref(false);
-  const togglePanelView = vi.fn<(tab: WorkspacePanelTab) => void>();
+  const showPanelView = vi.fn<(view: PanelView) => void>();
+  const togglePanelView = vi.fn<(view: PanelView) => void>();
   const options = {
     t: (key: string) => key,
     keybindings: computed(() => ({})),
@@ -50,6 +51,7 @@ function createHarness(activeRepoRoot: string | null) {
     })),
     leftPanelOpen,
     rightPanelOpen: ref(false),
+    showPanelView,
     togglePanelView,
     workspaceFsEvent: ref(null),
     openBranchesModal,
@@ -90,6 +92,7 @@ function createHarness(activeRepoRoot: string | null) {
     resolveGitRepo,
     leftPanelOpen,
     openBranchesModal,
+    showPanelView,
     togglePanelView,
   };
 }
@@ -168,7 +171,7 @@ describe("useWorkbenchCommands branch workflow commands", () => {
     await harness.commands.executeCommandFromPalette("git.branch.checkout");
 
     expect(harness.resolveGitRepo).toHaveBeenCalledWith("/workspace/apps/web");
-    expect(harness.leftPanelOpen.value).toBe(true);
+    expect(harness.showPanelView).toHaveBeenCalledWith("changes");
     expect(harness.openBranchesModal.value).toBe(true);
     expect(notifyInfo).not.toHaveBeenCalledWith(
       "sourceControl.branches",
@@ -183,7 +186,7 @@ describe("useWorkbenchCommands branch workflow commands", () => {
     await harness.commands.executeCommandFromPalette("git.branch.create");
 
     expect(harness.resolveGitRepo).toHaveBeenCalledWith("/workspace/apps/web");
-    expect(harness.leftPanelOpen.value).toBe(true);
+    expect(harness.showPanelView).toHaveBeenCalledWith("changes");
     expect(harness.openBranchesModal.value).toBe(true);
     expect(notifyInfo).not.toHaveBeenCalledWith(
       "sourceControl.branches",

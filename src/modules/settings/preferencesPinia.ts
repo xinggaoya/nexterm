@@ -99,12 +99,10 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const updateShowHidden = (value: boolean) => updatePref("showHidden", value);
   const updateTabWidthMode = (value: TabWidthMode) => updatePref("tabWidthMode", value);
   const updateTabFixedWidth = (value: number) => updatePref("tabFixedWidth", value);
-  const updateLeftPanelView = (value: Preferences["leftPanelView"]) =>
-    updatePref("leftPanelView", value);
+  const updatePanelLayout = (value: Preferences["panelLayout"]) =>
+    updatePref("panelLayout", value);
   const updateLeftPanelOpen = (value: boolean) => updatePref("leftPanelOpen", value);
   const updateLeftPanelWidth = (value: number) => updatePref("leftPanelWidth", value);
-  const updateRightPanelView = (value: Preferences["rightPanelView"]) =>
-    updatePref("rightPanelView", value);
   const updateRightPanelOpen = (value: boolean) => updatePref("rightPanelOpen", value);
   const updateRightPanelWidth = (value: number) => updatePref("rightPanelWidth", value);
   const updateTerminalWebglEnabled = (value: boolean) => updatePref("terminalWebglEnabled", value);
@@ -154,7 +152,6 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updatePref("terminalNotificationSoundEnabled", value);
   const updateSourceControlPanelWidth = (value: number) =>
     updatePref("sourceControlPanelWidth", value);
-  const updateExplorerPanelWidth = (value: number) => updatePref("explorerPanelWidth", value);
   const updateTouchOptimizations = (value: Preferences["touchOptimizations"]) =>
     updatePref("touchOptimizations", value);
   const updateEditorFontSize = (value: number) => updatePref("editorFontSize", value);
@@ -214,10 +211,9 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateShowHidden,
     updateTabWidthMode,
     updateTabFixedWidth,
-    updateLeftPanelView,
+    updatePanelLayout,
     updateLeftPanelOpen,
     updateLeftPanelWidth,
-    updateRightPanelView,
     updateRightPanelOpen,
     updateRightPanelWidth,
     updateTerminalWebglEnabled,
@@ -249,7 +245,6 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateTerminalNotificationEnabled,
     updateTerminalNotificationSoundEnabled,
     updateSourceControlPanelWidth,
-    updateExplorerPanelWidth,
     updateTouchOptimizations,
     updateEditorFontSize,
     updateEditorTabSize,

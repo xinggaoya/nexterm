@@ -40,7 +40,7 @@ import {
 import type { SplitDir } from "@/modules/terminal/lib/layout";
 import { createTerminalSessionHandle } from "@/modules/terminal";
 import type { SettingsTab } from "@/modules/settings/tabs";
-import type { WorkspacePanelTab } from "@/modules/settings/store";
+import type { PanelView } from "@/modules/settings/store";
 import { DEFAULT_TERMINAL_SNIPPETS } from "@/modules/snippets";
 import type { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
 import type { Tab } from "@/modules/tabs/tabsTypes";
@@ -62,13 +62,19 @@ type WorkbenchCommandOptions = {
   leftPanelOpen: Ref<boolean>;
   rightPanelOpen: Ref<boolean>;
   /**
-   * 切换停靠面板的视图（文件树 / 更改）。
+   * 展开某个面板视图（文件树 / 更改）。
    *
-   * 与 `leftPanelOpen` / `rightPanelOpen` 的「直接切到某个视图」不同，
-   * 这里带「toggle」语义：面板收起时要先把它唤出来，否则命令看起来
-   * 毫无反应。落点规则见 `shell/panelVisibility.ts`。
+   * 视图已经挂在某一侧 → 展开那一侧；两边都没挂 → 挂到它的默认侧
+   * （文件树→左，更改→右）并展开。
    */
-  togglePanelView: (tab: WorkspacePanelTab) => void;
+  showPanelView: (view: PanelView) => void;
+  /**
+   * 切换某个面板视图的显隐。
+   *
+   * 视图已经挂在某一侧 → 开着就关、关着就开；两边都没挂 → 挂到默认侧
+   * 并展开。落点规则见 `shell/panelVisibility.ts`。
+   */
+  togglePanelView: (view: PanelView) => void;
   workspaceFsEvent: Ref<WorkspaceFsChangedEvent | null>;
   openBranchesModal: Ref<boolean>;
   tabs: ReturnType<typeof useTabsPiniaStore>;
@@ -162,7 +168,7 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
   function refreshSourceControlFromCommand() {
     const root = options.workspaceRoot.value;
     if (!root) return;
-    options.leftPanelOpen.value = true;
+    options.showPanelView("changes");
     options.workspaceFsEvent.value = {
       rootPath: root,
       paths: [],
@@ -173,7 +179,7 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
   function refreshExplorerFromCommand() {
     const root = options.workspaceRoot.value;
     if (!root) return;
-    options.rightPanelOpen.value = true;
+    options.showPanelView("explorer");
     options.workspaceFsEvent.value = {
       rootPath: root,
       paths: [],
@@ -258,7 +264,7 @@ export function useWorkbenchCommands(options: WorkbenchCommandOptions) {
   async function openBranchWorkflowFromCommand() {
     const repo = await resolveCurrentRepo();
     if (!repo) return;
-    options.leftPanelOpen.value = true;
+    options.showPanelView("changes");
     options.openBranchesModal.value = true;
   }
 
