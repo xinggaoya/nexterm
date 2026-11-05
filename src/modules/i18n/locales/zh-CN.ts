@@ -185,8 +185,10 @@ const zhCN = {
     },
     titleBar: {
       leftPanel: "左侧面板",
-      panelHide: "隐藏侧面板",
-      panelShow: "显示侧面板",
+      panelHideLeft: "隐藏左侧面板",
+      panelHideRight: "隐藏右侧面板",
+      panelShowLeft: "显示左侧面板",
+      panelShowRight: "显示右侧面板",
       rightPanel: "右侧面板",
       switchWorkspace: "切换工作区",
       workspaces: "工作区",

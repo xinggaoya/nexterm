@@ -224,8 +224,12 @@ function handleRowPointerDown(event: PointerEvent, workspace: WorkspaceInstance)
       type="button"
       data-workspace-switcher
       :aria-expanded="open"
-      aria-haspopup="menu"
-      :aria-label="t('app.titleBar.switchWorkspace')"
+      aria-haspopup="dialog"
+      :aria-label="
+        activeWorkspace
+          ? `${t('app.titleBar.switchWorkspace')} · ${activeWorkspace.name}`
+          : t('app.titleBar.switchWorkspace')
+      "
       :title="activeWorkspace ? activeWorkspace.rootPath : undefined"
       class="flex h-7 max-w-[13rem] min-w-0 items-center gap-1.5 rounded-lg px-1.5 text-[12px] transition-colors duration-[var(--dur-fast)] hover:bg-surface-hover"
       @click="toggleOpen"
@@ -260,7 +264,7 @@ function handleRowPointerDown(event: PointerEvent, workspace: WorkspaceInstance)
     <div
       v-if="open"
       data-workspace-popover
-      role="menu"
+      role="dialog"
       :aria-label="t('app.titleBar.workspaces')"
       class="nexterm-overlay absolute left-0 top-full z-50 mt-1 w-[260px] p-1"
     >

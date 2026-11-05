@@ -60,6 +60,19 @@ describe("PanelControlCluster.vue", () => {
     );
   });
 
+  // 两个折叠按钮的可访问名如果都叫「隐藏侧面板」，屏幕阅读器用户
+  // 分不清按的是哪一侧 —— 必须带上侧别。
+  it("折叠按钮的可访问名能分辨左右", () => {
+    const left = mountCluster({ side: "left" });
+    const right = mountCluster({ side: "right" });
+
+    const leftName = left.find("[data-toggle-panel]").attributes("aria-label");
+    const rightName = right.find("[data-toggle-panel]").attributes("aria-label");
+    expect(leftName).toBeTruthy();
+    expect(rightName).toBeTruthy();
+    expect(leftName).not.toBe(rightName);
+  });
+
   it("折叠箭头朝向随停靠侧镜像", () => {
     const icon = (side: "left" | "right", open: boolean) =>
       mountCluster({ side, open }).find("[data-toggle-panel] svg").html();

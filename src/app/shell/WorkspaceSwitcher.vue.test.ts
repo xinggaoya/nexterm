@@ -68,6 +68,33 @@ describe("WorkspaceSwitcher.vue", () => {
     expect(trigger.text()).toContain("B");
   });
 
+  // WCAG 2.5.3 Label in Name:可访问名要**包含**按钮上看得见的文字,
+  // 否则语音控制用户说「点 coda」会找不到这个按钮。
+  it("触发按钮的可访问名包含可见的工作区名", () => {
+    const wrapper = mountSwitcher({
+      workspaces: [workspace("w1", "nexterm")],
+      activeWorkspaceId: "w1",
+    });
+
+    const label = wrapper.find("[data-workspace-switcher]").attributes("aria-label");
+    expect(label).toContain("nexterm");
+  });
+
+  // 浮层里是普通按钮（还带嵌套的动作区），不是 ARIA menu ——
+  // 用 menu 角色会让屏幕阅读器按菜单语义去念一串普通按钮。
+  it("浮层用 dialog 角色,与触发按钮的 aria-haspopup 对齐", async () => {
+    const wrapper = mountSwitcher({
+      workspaces: [workspace("w1", "nexterm")],
+      activeWorkspaceId: "w1",
+    });
+
+    const trigger = wrapper.find("[data-workspace-switcher]");
+    expect(trigger.attributes("aria-haspopup")).toBe("dialog");
+
+    await trigger.trigger("click");
+    expect(wrapper.find("[data-workspace-popover]").attributes("role")).toBe("dialog");
+  });
+
   it("浮层默认收起,点击触发按钮后展开", async () => {
     const wrapper = mountSwitcher({
       workspaces: [workspace("w1", "nexterm")],

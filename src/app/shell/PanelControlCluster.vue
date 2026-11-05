@@ -55,6 +55,18 @@ const sideLabel = computed(() =>
   props.side === "left" ? t("app.titleBar.leftPanel") : t("app.titleBar.rightPanel"),
 );
 
+/**
+ * 折叠按钮的文案必须带侧别 —— 两侧各有一个同名按钮（「隐藏侧面板」）时，
+ * 屏幕阅读器用户根本分不清按的是哪一侧。
+ */
+const toggleLabel = computed(() => {
+  const open = props.open;
+  if (props.side === "left") {
+    return open ? t("app.titleBar.panelHideLeft") : t("app.titleBar.panelShowLeft");
+  }
+  return open ? t("app.titleBar.panelHideRight") : t("app.titleBar.panelShowRight");
+});
+
 /** 折叠 / 展开当前这一侧，视图选择保持不变。 */
 function toggleOpen() {
   emit("toggle");
@@ -93,13 +105,11 @@ const collapseIcon = computed(() =>
         <NIcon :component="viewIcon" :size="14" />
       </span>
     </TooltipTitle>
-    <TooltipTitle
-      :label="open ? t('app.titleBar.panelHide') : t('app.titleBar.panelShow')"
-    >
+    <TooltipTitle :label="toggleLabel">
       <NextermIconButton
         data-toggle-panel
         :aria-pressed="open"
-        :aria-label="open ? t('app.titleBar.panelHide') : t('app.titleBar.panelShow')"
+        :aria-label="toggleLabel"
         @click="toggleOpen"
       >
         <NIcon :component="collapseIcon" :size="14" />

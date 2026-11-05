@@ -183,8 +183,10 @@ const enUS = {
     },
     titleBar: {
       leftPanel: "Left panel",
-      panelHide: "Hide panel",
-      panelShow: "Show panel",
+      panelHideLeft: "Hide left panel",
+      panelHideRight: "Hide right panel",
+      panelShowLeft: "Show left panel",
+      panelShowRight: "Show right panel",
       rightPanel: "Right panel",
       switchWorkspace: "Switch workspace",
       workspaces: "Workspaces",
