@@ -20,11 +20,16 @@ import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
 import { useTabsPiniaStore } from "@/modules/tabs/tabsPinia";
+import { perfRecorder } from "@/modules/perf/perfRecorder";
+import { bootPerfSession } from "@/modules/perf/perfSession";
 import {
   useWorkspaceRootPiniaStore,
   useWorkspacesPiniaStore,
   type WorkspaceEnv,
 } from "@/modules/workspace";
+
+// 启动打点：模块求值完成。
+perfRecorder.markBoot("module-evaluated");
 
 // Set the borderless chrome flag as the FIRST thing after CSS imports so the
 // `html[data-chrome="borderless"]` rules in globals.css (which make html/body
@@ -55,12 +60,20 @@ if (hasTauriInternals()) {
   useTabsPiniaStore().setTerminalLayoutSnapshot(prefs.terminalLayouts);
 }
 await applyLanguagePreference(prefs.language);
+perfRecorder.markBoot("preferences-hydrated");
 await Promise.all([
   useWorkspacesPiniaStore(pinia).bootstrap(),
   useWorkspaceRootPiniaStore(pinia).bootstrap(),
 ]);
+perfRecorder.markBoot("workspaces-hydrated");
 
 app.mount("#root");
+perfRecorder.markBoot("mounted");
+
+// 性能录制：仅当后端处于录制态（带 NEXTERM_PERF_DIR / --perf-dir= 启动）时
+// 才会真正开始采集；否则这里只是一次 IPC 探测。放在 mount 之后是为了不
+// 拖慢首屏——探测是异步的，与后续的挂载工作并行。
+void bootPerfSession();
 
 // Cold-start and runtime deep-link delivery (`nexterm://open?...`) flows
 // through the Rust plugin's setup hook into this `nexterm://deep-link-open`

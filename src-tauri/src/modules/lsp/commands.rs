@@ -23,9 +23,11 @@ pub async fn lsp_start(
 ) -> Result<SessionId, String> {
     let workspace = WorkspaceEnv::from_option(workspace);
     let resolved = resolve_authorized_cwd(cwd.as_deref(), &workspace, workspace_registry.inner())?;
-    registry
-        .spawn(&language, resolved.as_deref(), channel)
-        .map_err(String::from)
+    crate::modules::perf::recorder::timed("lsp_start", || {
+        registry
+            .spawn(&language, resolved.as_deref(), channel)
+            .map_err(String::from)
+    })
 }
 
 /// 把前端传来的 cwd 解析成一个「已授权」的绝对路径。

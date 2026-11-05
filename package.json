@@ -20,6 +20,8 @@
     "tauri": "tauri",
     "test": "vitest run",
     "test:watch": "vitest",
+    "perf:record": "node tools/perf/record.mjs",
+    "perf:analyze": "node tools/perf/analyze.mjs",
     "icon:regen": "tauri icon ./src-tauri/app-icon-manifest.json",
     "icon:regen:verbose": "tauri icon ./src-tauri/app-icon-manifest.json --verbose"
   },

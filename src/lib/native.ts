@@ -1,4 +1,4 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { exit as pluginExit, relaunch as pluginRelaunch } from "@tauri-apps/plugin-process";
 import {
@@ -10,6 +10,15 @@ import {
 } from "@/modules/workspace/workspaceEnvSnapshot";
 import type { WslDistro } from "@/modules/workspace/workspaceEnvSnapshot";
 import { getSshSecret } from "@/modules/ssh/sshSecrets";
+import { createTrackedInvoke, type RawInvoke } from "@/modules/perf/perfIpc";
+
+/**
+ * 唯一的 IPC 出口。
+ *
+ * `invoke` 经过 `createTrackedInvoke` 包一层：性能录制打开时统计每条命令
+ * 的往返耗时，关闭时是纯透传（参数个数不变，既有断言不受影响）。
+ */
+const invoke = createTrackedInvoke(tauriInvoke as unknown as RawInvoke);
 
 /** SSH 连接档案(与 Rust `SshProfile` 逐字段对齐)。 */
 export type SshProfile = {
@@ -984,4 +993,34 @@ export async function onFsTransferProgress(
   return listen<FsTransferProgressEvent>("nexterm://fs-transfer-progress", (event) => {
     handler(event.payload);
   });
+}
+
+/**
+ * 性能录制会话（后端 `modules::perf`）。
+ *
+ * 这组命令只在进程带 `NEXTERM_PERF_DIR` 环境变量或 `--perf-dir=` 参数启动
+ * 时才有效；否则 `perfConfig()` 返回 `enabled: false`，前端不做任何采集。
+ * `perfConfig` 只回传会话 id，**不回传目录路径**——webview 不需要知道
+ * 报告落在哪，落盘由后端自己拼路径。
+ */
+export type PerfConfig = {
+  enabled: boolean;
+  sessionId: string;
+};
+
+/** 报告类型白名单，与 Rust 侧 `REPORT_FILE_NAMES` 一一对应。 */
+export type PerfReportKind = "frontend" | "backend";
+
+export function perfConfig(): Promise<PerfConfig> {
+  return invoke<PerfConfig>("perf_config");
+}
+
+/** 把一份 JSON 报告写进会话目录（文件名由后端按白名单决定）。 */
+export function perfWriteReport(kind: PerfReportKind, content: string): Promise<string> {
+  return invoke<string>("perf_write_report", { kind, content });
+}
+
+/** 取后端侧的命令耗时聚合。 */
+export function perfBackendSnapshot(): Promise<unknown> {
+  return invoke<unknown>("perf_backend_snapshot");
 }

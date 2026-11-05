@@ -3,6 +3,7 @@ pub mod fs;
 pub mod git;
 pub(crate) mod lock;
 pub mod lsp;
+pub mod perf;
 pub(crate) mod process;
 pub mod pty;
 pub mod shell;

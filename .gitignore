@@ -28,3 +28,6 @@ dist-ssr
 # Local agent tooling
 .zcode/
 .worktrees/
+
+# 性能录制产物（原始数据不入库）
+perf-reports/

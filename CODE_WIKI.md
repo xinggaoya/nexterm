@@ -124,6 +124,7 @@ nexterm/
 | `theme` | Naive UI 主题覆盖 | `naiveTheme.ts` |
 | `preview` | 内嵌 webview 预览 | `PreviewPane.vue` / `PreviewStack.vue` / `PreviewAddressBar.vue` / `previewUrl.ts` |
 | `markdown` | Markdown 渲染、文档服务 | `MarkdownPreviewPane.vue` / `MarkdownStack.vue` / `lib/markdownRenderer.ts` / `lib/markdownDocumentService.ts` |
+| `perf` | 性能采集（IPC 计时 / 长任务 / 帧率 / 内存，默认关闭） | `perfRecorder.ts` / `perfSession.ts` / `perfProbes.ts` / `perfIpc.ts` / `perfTypes.ts` |
 | `notifications` | Naive UI 通知中心 | `NotificationBridge.vue` / `notificationCenter.ts` |
 | `i18n` | vue-i18n 装配、zh-CN / en-US | `index.ts` / `translate.ts` / `types.ts` / `naive.ts` / `locales/{zh-CN,en-US}.ts` |
 | `pinia` | Pinia 边界测试（不是 store 库本体） | `setupStoreBoundary.test.ts` |
@@ -307,7 +308,7 @@ vue v3 + typescript
 +-- @replit/codemirror-vim
 +-- vue-router / pinia / vue-i18n
 +-- @tauri-apps/api + 12 个 plugin
-+-- @hugeicons/core-free-icons / @vicons/ionicons5 / @iconify-json/catppuccin
++-- @vicons/ionicons5 / @iconify-json/catppuccin
 +-- @vueuse/core / @fontsource-variable/inter / @fontsource/jetbrains-mono
 +-- tailwindcss v4 + @tailwindcss/vite + tw-animate-css
 +-- shadcn (components.json) + marked

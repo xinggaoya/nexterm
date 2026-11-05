@@ -70,9 +70,13 @@ macro_rules! git_command {
         ) -> Result<$ret, String> {
             $($pre)*
             let workspace = WorkspaceEnv::from_option(workspace);
-            blocking(app, move |r| {
-                operations::$op(r, $( $fwd, )* &workspace).map_err(Into::into)
-            })
+            // 性能录制：整个命令（含 spawn_blocking 的实际 IO）计入后端耗时。
+            crate::modules::perf::recorder::timed_async(
+                stringify!($cmd),
+                blocking(app, move |r| {
+                    operations::$op(r, $( $fwd, )* &workspace).map_err(Into::into)
+                }),
+            )
             .await
         }
     };

@@ -63,16 +63,19 @@ pub async fn fs_grep(
     let root =
         crate::modules::workspace::authorize_access_path(registry.inner(), &root, &workspace)?;
     let root = to_canon(&root);
-    tauri::async_runtime::spawn_blocking(move || {
-        fs_grep_blocking(
-            pattern,
-            root,
-            glob,
-            case_insensitive,
-            max_results,
-            Some(workspace),
-        )
-    })
+    crate::modules::perf::recorder::timed_async(
+        "fs_grep",
+        tauri::async_runtime::spawn_blocking(move || {
+            fs_grep_blocking(
+                pattern,
+                root,
+                glob,
+                case_insensitive,
+                max_results,
+                Some(workspace),
+            )
+        }),
+    )
     .await
     .map_err(|error| format!("fs_grep background task failed: {error}"))?
 }
@@ -310,9 +313,12 @@ pub async fn fs_glob(
     let root =
         crate::modules::workspace::authorize_access_path(registry.inner(), &root, &workspace)?;
     let root = to_canon(&root);
-    tauri::async_runtime::spawn_blocking(move || {
-        fs_glob_blocking(pattern, root, max_results, Some(workspace))
-    })
+    crate::modules::perf::recorder::timed_async(
+        "fs_glob",
+        tauri::async_runtime::spawn_blocking(move || {
+            fs_glob_blocking(pattern, root, max_results, Some(workspace))
+        }),
+    )
     .await
     .map_err(|error| format!("fs_glob background task failed: {error}"))?
 }

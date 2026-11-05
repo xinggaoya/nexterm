@@ -83,9 +83,12 @@ pub async fn pty_open(
         log::warn!("pty_open: cwd rejected: {e}");
         e
     })?;
-    let session = tauri::async_runtime::spawn_blocking(move || {
-        session::spawn(cols, rows, cwd, shell_id, workspace, on_data, on_exit)
-    })
+    let session = crate::modules::perf::recorder::timed_async(
+        "pty_open",
+        tauri::async_runtime::spawn_blocking(move || {
+            session::spawn(cols, rows, cwd, shell_id, workspace, on_data, on_exit)
+        }),
+    )
     .await
     .map_err(|e| {
         log::error!("pty_open join failed: {e}");
@@ -104,8 +107,10 @@ pub async fn pty_open(
 
 #[tauri::command]
 pub fn pty_write(state: tauri::State<PtyState>, id: u32, data: String) -> Result<(), String> {
-    state.write_session(id, &data).inspect_err(|e| {
-        log::debug!("pty_write id={id} failed: {e}");
+    crate::modules::perf::recorder::timed("pty_write", || {
+        state.write_session(id, &data).inspect_err(|e| {
+            log::debug!("pty_write id={id} failed: {e}");
+        })
     })
 }
 

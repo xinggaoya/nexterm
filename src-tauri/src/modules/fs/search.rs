@@ -50,9 +50,12 @@ pub async fn fs_search(
     let root =
         crate::modules::workspace::authorize_access_path(registry.inner(), &root, &workspace)?;
     let root = crate::modules::fs::to_canon(&root);
-    tauri::async_runtime::spawn_blocking(move || {
-        fs_search_blocking(root, query, limit, Some(workspace), show_hidden)
-    })
+    crate::modules::perf::recorder::timed_async(
+        "fs_search",
+        tauri::async_runtime::spawn_blocking(move || {
+            fs_search_blocking(root, query, limit, Some(workspace), show_hidden)
+        }),
+    )
     .await
     .map_err(|error| format!("fs_search background task failed: {error}"))?
 }

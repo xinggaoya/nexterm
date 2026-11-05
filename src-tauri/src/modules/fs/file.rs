@@ -48,9 +48,12 @@ pub async fn fs_read_file(
     let workspace = WorkspaceEnv::from_option(workspace);
     let path = authorize_access_path(registry.inner(), &path, &workspace)?;
     let path = crate::modules::fs::to_canon(&path);
-    tauri::async_runtime::spawn_blocking(move || fs_read_file_blocking(path, Some(workspace)))
-        .await
-        .map_err(|error| format!("fs_read_file background task failed: {error}"))?
+    crate::modules::perf::recorder::timed_async(
+        "fs_read_file",
+        tauri::async_runtime::spawn_blocking(move || fs_read_file_blocking(path, Some(workspace))),
+    )
+    .await
+    .map_err(|error| format!("fs_read_file background task failed: {error}"))?
 }
 
 fn fs_read_file_blocking(
@@ -173,9 +176,12 @@ pub async fn fs_read_file_base64(
     let workspace = WorkspaceEnv::from_option(workspace);
     let path = authorize_access_path(registry.inner(), &path, &workspace)?;
     let path = crate::modules::fs::to_canon(&path);
-    tauri::async_runtime::spawn_blocking(move || {
-        fs_read_file_base64_blocking(path, Some(workspace))
-    })
+    crate::modules::perf::recorder::timed_async(
+        "fs_read_file_base64",
+        tauri::async_runtime::spawn_blocking(move || {
+            fs_read_file_base64_blocking(path, Some(workspace))
+        }),
+    )
     .await
     .map_err(|error| format!("fs_read_file_base64 background task failed: {error}"))?
 }
@@ -224,9 +230,12 @@ pub async fn fs_write_file(
     let path = crate::modules::fs::to_canon(&path);
     // FsWatcherState 内部为 Arc,克隆廉价;registry 只在通知阶段读授权根。
     let watcher = watcher.inner().clone();
-    let intent = tauri::async_runtime::spawn_blocking(move || {
-        fs_write_file_blocking(&path, &content, workspace)
-    })
+    let intent = crate::modules::perf::recorder::timed_async(
+        "fs_write_file",
+        tauri::async_runtime::spawn_blocking(move || {
+            fs_write_file_blocking(&path, &content, workspace)
+        }),
+    )
     .await
     .map_err(|error| format!("fs_write_file background task failed: {error}"))??;
     if let Some(intent) = intent {

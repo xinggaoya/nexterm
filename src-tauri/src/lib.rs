@@ -1,7 +1,7 @@
 pub mod modules;
 mod panic_report;
 
-use modules::{fs, git, lsp, pty, shell, ssh, workspace};
+use modules::{fs, git, lsp, perf, pty, shell, ssh, workspace};
 use std::sync::Mutex;
 // `Manager` 只被 devtools 命令用到；release 默认不编译那两条命令。
 #[cfg(any(debug_assertions, feature = "devtools"))]
@@ -259,6 +259,9 @@ pub fn run() {
         })
         .manage(LaunchDir(Mutex::new(launch_dir)))
         .manage(lsp::LspRegistry::default())
+        // 性能录制会话：默认关闭（无 NEXTERM_PERF_DIR / --perf-dir= 时
+        // enabled=false，前端不做任何采集）。
+        .manage(perf::PerfSession::detect())
         .invoke_handler(tauri::generate_handler![
             pty::pty_open,
             pty::pty_write,
@@ -341,6 +344,9 @@ pub fn run() {
             lsp::commands::lsp_stop_all,
             lsp::commands::lsp_list,
             lsp::commands::lsp_resolve_command,
+            perf::perf_config,
+            perf::perf_write_report,
+            perf::perf_backend_snapshot,
             get_launch_dir,
         ])
         .run(tauri::generate_context!())

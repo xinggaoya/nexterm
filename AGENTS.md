@@ -16,6 +16,8 @@ pnpm build                # vue-tsc --noEmit && vite build
 pnpm exec vue-tsc --noEmit  # type check only
 pnpm test                 # vitest run
 pnpm test:watch           # vitest --watch
+pnpm perf:record          # 性能录制：启动应用并产出 perf-reports/<会话>/
+pnpm perf:analyze         # 重新分析最近一次性能录制
 cd src-tauri && cargo check --all-targets --locked
 cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 ```
@@ -60,13 +62,15 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 | `src/modules/workspace/` | Workspace root, authorization, WSL distro management |
 | `src/modules/preview/` | In-webview URL preview |
 | `src/modules/markdown/` | Markdown preview pane + service |
+| `src/modules/perf/` | 性能采集：IPC 计时 / 长任务 / 帧率 / 内存（默认关闭，录制态才工作） |
 | `src/modules/i18n/` | vue-i18n setup, `zh-CN` / `en-US` locales |
 | `src/modules/pinia/` | Pinia boundary tests (not a store library) |
 | `src/lib/` | Shared utilities: `native.ts` (Tauri invoke wrappers), `clipboard.ts`, `platform.ts`, `launchDir.ts`, `simpleStore.ts`, `fonts.ts`, `tauriRuntime.ts`, `appInfo.ts`, `path.ts`, `normalizeError.ts`, `refs.ts`, `useEventListener.ts`, `touchDevice.ts`, `gitStatus.ts` |
 | `src/components/` | Shared UI: `WindowControls.vue`, `TooltipTitle.vue` (NOT globally auto-registered; import explicitly) |
 | `src/styles/` | `tokens.ts` (oklch to RGB token resolution), `terminalTheme.ts`, `globals.css`, `code-highlight.css`, `fonts.css` |
 | `src/settings/` | Settings drawer + 6 section components |
-| `src-tauri/src/modules/` | Rust backend modules: `pty`, `shell`, `fs`, `git`, `workspace`, `lock`, `process` |
+| `src-tauri/src/modules/` | Rust backend modules: `pty`, `shell`, `fs`, `git`, `workspace`, `lock`, `process`, `perf` |
+| `tools/perf/` | 性能录制脚本（`record.mjs` 录制 / `analyze.mjs` 出报告） |
 | `src-tauri/src/panic_report.rs` | Panic hook that emits structured log + stderr |
 
 ## Code Conventions & Common Patterns
@@ -140,6 +144,9 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 | `src/app/useWorkbenchCommands.ts` | Command registry wiring for workbench actions |
 | `src/app/useWorkspaceLifecycle.ts` | Workspace root lifecycle, FS watcher, env switching |
 | `src/lib/native.ts` | Typed Tauri invoke wrappers for all backend commands (THE single IPC exit) |
+| `src/modules/perf/perfRecorder.ts` | 性能采集核心：环形缓冲 + 流式分位数聚合 |
+| `tools/perf/record.mjs` | 性能录制主脚本：启动应用 + 采样 + 出报告 |
+| `src-tauri/src/modules/perf/mod.rs` | 性能录制会话：配置 / 落盘 / 后端命令耗时 |
 | `src/styles/tokens.ts` | Runtime oklch to RGB token resolution |
 | `src-tauri/src/lib.rs` | Rust entry: registers all Tauri commands and state |
 | `src-tauri/src/modules/pty/mod.rs` | PTY commands: open, write, resize, read_transcript, close |

@@ -14,7 +14,12 @@
  *   - gitStatusCount / gitStatusMs: git status 调用次数 / 累计耗时
  *
  * 生产构建 (`process.env.NODE_ENV === "production"`) 走 stub,零开销。
+ *
+ * 注意:计数器同时会转发给性能录制器(`@/modules/perf/perfRecorder`),
+ * 因为录制会话可能跑在 release 构建上,而这里的 dev 控制台输出不会。
  */
+
+import { perfRecorder } from "@/modules/perf/perfRecorder";
 
 let ptyChunkCount = 0;
 let ptyBytes = 0;
@@ -74,6 +79,7 @@ function ensureTimer(): void {
  * 多个 16KB 块,实际字节数会比原始 read 块大几倍。
  */
 export function recordPtyChunk(bytes: number): void {
+  perfRecorder.countPtyChunk(bytes);
   if (!isDev()) return;
   ptyChunkCount += 1;
   ptyBytes += bytes;
@@ -85,6 +91,7 @@ export function recordPtyChunk(bytes: number): void {
  * 一个 fsEvent 可能 paths.length = 0(根刷新)或数百(大批量写)。
  */
 export function recordFsEvent(pathCount: number): void {
+  perfRecorder.countFsEvent(pathCount);
   if (!isDev()) return;
   fsEventCount += 1;
   fsPathCount += pathCount;
@@ -95,6 +102,7 @@ export function recordFsEvent(pathCount: number): void {
  * 记录一次 git status 调用的耗时。
  */
 export function recordGitStatus(durationMs: number): void {
+  perfRecorder.countGitStatus(durationMs);
   if (!isDev()) return;
   gitStatusCount += 1;
   gitStatusMs += durationMs;

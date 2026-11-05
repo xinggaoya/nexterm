@@ -42,9 +42,12 @@ pub async fn fs_read_dir(
     let path =
         crate::modules::workspace::authorize_access_path(registry.inner(), &path, &workspace)?;
     let path = crate::modules::fs::to_canon(&path);
-    tauri::async_runtime::spawn_blocking(move || {
-        fs_read_dir_blocking(path, show_hidden, Some(workspace))
-    })
+    crate::modules::perf::recorder::timed_async(
+        "fs_read_dir",
+        tauri::async_runtime::spawn_blocking(move || {
+            fs_read_dir_blocking(path, show_hidden, Some(workspace))
+        }),
+    )
     .await
     .map_err(|error| format!("fs_read_dir background task failed: {error}"))?
 }
