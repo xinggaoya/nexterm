@@ -80,8 +80,8 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 ```
 +------------------------------------------------------+
 |  Vue 3 Webview                                       |
-|  MainApp.vue -> WorkspaceHost(Sidebar + TopBar/SessionStrip |
-|  + WorkspacePanel + Canvas + StatusDock)                 |
+|  MainApp.vue -> WorkspaceHost(TopBar/WorkspaceSwitcher|
+|  + SessionStrip + WorkspacePanel + Canvas + StatusDock)|
 |  Pinia stores <-> native.ts <-> Tauri IPC            |
 +--------------------------+---------------------------+
                            | Tauri IPC + Channel
@@ -136,19 +136,33 @@ Webview 与 Rust 之间**只有一个 IPC 出口**：`src/lib/native.ts`。所�
 
 ### 4.1.1 壳层响应式收敛
 
-三栏结构（侧栏 + 画布 + 停靠面板）在窄窗口下会把画布挤没、把顶栏动作按钮
+两栏结构（画布 + 停靠面板）在窄窗口下会把画布挤没、把顶栏动作按钮
 挤出可视区（按钮看得见却点不到）。断点判定集中在
 `src/app/useResponsiveLayout.ts`，各壳层只消费结论：
 
 | 断点 | 容器宽度 | 行为 |
 |------|----------|------|
-| `compact` | < 900px | 侧栏自动折叠成 52px 轨道（**不覆盖**用户偏好；窗口变宽后自动恢复） |
-| `narrow` | < 760px | 顶栏隐藏环境徽章；停靠面板按可用宽度的 45% 收窄 |
+| `compact` | < 900px | 顶栏隐藏分支名（状态坞里仍有一份） |
+| `narrow` | < 760px | 顶栏隐藏环境徽章；停靠面板按容器宽度的 45% 收窄 |
 | `tight` | < 640px | 停靠面板改为**覆盖层**（画布保持满宽），由顶栏按钮唤出 |
 
 停靠面板的宽度上限与下限由 `resolveResponsivePanelWidth()` 统一计算
 （纯函数，有单测）；顶栏身份区必须可收缩（`min-w-0` + `shrink`），
 否则窄窗口下它会把动作区整体挤出屏幕。
+
+> v3.2 起全局侧栏下线，`compact` 断点的含义从「侧栏折叠成轨道」
+> 变为「顶栏紧凑」；面板宽度的可用量也不再扣减侧栏宽度（侧栏已不存在，
+> 可用宽度就是容器宽）。
+
+### 4.1.2 壳层空间分配
+
+停靠面板的显隐由偏好 `workspacePanelVisible` 持久化（顶栏右侧折叠按钮），
+`tight` 断点下的覆盖层开关则是临时的 —— 覆盖层是「浮出来看一眼」，
+写回偏好会让用户回到大窗口时发现面板莫名消失。
+
+切换面板标签（顶栏控制簇或命令）时，面板若处于收起状态会被一并展开：
+收起着切标签是「看不见的动作」，命令面板里的「打开源代码管理」看起来
+毫无反应。落点规则见 `src/app/shell/panelVisibility.ts`。
 
 ### 4.2 业务调用
 

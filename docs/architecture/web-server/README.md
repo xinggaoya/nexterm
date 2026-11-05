@@ -285,10 +285,10 @@ PTY **必须服务端持有且可重新挂载**。复用现有 `Transcript` 临�
 
 ## 6. 移动端（阶段 7）
 
-现在的 shell 是固定三栏（`Sidebar + TopBar + Canvas + StatusDock`），
+现在的 shell 是固定两栏（`TopBar + Canvas | WorkspacePanel + StatusDock`），
 在 375px 宽不成立。这是**设计工作不是管线工作**：
 
-- 响应式布局：Sidebar 收进抽屉，SessionStrip 收进横向滚动
+- 响应式布局：停靠面板转覆盖层，SessionStrip 收进横向滚动
 - `usePointerDragReorder` 是 pointer-only，移动端需 touch 分支
   （`src/lib/touchDevice.ts` 已有基础）
 - xterm.js 移动端软键盘/长按选区体验差 → 面板化命令输入 + 命令面板
