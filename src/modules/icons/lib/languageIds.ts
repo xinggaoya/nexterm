@@ -1,12 +1,11 @@
 /**
- * Extension → VS Code language id, used by `iconResolver` as a fallback when
- * material-icon-theme's `fileExtensions` map lacks an entry. material-icon-theme
- * relies on VS Code's extension→languageId registry for many common files
- * (ts, js, html, css, sh, sql…). Without this layer, plain `foo.ts` would
- * fall back to the generic file icon.
+ * Extension → VS Code language id, used by `fileIcon` as a fallback when the
+ * extension→icon map lacks an entry. Many popular files (ts, js, html, css,
+ * sh, sql…) are keyed by language id rather than by extension, so without
+ * this layer plain `foo.ts` would fall back to the generic file icon.
  *
  * Add entries when a popular extension renders without an icon. Keys are
- * lowercase, dot-less. Values must exist in `manifest.languageIds`.
+ * lowercase, dot-less. Values must exist in `fileIcons.languageIds`.
  */
 export const EXT_TO_LANGUAGE_ID: Record<string, string> = {
   ts: "typescript",

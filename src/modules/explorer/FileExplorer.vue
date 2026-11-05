@@ -33,7 +33,7 @@ import { useTreeSelection } from "./composables/useTreeSelection";
 import { useTreeTransfer } from "./composables/useTreeTransfer";
 import type { FileTreeRow as VisibleTreeRow } from "./lib/fileTreeRows";
 import { deleteFileTreePath } from "./lib/fileTreeService";
-import { folderIconUrl } from "./lib/iconResolver";
+import { folderIconUrl } from "@/modules/icons";
 
 type EntryRow = Extract<VisibleTreeRow, { kind: "entry" }>;
 type MenuRow = Extract<VisibleTreeRow, { kind: "entry" | "rename" }>;
@@ -498,7 +498,7 @@ defineExpose({
           :src="folderIconUrl(rootName, false)"
           alt=""
           data-explorer-root-icon
-          class="size-4 shrink-0"
+          class="size-4 shrink-0 nexterm-file-icon"
         />
         <NIcon
           v-else

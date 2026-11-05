@@ -19,7 +19,7 @@ vi.mock("@/app/workspaceContext", () => ({
   }),
 }));
 
-vi.mock("@/modules/explorer/lib/iconResolver", () => ({
+vi.mock("@/modules/icons", () => ({
   fileIconUrl: vi.fn(() => "file-icon.png"),
   folderIconUrl: vi.fn(() => "folder-icon.png"),
 }));

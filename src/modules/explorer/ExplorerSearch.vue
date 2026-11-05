@@ -9,7 +9,7 @@ import {
   buildHighlightSegments,
   type HighlightSegment,
 } from "@/modules/search/lib/highlight";
-import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
+import { fileIconUrl, folderIconUrl } from "@/modules/icons";
 import { searchFileTree, type SearchHit } from "./lib/fileTreeService";
 
 const MIN_QUERY_LEN = 1;
@@ -211,7 +211,7 @@ onBeforeUnmount(clearTimer);
           <img
             :src="hit.is_dir ? folderIconUrl(hit.name, false) : fileIconUrl(hit.name)"
             alt=""
-            class="size-3.5 shrink-0"
+            class="size-3.5 shrink-0 nexterm-file-icon"
           />
           <span class="min-w-0 truncate">
             <template v-if="nameSegments(hit)">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useVirtualWindow } from "@/lib/useVirtualWindow";
-import { basename } from "@/lib/path";
+import { splitPathLabel } from "@/lib/path";
 import { normalizeErrorMessage } from "@/lib/error";
 import {
   CopyOutline,
@@ -30,7 +30,7 @@ import {
 } from "@/lib/native";
 import { useWorkspaceContext } from "@/app/workspaceContext";
 import { writeClipboardText } from "@/lib/clipboard";
-import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { fileIconUrl } from "@/modules/icons";
 import GraphRail from "./GraphRail.vue";
 import { layoutGraph, type GraphRow } from "./lib/graph";
 import {
@@ -197,11 +197,9 @@ const selectedWebUrl = computed(() =>
     : null,
 );
 
-function dirname(path: string): string {
-  const normalized = path.replace(/\\/g, "/");
-  const index = normalized.lastIndexOf("/");
-  if (index <= 0) return "";
-  return normalized.slice(0, index);
+/** 文件标签拆成“文件名 + 目录”两段，与 Git 变更面板保持同一展示约定。 */
+function fileLabel(path: string): { name: string; dir: string } {
+  return splitPathLabel(path);
 }
 
 function compactDate(secs: number): string {
@@ -724,11 +722,11 @@ onMounted(() => {
                 class="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-accent/45"
                 @click="openCommitFile(selectedCommit, file)"
               >
-                <img :src="fileIconUrl(basename(file.path))" alt="" class="size-3.5 shrink-0" />
+                <img :src="fileIconUrl(file.path)" alt="" class="size-3.5 shrink-0 nexterm-file-icon" />
                 <div class="flex min-w-0 flex-1 items-baseline gap-1.5">
-                  <span class="truncate text-[11.5px] font-medium">{{ basename(file.path) }}</span>
-                  <span v-if="dirname(file.path)" class="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
-                    {{ dirname(file.path) }}
+                  <span class="truncate text-[11.5px] font-medium">{{ fileLabel(file.path).name }}</span>
+                  <span v-if="fileLabel(file.path).dir" class="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
+                    {{ fileLabel(file.path).dir }}
                   </span>
                 </div>
                 <span v-if="file.isBinary" class="text-[10px] text-muted-foreground">

@@ -3,7 +3,7 @@ import { normalizeErrorMessage } from "@/lib/error";
 import { ChevronForwardOutline } from "@vicons/ionicons5";
 import { NIcon, NSpin } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { fileIconUrl } from "@/modules/icons";
 import type { FsGrepHit } from "@/lib/native";
 import { t } from "@/modules/i18n/translate";
 import { useWorkspaceContext } from "@/app/workspaceContext";
@@ -346,7 +346,7 @@ onBeforeUnmount(() => {
           <img
             :src="fileIconUrl(group.rel)"
             alt=""
-            class="size-3.5 shrink-0"
+            class="size-3.5 shrink-0 nexterm-file-icon"
           />
           <span class="min-w-0 truncate">{{ group.rel }}</span>
           <span class="ml-auto shrink-0 rounded-full bg-surface-hover px-1.5 text-[10px] text-muted-foreground">

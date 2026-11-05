@@ -8,7 +8,7 @@ import {
 } from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { fileIconUrl } from "@/modules/icons";
 import { tabLabel } from "@/modules/tabs/tabLabel";
 import { t } from "@/modules/i18n/translate";
 import {
@@ -300,7 +300,7 @@ onBeforeUnmount(() => {
                   v-memo="[tab.kind, tab.title]"
                   :src="fileIconUrl(tab.title)"
                   alt=""
-                  class="size-3.5 shrink-0"
+                  class="size-3.5 shrink-0 nexterm-file-icon"
                 />
                 <NIcon
                   v-else-if="tab.kind === 'terminal'"
@@ -366,7 +366,7 @@ onBeforeUnmount(() => {
         v-if="tabGhost.item.kind === 'editor' || tabGhost.item.kind === 'markdown'"
         :src="fileIconUrl(tabGhost.item.title)"
         alt=""
-        class="size-3.5 shrink-0"
+        class="size-3.5 shrink-0 nexterm-file-icon"
       />
       <NIcon
         v-else-if="tabGhost.item.kind === 'terminal'"

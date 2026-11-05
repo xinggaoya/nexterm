@@ -21,7 +21,7 @@ import {
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { createNativeForEnv, native, type FsDirEntry } from "@/lib/native";
 import { t } from "@/modules/i18n/translate";
-import { fileIconUrl, folderIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { fileIconUrl, folderIconUrl } from "@/modules/icons";
 import { normalizeWorkspacePath } from "@/modules/workspace/workspacePath";
 import {
   filterPickerEntries,
@@ -497,7 +497,7 @@ onMounted(async () => {
               @click="selectEntry(item.entry)"
               @dblclick="activateEntry(item.entry)"
             >
-              <img :src="iconFor(item.entry)" class="h-4 w-4 shrink-0" alt="" />
+              <img :src="iconFor(item.entry)" class="h-4 w-4 shrink-0 nexterm-file-icon" alt="" />
               <span class="min-w-0 flex-1 truncate text-left">{{ item.entry.name }}</span>
               <span class="shrink-0 text-xs text-muted-foreground">{{ entryMeta(item.entry) }}</span>
             </div>

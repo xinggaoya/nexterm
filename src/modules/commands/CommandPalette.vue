@@ -9,7 +9,7 @@ import { NIcon, NSpin } from "naive-ui";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { IS_MAC } from "@/lib/platform";
 import { createNativeForEnv } from "@/lib/native";
-import { fileIconUrl, folderIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { fileIconUrl, folderIconUrl } from "@/modules/icons";
 import {
   searchFileTree,
   type SearchHit,
@@ -332,7 +332,7 @@ onBeforeUnmount(clearSearchTimer);
             <img
               :src="result.hit.is_dir ? folderIconUrl(result.hit.name, false) : fileIconUrl(result.hit.name)"
               alt=""
-              class="size-4 shrink-0"
+              class="size-4 shrink-0 nexterm-file-icon"
             />
             <span class="min-w-0 flex-1 truncate text-sm">{{ result.hit.name }}</span>
             <span class="min-w-0 truncate text-[11px] text-muted-foreground">

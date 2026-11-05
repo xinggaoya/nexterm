@@ -29,7 +29,7 @@ vi.mock("./lib/fileTreeService", async (importOriginal) => {
   };
 });
 
-vi.mock("./lib/iconResolver", () => ({
+vi.mock("@/modules/icons", () => ({
   fileIconUrl: vi.fn(() => "file-icon.png"),
   folderIconUrl: vi.fn(() => "folder-icon.png"),
 }));

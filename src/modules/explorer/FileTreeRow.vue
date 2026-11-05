@@ -5,7 +5,7 @@ import { computed } from "vue";
 import { t } from "@/modules/i18n/translate";
 import type { SourceControlStatusKind } from "@/modules/source-control";
 import InlineTreeInput from "./InlineTreeInput.vue";
-import { fileIconUrl, folderIconUrl } from "./lib/iconResolver";
+import { fileIconUrl, folderIconUrl } from "@/modules/icons";
 import type { FileTreeRow } from "./lib/fileTreeRows";
 
 type EntryRow = Extract<FileTreeRow, { kind: "entry" }>;
@@ -155,7 +155,7 @@ function statusDotClass(statusKind: SourceControlStatusKind): string {
     @contextmenu.stop.prevent="handleContextMenu"
   >
     <span class="size-3.5 shrink-0" />
-    <img :src="iconUrl" alt="" class="size-4 shrink-0" />
+    <img :src="iconUrl" alt="" class="size-4 shrink-0 nexterm-file-icon" />
     <InlineTreeInput
       :initial="row.name"
       @commit="(value) => emit('commitRename', value)"
@@ -193,7 +193,7 @@ function statusDotClass(statusKind: SourceControlStatusKind): string {
       :src="iconUrl"
       alt=""
       data-explorer-entry-icon
-      class="size-4 shrink-0"
+      class="size-4 shrink-0 nexterm-file-icon"
     />
     <span :class="['min-w-0 flex-1 truncate', decorationClass]">{{ row.name }}</span>
     <span
@@ -213,7 +213,7 @@ function statusDotClass(statusKind: SourceControlStatusKind): string {
     :style="{ paddingLeft }"
   >
     <span class="size-3.5 shrink-0" />
-    <img :src="iconUrl" alt="" class="size-4 shrink-0 opacity-70" />
+    <img :src="iconUrl" alt="" class="size-4 shrink-0 opacity-70 nexterm-file-icon" />
     <InlineTreeInput
       initial=""
       :placeholder="row.pendingKind === 'dir' ? t('explorer.newFolder') : t('explorer.newFile')"

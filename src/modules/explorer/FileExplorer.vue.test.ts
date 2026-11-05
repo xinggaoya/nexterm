@@ -98,7 +98,7 @@ function fireOsDrag(event: OsDragPayload): void {
   for (const handler of [...osDragHandlers]) handler({ payload: event } as never);
 }
 
-vi.mock("./lib/iconResolver", () => ({
+vi.mock("@/modules/icons", () => ({
   fileIconUrl: (name: string) => `file-icon:${name}`,
   folderIconUrl: (name: string, expanded: boolean) =>
     `folder-icon:${name}:${expanded ? "open" : "closed"}`,

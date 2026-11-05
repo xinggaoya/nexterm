@@ -118,7 +118,7 @@ vi.mock("@/lib/native", () => ({
   },
 }));
 
-vi.mock("@/modules/explorer/lib/iconResolver", () => ({
+vi.mock("@/modules/icons", () => ({
   fileIconUrl: () => "data:,file",
   folderIconUrl: () => "data:,folder",
 }));
