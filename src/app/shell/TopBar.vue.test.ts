@@ -54,37 +54,40 @@ describe("TopBar.vue", () => {
     expect(wrapper.find("[data-panel-cluster-side='right']").exists()).toBe(true);
   });
 
-  it("左侧控制簇按左侧面板的视图高亮", () => {
+  it("两侧控制簇的只读指示分别显示各��的视图", () => {
     const wrapper = mountTopBar({
       panelLayout: { left: "changes", right: "explorer" },
       leftPanelOpen: true,
       rightPanelOpen: true,
     });
 
-    const left = wrapper.find("[data-panel-cluster-side='left']");
-    expect(left.find("[data-panel-tab='changes']").attributes("aria-pressed")).toBe(
-      "true",
-    );
-    expect(left.find("[data-panel-tab='explorer']").attributes("aria-pressed")).toBe(
-      "false",
-    );
-
-    const right = wrapper.find("[data-panel-cluster-side='right']");
-    expect(right.find("[data-panel-tab='explorer']").attributes("aria-pressed")).toBe(
-      "true",
-    );
+    expect(
+      wrapper
+        .find("[data-panel-cluster-side='left'] [data-panel-view-indicator]")
+        .attributes("data-panel-view"),
+    ).toBe("changes");
+    expect(
+      wrapper
+        .find("[data-panel-cluster-side='right'] [data-panel-view-indicator]")
+        .attributes("data-panel-view"),
+    ).toBe("explorer");
   });
 
-  it("左侧控制簇改视图只上抛布局变更", async () => {
+  // 换视图只在设置页做 —— 顶栏两侧不再有第二个改布局的入口。
+  it("两侧控制簇都只有折叠按钮,没有视图切换按钮", () => {
     const wrapper = mountTopBar();
 
-    await wrapper
-      .find("[data-panel-cluster-side='left'] [data-panel-tab='changes']")
-      .trigger("click");
+    for (const side of ["left", "right"]) {
+      const cluster = wrapper.find(`[data-panel-cluster-side='${side}']`);
+      expect(cluster.findAll("button")).toHaveLength(1);
+      expect(cluster.find("[data-panel-tab='explorer']").exists()).toBe(false);
+      expect(cluster.find("[data-panel-tab='changes']").exists()).toBe(false);
+    }
+  });
 
-    expect(wrapper.emitted("update:panel-layout")).toEqual([
-      [{ left: "changes", right: "explorer" }],
-    ]);
+  it("顶栏不再发出布局变更(左右分配只在设置里改)", () => {
+    const wrapper = mountTopBar();
+    expect(wrapper.emitted("update:panel-layout")).toBeUndefined();
   });
 
   it("两侧折叠按钮各自上抛", async () => {

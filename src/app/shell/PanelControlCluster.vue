@@ -2,14 +2,14 @@
 /**
  * 停靠面板的控制簇（顶栏左端 / 右端各一个）。
  *
- * 一个簇管一侧面板的两个动作：
- * - **分段控件**：文件树 / 更改 —— 选这一侧显示哪个视图。
- *   同一个视图不允许同时出现在两侧，所以点另一个侧已经占着的视图时
- *   两侧**对调**（见 `shell/panelVisibility.ts` 的 `assignPanelView`）。
- * - **折叠按钮**：开 / 关当前这一侧。视图选择保留，关掉再打开还是它。
+ * **这里只做展开 / 收起。** 哪个视图放在哪一侧是「设置 → 通用 → 停靠面板
+ * 布局」的事 —— 顶栏不再是第二个能改布局的地方，否则同一个设置有两个入口，
+ * 用户会分不清「顶栏那个按钮改了以后设置里的值也跟着变吗」。
  *
- * 视图与显隐是**两个独立维度**（`layout` 与 `open`），所以收起时分段控件
- * 仍然高亮着当前视图 —— 用户知道自己关掉的是什么。
+ * 于是簇里只剩两样东西：
+ * - **只读指示**：一枚图标，说明这一侧当前放的是文件树还是更改。
+ *   它不是按钮，点不动 —— 只把「关掉的是哪个视图」讲清楚。
+ * - **折叠按钮**：开 / 关当前这一侧。视图选择保留，关掉再打开还是它。
  */
 import {
   ChevronBackOutline,
@@ -23,28 +23,37 @@ import NextermIconButton from "@/components/NextermIconButton.vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t } from "@/modules/i18n/translate";
 import type { PanelView } from "@/modules/settings/store";
-import { assignPanelView, type PanelSide } from "./panelVisibility";
+import type { PanelSide } from "./panelVisibility";
+
 const props = defineProps<{
-  /** 面板停靠在哪一侧 —— 决定折叠箭头的朝向。 */
+  /** 面板停靠在哪一侧 —— 决定折叠箭头的朝向与指示文案。 */
   side: PanelSide;
-  /** 全局的左右视图分配。 */
-  layout: { left: PanelView; right: PanelView };
+  /** 这一侧当前显示的视图（只读指示用）。 */
+  view: PanelView;
   /** 这一侧是否展开。 */
   open: boolean;
 }>();
 
 const emit = defineEmits<{
-  "update:layout": [layout: { left: PanelView; right: PanelView }];
   toggle: [];
 }>();
 
-/** 这一侧当前显示的视图。 */
-const currentView = computed<PanelView>(() => props.layout[props.side]);
+/** 视图图标（只读）。 */
+const viewIcon = computed(() =>
+  props.view === "explorer" ? FolderOpenOutline : GitBranchOutline,
+);
 
-/** 选视图：另一侧已经占着就两侧对调，绝不出现重复视图。 */
-function selectView(view: PanelView) {
-  emit("update:layout", assignPanelView(props.layout, props.side, view));
-}
+/** 视图名（只读指示的可读名称 / 提示）。 */
+const viewLabel = computed(() =>
+  props.view === "explorer"
+    ? t("app.rail.tool.explorer")
+    : t("app.rail.tool.changes"),
+);
+
+/** 侧别名，用于把「哪一侧 + 哪个视图」讲清楚。 */
+const sideLabel = computed(() =>
+  props.side === "left" ? t("app.titleBar.leftPanel") : t("app.titleBar.rightPanel"),
+);
 
 /** 折叠 / 展开当前这一侧，视图选择保持不变。 */
 function toggleOpen() {
@@ -69,25 +78,20 @@ const collapseIcon = computed(() =>
     :data-panel-cluster-side="side"
     class="flex items-center gap-0.5 rounded-lg bg-surface-subtle p-0.5"
   >
-    <TooltipTitle :label="t('app.rail.tool.explorer')">
-      <NextermIconButton
-        data-panel-tab="explorer"
-        :aria-pressed="currentView === 'explorer'"
-        :aria-label="t('app.rail.tool.explorer')"
-        @click="selectView('explorer')"
+    <!--
+      只读指示：这一侧放的是哪个视图。
+      刻意不做成按钮 —— 换视图只去设置里换，这里只负责讲清楚现状。
+    -->
+    <TooltipTitle :label="`${sideLabel}：${viewLabel}`">
+      <span
+        data-panel-view-indicator
+        :data-panel-view="view"
+        role="img"
+        :aria-label="`${sideLabel}：${viewLabel}`"
+        class="grid size-7 shrink-0 place-items-center text-muted-foreground"
       >
-        <NIcon :component="FolderOpenOutline" :size="14" />
-      </NextermIconButton>
-    </TooltipTitle>
-    <TooltipTitle :label="t('app.rail.tool.changes')">
-      <NextermIconButton
-        data-panel-tab="changes"
-        :aria-pressed="currentView === 'changes'"
-        :aria-label="t('app.rail.tool.changes')"
-        @click="selectView('changes')"
-      >
-        <NIcon :component="GitBranchOutline" :size="14" />
-      </NextermIconButton>
+        <NIcon :component="viewIcon" :size="14" />
+      </span>
     </TooltipTitle>
     <TooltipTitle
       :label="open ? t('app.titleBar.panelHide') : t('app.titleBar.panelShow')"

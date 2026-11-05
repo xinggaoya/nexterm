@@ -44,8 +44,6 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  /** 面板自己不持有视图状态 —— 需要换视图时请求宿主切换。 */
-  "request-view": [view: PanelView];
   "resize-width": [width: number];
   "open-file": [path: string, pin: boolean];
   "open-file-preview": [path: string];
@@ -124,9 +122,14 @@ defineExpose({
   activate: () => fileExplorerRef.value?.activate(),
   /** workspace 切回时:取消防抖,立即执行 pending loadChildren。 */
   flushPendingTreeRefresh: () => fileExplorerRef.value?.flushPendingTreeRefresh(),
-  /** Find in Files:进入内容搜索模式(并请求宿主切到文件树视图)。 */
+  /**
+   * Find in Files:进入内容搜索模式。
+   *
+   * 宿主保证这一步落在挂着文件树的那一侧（`openFindInFiles` 会先定位到
+   * 那一侧并把它展开），所以面板自己不需要、也不允许改视图 ——
+   * 换视图只在设置页。
+   */
   openFindInFiles: () => {
-    if (props.view !== "explorer") emit("request-view", "explorer");
     fileExplorerRef.value?.setMode("content");
   },
 });

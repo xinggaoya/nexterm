@@ -50,12 +50,13 @@ describe("visual system contract", () => {
     expect(topBar).toContain("PanelControlCluster");
     expect(topBar).toContain('side="left"');
     expect(topBar).toContain('side="right"');
-    // 控制簇自身提供分段控件与折叠按钮。
+    // 控制簇自身：只提供只读的视图指示与折叠按钮。
     const cluster = readSource("../app/shell/PanelControlCluster.vue");
-    expect(cluster).toContain("data-panel-cluster-side");
-    expect(cluster).toContain("data-panel-tab=\"explorer\"");
-    expect(cluster).toContain("data-panel-tab=\"changes\"");
+    expect(cluster).toContain("data-panel-view-indicator");
     expect(cluster).toContain("data-toggle-panel");
+    // 换视图只在设置页 —— 顶栏不再提供第二个改布局的入口。
+    expect(cluster).not.toContain("data-panel-tab=");
+    expect(topBar).not.toContain("update:panel-layout");
 
     expect(readSource("../app/shell/SessionStrip.vue")).toContain("h-7");
     expect(readSource("../app/shell/StatusDock.vue")).toContain("h-6");
@@ -64,6 +65,20 @@ describe("visual system contract", () => {
     const strip = readSource("../app/shell/SessionStrip.vue");
     expect(strip).toContain("data-session-minimal");
     expect(strip).toContain("data-session-strip");
+  });
+
+  it("左右面板分配只有一个写入口:设置页", () => {
+    // 同一个设置有两个入口，用户会分不清「顶栏那个按钮改了以后
+    // 设置里的值也跟着变吗」。左右分配只在设置页改。
+    const settings = readSource("../settings/sections/GeneralSection.vue");
+    const host = readSource("../app/shell/WorkspaceHost.vue");
+    const topBar = readSource("../app/shell/TopBar.vue");
+
+    expect(settings).toContain("updatePanelLayout");
+    // 壳层只读不写。
+    expect(topBar).not.toContain("updatePanelLayout");
+    expect(host).not.toContain("updatePanelLayout");
+    expect(host).not.toContain("prefs.panelLayout =");
   });
 
   it("docks the workspace panel on the right of the canvas without its own header", () => {

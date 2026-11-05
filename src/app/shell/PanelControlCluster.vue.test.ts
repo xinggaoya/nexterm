@@ -9,7 +9,7 @@ function mountCluster(
   return mount(PanelControlCluster, {
     props: {
       side: "right",
-      layout: { left: "explorer", right: "changes" },
+      view: "changes",
       open: true,
       ...props,
     },
@@ -17,32 +17,34 @@ function mountCluster(
 }
 
 describe("PanelControlCluster.vue", () => {
-  it("分段控件高亮这一侧当前显示的视图", () => {
-    const wrapper = mountCluster({ layout: { left: "changes", right: "explorer" } });
+  // 视图切换只在设置页做 —— 顶栏两侧的控制簇只负责展开/收起。
+  it("只有折叠按钮，没有视图切换按钮", () => {
+    const wrapper = mountCluster();
 
-    expect(
-      wrapper.find("[data-panel-tab='explorer']").attributes("aria-pressed"),
-    ).toBe("true");
-    expect(
-      wrapper.find("[data-panel-tab='changes']").attributes("aria-pressed"),
-    ).toBe("false");
+    expect(wrapper.findAll("button")).toHaveLength(1);
+    expect(wrapper.find("[data-toggle-panel]").exists()).toBe(true);
+    expect(wrapper.find("[data-panel-tab='explorer']").exists()).toBe(false);
+    expect(wrapper.find("[data-panel-tab='changes']").exists()).toBe(false);
   });
 
-  it("选视图时另一侧已占用就两侧对调（不允许重复视图）", async () => {
-    const wrapper = mountCluster({
-      side: "left",
-      layout: { left: "explorer", right: "changes" },
-    });
+  it("视图图标只是只读指示:不可点、不发出任何事件", async () => {
+    const wrapper = mountCluster({ view: "explorer" });
 
-    // 右侧已是「更改」，左侧点「更改」→ 两侧对调。
-    await wrapper.find("[data-panel-tab='changes']").trigger("click");
+    const indicator = wrapper.find("[data-panel-view-indicator]");
+    expect(indicator.exists()).toBe(true);
+    expect(indicator.attributes("data-panel-view")).toBe("explorer");
+    expect(indicator.attributes("aria-label")).toBeTruthy();
+    expect(indicator.attributes("aria-hidden")).toBeUndefined();
+    // 刻意不是按钮。
+    expect(indicator.element.tagName).not.toBe("BUTTON");
 
-    expect(wrapper.emitted("update:layout")).toEqual([
-      [{ left: "changes", right: "explorer" }],
-    ]);
+    await indicator.trigger("click");
+    // 点它什么也不会发生：既不折叠也不换视图。
+    expect(wrapper.emitted("toggle")).toBeUndefined();
+    expect(wrapper.emitted("update:layout")).toBeUndefined();
   });
 
-  it("折叠按钮发出 toggle（视图选择保持不变）", async () => {
+  it("折叠按钮发出 toggle", async () => {
     const wrapper = mountCluster({ open: true });
 
     await wrapper.find("[data-toggle-panel]").trigger("click");
@@ -51,12 +53,8 @@ describe("PanelControlCluster.vue", () => {
     expect(wrapper.emitted("update:layout")).toBeUndefined();
   });
 
-  it("收起时分段控件仍高亮着当前视图", () => {
+  it("折叠按钮的 aria-pressed 反映可见性", () => {
     const wrapper = mountCluster({ open: false });
-
-    expect(
-      wrapper.find("[data-panel-tab='changes']").attributes("aria-pressed"),
-    ).toBe("true");
     expect(wrapper.find("[data-toggle-panel]").attributes("aria-pressed")).toBe(
       "false",
     );

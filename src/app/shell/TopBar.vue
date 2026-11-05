@@ -6,8 +6,9 @@
  * 右端承接「停靠面板控制簇」（文件树 / 更改 + 折叠）。停靠面板自己不再有
  * 独立头部 —— 面板头与顶栏割裂成两条视觉带，纵向也白白多占 44px。
  *
- * v3.3：左右两侧各一个停靠面板，标题栏左端与右端各一个控制簇，
- * 两边各自选视图、各自折叠。
+ * v3.3：左右两侧各一个停靠面板，标题栏左端与右端各一个控制簇。
+ * 控制簇**只负责展开/收起** —— 哪个视图放哪一侧是设置页的事，
+ * 顶栏不提供第二个改布局的入口。
  *
  * 顶栏是全窗口唯一的一条 chrome 带：工作区身份、会话条、面板控制、动作区
  * 全在这里，面板与画布紧贴其下。
@@ -67,7 +68,6 @@ const emit = defineEmits<{
   "add-workspace": [env: WorkspaceEnv];
   "open-workspace-in-new-window": [id: string];
   "reorder-workspace": [sourceId: string, targetId: string, placement: DragPlacement];
-  "update:panel-layout": [layout: PanelLayoutPref];
   "toggle:left-panel": [];
   "toggle:right-panel": [];
 }>();
@@ -130,9 +130,8 @@ function handleSplitSelect(key: string | number) {
 
     <PanelControlCluster
       side="left"
-      :layout="panelLayout"
+      :view="panelLayout.left"
       :open="leftPanelOpen"
-      @update:layout="(layout) => emit('update:panel-layout', layout)"
       @toggle="emit('toggle:left-panel')"
     />
 
@@ -224,9 +223,8 @@ function handleSplitSelect(key: string | number) {
       <PanelControlCluster
         side="right"
         class="ml-1"
-        :layout="panelLayout"
+        :view="panelLayout.right"
         :open="rightPanelOpen"
-        @update:layout="(layout) => emit('update:panel-layout', layout)"
         @toggle="emit('toggle:right-panel')"
       />
 

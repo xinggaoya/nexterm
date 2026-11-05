@@ -107,8 +107,8 @@ vi.mock("./TopBar.vue", () => ({
       "add-workspace",
       "open-workspace-in-new-window",
       "reorder-workspace",
-      "update:left-panel",
-      "update:right-panel",
+      "toggle:left-panel",
+      "toggle:right-panel",
     ],
     template: "<header class='topbar-stub'><slot name='center' /></header>",
   },
@@ -246,7 +246,8 @@ describe("WorkspaceHost.vue", () => {
     wrapper.unmount();
   });
 
-  it("顶栏左侧控制簇的改动只落在左侧", async () => {
+  // 视图切换只在设置页 —— 顶栏只负责展开/收起。
+  it("顶栏折叠只落在对应一侧,不改左右分配", async () => {
     const pinia = createPinia();
     const prefs = usePreferencesPiniaStore(pinia);
     const wrapper = mount(WorkspaceHost, {
@@ -257,13 +258,13 @@ describe("WorkspaceHost.vue", () => {
 
     await wrapper
       .findComponent({ name: "TopBarStub" })
-      .vm.$emit("update:panel-layout", { left: "changes", right: "explorer" });
+      .vm.$emit("toggle:left-panel");
     await nextTick();
 
-    expect(prefs.panelLayout).toEqual({ left: "changes", right: "explorer" });
-    expect(wrapper.findAllComponents({ name: "WorkspacePanelStub" })[0]?.props("view")).toBe(
-      "changes",
-    );
+    expect(prefs.leftPanelOpen).toBe(false);
+    expect(prefs.rightPanelOpen).toBe(true);
+    // 左右分配一个字节都没动。
+    expect(prefs.panelLayout).toEqual({ left: "explorer", right: "changes" });
     wrapper.unmount();
   });
 
@@ -286,7 +287,7 @@ describe("WorkspaceHost.vue", () => {
     wrapper.unmount();
   });
 
-  it("面板请求换视图时由宿主落到对应一侧", async () => {
+  it("左右分配变了以后,两侧面板跟着换视图", async () => {
     const pinia = createPinia();
     const prefs = usePreferencesPiniaStore(pinia);
     const wrapper = mount(WorkspaceHost, {
@@ -295,12 +296,13 @@ describe("WorkspaceHost.vue", () => {
     });
     await nextTick();
 
-    const panels = wrapper.findAllComponents({ name: "WorkspacePanelStub" });
-    // 右侧面板请求「文件树」，而文件树挂在左侧 → 两侧对调。
-    await panels[1]?.vm.$emit("request-view", "explorer");
+    // 设置页改了左右分配 —— 宿主只消费，不自己写。
+    prefs.panelLayout = { left: "changes", right: "explorer" };
     await nextTick();
 
-    expect(prefs.panelLayout).toEqual({ left: "changes", right: "explorer" });
+    const panels = wrapper.findAllComponents({ name: "WorkspacePanelStub" });
+    expect(panels[0]?.props("view")).toBe("changes");
+    expect(panels[1]?.props("view")).toBe("explorer");
     wrapper.unmount();
   });
 

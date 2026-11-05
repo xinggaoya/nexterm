@@ -51,7 +51,6 @@ import { useWorkspaceLifecycle } from "@/app/useWorkspaceLifecycle";
 import { useWorkbenchCommands } from "@/app/useWorkbenchCommands";
 import { useResponsiveLayout } from "@/app/useResponsiveLayout";
 import {
-  assignPanelView,
   resolvePanelViewToggle,
   resolvePanelWidths,
   sideOfView,
@@ -177,12 +176,6 @@ const panelWidths = computed(() =>
   ),
 );
 
-/** 应用新的左右视图分配（设置项与顶栏控制簇共用这条路径）。 */
-function setPanelLayout(layout: PanelLayoutPref): void {
-  prefs.panelLayout = layout;
-  if (hasTauriInternals()) void prefs.updatePanelLayout(layout);
-}
-
 /**
  * 设置一侧的显隐。
  *
@@ -267,14 +260,6 @@ function showPanelView(view: PanelView): void {
   setPanelOpen(sideOfView(panelLayout.value, view), true);
 }
 
-/**
- * 面板请求换视图：把它放到**自己那一侧**（另一侧已经占着就两侧对调）
- * 并展开。
- */
-function requestViewOnSide(side: PanelSide, view: PanelView): void {
-  setPanelLayout(assignPanelView(panelLayout.value, side, view));
-  setPanelOpen(side, true);
-}
 
 /** 顶栏折叠按钮：切换一侧的显隐。 */
 function togglePanelOpen(side: PanelSide): void {
@@ -850,7 +835,6 @@ defineExpose({
         @add-workspace="(env) => emit('add-workspace', env)"
         @open-workspace-in-new-window="openThisWorkspaceInNewWindow"
         @reorder-workspace="(sourceId, targetId, placement) => workspaces.reorderByTarget(sourceId, targetId, placement)"
-        @update:panel-layout="setPanelLayout"
         @toggle:left-panel="togglePanelOpen('left')"
         @toggle:right-panel="togglePanelOpen('right')"
       >
@@ -892,7 +876,6 @@ defineExpose({
           :git-decorations="gitDecorations"
           :show-branches-modal="showBranchesModalProp"
           :fs-event="normalizedFsEvent"
-          @request-view="(view) => requestViewOnSide('left', view)"
           @resize-width="(width) => persistPanelWidth('left', width)"
           @open-file="openFileTab"
           @open-file-preview="openFilePreview"
@@ -944,7 +927,6 @@ defineExpose({
           :git-decorations="gitDecorations"
           :show-branches-modal="showBranchesModalProp"
           :fs-event="normalizedFsEvent"
-          @request-view="(view) => requestViewOnSide('right', view)"
           @resize-width="(width) => persistPanelWidth('right', width)"
           @open-file="openFileTab"
           @open-file-preview="openFilePreview"

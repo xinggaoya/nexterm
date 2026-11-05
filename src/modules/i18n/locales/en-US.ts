@@ -182,8 +182,10 @@ const enUS = {
       },
     },
     titleBar: {
+      leftPanel: "Left panel",
       panelHide: "Hide panel",
       panelShow: "Show panel",
+      rightPanel: "Right panel",
       switchWorkspace: "Switch workspace",
       workspaces: "Workspaces",
     },
