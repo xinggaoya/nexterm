@@ -99,9 +99,14 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
   const updateShowHidden = (value: boolean) => updatePref("showHidden", value);
   const updateTabWidthMode = (value: TabWidthMode) => updatePref("tabWidthMode", value);
   const updateTabFixedWidth = (value: number) => updatePref("tabFixedWidth", value);
-  const updateWorkspacePanelVisible = (value: boolean) => updatePref("workspacePanelVisible", value);
-  const updateWorkspacePanelTab = (value: Preferences["workspacePanelTab"]) =>
-    updatePref("workspacePanelTab", value);
+  const updateLeftPanelView = (value: Preferences["leftPanelView"]) =>
+    updatePref("leftPanelView", value);
+  const updateLeftPanelOpen = (value: boolean) => updatePref("leftPanelOpen", value);
+  const updateLeftPanelWidth = (value: number) => updatePref("leftPanelWidth", value);
+  const updateRightPanelView = (value: Preferences["rightPanelView"]) =>
+    updatePref("rightPanelView", value);
+  const updateRightPanelOpen = (value: boolean) => updatePref("rightPanelOpen", value);
+  const updateRightPanelWidth = (value: number) => updatePref("rightPanelWidth", value);
   const updateTerminalWebglEnabled = (value: boolean) => updatePref("terminalWebglEnabled", value);
   const updateTerminalShellId = (value: string) => updatePref("terminalShellId", value);
   const updateTerminalContextMenuEnabled = (value: boolean) =>
@@ -209,8 +214,12 @@ export const usePreferencesPiniaStore = defineStore("preferences", () => {
     updateShowHidden,
     updateTabWidthMode,
     updateTabFixedWidth,
-    updateWorkspacePanelVisible,
-    updateWorkspacePanelTab,
+    updateLeftPanelView,
+    updateLeftPanelOpen,
+    updateLeftPanelWidth,
+    updateRightPanelView,
+    updateRightPanelOpen,
+    updateRightPanelWidth,
     updateTerminalWebglEnabled,
     updateTerminalShellId,
     updateTerminalContextMenuEnabled,

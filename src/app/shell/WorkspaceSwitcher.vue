@@ -37,6 +37,7 @@ import {
 } from "@/modules/workspace";
 import { useWorkspaceEnvPiniaStore } from "@/modules/workspace/workspaceEnvPinia";
 import {
+  envBadgeOf,
   envIconOf,
   monogramOf,
   monogramStyle,
@@ -308,9 +309,12 @@ function handleRowPointerDown(event: PointerEvent, workspace: WorkspaceInstance)
                 {{ workspace.name }}
               </span>
               <NIcon
+                v-if="envBadgeOf(workspace)"
                 :component="envIconOf(workspace)"
                 :size="12"
-                class="shrink-0 text-muted-foreground"
+                class="shrink-0"
+                :data-workspace-env-icon="envBadgeOf(workspace)"
+                :class="envBadgeOf(workspace) === 'wsl' ? 'text-info' : 'text-warning'"
               />
             </button>
             <button

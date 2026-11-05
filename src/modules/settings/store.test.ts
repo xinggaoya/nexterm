@@ -10,6 +10,7 @@ import {
   clampTerminalScrollback,
   DEFAULT_PREFERENCES,
   PREF_SPECS,
+  SIDE_PANEL_WIDTH_DEFAULT,
   type PrefKey,
   type Preferences,
 } from "./store";
@@ -44,13 +45,47 @@ describe("PREF_SPECS 表", () => {
   });
 
   it("停靠面板显隐偏好：默认可见；侧栏折叠偏好已随左栏下线", () => {
-    // 面板默认展开 —— 折叠是用户显式选择，不是默认状态。
-    expect(DEFAULT_PREFERENCES.workspacePanelVisible).toBe(true);
-    expect(PREF_SPECS.workspacePanelVisible.read(undefined)).toBe(true);
-    expect(PREF_SPECS.workspacePanelVisible.read(false)).toBe(false);
     // 侧栏已从壳层移除：偏好键必须一并下线，不能留下永不生效的孤儿开关。
     expect("sidebarCollapsed" in DEFAULT_PREFERENCES).toBe(false);
     expect("sidebarCollapsed" in PREF_SPECS).toBe(false);
+  });
+});
+
+describe("双侧面板偏好", () => {
+  it("左右两侧各自持有视图 / 显隐 / 宽度", () => {
+    expect(DEFAULT_PREFERENCES.leftPanelView).toBe("explorer");
+    expect(DEFAULT_PREFERENCES.leftPanelOpen).toBe(true);
+    expect(DEFAULT_PREFERENCES.leftPanelWidth).toBe(SIDE_PANEL_WIDTH_DEFAULT);
+    expect(DEFAULT_PREFERENCES.rightPanelView).toBe("changes");
+    expect(DEFAULT_PREFERENCES.rightPanelOpen).toBe(true);
+    expect(DEFAULT_PREFERENCES.rightPanelWidth).toBe(SIDE_PANEL_WIDTH_DEFAULT);
+
+    expect(PREF_SPECS.leftPanelView.read(undefined)).toBe("explorer");
+    expect(PREF_SPECS.leftPanelView.read("nope")).toBe("explorer");
+    expect(PREF_SPECS.rightPanelView.read(undefined)).toBe("changes");
+    expect(PREF_SPECS.leftPanelOpen.read(undefined)).toBe(true);
+    expect(PREF_SPECS.leftPanelOpen.read(false)).toBe(false);
+  });
+
+  it("旧的单侧面板字段降级为右侧的 legacy 源（老用户不丢设置）", () => {
+    expect(PREF_SPECS.rightPanelView.legacyKey).toBe("workspacePanelTab");
+    expect(PREF_SPECS.rightPanelOpen.legacyKey).toBe("workspacePanelVisible");
+    expect(PREF_SPECS.rightPanelWidth.legacyKey).toBe("explorerPanelWidth");
+    // 旧键不再出现在 spec 表里（否则会与新键抢默认值）。
+    expect("workspacePanelTab" in PREF_SPECS).toBe(false);
+    expect("workspacePanelVisible" in PREF_SPECS).toBe(false);
+    expect("explorerPanelWidth" in PREF_SPECS).toBe(false);
+  });
+
+  it("面板宽度沿用侧栏宽度的夹取规则", () => {
+    // read 负责「磁盘上的任意 JSON → 合法值」，夹取发生在 sanitize（写盘前）。
+    expect(PREF_SPECS.leftPanelWidth.read(99999)).toBe(99999);
+    expect(PREF_SPECS.leftPanelWidth.sanitize?.(99999)).toBe(
+      clampSidePanelWidth(99999),
+    );
+    expect(PREF_SPECS.rightPanelWidth.sanitize?.(-5)).toBe(
+      clampSidePanelWidth(-5),
+    );
   });
 });
 

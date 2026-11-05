@@ -6,21 +6,26 @@
  * 更改 标签组 + git 分支徽标）已并入顶栏右侧的控制簇 —— 顶栏 44px 之上再
  * 叠一条 44px 的面板头，右侧区域白白多占一条 chrome 带，且与顶栏割裂。
  *
- * 面板现在只负责内容：按 `tab` 切换文件树 / 源控两层，宽度可拖拽，
- * 显隐由宿主的顶栏折叠按钮控制。
+ * v3.3：**左右两侧各一个面板**，每个面板独立选一个视图（文件树 / 更改），
+ * 也能各自收起。于是「左边目录 + 右边 git」是最常见的组合，但用户也可以
+ * 两边都放同一个视图。面板自己不知道停在哪一侧的语义 —— 边框、拖拽手柄
+ * 的位置与方向都由 `side` 决定。
  */
 import { onBeforeUnmount, ref, type Ref } from "vue";
 import type { GitCommitResult, WorkspaceFsChangedEvent } from "@/lib/native";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
 import type { GitDecorationMap } from "@/modules/source-control";
 import SourceControlPanel from "@/modules/source-control/SourceControlPanel.vue";
-import type { WorkspacePanelTab } from "@/modules/settings/store";
+import type { PanelView } from "@/modules/settings/store";
 
 const SIDE_PANEL_MIN = 240;
 const SIDE_PANEL_MAX = 520;
 
 const props = defineProps<{
-  tab: WorkspacePanelTab;
+  /** 面板当前展示的视图。 */
+  view: PanelView;
+  /** 停靠在哪一侧：决定边框、覆盖层位置与拖拽手柄的方向。 */
+  side: "left" | "right";
   width: number;
   /**
    * 覆盖层模式：面板浮在画布之上，不占布局宽度。
@@ -39,8 +44,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  /** 面板自己不持有标签状态 —— 需要换视图时请求宿主切换。 */
-  "request-tab": [tab: WorkspacePanelTab];
+  /** 面板自己不持有视图状态 —— 需要换视图时请求宿主切换。 */
+  "request-view": [view: PanelView];
   "resize-width": [width: number];
   "open-file": [path: string, pin: boolean];
   "open-file-preview": [path: string];
@@ -73,7 +78,9 @@ const emit = defineEmits<{
 
 const fileExplorerRef = ref<InstanceType<typeof FileExplorer> | null>(null);
 
-// ── 左缘拖宽(面板位于画布右侧;持久化由宿主负责) ─────────────────────
+const isLeft = () => props.side === "left";
+
+// ── 内缘拖宽（面板贴住画布的那条边；持久化由宿主负责） ─────────────────
 let detachMove: (() => void) | null = null;
 let detachUp: (() => void) | null = null;
 
@@ -84,10 +91,11 @@ function onResizeStart(e: PointerEvent) {
 
   function onMove(ev: PointerEvent) {
     const dx = ev.clientX - startX;
-    // 向左拖(dx<0)加宽面板,与旧版右缘卡片拖拽手感一致。
+    // 右侧面板：向左拖(dx<0)加宽；左侧面板：向右拖(dx>0)加宽。
+    const delta = isLeft() ? dx : -dx;
     const next = Math.min(
       SIDE_PANEL_MAX,
-      Math.max(SIDE_PANEL_MIN, Math.round(startWidth - dx)),
+      Math.max(SIDE_PANEL_MIN, Math.round(startWidth + delta)),
     );
     emit("resize-width", next);
   }
@@ -118,7 +126,7 @@ defineExpose({
   flushPendingTreeRefresh: () => fileExplorerRef.value?.flushPendingTreeRefresh(),
   /** Find in Files:进入内容搜索模式(并请求宿主切到文件树视图)。 */
   openFindInFiles: () => {
-    if (props.tab !== "explorer") emit("request-tab", "explorer");
+    if (props.view !== "explorer") emit("request-view", "explorer");
     fileExplorerRef.value?.setMode("content");
   },
 });
@@ -126,22 +134,27 @@ defineExpose({
 
 <template>
   <aside
-    class="flex h-full min-h-0 shrink-0 flex-col border-r border-border bg-sidebar"
+    class="flex h-full min-h-0 shrink-0 flex-col bg-sidebar"
     :class="
-      overlay
-        ? 'absolute inset-y-0 right-0 z-20 shadow-[var(--glass-shadow)]'
-        : 'relative'
+      isLeft()
+        ? overlay
+          ? 'absolute inset-y-0 left-0 z-20 border-r border-border shadow-[var(--glass-shadow)]'
+          : 'relative border-r border-border'
+        : overlay
+          ? 'absolute inset-y-0 right-0 z-20 border-l border-border shadow-[var(--glass-shadow)]'
+          : 'relative border-l border-border'
     "
     :style="{ width: `${width}px` }"
     data-workspace-panel
-    data-workspace-panel-right
+    :data-workspace-panel-left="isLeft() ? true : undefined"
+    :data-workspace-panel-right="isLeft() ? undefined : true"
   >
     <!-- 内容层:v-show 保活,保持各模块状态 -->
     <div class="relative min-h-0 flex-1">
       <div
-        v-show="tab === 'explorer'"
+        v-show="view === 'explorer'"
         class="absolute inset-0 overflow-hidden"
-        data-panel-tab-explorer
+        data-panel-view-explorer
       >
         <FileExplorer
           ref="fileExplorerRef"
@@ -159,9 +172,9 @@ defineExpose({
       </div>
 
       <div
-        v-show="tab === 'changes'"
+        v-show="view === 'changes'"
         class="absolute inset-0 overflow-hidden"
-        data-panel-tab-changes
+        data-panel-view-changes
       >
         <SourceControlPanel
           :root-path="workspaceRoot"
@@ -170,7 +183,7 @@ defineExpose({
           :fs-event="fsEvent"
           :show-branches-modal="showBranchesModal"
           :workspace-id="workspaceId"
-          :visible="tab === 'changes'"
+          :visible="view === 'changes'"
           @open-diff="(input) => emit('open-source-diff', input)"
           @open-history="(input) => emit('open-source-history', input)"
           @repo-selected="(repoRoot) => emit('repo-selected', repoRoot)"
@@ -181,10 +194,11 @@ defineExpose({
       </div>
     </div>
 
-    <!-- 左缘拖宽手柄(面板在画布右侧,向左拖加宽) -->
+    <!-- 内缘拖宽手柄（贴住画布的那条边） -->
     <div
       data-panel-resizer
-      class="absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors duration-[var(--dur-fast)] hover:bg-primary/30"
+      class="absolute inset-y-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors duration-[var(--dur-fast)] hover:bg-primary/30"
+      :class="isLeft() ? 'right-0' : 'left-0'"
       @pointerdown="onResizeStart"
     />
   </aside>

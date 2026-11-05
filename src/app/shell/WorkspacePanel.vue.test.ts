@@ -34,7 +34,8 @@ import WorkspacePanel from "./WorkspacePanel.vue";
 function mountPanel(props: Partial<InstanceType<typeof WorkspacePanel>["$props"]> = {}) {
   return mount(WorkspacePanel, {
     props: {
-      tab: "explorer",
+      view: "explorer",
+      side: "right",
       width: 300,
       workspaceId: "w1",
       workspaceRoot: "/repo",
@@ -61,14 +62,24 @@ describe("WorkspacePanel.vue", () => {
     expect(wrapper.find("[data-workspace-panel-right]").exists()).toBe(true);
   });
 
-  it("内容层按 tab 切换:explorer 与 changes 互斥显示", () => {
-    const explorerPanel = mountPanel({ tab: "explorer" });
-    expect(explorerPanel.find("[data-panel-tab-explorer]").isVisible()).toBe(true);
-    expect(explorerPanel.find("[data-panel-tab-changes]").isVisible()).toBe(false);
+  it("内容层按视图切换:explorer 与 changes 互斥显示", () => {
+    const explorerPanel = mountPanel({ view: "explorer" });
+    expect(explorerPanel.find("[data-panel-view-explorer]").isVisible()).toBe(true);
+    expect(explorerPanel.find("[data-panel-view-changes]").isVisible()).toBe(false);
 
-    const changesPanel = mountPanel({ tab: "changes" });
-    expect(changesPanel.find("[data-panel-tab-explorer]").isVisible()).toBe(false);
-    expect(changesPanel.find("[data-panel-tab-changes]").isVisible()).toBe(true);
+    const changesPanel = mountPanel({ view: "changes" });
+    expect(changesPanel.find("[data-panel-view-explorer]").isVisible()).toBe(false);
+    expect(changesPanel.find("[data-panel-view-changes]").isVisible()).toBe(true);
+  });
+
+  it("侧边信息:停靠在哪一侧就贴哪一侧的边", () => {
+    const right = mountPanel({ side: "right" });
+    expect(right.find("[data-workspace-panel-right]").exists()).toBe(true);
+    expect(right.find("[data-workspace-panel-left]").exists()).toBe(false);
+
+    const left = mountPanel({ side: "left" });
+    expect(left.find("[data-workspace-panel-left]").exists()).toBe(true);
+    expect(left.find("[data-workspace-panel-right]").exists()).toBe(false);
   });
 
   it("文件树标签层接收根路径并转发 open-file", async () => {
@@ -119,6 +130,20 @@ describe("WorkspacePanel.vue", () => {
     );
     window.dispatchEvent(new MouseEvent("pointermove", { clientX: 240, bubbles: true }));
     window.dispatchEvent(new MouseEvent("pointerup", { clientX: 240, bubbles: true }));
+
+    expect(wrapper.emitted("resize-width")).toEqual([[360]]);
+    wrapper.unmount();
+  });
+
+  // v3.3：左侧面板的手柄在右缘，向右拖加宽 —— 与右侧面板镜像。
+  it("拖拽右缘手柄调宽:右侧面板向右拖加宽", async () => {
+    const wrapper = mountPanel({ width: 300, side: "left" });
+
+    wrapper.find("[data-panel-resizer]").element.dispatchEvent(
+      new MouseEvent("pointerdown", { clientX: 0, button: 0, bubbles: true }),
+    );
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 60, bubbles: true }));
+    window.dispatchEvent(new MouseEvent("pointerup", { clientX: 60, bubbles: true }));
 
     expect(wrapper.emitted("resize-width")).toEqual([[360]]);
     wrapper.unmount();

@@ -101,7 +101,23 @@ describe("resolveCaptureInTerminal semantics", () => {
 
   it("honours an explicit captureInTerminal: false even when a shortcut exists", () => {
     const forced = { ...close, captureInTerminal: false };
-    expect(resolveCaptureInTerminal(forced, resolved[close.id])).toBe(false);
+    expect(resolveCaptureInTerminal(forced, resolved[forced.id])).toBe(false);
+  });
+
+  // Ctrl+Shift+V 在终端里是**粘贴**（xterm 自己拦），不是「打开 URL 预览」。
+  // 以前 preview.open 也在全局分发器里抢这个键，于是终端里按下 Ctrl+Shift+V
+  // 会「既粘贴又弹出预览框」—— 两件事同时发生，两个都生效。
+  it("does not let preview.open steal Ctrl+Shift+V inside the terminal", () => {
+    const preview = specToDefinition(
+      ALL_COMMAND_SPECS.find((s) => s.id === "preview.open")!,
+      identity,
+      () => {},
+    );
+    const previewBindings = buildResolvedKeybindings([preview], {});
+
+    expect(preview.defaultKeybinding).toBe("Ctrl+Shift+V");
+    // 终端里让位给粘贴；终端之外（文件树 / 面板 / 命令面板）照常打开预览。
+    expect(resolveCaptureInTerminal(preview, previewBindings[preview.id])).toBe(false);
   });
 });
 

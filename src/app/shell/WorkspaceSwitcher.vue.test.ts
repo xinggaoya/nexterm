@@ -80,8 +80,7 @@ describe("WorkspaceSwitcher.vue", () => {
     expect(wrapper.find("[data-workspace-popover]").exists()).toBe(true);
   });
 
-  it("浮层内为每个工作区渲染一行,活动行高亮", async () => {
-    const wrapper = mountSwitcher({
+  it("浮层内为每个工作区渲染一行,活动行高亮", async () => {    const wrapper = mountSwitcher({
       workspaces: [workspace("w1", "nexterm"), workspace("w2", "blog")],
       activeWorkspaceId: "w2",
     });
@@ -93,6 +92,28 @@ describe("WorkspaceSwitcher.vue", () => {
     expect(rows[0]?.text()).toContain("nexterm");
     expect(rows[1]?.attributes("data-workspace-active")).toBe("true");
     expect(rows[0]?.attributes("data-workspace-active")).toBe("false");
+  });
+
+  it("环境图标只在 WSL / SSH 工作区出现,本机工作区不显示", async () => {
+    const wrapper = mountSwitcher({
+      workspaces: [
+        workspace("w1", "local-app"),
+        workspace("w2", "wsl-app", { kind: "wsl", distro: "Ubuntu" }),
+        workspace("w3", "ssh-app", { kind: "ssh", profileId: "p1" }),
+      ],
+      activeWorkspaceId: "w1",
+    });
+
+    await wrapper.find("[data-workspace-switcher]").trigger("click");
+
+    const icons = wrapper.findAll("[data-workspace-env-icon]");
+    expect(icons).toHaveLength(2);
+    expect(icons[0]?.attributes("data-workspace-env-icon")).toBe("wsl");
+    expect(icons[1]?.attributes("data-workspace-env-icon")).toBe("ssh");
+    expect(
+      wrapper.find("[data-workspace-row='w1']").find("[data-workspace-env-icon]")
+        .exists(),
+    ).toBe(false);
   });
 
   it("点击行发出 select-workspace", async () => {
