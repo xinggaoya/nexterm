@@ -41,7 +41,6 @@ function mountPanel(props: Partial<InstanceType<typeof WorkspacePanel>["$props"]
       workspaceScope: "local",
       activeRepoRoot: null,
       gitDecorations: new Map() as GitDecorationMap,
-      gitBranch: "main",
       showBranchesModal: ref(false),
       fsEvent: null,
       ...props,
@@ -50,19 +49,26 @@ function mountPanel(props: Partial<InstanceType<typeof WorkspacePanel>["$props"]
 }
 
 describe("WorkspacePanel.vue", () => {
-  it("渲染两个标签,活动标签 aria-pressed,头部显示分支徽标", async () => {
+  // v3.2 壳层重设计：面板头部（文件树/更改 标签组 + 分支徽标）已并入顶栏。
+  // 面板本体只��内容，不再有任何头部 —— 右侧区域只剩一条 44px chrome 带。
+  it("不再有独立头部:标签组与分支徽标都不在面板里", () => {
     const wrapper = mountPanel();
 
-    const tabButtons = wrapper.findAll("[data-panel-tab]");
-    expect(tabButtons.map((b) => b.attributes("data-panel-tab"))).toEqual([
-      "explorer",
-      "changes",
-    ]);
-    expect(tabButtons[0]?.attributes("aria-pressed")).toBe("true");
-    expect(wrapper.find("[data-panel-branch]").text()).toContain("main");
+    expect(wrapper.findAll("[data-panel-tab]")).toHaveLength(0);
+    expect(wrapper.find("[data-panel-branch]").exists()).toBe(false);
+    // 面板根容器与右缘停靠位置保持不变。
+    expect(wrapper.find("[data-workspace-panel]").exists()).toBe(true);
+    expect(wrapper.find("[data-workspace-panel-right]").exists()).toBe(true);
+  });
 
-    await tabButtons[1]!.trigger("click");
-    expect(wrapper.emitted("update:tab")).toEqual([["changes"]]);
+  it("内容层按 tab 切换:explorer 与 changes 互斥显示", () => {
+    const explorerPanel = mountPanel({ tab: "explorer" });
+    expect(explorerPanel.find("[data-panel-tab-explorer]").isVisible()).toBe(true);
+    expect(explorerPanel.find("[data-panel-tab-changes]").isVisible()).toBe(false);
+
+    const changesPanel = mountPanel({ tab: "changes" });
+    expect(changesPanel.find("[data-panel-tab-explorer]").isVisible()).toBe(false);
+    expect(changesPanel.find("[data-panel-tab-changes]").isVisible()).toBe(true);
   });
 
   it("文件树标签层接收根路径并转发 open-file", async () => {

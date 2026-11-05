@@ -75,7 +75,7 @@ describe("pointer drag reorder boundary", () => {
   it("keeps every reorder consumer on the shared composable", () => {
     const consumers = [
       "app/shell/SessionStrip.vue",
-      "app/shell/Sidebar.vue",
+      "app/shell/WorkspaceSwitcher.vue",
       // explorer 的文件搬运拖拽：手势在 composable 里，组件只转发事件。
       "modules/explorer/composables/useTreeTransfer.ts",
     ];

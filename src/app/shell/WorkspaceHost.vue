@@ -8,11 +8,13 @@
  * stack, so inactive workspaces stay mounted (xterm buffers accumulate,
  * PTY processes keep running, watchers keep firing) and are simply hidden.
  *
- * v3.1 停靠式布局:
- *   Sidebar(全局侧栏,可折叠为轨道)
- *   └ TopBar(工作区身份 + 会话条 + 动作)
- *     └ WorkspacePanel(停靠:文件树/更改) | Canvas(终端画布)
- *     └ StatusDock(状态坞)
+ * v3.2 壳层布局:
+ *   TopBar(工作区切换器 + 身份 + 会话条 + 面板控制簇 + 动作)
+ *   └ WorkspacePanel(停靠:文件树/更改) | Canvas(终端画布)
+ *   └ StatusDock(状态坞)
+ *
+ * 全局侧栏已下线：工作区列表以弹出浮层的形式挂在顶栏左端，
+ * 不再为「通常只有 1~3 个」的项目常驻一整列。
  *
  * This component owns:
  *   - the env-bound `wsNative` surface (created once from `workspace.env`)
@@ -51,7 +53,6 @@ import { useResponsiveLayout } from "@/app/useResponsiveLayout";
 import { isBinaryImagePath } from "@/modules/file-preview/lib/imageFiles";
 import { normalizePreviewUrl } from "@/modules/preview/previewUrl";
 import { t, tLoose } from "@/modules/i18n/translate";
-import Sidebar from "./Sidebar.vue";
 import TopBar from "./TopBar.vue";
 import SessionStrip from "./SessionStrip.vue";
 import WorkspacePanel from "./WorkspacePanel.vue";
@@ -127,65 +128,20 @@ const panelTab = computed(() => prefs.workspacePanelTab);
 const panelWidth = ref(prefs.explorerPanelWidth);
 
 // ── 响应式收敛 ────────────────────────────────────────────────────────
-// 三栏（侧栏 + 画布 + 停靠面板）在窄窗口下会把画布挤没、把顶栏动作按钮
-// 挤出屏幕。判定集中在 useResponsiveLayout，这里只消费结论。
+// 两栏（画布 + 停靠面板）在窄窗口下会把画布挤没、把顶栏动作按钮挤出屏幕。
+// 判定集中在 useResponsiveLayout，这里只消费结论。
 const shellRef = ref<HTMLElement | null>(null);
 const responsive = useResponsiveLayout(shellRef);
-
-/** 侧栏展开态的宽度（与 Sidebar.vue 的 w-[248px] 保持一致）。 */
-const SIDEBAR_EXPANDED_WIDTH = 248;
-/** 侧栏折叠轨道宽度（与 Sidebar.vue 的 w-[52px] 保持一致）。 */
-const SIDEBAR_RAIL_WIDTH = 52;
-
-/**
- * 生效的折叠态。
- *
- * 窄窗口下自动折叠成轨道，但**不写回偏好**：用户的显式选择要在窗口变宽
- * 后原样恢复，否则「我明明展开了」会被窄窗口永久改掉。
- *
- * `sidebarOverride` 记的是「用户在窄窗口下手动展开过」：自动折叠是默认值，
- * 不是硬约束 —— 用户想看完整侧栏时必须能展开（哪怕画布会因此变窄）。
- */
-const sidebarOverride = ref<boolean | null>(null);
-const sidebarCollapsed = computed(() => {
-  if (sidebarOverride.value !== null) return !sidebarOverride.value;
-  return prefs.sidebarCollapsed || responsive.compact.value;
-});
-
-/** 离开紧凑模式后丢弃手动覆盖，回到用户偏好的折叠态。 */
-watch(
-  () => responsive.compact.value,
-  (compact) => {
-    if (!compact) sidebarOverride.value = null;
-  },
-);
-
-function handleSidebarToggle(): void {
-  if (responsive.compact.value) {
-    sidebarOverride.value = !sidebarCollapsed.value;
-    return;
-  }
-  toggleSidebarCollapsed();
-}
-
-const sidebarWidth = computed(() =>
-  sidebarCollapsed.value ? SIDEBAR_RAIL_WIDTH : SIDEBAR_EXPANDED_WIDTH,
-);
 
 /**
  * 停靠面板的最终宽度。
  *
- * 固定 328px 在 800px 宽的窗口里会吃掉四成空间。收窄时按「容器宽度减去
- * 侧栏」的可用量取比例，保证画布始终拿得到该有的份额。覆盖层模式下按
- * 容器宽度算（面板浮在画布之上，不占布局）。
+ * 固定 328px 在 800px 宽的窗口里会吃掉四成空间。收窄时按容器宽度的比例
+ * 取上限，保证画布始终拿得到该有的份额。覆盖层模式下按容器宽度算
+ * （面板浮在画布之上，不占布局）。
  */
 const effectivePanelWidth = computed(() =>
-  responsive.resolvePanelWidth(
-    panelWidth.value,
-    responsive.tight.value
-      ? responsive.width.value
-      : responsive.width.value - sidebarWidth.value,
-  ),
+  responsive.resolvePanelWidth(panelWidth.value, responsive.width.value),
 );
 
 /**
@@ -194,11 +150,44 @@ const effectivePanelWidth = computed(() =>
  */
 const panelOverlay = computed(() => responsive.tight.value);
 const panelOverlayOpen = ref(false);
-/** 覆盖层模式下默认收起面板，把空间让给画布。 */
-const panelVisible = computed(() => !panelOverlay.value || panelOverlayOpen.value);
 
-function togglePanelOverlay(): void {
-  panelOverlayOpen.value = !panelOverlayOpen.value;
+/**
+ * 面板当前是否可见。
+ *
+ * 普通宽度下由偏好 `workspacePanelVisible` 决定（顶栏折叠按钮可持久化）；
+ * 极窄窗口下叠加一个临时的覆盖层开关 —— 覆盖层是「临时浮出来看一眼」，
+ * 不能写回偏好，否则用户回到大窗口时会发现面板莫名消失了。
+ */
+const panelVisible = computed(
+  () =>
+    prefs.workspacePanelVisible &&
+    (!panelOverlay.value || panelOverlayOpen.value),
+);
+
+/** 把面板唤出来（不改变当前标签）。 */
+function showPanel(): void {
+  if (panelOverlay.value) {
+    panelOverlayOpen.value = true;
+    return;
+  }
+  if (!prefs.workspacePanelVisible) {
+    prefs.workspacePanelVisible = true;
+    if (hasTauriInternals()) {
+      void prefs.updateWorkspacePanelVisible(true);
+    }
+  }
+}
+
+/** 顶栏折叠按钮：普通宽度切偏好，极窄窗口切覆盖层。 */
+function togglePanelVisibility(): void {
+  if (panelOverlay.value) {
+    panelOverlayOpen.value = !panelOverlayOpen.value;
+    return;
+  }
+  prefs.workspacePanelVisible = !prefs.workspacePanelVisible;
+  if (hasTauriInternals()) {
+    void prefs.updateWorkspacePanelVisible(prefs.workspacePanelVisible);
+  }
 }
 
 /** 离开极窄模式后收起覆盖层面板（下次再变窄时仍是默认收起）。 */
@@ -227,11 +216,9 @@ function setPanelTab(tab: WorkspacePanelTab): void {
   // 避免纯浏览器/测试环境的未处理拒绝)。
   prefs.workspacePanelTab = tab;
   if (hasTauriInternals()) void prefs.updateWorkspacePanelTab(tab);
-}
-
-function toggleSidebarCollapsed(): void {
-  prefs.sidebarCollapsed = !prefs.sidebarCollapsed;
-  if (hasTauriInternals()) void prefs.updateSidebarCollapsed(prefs.sidebarCollapsed);
+  // 面板折叠着的时候切标签是「看不见的动作」——顺手把它唤出来，
+  // 否则命令面板里的「打开源代码管理」看起来毫无反应。
+  if (!panelVisible.value) showPanel();
 }
 
 const canSplitActiveTab = computed(() => {
@@ -775,20 +762,6 @@ defineExpose({
     class="flex h-full min-h-0 bg-shell-bg"
     :data-workspace-id="workspace.id"
   >
-    <Sidebar
-      :workspaces="workspaces.workspaces"
-      :active-workspace-id="workspaces.activeWorkspaceId"
-      :collapsed="sidebarCollapsed"
-      @select-workspace="(id) => workspaces.setActive(id)"
-      @close-workspace="(id) => emit('request-remove-workspace', id)"
-      @add-workspace="(env) => emit('add-workspace', env)"
-      @open-workspace-in-new-window="openThisWorkspaceInNewWindow"
-      @reorder-workspace="(sourceId, targetId, placement) => workspaces.reorderByTarget(sourceId, targetId, placement)"
-      @open-settings="() => emit('request-settings')"
-      @open-command-palette="() => emit('request-command-palette', 'commands')"
-      @toggle-collapse="handleSidebarToggle"
-    />
-
     <div class="flex min-w-0 flex-1 flex-col">
       <TopBar
         :workspace-name="workspace.name"
@@ -798,14 +771,22 @@ defineExpose({
         :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
         :can-split="canSplitActiveTab"
         :compact="responsive.narrow.value"
-        :dense="responsive.tight.value"
-        :show-panel-toggle="panelOverlay"
-        :panel-open="panelOverlayOpen"
+        :dense="responsive.compact.value"
+        :workspaces="workspaces.workspaces"
+        :active-workspace-id="workspaces.activeWorkspaceId"
+        :panel-tab="panelTab"
+        :panel-visible="panelVisible"
         @new-terminal="newTerminalTab"
         @split-pane="splitActivePane"
         @open-command-palette="() => emit('request-command-palette', 'commands')"
         @open-settings="() => emit('request-settings')"
-        @toggle-panel="togglePanelOverlay"
+        @select-workspace="(id) => workspaces.setActive(id)"
+        @close-workspace="(id) => emit('request-remove-workspace', id)"
+        @add-workspace="(env) => emit('add-workspace', env)"
+        @open-workspace-in-new-window="openThisWorkspaceInNewWindow"
+        @reorder-workspace="(sourceId, targetId, placement) => workspaces.reorderByTarget(sourceId, targetId, placement)"
+        @update:panel-tab="setPanelTab"
+        @toggle-panel="togglePanelVisibility"
       >
         <template #center>
           <SessionStrip
@@ -862,10 +843,9 @@ defineExpose({
           :workspace-scope="workspaceScope"
           :active-repo-root="activeRepoRoot"
           :git-decorations="gitDecorations"
-          :git-branch="gitBranch"
           :show-branches-modal="showBranchesModalProp"
           :fs-event="normalizedFsEvent"
-          @update:tab="setPanelTab"
+          @request-tab="setPanelTab"
           @resize-width="persistPanelWidth"
           @open-file="openFileTab"
           @open-file-preview="openFilePreview"

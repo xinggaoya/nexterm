@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import { GitBranchOutline } from "@vicons/ionicons5";
-import { NIcon } from "naive-ui";
-import { computed, onBeforeUnmount, ref, type Ref } from "vue";
+/**
+ * 停靠工作区面板（文件树 / 更改）。
+ *
+ * v3.2 壳层重设计：**面板本体不再有独立头部**。原来的 44px 标签头（文件树 /
+ * 更改 标签组 + git 分支徽标）已并入顶栏右侧的控制簇 —— 顶栏 44px 之上再
+ * 叠一条 44px 的面板头，右侧区域白白多占一条 chrome 带，且与顶栏割裂。
+ *
+ * 面板现在只负责内容：按 `tab` 切换文件树 / 源控两层，宽度可拖拽，
+ * 显隐由宿主的顶栏折叠按钮控制。
+ */
+import { onBeforeUnmount, ref, type Ref } from "vue";
 import type { GitCommitResult, WorkspaceFsChangedEvent } from "@/lib/native";
-import { t } from "@/modules/i18n/translate";
 import FileExplorer from "@/modules/explorer/FileExplorer.vue";
 import type { GitDecorationMap } from "@/modules/source-control";
 import SourceControlPanel from "@/modules/source-control/SourceControlPanel.vue";
@@ -27,13 +34,13 @@ const props = defineProps<{
   workspaceScope: string;
   activeRepoRoot: string | null;
   gitDecorations: GitDecorationMap;
-  gitBranch: string | null;
   showBranchesModal: Ref<boolean>;
   fsEvent: WorkspaceFsChangedEvent | null;
 }>();
 
 const emit = defineEmits<{
-  "update:tab": [tab: WorkspacePanelTab];
+  /** 面板自己不持有标签状态 —— 需要换视图时请求宿主切换。 */
+  "request-tab": [tab: WorkspacePanelTab];
   "resize-width": [width: number];
   "open-file": [path: string, pin: boolean];
   "open-file-preview": [path: string];
@@ -65,15 +72,6 @@ const emit = defineEmits<{
 }>();
 
 const fileExplorerRef = ref<InstanceType<typeof FileExplorer> | null>(null);
-
-const tabs = computed(() => [
-  { key: "explorer" as const, label: t("app.rail.tool.explorer") },
-  { key: "changes" as const, label: t("app.rail.tool.changes") },
-]);
-
-function selectTab(key: WorkspacePanelTab): void {
-  if (key !== props.tab) emit("update:tab", key);
-}
 
 // ── 左缘拖宽(面板位于画布右侧;持久化由宿主负责) ─────────────────────
 let detachMove: (() => void) | null = null;
@@ -118,9 +116,9 @@ defineExpose({
   activate: () => fileExplorerRef.value?.activate(),
   /** workspace 切回时:取消防抖,立即执行 pending loadChildren。 */
   flushPendingTreeRefresh: () => fileExplorerRef.value?.flushPendingTreeRefresh(),
-  /** Find in Files:进入内容搜索模式(先确保 explorer 标签激活)。 */
+  /** Find in Files:进入内容搜索模式(并请求宿主切到文件树视图)。 */
   openFindInFiles: () => {
-    if (props.tab !== "explorer") selectTab("explorer");
+    if (props.tab !== "explorer") emit("request-tab", "explorer");
     fileExplorerRef.value?.setMode("content");
   },
 });
@@ -138,37 +136,6 @@ defineExpose({
     data-workspace-panel
     data-workspace-panel-right
   >
-    <!-- 标签头 -->
-    <header class="flex h-11 shrink-0 items-center gap-1 border-b border-border/70 px-2">
-      <div class="flex min-w-0 flex-1 items-center gap-0.5 rounded-lg bg-surface-subtle p-0.5">
-        <button
-          v-for="item in tabs"
-          :key="item.key"
-          type="button"
-          :data-panel-tab="item.key"
-          :aria-pressed="tab === item.key"
-          class="flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-2 text-[12px] transition-colors duration-[var(--dur-fast)]"
-          :class="
-            tab === item.key
-              ? 'bg-background text-foreground shadow-[0_0_0_1px_var(--border)]'
-              : 'text-muted-foreground hover:text-foreground'
-          "
-          @click="selectTab(item.key)"
-        >
-          <span class="truncate">{{ item.label }}</span>
-        </button>
-      </div>
-      <span
-        v-if="gitBranch"
-        class="flex min-w-0 shrink-0 items-center gap-1 rounded-full bg-surface-subtle px-2 py-0.5 text-[11px] text-muted-foreground"
-        :title="gitBranch"
-        data-panel-branch
-      >
-        <NIcon :component="GitBranchOutline" :size="11" />
-        <span class="max-w-20 truncate">{{ gitBranch }}</span>
-      </span>
-    </header>
-
     <!-- 内容层:v-show 保活,保持各模块状态 -->
     <div class="relative min-h-0 flex-1">
       <div

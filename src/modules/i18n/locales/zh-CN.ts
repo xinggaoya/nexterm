@@ -190,6 +190,8 @@ const zhCN = {
       },
     },
     titleBar: {
+      panelHide: "隐藏侧面板",
+      panelShow: "显示侧面板",
       switchWorkspace: "切换工作区",
       workspaces: "工作区",
     },

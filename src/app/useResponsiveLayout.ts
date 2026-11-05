@@ -3,17 +3,17 @@ import { computed, onBeforeUnmount, onMounted, ref, type Ref } from "vue";
 /**
  * 壳层的响应式断点。
  *
- * 三栏结构（侧栏 + 画布 + 停靠面板）在默认窗口宽度（800×600）下会把画布
- * 挤成一条缝：侧栏 248px + 停靠面板 328px = 576px，画布只剩 224px；而顶栏
- * 的动作按钮（新建终端 / 分屏 / 命令中心 / 设置）因为身份区是 `shrink-0`，
- * 会被整体挤出可视区（`scrollWidth 313 > clientWidth 172`）——按钮看得见
- * 却点不到。
+ * 两栏结构（画布 + 停靠面板）在默认窗口宽度（800×600）下会把画布挤成
+ * 一条缝：停靠面板 320px 就占了四成；而顶栏的动作按钮（新建终端 / 分屏 /
+ * 命令中心 / 设置）因为身份区是 `shrink-0`，会被整体挤出可视区
+ * （`scrollWidth 313 > clientWidth 172`）—— 按钮看得见却点不到。
  *
  * 这里把判定集中到一处，各壳层只消费结论：
- * - `compact`：侧栏自动折叠成 52px 轨道（**不覆盖**用户偏好，窗口变宽后
- *   用户的偏好自动恢复）。
- * - `narrow`：停靠面板按可用宽度的比例收窄，而不是固定 328px。
+ * - `compact`：顶栏进入紧凑模式（隐藏分支名，分支在状态坞里仍有一份）。
+ * - `narrow`：停靠面板按可用宽度的比例收窄，而不是固定 320px。
  * - `tight`：停靠面板改为覆盖层，画布保持满宽。
+ *
+ * v3.2：全局侧栏下线，`compact` 不再表示「侧栏折叠成轨道」。
  */
 export const RESPONSIVE_BREAKPOINTS = {
   compact: 900,
@@ -33,25 +33,25 @@ export const PANEL_OVERLAY_GUTTER = 24;
 /**
  * 停靠面板的最终宽度（纯函数，便于单测）。
  *
- * `available` 是「容器宽度减去侧栏占用」，`requested` 是用户拖出来的偏好
- * 宽度。覆盖层模式下（`overlay`）面板不占布局宽度，但也要给画布留出
- * 余量，否则在极窄窗口里面板会盖住整个画布。
+ * `containerWidth` 是壳层容器宽度，`requested` 是用户拖出来的偏好宽度。
+ * 覆盖层模式下（`overlay`）面板不占布局宽度，但也要给画布留出余量，
+ * 否则在极窄窗口里面板会盖住整个画布。
  */
 export function resolveResponsivePanelWidth(
   requested: number,
-  available: number,
+  containerWidth: number,
   overlay: boolean,
 ): number {
   if (overlay) {
     const cap = Math.max(
       PANEL_MIN_WIDTH,
-      Math.floor(Math.max(0, available) - PANEL_OVERLAY_GUTTER),
+      Math.floor(Math.max(0, containerWidth) - PANEL_OVERLAY_GUTTER),
     );
     return Math.min(requested, cap);
   }
   const cap = Math.max(
     PANEL_MIN_WIDTH,
-    Math.floor(Math.max(0, available) * PANEL_MAX_RATIO),
+    Math.floor(Math.max(0, containerWidth) * PANEL_MAX_RATIO),
   );
   return Math.min(requested, cap);
 }
@@ -68,10 +68,11 @@ export interface ResponsiveLayout {
   /**
    * 停靠面板的最终宽度。
    *
-   * `available` 是「容器宽度减去侧栏占用」，`requested` 是用户拖出来的偏好
-   * 宽度。覆盖层模式下不占布局，直接用请求宽度。
+   * `containerWidth` 是壳层容器宽度（v3.2 起不再扣减侧栏 —— 侧栏已下线），
+   * `requested` 是用户拖出来的偏好宽度。覆盖层模式下不占布局，直接用
+   * 请求宽度。
    */
-  resolvePanelWidth: (requested: number, available: number) => number;
+  resolvePanelWidth: (requested: number, containerWidth: number) => number;
 }
 
 /**
@@ -120,8 +121,8 @@ export function useResponsiveLayout(
     () => width.value > 0 && width.value < RESPONSIVE_BREAKPOINTS.tight,
   );
 
-  function resolvePanelWidth(requested: number, available: number): number {
-    return resolveResponsivePanelWidth(requested, available, tight.value);
+  function resolvePanelWidth(requested: number, containerWidth: number): number {
+    return resolveResponsivePanelWidth(requested, containerWidth, tight.value);
   }
 
   return { width, compact, narrow, tight, resolvePanelWidth };

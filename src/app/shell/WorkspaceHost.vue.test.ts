@@ -80,25 +80,36 @@ vi.mock("@/modules/workspace/workspacesPinia", () => ({
   }),
 }));
 
-vi.mock("./Sidebar.vue", () => ({
+vi.mock("./TopBar.vue", () => ({
   default: {
-    name: "SidebarStub",
-    props: ["collapsed", "activeWorkspaceId"],
+    name: "TopBarStub",
+    props: [
+      "workspaceName",
+      "workspacePath",
+      "env",
+      "gitBranch",
+      "showWindowControls",
+      "canSplit",
+      "compact",
+      "dense",
+      "workspaces",
+      "activeWorkspaceId",
+      "panelTab",
+      "panelVisible",
+    ],
     emits: [
+      "new-terminal",
+      "split-pane",
+      "open-command-palette",
+      "open-settings",
       "select-workspace",
       "close-workspace",
       "add-workspace",
       "open-workspace-in-new-window",
-      "open-settings",
-      "open-command-palette",
-      "toggle-collapse",
+      "reorder-workspace",
+      "update:panel-tab",
+      "toggle-panel",
     ],
-    template: "<nav class='sidebar-stub' />",
-  },
-}));
-vi.mock("./TopBar.vue", () => ({
-  default: {
-    name: "TopBarStub",
     template: "<header class='topbar-stub'><slot name='center' /></header>",
   },
 }));
@@ -112,9 +123,8 @@ vi.mock("./SessionStrip.vue", () => ({
 vi.mock("./WorkspacePanel.vue", () => ({
   default: {
     name: "WorkspacePanelStub",
-    props: ["tab", "width", "gitDecorations", "gitBranch", "workspaceRoot"],
+    props: ["tab", "width", "gitDecorations", "workspaceRoot"],
     emits: [
-      "update:tab",
       "resize-width",
       "branch-change",
       "decorations-change",
@@ -187,8 +197,31 @@ describe("WorkspaceHost.vue", () => {
     expect(tabsStore.disposeWorkspaceTabs).toHaveBeenCalledWith("w1");
   });
 
-  it("停靠面板标签写入偏好并回传面板(默认文件树)", async () => {
-    const pinia = createPinia();
+  it("侧栏下线后:窄窗口下面板不再被侧栏宽度二次收窄", async () => {
+    const original = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 680,
+    });
+    try {
+      const wrapper = mountHost();
+      await nextTick();
+      const panel = wrapper.findComponent({ name: "WorkspacePanelStub" });
+      // 旧口径：可用宽度 = 容器 680 - 侧栏轨道 52 = 628，面板上限 628×45% = 282。
+      // 新口径：侧栏已下线，可用宽度就是容器宽 680，上限 680×45% = 306。
+      expect(panel.props("width")).toBe(306);
+      wrapper.unmount();
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        writable: true,
+        value: original,
+      });
+    }
+  });
+
+  it("停靠面板标签写入偏好并回传面板(默认文件树)", async () => {    const pinia = createPinia();
     const prefs = usePreferencesPiniaStore(pinia);
     const wrapper = mount(WorkspaceHost, {
       props: { workspace },
@@ -198,10 +231,56 @@ describe("WorkspaceHost.vue", () => {
     const panel = wrapper.findComponent({ name: "WorkspacePanelStub" });
     expect(panel.props("tab")).toBe("explorer");
 
-    await panel.vm.$emit("update:tab", "changes");
+    // 标签切换已上移到顶栏：面板自身不再有头部。
+    await wrapper
+      .findComponent({ name: "TopBarStub" })
+      .vm.$emit("update:panel-tab", "changes");
     await nextTick();
     expect(prefs.workspacePanelTab).toBe("changes");
     expect(wrapper.findComponent({ name: "WorkspacePanelStub" }).props("tab")).toBe("changes");
+    wrapper.unmount();
+  });
+
+  it("面板折叠时切标签会把面板唤出来(动作不能看不见)", async () => {
+    const pinia = createPinia();
+    const prefs = usePreferencesPiniaStore(pinia);
+    prefs.workspacePanelVisible = false;
+    const wrapper = mount(WorkspaceHost, {
+      props: { workspace },
+      global: { plugins: [pinia] },
+    });
+    await nextTick();
+    expect(wrapper.findComponent({ name: "TopBarStub" }).props("panelVisible")).toBe(
+      false,
+    );
+
+    await wrapper
+      .findComponent({ name: "TopBarStub" })
+      .vm.$emit("update:panel-tab", "changes");
+    await nextTick();
+    expect(prefs.workspacePanelVisible).toBe(true);
+    expect(wrapper.findComponent({ name: "TopBarStub" }).props("panelVisible")).toBe(
+      true,
+    );
+    wrapper.unmount();
+  });
+
+  it("顶栏折叠按钮切换面板显隐并持久化偏好", async () => {
+    const pinia = createPinia();
+    const prefs = usePreferencesPiniaStore(pinia);
+    const wrapper = mount(WorkspaceHost, {
+      props: { workspace },
+      global: { plugins: [pinia] },
+    });
+    await nextTick();
+    expect(prefs.workspacePanelVisible).toBe(true);
+
+    await wrapper.findComponent({ name: "TopBarStub" }).vm.$emit("toggle-panel");
+    await nextTick();
+    expect(prefs.workspacePanelVisible).toBe(false);
+    expect(wrapper.findComponent({ name: "TopBarStub" }).props("panelVisible")).toBe(
+      false,
+    );
     wrapper.unmount();
   });
 
@@ -273,11 +352,11 @@ describe("WorkspaceHost.vue", () => {
     wrapper.unmount();
   });
 
-  it("Sidebar 的 close-workspace 上抛为 request-remove-workspace(由 MainApp 二次确认)", async () => {
+  it("顶栏切换器的 close-workspace 上抛为 request-remove-workspace(由 MainApp 二次确认)", async () => {
     const wrapper = mountHost();
     await nextTick();
-    const sidebar = wrapper.findComponent({ name: "SidebarStub" });
-    await sidebar.vm.$emit("close-workspace", "w1");
+    const topbar = wrapper.findComponent({ name: "TopBarStub" });
+    await topbar.vm.$emit("close-workspace", "w1");
     expect(wrapper.emitted("request-remove-workspace")).toEqual([["w1"]]);
     wrapper.unmount();
   });

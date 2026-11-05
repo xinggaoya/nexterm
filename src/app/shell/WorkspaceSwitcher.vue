@@ -270,7 +270,10 @@ function handleRowPointerDown(event: PointerEvent, workspace: WorkspaceInstance)
           :data-workspace-row="workspace.id"
           :data-workspace-active="workspace.id === activeWorkspaceId"
           class="relative rounded-lg"
-          :class="dropIndicatorClass(workspace.id)"
+          :class="[
+            dropIndicatorClass(workspace.id),
+            draggingWorkspaceId === workspace.id ? 'opacity-60' : '',
+          ]"
           @pointerdown="handleRowPointerDown($event, workspace)"
         >
           <div

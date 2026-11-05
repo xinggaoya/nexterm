@@ -34,19 +34,21 @@ describe("visual system contract", () => {
     expect(globalsCss).toContain(".nexterm-overlay");
   });
 
-  it("uses the terminal-first shell dimensions (sidebar / top bar / status dock)", () => {
-    // 终端优先壳层 v3.1:248px 全局侧栏(可折叠 52px 轨道) + 44px 顶栏
-    // + 停靠工作区面板 + 24px 状态坞。
-    const sidebar = readSource("../app/shell/Sidebar.vue");
-    expect(sidebar).toContain("w-[248px]");
-    expect(sidebar).toContain("w-[52px]");
-    expect(sidebar).toContain("data-sidebar");
-    expect(sidebar).toContain("data-sidebar-search");
+  it("uses the terminal-first shell dimensions (top bar / status dock)", () => {
+    // 终端优先壳层 v3.2:44px 顶栏 + 停靠工作区面板 + 24px 状态坞。
+    // 全局侧栏已下线 —— 工作区切换器改为顶栏左端的弹出浮层。
+    expect(() =>
+      readFileSync(new URL("../app/shell/Sidebar.vue", import.meta.url), "utf8"),
+    ).toThrow();
 
     const topBar = readSource("../app/shell/TopBar.vue");
     expect(topBar).toContain("h-11");
     expect(topBar).toContain(`:aria-label="t('app.header.openCommandCenter')"`);
     expect(topBar).toContain(`:aria-label="t('common.settings')"`);
+    // 工作区切换器与面板控制簇都挂在顶栏上。
+    expect(topBar).toContain("WorkspaceSwitcher");
+    expect(topBar).toContain("data-panel-tab-switch");
+    expect(topBar).toContain("data-toggle-panel");
 
     expect(readSource("../app/shell/SessionStrip.vue")).toContain("h-7");
     expect(readSource("../app/shell/StatusDock.vue")).toContain("h-6");
@@ -57,14 +59,16 @@ describe("visual system contract", () => {
     expect(strip).toContain("data-session-strip");
   });
 
-  it("docks the workspace panel on the right of the canvas", () => {
+  it("docks the workspace panel on the right of the canvas without its own header", () => {
     const host = readSource("../app/shell/WorkspaceHost.vue");
     const panel = readSource("../app/shell/WorkspacePanel.vue");
     const canvas = readSource("../app/shell/Canvas.vue");
 
-    // Host 组合:侧栏 → 顶栏(内嵌会话条) → 画布 | 停靠面板 → 状态坞。
-    expect(host).toMatch(/<Sidebar[\s\S]*?<TopBar[\s\S]*?<SessionStrip/);
+    // Host 组合:顶栏(含工作区切换器与会话条) → 画布 | 停靠面板 → 状态坞。
+    expect(host).toMatch(/<TopBar[\s\S]*?<SessionStrip/);
     expect(host).toMatch(/<Canvas[\s\S]*?<WorkspacePanel[\s\S]*?<StatusDock/);
+    // 常驻左栏已下线：壳层里不再有侧栏。
+    expect(host).not.toContain("<Sidebar");
 
     // 面板停靠在画布右侧(非浮层):双标签内容全部挂载在面板内,
     // 拖宽手柄在面板左缘(向左拖加宽)。
@@ -73,6 +77,9 @@ describe("visual system contract", () => {
     expect(panel).toMatch(/<FileExplorer/);
     expect(panel).toMatch(/<SourceControlPanel/);
     expect(panel).not.toContain("<TaskConsole");
+    // 面板头(文件树/更改 标签组 + 分支徽标)已并入顶栏,面板本体不再有头部。
+    expect(panel).not.toContain("data-panel-tab=");
+    expect(panel).not.toContain("data-panel-branch");
 
     // 画布是纯内容层:终端铺满中间区域,不再承载任何浮层/面板。
     expect(canvas).toMatch(/<TerminalWorkspace/);

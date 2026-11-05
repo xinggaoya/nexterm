@@ -188,6 +188,8 @@ const enUS = {
       },
     },
     titleBar: {
+      panelHide: "Hide panel",
+      panelShow: "Show panel",
       switchWorkspace: "Switch workspace",
       workspaces: "Workspaces",
     },
