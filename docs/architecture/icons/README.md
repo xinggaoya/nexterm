@@ -92,6 +92,7 @@ export function folderIconUrl(name: string, expanded: boolean): string;
 ## 8. 测试
 
 - `fileIcon.test.ts` -- 解析规则：常见文件类型各自命中不同图标、无扩展名文件（`Makefile`）、点开头隐藏文件（`.gitignore`）、复合扩展名回退、完整路径等价、大小写不敏感、目录展开态切换、未知类型回落
+- `iconsBoundary.test.ts` -- 模块边界：图标实现不得回流 explorer、其它模块只能经 `@/modules/icons` barrel 取图标、映射表归属本模块
 
 ## 9. 相关文档
 
