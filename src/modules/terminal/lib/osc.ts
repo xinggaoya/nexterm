@@ -33,6 +33,34 @@ export interface OscResult {
 
 const OSC_TERMINATORS = ["\x07", "\x1b\\"];
 
+/** 会被当成「可执行文件路径」的扩展名。 */
+const EXECUTABLE_EXTENSIONS = [".exe", ".cmd", ".bat", ".com"];
+
+/**
+ * 把 shell 报上来的 OSC 标题收拾成能直接当标签标题的短名字。
+ *
+ * PowerShell 会把窗口标题设成自己可执行文件的**完整路径**
+ * （`C:\Program Files\PowerShell\7\pwsh.exe`）。直接拿它当标签标题，
+ * 标签条会被截成 `C:\Program Files\P...`，完全认不出是哪个 shell。
+ *
+ * 只处理「看上去就是一个可执行文件路径」的标题：带路径分隔符，且末段要么
+ * 没有扩展名（`/usr/bin/zsh`），要么带可执行扩展名（`pwsh.exe`）。
+ * 其它标题（`vim README.md`、`~/proj — zsh`、`src/main.ts`）原样保留。
+ */
+export function normalizeTerminalTitle(title: string): string {
+  const trimmed = title.trim();
+  if (!trimmed) return trimmed;
+  if (!trimmed.includes("\\") && !trimmed.includes("/")) return trimmed;
+  const base = trimmed.split(/[\\/]/).pop() ?? trimmed;
+  if (!base || /\s/.test(base)) return trimmed;
+  const extension = /\.[a-z0-9]+$/i.exec(base)?.[0]?.toLowerCase();
+  if (extension && !EXECUTABLE_EXTENSIONS.includes(extension)) return trimmed;
+  const stem = extension
+    ? base.slice(0, base.length - extension.length)
+    : base;
+  return stem || base;
+}
+
 export function handleOscData(data: string, prevPending: string): OscResult {
   // 快速路径:既无前序未完成序列、本块也无 ESC ],直接透传零拷贝。
   // 99% 的 PTY 输出（编译日志、AI CLI 响应、普通 cat/ls 文本）都走这条。
@@ -138,7 +166,7 @@ function parseOscPayload(payload: string): OscEvent | null {
   if (code === "0" || code === "2") {
     const clean = value.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 120);
     if (!clean) return null;
-    return { type: "title", value: clean };
+    return { type: "title", value: normalizeTerminalTitle(clean) };
   }
   if (code === "8") {
     // 格式:params;URI,params 可空,例如 "id=xyz:1:2" 或 ""

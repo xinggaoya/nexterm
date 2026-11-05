@@ -1,6 +1,6 @@
 [package]
 name = "nexterm"
-version = "0.2.2"
+version = "0.3.0"
 description = "Terminal-centric development environment built with Tauri 2 + Vue 3."
 authors = ["xinggaoya"]
 license = "Apache-2.0"
@@ -27,6 +27,36 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # `toggle_devtools` / `is_devtools_open` 两条 IPC 命令会被注册。
 # CI 有一条边界测试断言正式发布配置里不包含它。
 devtools = ["tauri/devtools"]
+# CrabNebula 后端调试面板（后端插桩 + 嵌入式 UI）。**默认关闭**。
+#
+# 为什么默认关闭：`tauri-plugin-devtools` 依赖 `tauri/tracing` feature，
+# 而该 feature 会把 `tauri-runtime-wry` 的 `eval_script` 从 fire-and-forget
+# 改成「发消息给 UI 线程并阻塞等回执」。于是任何在 IPC handler 里
+# `app.emit` 的命令（tauri-plugin-store 的 set、tauri-plugin-event 的 emit）
+# 都会与 WebView2 的 `WebResourceRequested` 回调互等 —— UI 线程等命令返回，
+# 命令等 UI 线程执行脚本，**互锁成永久死锁**（窗口变「未响应」，所有 IPC 停摆）。
+#
+# 实测：同一份设置下，关掉本 feature 应用正常；打开必挂。详见
+# `docs/architecture/06-crabnebula-devtools.md`。
+#
+# 需要后端插桩时显式开启：`cargo build --features crabnebula-devtools`
+# 或 `pnpm tauri dev -- --features crabnebula-devtools`。
+crabnebula-devtools = [
+	"dep:tauri-plugin-devtools",
+	"dep:tauri-plugin-devtools-app",
+]
+# 浏览器调试桥：把**运行中**的应用的真实 IPC 暴露给本机普通浏览器，
+# 用于前端 UI 调试与浏览器自动化测试。**默认关闭**。
+#
+# 为什么默认关闭：桥一旦启动，本机就多了一个能写文件、起进程、走 SSH 的
+# HTTP 端点（只监听 127.0.0.1，但仍需显式 opt-in）。
+#
+# Rust 侧还有一道 `cfg!(debug_assertions)` 兜底 —— 即便用
+# `--release --features web-dev-bridge` 构建，release 产物也不会监听端口。
+#
+# 启用方式：`pnpm tauri dev -- --features web-dev-bridge`
+# 详见 `docs/architecture/07-web-dev-bridge.md`。
+web-dev-bridge = ["dep:tauri-plugin-web-dev-bridge"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -37,7 +67,7 @@ tauri-build = { version = "2", features = [] }
 # 整个 IPC 能力面暴露给任何跑在 webview 里的脚本。开发构建由
 # debug_assertions 自动获得；正式发布需要时用 `--features devtools`
 # 显式构建。见 features.devtools。
-tauri = { version = "2" }
+tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -53,8 +83,11 @@ grep-matcher = "0.1"
 globset = "0.4"
 shared_child = "1"
 notify = "8.2"
-tokio = { version = "1", features = ["time"] }
+# `tauri-plugin-devtools-app` 依赖的 interprocess 仍调用 tokio 1.52 已移除的
+# `AsyncFd::register_with_interest`，因此把 tokio 限制在 1.52 之前。
+tokio = { version = ">=1.38, <1.52", features = ["time"] }
 which = "6"
+time = { version = "0.3", features = ["formatting", "macros"] }
 tauri-plugin-log = "2"
 tauri-plugin-os = "2"
 tauri-plugin-store = "2"
@@ -65,6 +98,14 @@ tauri-plugin-notification = "2"
 russh = { version = "0.63.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 # 搬运语义（移动/复制/冲突策略）在本地、WSL agent、SSH 远端 agent 三处共用同一份实现。
 nexterm-fs-core = { path = "fs-core" }
+# CrabNebula DevTools: 后端插桩 + 嵌入式 UI。
+# 两者是可选依赖（feature `crabnebula-devtools`，默认关闭）——
+# 开启会连带启用 `tauri/tracing`，从而引入 IPC 死锁风险，详见上面的 features 说明。
+tauri-plugin-devtools = { version = "2.2", optional = true }
+tauri-plugin-devtools-app = { version = "2.1", optional = true }
+# 浏览器调试桥（feature `web-dev-bridge`，默认不编译进任何产物）。
+# 插件尚未发布到 crates.io，锁定 commit：13d894827b14b9e7c510535b8a957383a4972dcd
+tauri-plugin-web-dev-bridge = { git = "https://github.com/xinggaoya/tauri-plugin-web-dev-bridge", rev = "13d894827b14b9e7c510535b8a957383a4972dcd", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -86,7 +127,9 @@ tauri-plugin-deep-link = "2"
 tauri-plugin-updater = "2"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = ">=1.38, <1.52", features = ["rt-multi-thread", "macros", "time"] }
+# `tauri::test` 提供无窗口的 mock runtime，用于验证插件组合能否正常启动。
+tauri = { version = "2", features = ["test"] }
 
 [profile.dev]
 incremental = true

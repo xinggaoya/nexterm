@@ -7,6 +7,7 @@ import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { NaiveUiResolver } from "unplugin-vue-components/resolvers";
 import { defineConfig } from "vite";
+import { webDevBridgeVitePlugin } from "tauri-plugin-web-dev-bridge/vite";
 
 const host = process.env.TAURI_DEV_HOST;
 const packageJson = JSON.parse(
@@ -19,6 +20,10 @@ const isVitest = !!process.env.VITEST;
 export default defineConfig(async ({ mode }) => ({
   plugins: [
     vue(),
+    // 浏览器调试桥的发现端点：把 Rust 侧写下的 { port, pid, url } 以同源 JSON
+    // 暴露给前端，使浏览器里的页面能零配置找到本机调试桥（Rust 监听端口可能是
+    // 系统随机分配的，不能靠约定端口）。插件自带 apply: 'serve'，仅 dev 生效。
+    webDevBridgeVitePlugin(),
     AutoImport({
       imports: ["vue", "pinia"],
       vueTemplate: true,
@@ -39,6 +44,16 @@ export default defineConfig(async ({ mode }) => ({
   },
   test: {
     setupFiles: ["./tests/vitest.setup.ts"],
+
+    // `tauri-plugin-web-dev-bridge` 的产物 `dist/index.js` 用的是**无扩展名**导入
+    // （`./discovery`）。浏览器与 vite 打包器能解析，Node 原生 ESM 加载器不能 ——
+    // 默认被 externalize 的依赖会走原生加载，于是解析失败。
+    // 显式 inline 让它走 vite 的解析器，与生产构建的行为保持一致。
+    server: {
+      deps: {
+        inline: ["tauri-plugin-web-dev-bridge"],
+      },
+    },
 
     // worker 用 threads 而不是默认的 forks：CI runner 通常只有 2~4 核但
     // fork 进程开销是固定成本（~300ms/个），threads 共享进程、模块图只解析

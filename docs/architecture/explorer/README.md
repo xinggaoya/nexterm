@@ -91,6 +91,17 @@ src/modules/explorer/
 
 详见 [详细设计](./detailed-design.md)：搬运计划与守卫、冲突三策略、树过滤的三条规则、虚拟滚动窗口、各类时序参数。
 
+### 6.1 两个容易踩的视觉坑
+
+- **根目录加载失败要能重试。** 失败态以前只是一行红字，用户只能关掉工作区
+  再打开才能恢复。现在错误块带一个显式的「重试」按钮（`data-explorer-retry`），
+  授权 / 挂载这类瞬时失败重试一次就好。
+- **拖拽源视觉只在真的拖起来时生效。** `dragSources` 在 pointerdown 时就被
+  填上（为了算多选拖拽集合），而普通点击根本不会触发拖拽 —— 早期实现只看
+  `dragSources` 包含与否，于是**点一下文件它就永久变暗**（`opacity-50` +
+  `aria-grabbed=true`），看上去像被禁用了。现在 `isRowDragSource()` 还要求
+  `treeDrag.draggingId` 非空。
+
 ## 7. 配置项
 
 - `preferencesPinia.showHidden` -- 是否显示隐藏文件

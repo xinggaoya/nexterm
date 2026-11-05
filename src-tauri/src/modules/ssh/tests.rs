@@ -3,6 +3,7 @@
 //! 读写」全链路。这是 Phase 1 传输层的最终验证,不 mock 任何一层。
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -18,14 +19,33 @@ use crate::modules::pty::TerminalSession;
 const USER: &str = "dev";
 const PASSWORD: &str = "secret-password";
 
+/// 进程内自增序号。用来保证同一瞬间发起的多次调用拿到**不同**目录。
+fn next_temp_seq() -> u64 {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    SEQ.fetch_add(1, Ordering::Relaxed)
+}
+
+/// 临时目录的命名规则：label + pid + 进程内序号 + 时间戳。
+///
+/// 序号是必需的一环：只靠时间戳是不够的 —— macOS 上 `SystemTime::now()`
+/// 的时钟精度只到微秒，而 cargo test 默认并行跑用例，同一微秒内起服务的
+/// 两个用例会拿到完全相同的时间戳，于是共用同一个 known_hosts 文件，
+/// 两个不同端口的 TOFU 记录混进一份文件，"exactly one host entry" 断言
+/// 就会被打成 2 条（CI 的 macOS runner 上偶发）。序号 + pid + 时间戳
+/// 三者一起才够。
+fn temp_dir_name(label: &str, pid: u32, seq: u64, nanos: u128) -> String {
+    format!("nexterm-ssh-loopback-{label}-{pid}-{seq}-{nanos}")
+}
+
 fn temp_known_hosts(label: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "nexterm-ssh-loopback-{label}-{}-{}",
+    let dir = std::env::temp_dir().join(temp_dir_name(
+        label,
         std::process::id(),
+        next_temp_seq(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_nanos()
+            .as_nanos(),
     ));
     std::fs::create_dir_all(&dir).expect("mkdir");
     dir.join("ssh-known-hosts.json")
@@ -288,4 +308,40 @@ fn profile_json_matches_frontend_shape() {
         }
     );
     assert_eq!(parsed.created_at, 5);
+}
+
+#[test]
+fn temp_dir_name_separates_calls_made_in_the_same_instant() {
+    // 回归用例：macOS 的时钟精度只到微秒，并行用例曾在同一微秒内拿到
+    // 同一个 known_hosts 文件，互相污染 TOFU 记录。同一时刻发起的两次
+    // 调用必须落在不同目录 —— 靠的是进程内序号，不是时间戳。
+    assert_ne!(
+        temp_dir_name("run", 42, 0, 123_456),
+        temp_dir_name("run", 42, 1, 123_456),
+        "同一时刻的两次调用不能落到同一个目录"
+    );
+    // 时间戳不同、序号相同的情况同样不能撞（防御性）。
+    assert_ne!(
+        temp_dir_name("run", 42, 7, 1),
+        temp_dir_name("run", 42, 7, 2)
+    );
+    // 不同进程也不能撞。
+    assert_ne!(
+        temp_dir_name("run", 42, 7, 1),
+        temp_dir_name("run", 43, 7, 1)
+    );
+}
+
+#[test]
+fn temp_known_hosts_paths_never_collide() {
+    let first = temp_known_hosts("collision");
+    let second = temp_known_hosts("collision");
+    assert_ne!(first, second, "并发用例不能共用同一个 known_hosts 文件");
+    assert_ne!(
+        first.parent(),
+        second.parent(),
+        "两次调用必须落在不同目录里"
+    );
+    let _ = std::fs::remove_dir_all(first.parent().expect("parent"));
+    let _ = std::fs::remove_dir_all(second.parent().expect("parent"));
 }

@@ -23,6 +23,7 @@ import {
 } from "./sourceControlModel";
 import { buildGitDecorationMap, type GitDecorationMap } from "./gitDecorations";
 import { isSameRoot, normalizeError, type SourceControlTranslate } from "./sourceControlFormat";
+import { gitStatusCoordinator } from "./gitStatusCoordinator";
 
 export type PanelState = "idle" | "loading" | "no-root" | "no-repo" | "ready" | "error";
 export type BusyAction =
@@ -83,6 +84,23 @@ type SourceControlStateOptions = {
    * 不传 = 永远 active（保持向后兼容）。
    */
   isActive?: () => boolean;
+  /**
+   * 当前面板自身是否可见（工作区面板的「更改」页签是否选中）。
+   *
+   * 面板用 v-show 挂载：用户在看「文件树」页签时，source-control 组件
+   * 依然活着并持有自己的 git 状态。看不见的时候没必要为它跑 git status
+   * —— 那正是「一次刷新打出 8~13 条 git_status」的来源之一。
+   *
+   * 重新可见时由调用方补一次 `reloadCurrent()`（见 SourceControlPanel）。
+   */
+  visible?: () => boolean;
+  /**
+   * 工作区环境标识（`local` / `wsl:Ubuntu` / `ssh:<profile>`）。
+   *
+   * 参与 `git status` 的跨实例合并键：同一个仓库路径在 local 与 WSL 下
+   * 是两份完全不同的仓库，不能互相复用快照。
+   */
+  scope?: () => string;
   /**
    * `git status --untracked-files=` 的当前模式。每次 refresh 会把当前
    * 值传给后端,用户在 UI 切换会通过修改这个 ref + reloadCurrent 触发
@@ -237,10 +255,12 @@ export function useSourceControlState(options: SourceControlStateOptions) {
     const refresh = (async () => {
       const startedAt = performance.now();
       try {
-        const next = await options.wsNative.gitStatus(
-          statusRoot,
-          options.untrackedMode?.(),
-        );
+        const next = await gitStatusCoordinator.request({
+          scope: options.scope?.() ?? "local",
+          repoRoot: statusRoot,
+          untrackedMode: options.untrackedMode?.(),
+          wsNative: options.wsNative,
+        });
         recordGitStatus(performance.now() - startedAt);
         if (!requestMatchesRoot(currentId, triggerRoot)) return;
 
@@ -346,6 +366,9 @@ export function useSourceControlState(options: SourceControlStateOptions) {
     // 切回时由 WorkspaceHost 调 `reloadCurrent()` 一次,把切走期间的
     // 状态补齐,而不是持续在后台白烧 CPU。
     if (options.isActive && !options.isActive()) return;
+    // 面板自己不可见时同样不跑：用户在看别的页签，没必要为隐藏面板
+    // 付出 git 子进程的代价。切回时由 SourceControlPanel 补一次刷新。
+    if (options.visible && !options.visible()) return;
     // Git-related events get fast refresh; non-git events still refresh,
     // just with a slightly longer debounce so we don't hammer `git status`
     // during unrelated churn (e.g. `node_modules` rebuilds in a non-git

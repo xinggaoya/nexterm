@@ -1,10 +1,16 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspacesPiniaStore } from "./workspacesPinia";
+import { authorizeWorkspace } from "./workspaceNative";
+import { loadPreferences } from "@/modules/settings/store";
 
 vi.mock("@/modules/workspace/workspaceNative", () => ({
   getWslHome: vi.fn(),
   authorizeWorkspace: vi.fn(async (path: string) => path),
+}));
+
+vi.mock("@/lib/tauriRuntime", () => ({
+  hasTauriInternals: () => true,
 }));
 
 vi.mock("@/modules/settings/store", () => ({
@@ -20,6 +26,11 @@ describe("workspaces pinia store", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
+    // clearAllMocks 不重置实现：把 authorizeWorkspace 恢复成默认的「原样返回」。
+    vi.mocked(authorizeWorkspace).mockImplementation(
+      async (path: string) => path,
+    );
+    vi.mocked(loadPreferences).mockResolvedValue({} as never);
   });
 
   it("adds a workspace and sets it active", async () => {
@@ -122,6 +133,65 @@ describe("workspaces pinia store", () => {
     // 同 id 落点 → no-op
     workspaces.reorderByTarget(a.instance.id, a.instance.id, "after");
     expect(ids()).toEqual([b.instance.id, c.instance.id, a.instance.id]);
+  });
+
+  it("re-authorizes restored workspaces on boot", async () => {
+    // 后端的授权注册表是**进程内**的，重启后归零。不重新授权的话，
+    // 文件树的第一次 fs_read_dir 会打回 PathNotAuthorized，而且不再重试。
+    vi.mocked(loadPreferences).mockResolvedValue({
+      openWorkspaces: [
+        {
+          id: "local:/repo",
+          rootPath: "/repo",
+          name: "repo",
+          env: { kind: "local" },
+          openedAt: 1,
+        },
+        {
+          id: "wsl:Ubuntu:/home/user/proj",
+          rootPath: "/home/user/proj",
+          name: "proj",
+          env: { kind: "wsl", distro: "Ubuntu" },
+          openedAt: 2,
+        },
+      ],
+    } as never);
+
+    const workspaces = useWorkspacesPiniaStore();
+    await workspaces.bootstrap();
+
+    expect(workspaces.workspaces).toHaveLength(2);
+    expect(authorizeWorkspace).toHaveBeenCalledTimes(2);
+    expect(authorizeWorkspace).toHaveBeenCalledWith("/repo", {
+      kind: "local",
+    });
+    expect(authorizeWorkspace).toHaveBeenCalledWith("/home/user/proj", {
+      kind: "wsl",
+      distro: "Ubuntu",
+    });
+  });
+
+  it("keeps a restored workspace when re-authorization fails", async () => {
+    vi.mocked(loadPreferences).mockResolvedValue({
+      openWorkspaces: [
+        {
+          id: "local:/gone",
+          rootPath: "/gone",
+          name: "gone",
+          env: { kind: "local" },
+          openedAt: 1,
+        },
+      ],
+    } as never);
+    vi.mocked(authorizeWorkspace).mockRejectedValueOnce(
+      new Error("path not accessible"),
+    );
+
+    const workspaces = useWorkspacesPiniaStore();
+    await workspaces.bootstrap();
+
+    // 目录没了属于面板级错误，不该把整个启动卡住。
+    expect(workspaces.workspaces).toHaveLength(1);
   });
 
   it("finds an open workspace by selection", async () => {

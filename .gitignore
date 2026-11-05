@@ -31,3 +31,6 @@ dist-ssr
 
 # 性能录制产物（原始数据不入库）
 perf-reports/
+
+# CrabNebula DevTools capability（由 build.rs 按 feature 生成，不入库）
+src-tauri/capabilities/crabnebula-devtools.json

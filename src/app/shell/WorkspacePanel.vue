@@ -15,6 +15,13 @@ const SIDE_PANEL_MAX = 520;
 const props = defineProps<{
   tab: WorkspacePanelTab;
   width: number;
+  /**
+   * 覆盖层模式：面板浮在画布之上，不占布局宽度。
+   *
+   * 极窄窗口（< 640px）里，面板与画布争宽度会把画布挤成 0，而画布才是
+   * 终端与编辑器的主体。改为覆盖层后画布保持满宽，面板由顶栏按钮唤出。
+   */
+  overlay?: boolean;
   workspaceId: string;
   workspaceRoot: string | null;
   workspaceScope: string;
@@ -121,7 +128,12 @@ defineExpose({
 
 <template>
   <aside
-    class="relative flex h-full min-h-0 shrink-0 flex-col border-r border-border bg-sidebar"
+    class="flex h-full min-h-0 shrink-0 flex-col border-r border-border bg-sidebar"
+    :class="
+      overlay
+        ? 'absolute inset-y-0 right-0 z-20 shadow-[var(--glass-shadow)]'
+        : 'relative'
+    "
     :style="{ width: `${width}px` }"
     data-workspace-panel
     data-workspace-panel-right
@@ -191,6 +203,7 @@ defineExpose({
           :fs-event="fsEvent"
           :show-branches-modal="showBranchesModal"
           :workspace-id="workspaceId"
+          :visible="tab === 'changes'"
           @open-diff="(input) => emit('open-source-diff', input)"
           @open-history="(input) => emit('open-source-history', input)"
           @repo-selected="(repoRoot) => emit('repo-selected', repoRoot)"

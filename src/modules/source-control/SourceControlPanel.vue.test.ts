@@ -814,6 +814,44 @@ describe("SourceControlPanel.vue", () => {
     vi.useRealTimers();
   });
 
+  it("does not poll git status while the panel is hidden", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(SourceControlPanel, {
+      props: { rootPath: "/repo", fsEvent: null, visible: false },
+    });
+    await flush();
+    vi.mocked(mockWsNative.gitStatus).mockClear();
+
+    await wrapper.setProps({
+      fsEvent: {
+        rootPath: "/repo",
+        paths: ["/repo/src/new.ts"],
+        gitRelated: true,
+      },
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+    await flush();
+
+    expect(mockWsNative.gitStatus).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("refreshes once when the panel becomes visible again", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(SourceControlPanel, {
+      props: { rootPath: "/repo", fsEvent: null, visible: false },
+    });
+    await flush();
+    vi.mocked(mockWsNative.gitStatus).mockClear();
+
+    await wrapper.setProps({ visible: true });
+    await vi.advanceTimersByTimeAsync(2000);
+    await flush();
+
+    expect(mockWsNative.gitStatus).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it("refreshes status for git-related filesystem events", async () => {
     vi.useFakeTimers();
     const wrapper = mount(SourceControlPanel, {

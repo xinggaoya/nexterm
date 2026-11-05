@@ -8,7 +8,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
 
 use crate::modules::lock::{rwlock_read, rwlock_write};
-#[cfg(windows)]
+// `suppress_command_window` 在所有平台都有定义（windows 下真正隐藏窗口，其余平台
+// 是空实现），而 `#[cfg(unix)]` 分支也会调用它 —— import 不能只限 windows。
 use crate::modules::process::suppress_command_window;
 #[cfg(windows)]
 use crate::modules::workspace::validate_wsl_distro_name;

@@ -21,6 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # 两个 lockfile 各自浮动，Rust 侧的 tauri crate 可能先跑到下一个 minor，
+      # 而 npm 侧的 @tauri-apps/api 没跟上 —— Tauri CLI 会在 `tauri build`
+      # 时直接失败。CI 跑的是 `pnpm build`（不经过 CLI），所以这道检查必须
+      # 单独存在，否则漂移只能等发版才暴露（v0.3.0 就这么炸过一次）。
+      - name: Check Tauri package version sync
+        run: ./.github/scripts/check-tauri-version-sync.sh
+
       - uses: pnpm/action-setup@v6
         with:
           version: 11.1.3
@@ -115,6 +122,16 @@ jobs:
       - name: cargo check
         run: cargo check --all-targets
 
+      # CrabNebula 后端插桩是可选 feature（默认关闭）。默认路径检查不到它，
+      # 所以单独跑一次，免得 opt-in 构建悄悄坏掉。
+      - name: cargo check (crabnebula-devtools feature)
+        run: cargo check --all-targets --features crabnebula-devtools
+
+      # 浏览器调试桥同样是可选 feature（默认关闭）。它走 git 依赖，
+      # 默认路径不会编译它 —— 单独跑一次，免得 opt-in 构建悄悄坏掉。
+      - name: cargo check (web-dev-bridge feature)
+        run: cargo check --all-targets --features web-dev-bridge
+
       - name: cargo clippy
         run: cargo clippy --all-targets -- -D warnings
 
@@ -128,6 +145,17 @@ jobs:
       - uses: actions/checkout@v5
 
       - uses: dtolnay/rust-toolchain@stable
+
+      # cargo audit **不是 rustup 的内置组件** —— 不装的话下面那句
+      # `cargo audit` 会直接报 "no such command: `audit`"，job 变红，
+      # 却从来没真的审过任何东西（这个洞存在了很久）。
+      #
+      # 从 crates.io 装（而不是引入第三方 Action）：审计工具本身也在供应链里，
+      # 不该为它新增一个 GitHub Action 依赖。锁死版本 + --locked 保证可复现。
+      - name: Install cargo-audit
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo audit --version
 
       # scripts/audit.sh 以 src-tauri/audit.toml 为唯一事实来源读取豁免清单
       # （cargo-audit 0.22 的配置文件发现在不同环境下不一致，所以不依赖它）。

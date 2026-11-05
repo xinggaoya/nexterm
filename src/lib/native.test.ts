@@ -98,7 +98,6 @@ describe("onDeepLinkOpen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
-
   it("subscribes to the deep-link event name and forwards payloads to the handler", async () => {
     const unlisten = vi.fn();
     vi.mocked(listen).mockResolvedValueOnce(unlisten);
@@ -519,5 +518,25 @@ describe("native PTY wrappers", () => {
       rows: 24,
     });
     expect(invoke).toHaveBeenNthCalledWith(3, "pty_close", { id: 7 });
+  });
+});
+
+describe("crabnebula devtools wrappers", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reports whether the backend DevTools integration is compiled in", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(true);
+
+    await expect(native.crabnebulaDevtoolsAvailable()).resolves.toBe(true);
+    expect(invoke).toHaveBeenCalledWith("crabnebula_devtools_available");
+  });
+
+  it("toggles the embedded DevTools panel through the plugin command", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+
+    await expect(native.toggleCrabnebulaDevtools()).resolves.toBeUndefined();
+    expect(invoke).toHaveBeenCalledWith("plugin:devtools-app|toggle");
   });
 });

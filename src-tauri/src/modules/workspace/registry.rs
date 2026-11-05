@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use super::env::WorkspaceEnv;
 use super::resolve_launch_dir;
-use super::wsl::resolve_path;
+use super::wsl::{resolve_path, wsl_client_path};
 
 // Short TTL keeps the auth-check TOCTOU window tight while still coalescing the
 // burst of canonicalize calls within a single panel refresh (~100ms).
@@ -294,6 +294,13 @@ pub fn bootstrap_registry_with_launch_dir(registry: &WorkspaceRegistry, launch_d
 /// - `Ssh`：路径语义在远端，宿主注册表无意义，交由远端侧鉴权后原样返回
 ///
 /// 返回的是 canonical 绝对路径，调用方应当**用它**而不是原始入参。
+///
+/// **例外：`Wsl` 工作区返回的是 Linux 侧的路径。**
+/// 授权判定仍然在宿主侧的 canonical 路径上做（那才是「这个路径在授权根之下」
+/// 的真实含义），但**返回给调用方的**必须是 Linux 路径：WSL 的 fs 命令最终
+/// 由 `wsl.exe` / WSL agent 执行，那两边只认 Linux 路径。早期实现一律返回
+/// 宿主侧的 UNC 形式（`\\wsl.localhost\Ubuntu\home\...`），Linux 那边 stat
+/// 根本不认识它，于是 WSL 工作区的文件树永远报 `not a directory`。
 pub fn authorize_access_path(
     registry: &WorkspaceRegistry,
     raw: &str,
@@ -308,6 +315,9 @@ pub fn authorize_access_path(
         .map_err(|e| format!("path not accessible: {e}"))?;
     if !registry.is_authorized(&canonical) {
         return Err(format!("{PATH_NOT_AUTHORIZED_PREFIX}{raw}"));
+    }
+    if workspace.is_wsl() {
+        return Ok(PathBuf::from(wsl_client_path(workspace, raw)));
     }
     Ok(canonical)
 }
@@ -335,6 +345,12 @@ pub fn authorize_access_path_lenient(
             };
             if !registry.is_authorized(&canonical_parent) {
                 return Err(format!("{PATH_NOT_AUTHORIZED_PREFIX}{raw}"));
+            }
+            if workspace.is_wsl() {
+                // WSL：同样要交回 Linux 路径（见 authorize_access_path 的说明）。
+                let parent = wsl_client_path(workspace, &resolved.to_string_lossy());
+                let name = resolved.file_name().unwrap_or_default();
+                return Ok(PathBuf::from(parent).join(name));
             }
             Ok(canonical_parent.join(resolved.file_name().unwrap_or_default()))
         }

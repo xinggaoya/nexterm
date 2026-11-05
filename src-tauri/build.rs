@@ -1,7 +1,157 @@
 fn main() {
     configure_agent_asset();
     deploy_conpty_binaries();
-    tauri_build::build()
+    sync_devtools_capability();
+    embed_common_controls_manifest();
+    if let Err(error) = tauri_build::try_build(
+        tauri_build::Attributes::new()
+            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest()),
+    ) {
+        panic!("failed to run tauri-build: {error:#}");
+    }
+}
+
+/// 给**所有**产物（应用二进制、lib 单测 harness、集成测试）嵌入同一份
+/// Common Controls v6 的 SxS manifest。
+///
+/// ## 为什么需要
+///
+/// Rust 的 test harness 不带 manifest，而 Common Controls v6 只有在 manifest
+/// 声明后才会被加载。缺了它，链接了 `TaskDialogIndirect`（仅 v6 导出）的
+/// 测试二进制会在**进程启动时**失败：
+///
+/// ```text
+/// STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)
+/// ```
+///
+/// 加载器会绑定到 System32 里那个不含该导出的 comctl32 v5，于是
+/// `cargo test` 一个用例都跑不了（表现为 "process didn't exit successfully"）。
+///
+/// ## 为什么不用 tauri-build 自带的 manifest
+///
+/// tauri-build 默认也会给**应用二进制**嵌一份 manifest（内容与本文件一致）。
+/// 两份同时存在会撞成 `CVT1100: duplicate resource. type:MANIFEST`。
+/// 所以这里用 `Attributes::new_without_app_manifest()` 让 tauri-build 不要再
+/// 塞它那份，改由本函数统一给所有产物嵌同一份 —— 应用行为不变，
+/// 测试二进制从此也能启动。
+fn embed_common_controls_manifest() {
+    // `/MANIFEST:EMBED` + `/MANIFESTINPUT:` 是 **MSVC link.exe 专有**的链接参数。
+    // Linux / macOS 的链接器（cc / rust-lld）不认它们，会把这两个参数当成
+    // **普通输入文件路径**，于是链接直接失败：
+    //
+    // ```text
+    // rust-lld: error: cannot open /MANIFEST:EMBED: No such file or directory
+    // ```
+    //
+    // 所以这里必须先判平台再发参数 —— 下面的 `find_mt_dir()` 也判了，
+    // 但它只管 PATH，链接参数是在它之前无条件发出的。
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by Cargo");
+    let manifest_path = std::path::Path::new(&manifest_dir).join("manifest.xml");
+    if !manifest_path.is_file() {
+        return;
+    }
+    println!("cargo:rerun-if-changed=manifest.xml");
+    println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    println!(
+        "cargo:rustc-link-arg=/MANIFESTINPUT:{}",
+        manifest_path.display()
+    );
+
+    // link.exe 通过 PATH 找 mt.exe（真正把 manifest 嵌进 PE 的工具）。
+    // Windows SDK 的 bin 目录通常不在 PATH 上，于是 /MANIFEST:EMBED 静默失效 ——
+    // 产物里根本没有 manifest，测试二进制启动即 STATUS_ENTRYPOINT_NOT_FOUND。
+    if let Some(mt_dir) = find_mt_dir() {
+        let path = std::env::var("PATH").unwrap_or_default();
+        let joined = if path.is_empty() {
+            mt_dir.to_string_lossy().into_owned()
+        } else {
+            format!("{};{}", mt_dir.to_string_lossy(), path)
+        };
+        println!("cargo:rustc-env=PATH={}", joined);
+    }
+}
+
+/// 找到 Windows SDK 里的 `mt.exe` 所在目录（x64 优先）。
+fn find_mt_dir() -> Option<std::path::PathBuf> {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return None;
+    }
+    let program_files = std::env::var("ProgramFiles(x86)")
+        .or_else(|_| std::env::var("ProgramFiles"))
+        .ok()?;
+    let kits = std::path::Path::new(&program_files)
+        .join("Windows Kits")
+        .join("10")
+        .join("bin");
+    let mut candidates: Vec<std::path::PathBuf> = std::fs::read_dir(&kits)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path().join("x64"))
+        .collect();
+    // 版本号目录按字典序排，"10.0.26100.0" 之类要新的优先。
+    candidates.sort_by_key(|path| {
+        path.parent()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    });
+    candidates.reverse();
+    candidates
+        .into_iter()
+        .find(|dir| dir.join("mt.exe").is_file())
+}
+
+/// 让 capability 与「实际编译进来的插件」保持一致。
+///
+/// `tauri-plugin-devtools-app` 是可选依赖（feature `crabnebula-devtools`）。
+/// 它不在时，`devtools-app:allow-toggle` 这条 permission 不被 Tauri 识别，
+/// 构建会直接失败：
+///
+/// ```text
+/// Permission devtools-app:allow-toggle not found, expected one of ...
+/// ```
+///
+/// 而它在时又必须显式放行 `toggle`，否则 `removeUnusedCommands` 会把
+/// `plugin:devtools-app|toggle` 从 webview 的可用命令表里剔除，
+/// `Ctrl+Shift+M` 与设置页入口都会失效。
+///
+/// 所以这里按 feature 生成 `capabilities/crabnebula-devtools.json`：
+/// 开 feature 时写、关 feature 时删（生成物不进版本库）。
+fn sync_devtools_capability() {
+    println!("cargo:rerun-if-changed=capabilities/default.json");
+
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by Cargo");
+    let manifest_dir = std::path::Path::new(&manifest_dir);
+    let generated = manifest_dir
+        .join("capabilities")
+        .join("crabnebula-devtools.json");
+
+    if std::env::var_os("CARGO_FEATURE_CRABNEBULA_DEVTOOLS").is_some() {
+        let content = r#"{
+  "identifier": "crabnebula-devtools-capability",
+  "description": "Only generated when the `crabnebula-devtools` feature is on.",
+  "windows": [
+    "main",
+    "workspace-*"
+  ],
+  "permissions": [
+    "devtools-app:allow-toggle"
+  ]
+}
+"#;
+        if std::fs::read_to_string(&generated).ok().as_deref() != Some(content) {
+            let _ = std::fs::write(&generated, content);
+        }
+    } else if generated.exists() {
+        // 上一次带 feature 构建留下的产物：删掉，否则会引用不存在的 permission。
+        let _ = std::fs::remove_file(&generated);
+    }
 }
 
 /// Windows 开发构建时把侧载 ConPTY 组件复制到可执行文件目录。

@@ -211,33 +211,79 @@ pub fn wsl_path_to_host(distro: &str, path: &str) -> PathBuf {
     wsl_drvfs_to_windows(path).unwrap_or_else(|| wsl_path_to_unc(distro, path))
 }
 
+/// 把客户端给的路径还原成 **Linux 侧**的路径。
+///
+/// WSL 工作区的 fs 命令最终由 `wsl.exe` / WSL agent 执行，那两边只认 Linux
+/// 路径。宿主侧的 UNC 形式（`\\wsl.localhost\Ubuntu\home\...`）在 Linux 里
+/// 根本不存在，直接传过去必然 `not a directory`。
+///
+/// 非 Windows 平台没有 WSL，原样返回。
+pub(crate) fn wsl_client_path(workspace: &WorkspaceEnv, raw: &str) -> String {
+    #[cfg(windows)]
+    {
+        if let WorkspaceEnv::Wsl { distro } = workspace {
+            if let Ok(Some(linux)) = wsl_unc_to_linux_path(distro, raw) {
+                return linux;
+            }
+            return normalize_wsl_absolute_path(raw);
+        }
+        raw.to_string()
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = workspace;
+        raw.to_string()
+    }
+}
+
+/// 解码子进程输出（stdout / stderr）。
+///
+/// `wsl.exe` 的输出是 UTF-16LE，**且常常多一个尾字节**。早期实现在判定
+/// UTF-16LE 之前先要求「长度为偶数」，于是整个 stderr 退回 UTF-8 解码 ——
+/// 界面上看到的就是一串带 NUL 的乱码（`w s l :  本地主机 ...`）。
 #[cfg(windows)]
 pub fn decode_command_output(bytes: &[u8]) -> String {
-    if bytes.starts_with(&[0xff, 0xfe]) || looks_utf16le(bytes) {
-        let start = if bytes.starts_with(&[0xff, 0xfe]) {
-            2
-        } else {
-            0
-        };
-        let units: Vec<u16> = bytes[start..]
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|c| u16::from_le_bytes(*c))
-            .collect();
-        String::from_utf16_lossy(&units)
+    let text = if bytes.starts_with(&[0xff, 0xfe]) {
+        decode_utf16le(&bytes[2..])
+    } else if looks_utf16le(bytes) {
+        decode_utf16le(bytes)
     } else {
         String::from_utf8_lossy(bytes).into_owned()
-    }
+    };
+    strip_control_chars(&text)
+}
+
+#[cfg(windows)]
+fn decode_utf16le(bytes: &[u8]) -> String {
+    let units: Vec<u16> = bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
+        .collect();
+    String::from_utf16_lossy(&units)
+}
+
+/// 去掉控制字符。
+///
+/// 子进程 stderr 里混进来的二进制噪声会以 NUL 呈现；直接塞进错误消息，
+/// 界面上就是一串乱码方块。保留 `\n` / `\t`，多行错误仍然可读。
+#[cfg(windows)]
+fn strip_control_chars(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+        .collect()
 }
 
 #[cfg(windows)]
 fn looks_utf16le(bytes: &[u8]) -> bool {
-    if bytes.len() < 4 || !bytes.len().is_multiple_of(2) {
+    if bytes.len() < 4 {
         return false;
     }
+    // UTF-16LE 的 ASCII 区段：高字节（奇数位）几乎全是 0。
+    // 不用「长度必须是偶数」做前提：wsl.exe 的横幅常带一个多余的尾字节。
     let nul_odd = bytes.iter().skip(1).step_by(2).filter(|b| **b == 0).count();
-    nul_odd * 2 >= bytes.len() / 2
+    nul_odd * 4 >= bytes.len()
 }
 
 #[cfg(windows)]
@@ -443,6 +489,55 @@ mod tests {
             normalize_wsl_workspace_request_path("Ubuntu", r"\\wsl$\Ubuntu\home\vinicios").unwrap(),
             "/home/vinicios"
         );
+    }
+
+    #[test]
+    fn wsl_client_path_returns_linux_paths_for_wsl_workspaces() {
+        let wsl = WorkspaceEnv::Wsl {
+            distro: "Ubuntu".to_string(),
+        };
+        // 已经是 Linux 路径 → 原样（规范化后）返回。
+        assert_eq!(
+            wsl_client_path(&wsl, "/home/vinicios/repo"),
+            "/home/vinicios/repo"
+        );
+        // 宿主侧的 UNC 形式 → 还原成 Linux 路径。fs 命令最终由 wsl.exe /
+        // WSL agent 执行，那两边只认 Linux 路径。
+        assert_eq!(
+            wsl_client_path(&wsl, r"\\wsl.localhost\Ubuntu\home\vinicios\repo"),
+            "/home/vinicios/repo"
+        );
+        assert_eq!(
+            wsl_client_path(&wsl, "//wsl.localhost/Ubuntu/home/vinicios/repo"),
+            "/home/vinicios/repo"
+        );
+        // 非 WSL 工作区：原样返回。
+        assert_eq!(
+            wsl_client_path(&WorkspaceEnv::Local, r"C:\repo"),
+            r"C:\repo"
+        );
+    }
+
+    #[test]
+    fn decode_command_output_reads_utf16le_without_even_length_requirement() {
+        // wsl.exe 的输出是 UTF-16LE，且常带一个多余的尾字节。旧实现要求
+        // 「长度为偶数」才按 UTF-16LE 解码，于是整段退回 UTF-8，错误消息
+        // 里就是一串带 NUL 的乱码。
+        let mut bytes: Vec<u8> = "wsl: localhost"
+            .encode_utf16()
+            .flat_map(|u| u.to_le_bytes())
+            .collect();
+        bytes.push(0x41); // 奇数长度
+        let decoded = decode_command_output(&bytes);
+        assert!(decoded.starts_with("wsl: localhost"), "got: {decoded}");
+        assert!(!decoded.contains('\0'), "got: {decoded:?}");
+    }
+
+    #[test]
+    fn decode_command_output_strips_control_characters() {
+        // 二进制噪声里的 NUL 不该出现在面向用户的错误消息里。
+        let decoded = decode_command_output(b"boom\0\0\x01 failed");
+        assert_eq!(decoded, "boom failed");
     }
 
     #[test]

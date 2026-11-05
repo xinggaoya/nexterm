@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { handleOscData, sanitizeHyperlinkUri } from "./osc";
+import {
+  handleOscData,
+  normalizeTerminalTitle,
+  sanitizeHyperlinkUri,
+} from "./osc";
 
 describe("osc handling", () => {
   it("keeps cwd and title parsing working", () => {
@@ -42,6 +46,27 @@ describe("osc handling", () => {
     expect(r2.cleaned).toBe("");
     expect(r2.events).toEqual([{ type: "title", value: "partial title" }]);
     expect(r2.pendingBuffer).toBe("");
+  });
+
+  it("normalizes executable-path titles into a readable shell name", () => {
+    // PowerShell 把 OSC 标题设成自己的完整路径；直接当标签标题会被截成
+    // `C:\Program Files\P...`，完全认不出是哪个 shell。
+    expect(
+      normalizeTerminalTitle("C:\\Program Files\\PowerShell\\7\\pwsh.exe"),
+    ).toBe("pwsh");
+    expect(normalizeTerminalTitle("/usr/bin/zsh")).toBe("zsh");
+    expect(normalizeTerminalTitle("C:\\Windows\\System32\\cmd.exe")).toBe(
+      "cmd",
+    );
+    // 不是可执行文件路径的标题原样保留。
+    expect(normalizeTerminalTitle("vim README.md")).toBe("vim README.md");
+    expect(normalizeTerminalTitle("~/proj — zsh")).toBe("~/proj — zsh");
+    expect(normalizeTerminalTitle("")).toBe("");
+  });
+
+  it("applies the title normalization to OSC 0/2 events", () => {
+    const r = handleOscData("\x1b]2;C:\\Program Files\\PowerShell\\7\\pwsh.exe\x07", "");
+    expect(r.events).toEqual([{ type: "title", value: "pwsh" }]);
   });
 
   it("sanitizeHyperlinkUri accepts http(s)/file/ssh/vscode and rejects others", () => {

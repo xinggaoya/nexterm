@@ -46,7 +46,54 @@ pnpm i
 - panic 由 `panic_report::install_panic_hook` 统一结构化输出：`[nexterm] panic in thread <name>: <message> at <file:line:col>`。
 - `log::LevelFilter::Info` 是默认级别（可在 `lib.rs` 调整）。
 
-### 3.3 常见问题
+### 3.3 后端调试面板（CrabNebula DevTools）
+
+**默认不启用** —— 插桩插件由 Cargo feature `crabnebula-devtools` 控制，默认为关。
+需要排查后端 IPC / 性能问题时显式开启：
+
+```bash
+pnpm tauri dev -- --features crabnebula-devtools
+```
+
+开启后终端会打印连接链接：
+
+```
+   Tauri Devtools v2.2.3
+   → https://devtools.crabnebula.dev/dash/127.0.0.1/3033
+```
+
+- 浏览器打开该链接，或按 `Ctrl+Shift+M`（macOS `Cmd+Alt+M`）/ 设置 → 通用 → 开发者 →「打开后端调试面板」打开嵌入式窗口。
+- 面板可查看 Tauri 命令调用（入参 / 返回值 / 耗时）、事件、后端 `log::` 日志，用于排查 IPC 与性能问题。
+- release 构建同样不启用插桩（feature 默认关闭）。
+- ⚠️ 该 feature 会连带启用 `tauri/tracing`，进而把 `tauri-runtime-wry` 的 `eval_script` 变成
+  阻塞式 UI 线程往返，与 IPC handler 互锁成**永久死锁**（窗口"未响应"）。**不要在正式构建里开**，
+  原因与证据见 [06-crabnebula-devtools.md](./06-crabnebula-devtools.md) §3.1。
+- 完整说明（含与 `tauri-plugin-log` 的全局 logger 冲突处理、常见问题）见 [06-crabnebula-devtools.md](./06-crabnebula-devtools.md)。
+
+### 3.4 浏览器调试桥
+
+**默认不启用** —— 调试桥由 Cargo feature `web-dev-bridge` 控制，默认为关。
+
+它让**普通浏览器**直连**运行中**的 Nexterm，拿到的是真实后端数据（真实文件树、Git 状态、
+偏好、事件流），用于调前端 UI 与跑浏览器自动化测试：
+
+```bash
+# 启动带调试桥的桌面应用
+pnpm tauri dev -- --features web-dev-bridge
+```
+
+然后用**普通浏览器**打开 <http://localhost:3180>：
+
+- 页面会自动接管 `window.__TAURI_INTERNALS__`，之后的后端调用都走本机调试桥；
+- ⚠️ 必须用 `http://localhost:3180`（不要用 `127.0.0.1:3180`）—— 桥的 CORS 白名单只认前者；
+- 桥没起来时页面会显示「调试桥未就绪」提示页（带启动命令），不是白屏；
+- ⚠️ 桥只监听 `127.0.0.1`，但 **CORS 只约束浏览器** —— 本机任意进程仍可调用完整 IPC 面
+  （能写文件、起进程、走 SSH）。这是 localhost 调试桥的固有属性，靠「默认关闭 + 仅 debug」收敛；
+- PTY / LSP 的流式输出过不了桥（终端在浏览器里没有输出），仍需在桌面端验证。
+
+完整说明（含安全模型、已知边界、**用它做自动化测试**、故障排查）见 [07-web-dev-bridge.md](./07-web-dev-bridge.md)。
+
+### 3.5 常见问题
 
 - **PTY 没输出 / 卡住**：检查 ConPTY 序列化保护（`pty_open` 互斥），不要并发启动两个 PTY。
 - **WSL 文件变化漏掉**：watcher 由 `nexterm-agent watch` 提供，确认其 stdout JSON 行格式没改。

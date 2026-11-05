@@ -188,6 +188,11 @@ graph LR
 - `dpiWatcher` 用 matchMedia 监听 resolution 变化,触发 `setDevicePixelRatio` + 重建字符纹理
 - `theme.ts` 监听 document.fonts `loadingdone` 事件,字体异步加载完成后强制重画
 - OSC 8 hyperlink 通过 `sanitizeHyperlinkUri` 过滤危险协议(只允许 http(s)/file/ssh/vscode)
+- OSC 0/2 标题经 `normalizeTerminalTitle` 收拾：PowerShell 会把窗口标题设成
+  自己可执行文件的**完整路径**（`C:\Program Files\PowerShell\7\pwsh.exe`），
+  直接当标签标题会被截成 `C:\Program Files\P...`。只处理「看上去就是可执行
+  文件路径」的标题（带分隔符，末段无扩展名或带可执行扩展名）；其它标题
+  （`vim README.md`、`~/proj — zsh`、`src/main.ts`）原样保留。
 - `clipboardAddon` 通过 `IClipboardProvider` 桥接 Tauri `clipboard-manager`
 
 ## 7. 配置项

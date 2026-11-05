@@ -1,6 +1,8 @@
 pub mod modules;
 mod panic_report;
 
+#[cfg(feature = "crabnebula-devtools")]
+use modules::devtools;
 use modules::{fs, git, lsp, perf, pty, shell, ssh, workspace};
 use std::sync::Mutex;
 // `Manager` 只被 devtools 命令用到；release 默认不编译那两条命令。
@@ -79,6 +81,20 @@ fn should_restore_window_state() -> bool {
 /// mirrors the URL `nexterm://open?workspacePath=...&workspaceEnv=...&wslDistro=...`
 /// query parameters parsed by `src/lib/launchDir.ts`.
 pub const DEEP_LINK_OPEN_EVENT: &str = "nexterm://deep-link-open";
+
+/// 调试桥允许的浏览器来源（写进 CORS 的 `Access-Control-Allow-Origin`）。
+///
+/// 必须与 `tauri.conf.json` 的 `build.devUrl` 同源：浏览器里的页面由 vite
+/// dev server 提供，只有同源请求才会带上这个 Origin。收紧到具体 origin 是
+/// 为了防止「随便打开一个网站就能驱动本机 nexterm」—— nexterm 的 IPC 能
+/// 写文件、起进程、走 SSH。
+///
+/// 注意：CORS 只约束浏览器。非浏览器客户端（curl 等）不受它约束，本机任意
+/// 进程仍可调用完整 IPC 面。这是 localhost 调试桥的固有属性，只能靠
+/// 「桥是 opt-in 且生命周期短」来收敛。
+/// 详见 `docs/architecture/07-web-dev-bridge.md`。
+#[cfg_attr(not(feature = "web-dev-bridge"), allow(dead_code))]
+const DEV_BRIDGE_ALLOWED_ORIGIN: &str = "http://localhost:3180";
 
 /// Subset of a deep-link URL the frontend cares about. Serialized into the
 /// `nexterm://deep-link-open` event so the launching workspace can be opened
@@ -189,20 +205,80 @@ fn is_devtools_open(app: tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Whether the CrabNebula DevTools integration is compiled in.
+///
+/// The plugins are only compiled when the `crabnebula-devtools` feature is on
+/// (off by default — it enables `tauri/tracing`, which turns
+/// `tauri-runtime-wry`'s `eval_script` into a blocking UI-thread round trip and
+/// can deadlock the app against the WebView2 `WebResourceRequested` handler).
+/// The frontend uses this to decide whether to offer the DevTools entry points.
+/// Note this is about the backend instrumentation panel, not the WebView
+/// inspector probed by `devtools_available`.
+#[tauri::command]
+fn crabnebula_devtools_available() -> bool {
+    cfg!(feature = "crabnebula-devtools")
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     panic_report::install_panic_hook();
     workspace::init_launch_cwd();
     let launch_dir = parse_launch_dir();
 
+    let context = tauri::generate_context!();
+
+    // CrabNebula DevTools 必须在 Builder 之前初始化：插件会安装全局 tracing
+    // subscriber 与全局 `log` logger，越早安装能捕获到的启动期事件越多。
+    #[cfg(feature = "crabnebula-devtools")]
+    let devtools_plugins = devtools::init(&context.config().identifier);
+
+    let builder = tauri::Builder::default();
+
+    // devtools 必须先于其它插件注册：它要在 setup 阶段安装全局 subscriber，
+    // 嵌入式插件在窗口就绪时会读取 devtools 插件管理的状态。
+    #[cfg(feature = "crabnebula-devtools")]
+    let builder = builder
+        .plugin(devtools_plugins.devtools)
+        .plugin(devtools_plugins.devtools_app);
+
     // restoreWindowState 偏好关掉时不注册 window-state 插件：既不恢复也
     // 不保存窗口几何（插件注册即生效，没有运行时开关）。
-    let builder = tauri::Builder::default();
     let builder = if should_restore_window_state() {
         builder.plugin(tauri_plugin_window_state::Builder::default().build())
     } else {
         builder
     };
+
+    // 浏览器调试桥（feature `web-dev-bridge`，默认关闭）。
+    //
+    // 它在本机开一个只监听 127.0.0.1 的 HTTP 服务，把浏览器发来的
+    // `POST /invoke` 合成为一条真实的 Tauri IPC 消息投喂给**本进程**，
+    // 于是普通浏览器也能驱动运行中的 nexterm（拿到真实数据）。
+    //
+    // `enabled(cfg!(debug_assertions))` 是第二道保险：即便有人用
+    // `--release --features web-dev-bridge` 构建，release 产物也不会监听端口。
+    #[cfg(feature = "web-dev-bridge")]
+    let builder = builder.plugin(
+        tauri_plugin_web_dev_bridge::Builder::new()
+            .allow_origin(DEV_BRIDGE_ALLOWED_ORIGIN)
+            .enabled(cfg!(debug_assertions))
+            .build(),
+    );
+
+    let log_plugin =
+        tauri_plugin_log::Builder::new().level(tauri_plugin_log::log::LevelFilter::Info);
+
+    // 编译了 CrabNebula 插桩时，全局 `log` logger 归 devtools 所有
+    // （否则两边抢同一个槽位，后注册的会失败导致应用起不来），输出改由
+    // devtools 的日志桥接负责；没编译时保持 tauri-plugin-log 的默认行为
+    // （stdout + 日志文件）。
+    //
+    // 注意这里的判据是 feature 而不是 `debug_assertions`：devtools 集成
+    // 默认关闭，若仍按 debug 判定，debug 构建就会**一个 logger 都没有**，
+    // 日志全部丢失。
+    #[cfg(feature = "crabnebula-devtools")]
+    let log_plugin = log_plugin.skip_logger();
+
     if let Err(error) = builder
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -210,11 +286,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(tauri_plugin_log::log::LevelFilter::Info)
-                .build(),
-        )
+        .plugin(log_plugin.build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
@@ -241,6 +313,21 @@ pub fn run() {
                     if let Some(request) = parse_deep_link_query(&url) {
                         emit_deep_link_open(&app_handle, request);
                     }
+                }
+            }
+            // 启动浏览器调试桥。必须放在 setup 里而不是插件的 initialize 钩子：
+            // 插件需要 `App<Wry>` 才能取到 invoke_key，且此时 webview 已创建完毕。
+            //
+            // 起桥失败不该拖垮应用（它只是开发期调试工具），记日志继续。
+            #[cfg(feature = "web-dev-bridge")]
+            {
+                if let Err(error) = tauri_plugin_web_dev_bridge::start(app) {
+                    log::error!("启动浏览器调试桥失败: {error}");
+                } else {
+                    log::info!(
+                        "浏览器调试桥已启动：普通浏览器可直连本机 nexterm（仅 127.0.0.1，\
+                         允许来源 {DEV_BRIDGE_ALLOWED_ORIGIN}）"
+                    );
                 }
             }
             Ok(())
@@ -291,6 +378,7 @@ pub fn run() {
             #[cfg(any(debug_assertions, feature = "devtools"))]
             is_devtools_open,
             devtools_available,
+            crabnebula_devtools_available,
             git::commands::git_resolve_repo,
             git::commands::git_panel_snapshot,
             git::commands::git_status,
@@ -349,7 +437,7 @@ pub fn run() {
             perf::perf_backend_snapshot,
             get_launch_dir,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
     {
         log::error!("error while running tauri application: {error}");
         eprintln!("[nexterm] error while running tauri application: {error}");
@@ -412,6 +500,23 @@ mod tests {
         assert_eq!(
             identifier, "app.xinggaoya.nexterm",
             "should_restore_window_state 里的 BUNDLE_IDENTIFIER 与 tauri.conf.json 不同步"
+        );
+    }
+
+    #[test]
+    fn dev_bridge_allowed_origin_matches_tauri_dev_url() {
+        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let raw = std::fs::read_to_string(manifest_dir.join("tauri.conf.json"))
+            .expect("tauri.conf.json readable");
+        let config: serde_json::Value = serde_json::from_str(&raw).expect("valid json");
+        let dev_url = config
+            .pointer("/build/devUrl")
+            .and_then(serde_json::Value::as_str)
+            .expect("build.devUrl");
+        assert_eq!(
+            dev_url, DEV_BRIDGE_ALLOWED_ORIGIN,
+            "DEV_BRIDGE_ALLOWED_ORIGIN 必须与 tauri.conf.json 的 build.devUrl 同源，\
+             否则浏览器里的页面会被 CORS 拦掉"
         );
     }
 }
