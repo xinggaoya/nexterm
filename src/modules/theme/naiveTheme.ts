@@ -76,8 +76,11 @@ export function buildNaiveThemeOverrides(
         "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
     },
     Button: {
-      borderRadiusTiny: "var(--radius-xs)",
-      borderRadiusSmall: "var(--radius-sm)",
+      // 按钮自带四档刻度（tiny/small/medium/large），不跟 common 走 ——
+      // 不逐档对齐到基准的话，小按钮会比输入框更锐利，"全局基准"就不成立。
+      // 四档全部从基准派生：tiny 收一点（密集元素档），其余落在基准上。
+      borderRadiusTiny: "var(--radius-sm)",
+      borderRadiusSmall: "var(--radius-md)",
       borderRadiusMedium: "var(--radius-md)",
       borderRadiusLarge: "var(--radius-md)",
       textColorPrimary: t["primary-foreground"],

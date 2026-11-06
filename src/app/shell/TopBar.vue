@@ -162,10 +162,8 @@ function handleSplitSelect(key: string | number) {
       </span>
     </div>
 
-    <!-- 中:会话条(由父组件注入) -->
-    <div class="flex h-full min-w-0 flex-1 items-center">
-      <slot name="center" />
-    </div>
+    <!-- 中:弹性占位。会话条已拆成独立一行，顶栏中间留白让两侧内容分居两端。 -->
+    <div class="flex h-full min-w-0 flex-1 items-center" />
 
     <!-- 右:动作区 -->
     <div class="flex shrink-0 items-center gap-0.5">

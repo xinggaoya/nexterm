@@ -78,8 +78,11 @@ describe("naive theme bridge", () => {
 
     // 控件档组件维持紧凑。
     expect(overrides.Tag?.borderRadius).toBe("var(--radius-xs)");
-    expect(overrides.Button?.borderRadiusTiny).toBe("var(--radius-xs)");
-    expect(overrides.Button?.borderRadiusSmall).toBe("var(--radius-sm)");
+
+    // 按钮四档全部从基准派生，且 small 及以上都落在基准上 ——
+    // 否则「全局基准」在按钮上不成立：小按钮会比输入框更锐利。
+    expect(overrides.Button?.borderRadiusTiny).toBe("var(--radius-sm)");
+    expect(overrides.Button?.borderRadiusSmall).toBe("var(--radius-md)");
     expect(overrides.Button?.borderRadiusMedium).toBe("var(--radius-md)");
     expect(overrides.Button?.borderRadiusLarge).toBe("var(--radius-md)");
 

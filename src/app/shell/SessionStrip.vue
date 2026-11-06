@@ -239,7 +239,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    class="flex h-full min-w-0 flex-1 items-center"
+    class="flex h-9 min-w-0 shrink-0 items-center border-b border-border bg-title-bar"
     data-session-strip
   >
     <!-- 极简模式:单终端面包屑 -->

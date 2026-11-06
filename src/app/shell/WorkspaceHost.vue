@@ -837,28 +837,30 @@ defineExpose({
         @reorder-workspace="(sourceId, targetId, placement) => workspaces.reorderByTarget(sourceId, targetId, placement)"
         @toggle:left-panel="togglePanelOpen('left')"
         @toggle:right-panel="togglePanelOpen('right')"
-      >
-        <template #center>
-          <SessionStrip
-            :tabs="tabs.workspaceTabs(workspace.id)"
-            :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
-            :width-mode="prefs.tabWidthMode"
-            :fixed-width="prefs.tabFixedWidth"
-            :env-kind="workspace.env.kind"
-            :shell-id="prefs.terminalShellId"
-            @select-tab="(id) => tabs.setActiveId(id, workspace.id)"
-            @close-tab="(id) => requestCloseTab(id)"
-            @close-others="(id) => requestCloseOthers(id)"
-            @close-to-right="(id) => requestCloseToRight(id)"
-            @close-all="requestCloseAll()"
-            @duplicate-terminal="duplicateTerminalTab"
-            @rename-tab="renameTabTitle"
-            @request-rename="requestTabRename"
-            @pin-tab="(id) => tabs.pinTab(id, workspace.id)"
-            @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement, workspace.id)"
-          />
-        </template>
-      </TopBar>
+      />
+
+      <!--
+        会话条独立成一行（不再挤在顶栏中间）。
+        标签再多也不会把顶栏的身份区与右侧动作按钮推出屏幕。
+      -->
+      <SessionStrip
+        :tabs="tabs.workspaceTabs(workspace.id)"
+        :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
+        :width-mode="prefs.tabWidthMode"
+        :fixed-width="prefs.tabFixedWidth"
+        :env-kind="workspace.env.kind"
+        :shell-id="prefs.terminalShellId"
+        @select-tab="(id) => tabs.setActiveId(id, workspace.id)"
+        @close-tab="(id) => requestCloseTab(id)"
+        @close-others="(id) => requestCloseOthers(id)"
+        @close-to-right="(id) => requestCloseToRight(id)"
+        @close-all="requestCloseAll()"
+        @duplicate-terminal="duplicateTerminalTab"
+        @rename-tab="renameTabTitle"
+        @request-rename="requestTabRename"
+        @pin-tab="(id) => tabs.pinTab(id, workspace.id)"
+        @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement, workspace.id)"
+      />
 
       <div class="relative flex min-h-0 flex-1">
         <!-- 左侧停靠面板（文件树 / 更改） -->

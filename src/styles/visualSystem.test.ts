@@ -245,6 +245,22 @@ describe("visual system contract", () => {
     expect(host).not.toContain("prefs.panelLayout =");
   });
 
+  it("docks the session strip as its own row under the top bar", () => {
+    // 标签条不再是顶栏的 center slot —— 标签再多也不会把顶栏的身份区
+    // 与右侧动作按钮挤出屏幕。
+    const host = readSource("../app/shell/WorkspaceHost.vue");
+    const topBar = readSource("../app/shell/TopBar.vue");
+
+    expect(host).not.toContain("<template #center>");
+    expect(topBar).not.toContain('name="center"');
+    // TopBar 自闭合（无 </TopBar>）→ 标签条不可能是它的子节点。
+    expect(host).not.toContain("</TopBar>");
+    const topBarIdx = host.indexOf("<TopBar");
+    const stripIdx = host.indexOf("<SessionStrip");
+    expect(topBarIdx).toBeGreaterThan(-1);
+    expect(stripIdx).toBeGreaterThan(topBarIdx);
+  });
+
   it("docks the workspace panel on the right of the canvas without its own header", () => {
     const host = readSource("../app/shell/WorkspaceHost.vue");
     const panel = readSource("../app/shell/WorkspacePanel.vue");
