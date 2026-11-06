@@ -45,7 +45,6 @@ describe("naive theme bridge", () => {
   it("maps app tokens into Naive UI common theme overrides", () => {
     const overrides = buildNaiveThemeOverrides(mockTokens);
 
-    expect(overrides.common?.borderRadius).toBe("4px");
     expect(overrides.common?.bodyColor).toBe("rgb(10, 10, 10)");
     expect(overrides.common?.textColorBase).toBe("rgb(250, 250, 250)");
     expect(overrides.common?.cardColor).toBe("rgb(20, 20, 20)");
@@ -56,6 +55,40 @@ describe("naive theme bridge", () => {
     expect(overrides.common?.infoColor).toBe("rgb(167, 139, 250)");
     expect(overrides.common?.errorColor).toBe("rgb(248, 113, 113)");
     expect(overrides.common?.borderColor).toBe("rgb(64, 64, 64)");
+  });
+
+  it("derives Naive radii from the shared radius scale", () => {
+    const overrides = buildNaiveThemeOverrides(mockTokens);
+
+    // common 保持控件档：密集控件（Switch / Checkbox / Slider / Tabs）
+    // 继承 common.borderRadius，不能跟着容器一起变大。
+    expect(overrides.common?.borderRadius).toBe("var(--radius-sm)");
+    expect(overrides.common?.borderRadiusSmall).toBe("var(--radius-xs)");
+
+    // 容器档组件显式上调。
+    expect(overrides.Card?.borderRadius).toBe("var(--radius-lg)");
+    expect(overrides.Dialog?.borderRadius).toBe("var(--radius-2xl)");
+    expect(overrides.Dropdown?.borderRadius).toBe("var(--radius-xl)");
+    expect(overrides.Popover?.borderRadius).toBe("var(--radius-xl)");
+    expect(overrides.Menu?.borderRadius).toBe("var(--radius-lg)");
+    expect(overrides.Notification?.borderRadius).toBe("var(--radius-lg)");
+    expect(overrides.Message?.borderRadius).toBe("var(--radius-lg)");
+
+    // 控件档组件维持紧凑。
+    expect(overrides.Input?.borderRadius).toBe("var(--radius-sm)");
+    expect(overrides.Tag?.borderRadius).toBe("var(--radius-xs)");
+    expect(overrides.Button?.borderRadiusTiny).toBe("var(--radius-xs)");
+    expect(overrides.Button?.borderRadiusSmall).toBe("var(--radius-sm)");
+    expect(overrides.Button?.borderRadiusMedium).toBe("var(--radius-md)");
+    expect(overrides.Button?.borderRadiusLarge).toBe("var(--radius-md)");
+
+    // 圆角槽位里不允许再出现字面量 px —— 三条路径必须共用同一份 token。
+    const radiusSlots =
+      JSON.stringify(overrides).match(/"borderRadius[A-Za-z]*":"[^"]*"/g) ?? [];
+    expect(radiusSlots.length).toBeGreaterThan(0);
+    for (const slot of radiusSlots) {
+      expect(slot).not.toMatch(/:\s*"\d+px"/);
+    }
   });
 
   it("uses compact notification sizing", () => {

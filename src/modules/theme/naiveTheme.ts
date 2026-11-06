@@ -25,6 +25,16 @@ export function readCurrentNaiveThemeConfig(): {
   };
 }
 
+/**
+ * 圆角槽位直接写 var(--radius-*) 而不是 px 字面量。
+ *
+ * naive-ui 对 borderRadius 只做字符串透传（`'--n-border-radius': value`），
+ * 全库没有任何数值运算，因此 var() 可以安全穿过。这样 Tailwind 工具类 /
+ * 手写 CSS / Naive 三条路径共用 globals.css 里的同一份 token。
+ *
+ * 档位与 globals.css 一致：控件档（xs/sm/md）给密集小控件，
+ * 容器档（lg 起）给卡片、浮层、弹窗。
+ */
 export function buildNaiveThemeOverrides(
   tokens: AppTokens,
 ): GlobalThemeOverrides {
@@ -54,31 +64,43 @@ export function buildNaiveThemeOverrides(
       inputColor: t.background,
       closeIconColor: t["muted-foreground"],
       closeIconColorHover: t.foreground,
-      borderRadius: "4px",
-      borderRadiusSmall: "3px",
+      // common 是所有组件的兜底，必须留在控件档 —— Switch / Checkbox /
+      // Slider / Tabs 都继承它，跟不上容器一起放大就毁了信息密度。
+      borderRadius: "var(--radius-sm)",
+      borderRadiusSmall: "var(--radius-xs)",
       fontFamily:
         "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif",
       fontFamilyMono:
         "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
     },
     Button: {
-      borderRadiusTiny: "3px",
-      borderRadiusSmall: "4px",
-      borderRadiusMedium: "6px",
-      borderRadiusLarge: "6px",
+      borderRadiusTiny: "var(--radius-xs)",
+      borderRadiusSmall: "var(--radius-sm)",
+      borderRadiusMedium: "var(--radius-md)",
+      borderRadiusLarge: "var(--radius-md)",
       textColorPrimary: t["primary-foreground"],
     },
     Card: {
-      borderRadius: "6px",
+      borderRadius: "var(--radius-lg)",
     },
     Dialog: {
-      borderRadius: "8px",
+      borderRadius: "var(--radius-2xl)",
+    },
+    // 下拉 / 气泡浮层：NSelect、NDropdown、NPopconfirm 都走这两张 peer 主题。
+    Dropdown: {
+      borderRadius: "var(--radius-xl)",
+    },
+    Popover: {
+      borderRadius: "var(--radius-xl)",
+    },
+    Menu: {
+      borderRadius: "var(--radius-lg)",
     },
     Input: {
-      borderRadius: "4px",
+      borderRadius: "var(--radius-sm)",
     },
     Tag: {
-      borderRadius: "3px",
+      borderRadius: "var(--radius-xs)",
     },
     Tabs: {
       tabHeightMedium: "36px",
@@ -93,6 +115,10 @@ export function buildNaiveThemeOverrides(
       descriptionFontSize: "12px",
       closeSize: "18px",
       closeIconSize: "14px",
+      borderRadius: "var(--radius-lg)",
+    },
+    Message: {
+      borderRadius: "var(--radius-lg)",
     },
   };
 }
