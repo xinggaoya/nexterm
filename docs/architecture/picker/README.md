@@ -23,9 +23,9 @@ src/modules/picker/
 
 ### 3.1 内部依赖
 
-- `@/lib/native` -- `createNativeForEnv(workspace).fsReadDir / fsCreateDir`（环境
+- `@/lib/native` -- `createNativeForEnv(workspace).browseDir / browseCreateDir`（环境
   路由的核心：传 WSL env 时后端把 Linux 路径映射到 `\\wsl.localhost` 读取），
-  `native.getWslHome / getLaunchDir`（初始目录探测）
+  `native.getWslHome / localHomeDir / listLocalRoots`（初始目录与快捷位置探测）
 - `@/modules/workspace/workspaceEnvSnapshot` -- `WorkspaceEnv` 类型（仅类型）
 - `@/modules/workspace/workspacePath` -- `normalizeWorkspacePath`（仅纯函数）
 - `@/modules/icons` -- 文件 / 文件夹图标（Catppuccin）
@@ -55,8 +55,26 @@ type FilePickerOptions = {
 
 ### 4.2 Tauri 命令
 
-不注册新命令；复用 fs 模块的 `fs_read_dir`、`fs_create_dir`（经 `native.ts`），
-以及 workspace 模块的 `local_list_roots`（本机盘符/根枚举，本机模式快捷位置）。
+| 命令 | 用途 |
+|------|------|
+| `fs_browse_dir` | 枚举目录子项（浏览通道，**不走**授权 chokepoint，见下） |
+| `fs_browse_create_dir` | 在浏览通道里新建子目录（picker 的「新建文件夹」） |
+| `local_list_roots` | 本机盘符 / POSIX 根枚举（本机模式快捷位置） |
+| `local_home_dir` | 本机用户主目录（`C:/Users/<name>`，主目录快捷位置） |
+
+**为什么不走 `fs_read_dir` / `fs_create_dir`**：那两个命令的入口是
+`workspace::authorize_access_path` chokepoint —— 路径必须落在**已授权工作区根**
+之下。而 picker 的职责恰恰是**在授权之前**浏览文件系统、挑一个新根出来：
+两者语义直接冲突，于是 picker 只能浏览「已经打开过的工作区」，
+「从 WSL 工作区里挑一个本机目录」永远挑不出来（报 `PathNotAuthorized: C:/`）。
+
+浏览通道（`fs::browse`）把这件事显式化：**浏览 ≠ 访问**。
+
+- 只返回目录**元数据**（name / kind / size / mtime），不返回文件内容；
+- **不写入**授权注册表，也不放宽任何读写命令的判定；
+- 凭据目录硬拒（宿主侧 `~/.ssh` / `~/.aws` / `~/.gnupg` / `~/.config/gcloud`；
+  WSL 侧 `/home/<user>` / `/root` 下的同名目录）；
+- SSH 不支持浏览（走连接对话框）。
 
 ### 4.3 事件
 
@@ -71,8 +89,9 @@ type FilePickerOptions = {
 ```
 openFilePicker({ mode, workspace, ... })
   → detached mount FilePickerDialog（NConfigProvider 注入当前主题）
-  → onMounted: getWslHome / getLaunchDir 解析初始目录，失败逐级退回（initial → home → "/"）
-  → navigate(path): createNativeForEnv(workspace).fsReadDir(path, showHidden)
+  → onMounted: getWslHome / localHomeDir 解析主目录，失败逐级退回
+    （initial → 主目录 → "/"）
+  → navigate(path): createNativeForEnv(workspace).browseDir(path, showHidden)
       · requestSeq 丢弃过期响应
       · 失败保留当前目录并显示错误
       · 大目录：排序一次后按 PICKER_LOAD_CHUNK 分块注入响应式数组，
@@ -85,8 +104,14 @@ openFilePicker({ mode, workspace, ... })
   `C:/...` 形态（`normalizeWorkspacePath` 规范化）。
 - `parentPickerPath` / `splitPickerPath` 按 env 区分 POSIX 根 `/` 与 Windows
   盘符根 `C:/`。
+- 本机模式的初始目录由 `workspaceRootPinia.localInitialPath()` 给出：当前
+  工作区是本机就用它的根，否则用**最近的本地工作区**；都没有才退到主目录 /
+  盘符根（判定依据是工作区的 env，不是路径形态 —— POSIX 平台的本机路径本来
+  就是 `/home/...`）。
 - 大目录三件套：`NVirtualList` 虚拟渲染 + 分块懒注入 + 过滤输入 120ms 防抖；
   工具栏实时显示过滤后条目数（`picker.itemCount`）。
+- 列表与文件树共用同一份排除规则（`fs::exclude::PRUNE_DIRS`）：`node_modules` /
+  `target` / `dist` / `.git` 等构建产物目录不展示（避免几万条目拖垮列表）。
 
 ## 7. 配置项
 

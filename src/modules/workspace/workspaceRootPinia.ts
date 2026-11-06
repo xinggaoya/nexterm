@@ -132,10 +132,24 @@ export const useWorkspaceRootPiniaStore = defineStore("workspace-root", () => {
     hydrated.value = true;
   }
 
-  /** 本机选择器的初始路径：仅取 Windows 形态的当前工作区根。 */
-  function pickerInitialPath(path: string | null): string | undefined {
-    if (!path || path.startsWith("/")) return undefined;
-    return path;
+  /**
+   * 本机选择器的初始路径。
+   *
+   * 优先当前工作区（本身是本机时）；否则取**最近的本地工作区**。活动工作区
+   * 是 WSL 时若退化成盘符根，面板会停在 `C:/` 这种没有信息量的视图上 ——
+   * 而旧实现在那里还会直接报错（盘符根不在任何已授权根之下）。
+   *
+   * 判定依据是**工作区的 env** 而不是路径形态：Windows 下以 "/" 开头的是
+   * 发行版内的 Linux 路径，但 POSIX 平台的本机路径本身就是 `/home/...`，
+   * 按形态猜会把 macOS / Linux 的本机路径误判掉。
+   */
+  function localInitialPath(): string | undefined {
+    const active = useWorkspacesPiniaStore().activeWorkspace;
+    if (active?.env.kind === "local") return active.rootPath;
+    const recent = recentWorkspaces.value.find(
+      (item) => item.env.kind === "local",
+    );
+    return recent?.path;
   }
 
   async function pickWorkspaceDirectory(
@@ -162,7 +176,7 @@ export const useWorkspaceRootPiniaStore = defineStore("workspace-root", () => {
     const selected = await openFilePicker({
       mode: "directory",
       workspace: env,
-      initialPath: pickerInitialPath(rootPath.value),
+      initialPath: localInitialPath(),
     });
     if (!selected) return null;
     const path = normalizeWorkspacePath(selected);
@@ -271,7 +285,6 @@ export const useWorkspaceRootPiniaStore = defineStore("workspace-root", () => {
     recentWorkspaces,
     error,
     bootstrap,
-    pickerInitialPath,
     pickWorkspaceDirectory,
     pickWorkspaceDirectoryForEnv,
     chooseWorkspace,

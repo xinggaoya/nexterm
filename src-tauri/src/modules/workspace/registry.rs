@@ -44,7 +44,12 @@ struct AuthorizedRoots {
 }
 
 /// 该路径（或其任一祖先前缀）是否是凭据目录。
-fn is_sensitive_dir(path: &Path) -> bool {
+///
+/// 宿主侧规则：以「当前用户的家目录」为基准，家目录下的
+/// `FORBIDDEN_HOME_SUBPATHS`（`.ssh` / `.aws` / `.gnupg` / `.config/gcloud`）
+/// 一律视为凭据目录。WSL 发行版内的同名目录走 Linux 路径，不适用这条
+/// 家目录基准 —— 那一侧由 `fs::browse` 的 POSIX 规则单独覆盖。
+pub(crate) fn is_sensitive_dir(path: &Path) -> bool {
     let Some(home) = dirs::home_dir() else {
         return false;
     };
@@ -279,6 +284,20 @@ pub fn bootstrap_registry_with_launch_dir(registry: &WorkspaceRegistry, launch_d
             log::warn!("bootstrap: launch dir not authorized: {error}");
         }
     }
+}
+
+/// 凭据目录的统一拒绝出口。
+///
+/// `authorize`（授权根）与 `fs::browse`（目录浏览）共用这一条判定 ——
+/// 凭据目录的规则只允许有一份实现，否则两边的口径迟早漂移。
+pub fn reject_credential_dir(path: &Path) -> Result<(), String> {
+    if is_sensitive_dir(path) {
+        return Err(format!(
+            "refusing to access credential directory: {}",
+            path.display()
+        ));
+    }
+    Ok(())
 }
 
 /// 路径类命令（fs_* / git_* / pty cwd …）的**统一入口校验**。

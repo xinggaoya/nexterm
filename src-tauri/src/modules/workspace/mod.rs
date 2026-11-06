@@ -10,7 +10,8 @@ pub use env::{reject_ssh_unsupported, WorkspaceEnv};
 pub(crate) use registry::normalize_host_path;
 pub use registry::{
     authorize_access_path, authorize_access_path_lenient, authorize_spawn_cwd,
-    bootstrap_registry_with_launch_dir, WorkspaceRegistry, PATH_NOT_AUTHORIZED_PREFIX,
+    bootstrap_registry_with_launch_dir, reject_credential_dir, WorkspaceRegistry,
+    PATH_NOT_AUTHORIZED_PREFIX,
 };
 #[cfg(windows)]
 pub use wsl::{decode_command_output, wsl_path_to_host, wsl_path_to_unc};
@@ -136,6 +137,15 @@ pub async fn wsl_list_distros() -> Result<Vec<WslDistro>, String> {
 #[tauri::command]
 pub fn local_list_roots() -> Vec<String> {
     roots::list_roots()
+}
+
+/// 本机用户主目录，应用内文件选择器的「主目录」快捷入口。
+///
+/// 只返回**路径字符串**：它不会进入授权注册表，也不会让 `fs_read_file`
+/// 之类命令能读家目录下的内容（那些命令仍受 `authorize_access_path` 约束）。
+#[tauri::command]
+pub fn local_home_dir() -> Option<String> {
+    roots::home_dir()
 }
 
 #[tauri::command]

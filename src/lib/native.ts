@@ -730,6 +730,20 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
       invoke<void>("fs_write_file", { path, content, workspace }),
     fsReadDir: (path: string, showHidden: boolean) =>
       invoke<FsDirEntry[]>("fs_read_dir", { path, showHidden, workspace }),
+    /**
+     * 浏览目录（picker 专用）。
+     *
+     * 与 `fsReadDir` 的区别：**浏览 ≠ 访问**。`fsReadDir` 走
+     * `authorize_access_path` chokepoint —— 路径必须落在已授权工作区根之下；
+     * 而目录选择器要在**授权之前**浏览文件系统挑一个新根出来，两者语义
+     * 直接冲突。后者的浏览通道只返回条目元数据（不返回文件内容）、不进
+     * 授权注册表、凭据目录硬拒。
+     */
+    browseDir: (path: string, showHidden: boolean) =>
+      invoke<FsDirEntry[]>("fs_browse_dir", { path, showHidden, workspace }),
+    /** 在浏览通道里新建子目录（picker 的「新建文件夹」）。 */
+    browseCreateDir: (path: string) =>
+      invoke<void>("fs_browse_create_dir", { path, workspace }),
     fsCreateDir: (path: string) =>
       invoke<void>("fs_create_dir", { path, workspace }),
     fsCreateFile: (path: string) =>
@@ -885,6 +899,12 @@ export const native = {
   wslListDistros: () => invoke<WslDistro[]>("wsl_list_distros"),
   /** 本机文件系统根（Windows 盘符 / POSIX 根），picker 的快捷入口。 */
   listLocalRoots: () => invoke<string[]>("local_list_roots"),
+  /**
+   * 本机用户主目录（`C:/Users/<name>`），picker 的「主目录」快捷入口。
+   *
+   * 只是路径字符串 —— 不代表授权，`fs_read_file` 之类仍受 chokepoint 约束。
+   */
+  localHomeDir: () => invoke<string | null>("local_home_dir"),
   shellListProfiles: () => invoke<ShellProfileInfo[]>("shell_list_profiles"),
   ptyWrite: (id: number, data: string) =>
     invoke<void>("pty_write", { id, data }),

@@ -247,6 +247,7 @@ const zhCN = {
     confirmFile: "选择",
     editPath: "编辑路径",
     emptyDir: "空文件夹",
+    errorNotAuthorized: "该目录不在当前授权范围内",
     envLocal: "本机",
     envWsl: "WSL · {distro}",
     filterPlaceholder: "过滤当前目录",

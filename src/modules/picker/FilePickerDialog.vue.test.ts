@@ -99,15 +99,22 @@ if (typeof window !== "undefined") {
 }
 
 const nativeMock = vi.hoisted(() => ({
+  // 浏览通道：picker 走的是 browseDir / browseCreateDir，而不是受授权
+  // chokepoint 约束的 fsReadDir / fsCreateDir（选工作区根发生在授权之前）。
+  browseDir: vi.fn(),
+  browseCreateDir: vi.fn(),
   fsReadDir: vi.fn(),
   fsCreateDir: vi.fn(),
   getWslHome: vi.fn(),
   getLaunchDir: vi.fn(),
   listLocalRoots: vi.fn(),
+  localHomeDir: vi.fn(),
 }));
 
 vi.mock("@/lib/native", () => ({
   createNativeForEnv: () => ({
+    browseDir: nativeMock.browseDir,
+    browseCreateDir: nativeMock.browseCreateDir,
     fsReadDir: nativeMock.fsReadDir,
     fsCreateDir: nativeMock.fsCreateDir,
   }),
@@ -115,6 +122,7 @@ vi.mock("@/lib/native", () => ({
     getWslHome: nativeMock.getWslHome,
     getLaunchDir: nativeMock.getLaunchDir,
     listLocalRoots: nativeMock.listLocalRoots,
+    localHomeDir: nativeMock.localHomeDir,
   },
 }));
 
@@ -136,7 +144,7 @@ function fileEntry(name: string, size = 0): FsDirEntry {
 /** /home/dev 的模拟目录：隐藏项仅在 showHidden=true 时返回。 */
 function mockListings(): void {
   nativeMock.getWslHome.mockResolvedValue("/home/dev");
-  nativeMock.fsReadDir.mockImplementation(
+  nativeMock.browseDir.mockImplementation(
     async (path: string, showHidden: boolean) => {
       if (path === "/home/dev") {
         const entries = [dirEntry("proj"), fileEntry("notes.txt", 42)];
@@ -217,7 +225,10 @@ describe("FilePickerDialog", () => {
     await mountPicker();
 
     expect(nativeMock.getWslHome).toHaveBeenCalledWith("Ubuntu");
-    expect(nativeMock.fsReadDir).toHaveBeenCalledWith("/home/dev", false);
+    expect(nativeMock.browseDir).toHaveBeenCalledWith("/home/dev", false);
+    // 导航必须走浏览通道：fsReadDir 受授权 chokepoint 约束，会把 picker
+    // 锁死在「已打开过的工作区」里。
+    expect(nativeMock.fsReadDir).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain("WSL · Ubuntu");
     const names = optionRows().map((row) => rowName(row));
     expect(names).toEqual(["proj", "notes.txt"]);
@@ -242,7 +253,7 @@ describe("FilePickerDialog", () => {
     rowByName("proj")?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
     await flushPromises();
 
-    expect(nativeMock.fsReadDir).toHaveBeenCalledWith("/home/dev/proj", false);
+    expect(nativeMock.browseDir).toHaveBeenCalledWith("/home/dev/proj", false);
     expect(
       Array.from(document.body.querySelectorAll("button")).some((button) =>
         button.textContent?.trim() === "proj",
@@ -274,7 +285,7 @@ describe("FilePickerDialog", () => {
     const huge = Array.from({ length: 5000 }, (_, index) =>
       fileEntry(`entry-${String(index).padStart(4, "0")}`),
     );
-    nativeMock.fsReadDir.mockImplementation(async (path: string) => {
+    nativeMock.browseDir.mockImplementation(async (path: string) => {
       if (path === "/huge") return huge;
       if (path === "/") return [dirEntry("huge")];
       throw new Error(`ENOENT: ${path}`);
@@ -299,7 +310,7 @@ describe("FilePickerDialog", () => {
     toggle!.click();
     await flushPromises();
 
-    expect(nativeMock.fsReadDir).toHaveBeenCalledWith("/home/dev", true);
+    expect(nativeMock.browseDir).toHaveBeenCalledWith("/home/dev", true);
     expect(optionRows().map((row) => rowName(row))).toEqual([
       ".cache",
       "proj",
@@ -312,7 +323,7 @@ describe("FilePickerDialog", () => {
     nativeMock.getWslHome.mockRejectedValue(new Error("no distro"));
     await mountPicker({ initialPath: "/gone" });
     // 初始目录与 HOME 都失败——应退回到 "/" 并成功列出根目录。
-    expect(nativeMock.fsReadDir).toHaveBeenCalledWith("/", false);
+    expect(nativeMock.browseDir).toHaveBeenCalledWith("/", false);
     expect(document.body.textContent).toContain("Filesystem");
     expect(document.body.textContent).not.toContain("Cannot open this folder");
   });
@@ -348,15 +359,16 @@ describe("FilePickerDialog", () => {
   it("falls back to the first drive root and shows drive places in local mode", async () => {
     nativeMock.listLocalRoots.mockResolvedValue(["C:/", "D:/"]);
     nativeMock.getLaunchDir.mockResolvedValue(null);
-    nativeMock.fsReadDir.mockImplementation(async (path: string) => {
+    nativeMock.localHomeDir.mockResolvedValue(null);
+    nativeMock.browseDir.mockImplementation(async (path: string) => {
       if (path === "C:/" || path === "D:/") return [dirEntry("docs")];
       throw new Error(`ENOENT: ${path}`);
     });
     await mountPicker({ workspace: { kind: "local" } });
 
-    // 没有启动目录时回退到第一个盘符根；盘符以快捷位置展示。
+    // 主目录与启动目录都拿不到时回退到第一个盘符根；盘符以快捷位置展示。
     expect(nativeMock.listLocalRoots).toHaveBeenCalled();
-    expect(nativeMock.fsReadDir).toHaveBeenCalledWith("C:/", false);
+    expect(nativeMock.browseDir).toHaveBeenCalledWith("C:/", false);
     expect(document.body.textContent).toContain("C:");
     expect(document.body.textContent).toContain("D:");
 
@@ -366,6 +378,45 @@ describe("FilePickerDialog", () => {
     expect(drivePlace).toBeDefined();
     drivePlace?.click();
     await flushPromises();
-    expect(nativeMock.fsReadDir).toHaveBeenCalledWith("D:/", false);
+    expect(nativeMock.browseDir).toHaveBeenCalledWith("D:/", false);
+  });
+
+  it("opens the user home directory in local mode", async () => {
+    nativeMock.listLocalRoots.mockResolvedValue(["C:/"]);
+    nativeMock.localHomeDir.mockResolvedValue("C:/Users/dev");
+    nativeMock.browseDir.mockImplementation(async (path: string) => {
+      if (path === "C:/Users/dev") return [dirEntry("projects")];
+      throw new Error(`ENOENT: ${path}`);
+    });
+    await mountPicker({ workspace: { kind: "local" } });
+
+    expect(nativeMock.localHomeDir).toHaveBeenCalled();
+    expect(nativeMock.browseDir).toHaveBeenCalledWith("C:/Users/dev", false);
+  });
+
+  it("creates a folder through the browse channel", async () => {
+    mockListings();
+    nativeMock.browseCreateDir.mockResolvedValue(undefined);
+    await mountPicker();
+
+    const newFolderButton = document.body.querySelector(
+      'button[title="New folder"]',
+    ) as HTMLButtonElement | null;
+    expect(newFolderButton).not.toBeNull();
+    newFolderButton!.click();
+    await flushPromises();
+
+    const input = document.body.querySelector(
+      'input[placeholder="Folder name"]',
+    ) as HTMLInputElement | null;
+    expect(input).not.toBeNull();
+    input!.value = "demo";
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+    await flushPromises();
+    buttonByText("Create")?.click();
+    await flushPromises();
+
+    expect(nativeMock.browseCreateDir).toHaveBeenCalledWith("/home/dev/demo");
+    expect(nativeMock.fsCreateDir).not.toHaveBeenCalled();
   });
 });

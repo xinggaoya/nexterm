@@ -1,3 +1,4 @@
+pub mod browse;
 pub mod exclude;
 pub mod file;
 pub mod grep;

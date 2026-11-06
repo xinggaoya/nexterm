@@ -240,6 +240,9 @@ mod tests {
     fn write_report_writes_into_session_dir_only() {
         let dir = std::env::temp_dir().join("nexterm-perf-write-test");
         let _ = std::fs::remove_dir_all(&dir);
+        // 会话目录由 `PerfSession::detect()` 在真实路径上创建；测试里没有
+        // 那个会话，所以自己建一个 —— 否则写文件会因为父目录不存在而失败。
+        std::fs::create_dir_all(&dir).expect("create session dir");
         let session = PerfSession {
             session_id: "test".to_string(),
             output_dir: Some(dir.clone()),

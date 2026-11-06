@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
@@ -89,8 +90,17 @@ fn fs_read_dir_blocking(
     }
 
     let root = resolve_path(&path, &workspace);
-    let read = std::fs::read_dir(&root).map_err(|e| {
-        log::debug!("fs_read_dir({}) failed: {e}", root.display());
+    read_host_dir(&root, show_hidden)
+}
+
+/// 宿主文件系统的目录列表：读取 + 条目映射 + 过滤排序。
+///
+/// 抽成独立函数是为了让 `fs::browse` 的浏览通道复用同一份实现 ——
+/// 浏览通道与 `fs_read_dir` 的差别只在「是否要求路径落在已授权根之下」，
+/// 列表本身不该有两份实现。
+pub(crate) fn read_host_dir(root: &Path, show_hidden: bool) -> Result<Vec<DirEntry>, String> {
+    let read = std::fs::read_dir(root).map_err(|e| {
+        log::debug!("read_dir({}) failed: {e}", root.display());
         e.to_string()
     })?;
 
@@ -137,7 +147,7 @@ fn fs_read_dir_blocking(
     Ok(filter_and_sort_entries(entries, show_hidden))
 }
 
-fn entry_kind_from_wsl(kind: WslEntryKind) -> EntryKind {
+pub(crate) fn entry_kind_from_wsl(kind: WslEntryKind) -> EntryKind {
     match kind {
         WslEntryKind::File => EntryKind::File,
         WslEntryKind::Dir => EntryKind::Dir,
@@ -150,7 +160,10 @@ fn entry_kind_from_wsl(kind: WslEntryKind) -> EntryKind {
 /// 除了隐藏项，还剪掉 `node_modules` / `target` / `dist` 这类构建产物目录。
 /// 原实现只按 `starts_with('.')` 过滤，于是工作区根目录里会完整列出
 /// `node_modules` —— 用户要在几万个条目里找自己的代码。
-fn filter_and_sort_entries(mut entries: Vec<DirEntry>, show_hidden: bool) -> Vec<DirEntry> {
+pub(crate) fn filter_and_sort_entries(
+    mut entries: Vec<DirEntry>,
+    show_hidden: bool,
+) -> Vec<DirEntry> {
     entries.retain(|entry| {
         if !show_hidden && entry.name.starts_with('.') {
             return false;

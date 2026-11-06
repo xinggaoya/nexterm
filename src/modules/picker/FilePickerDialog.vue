@@ -78,7 +78,10 @@ const creatingFolder = ref(false);
 const newFolderName = ref("");
 const createError = ref<string | null>(null);
 const nameInput = ref(props.options.fileName ?? "");
+/** 主目录快捷位置：WSL 是发行版 HOME，本机是用户主目录。 */
 const homePath = ref<string | null>(null);
+/** 本机模式的启动目录（CLI 传入的目录），一次性读取，可能为 null。 */
+const launchPath = ref<string | null>(null);
 /** 本机模式的文件系统根（Windows 盘符），作为快捷位置。 */
 const driveRoots = ref<string[]>([]);
 // 丢弃过期响应：快速连续导航时，慢的旧请求不能覆盖新目录。
@@ -158,6 +161,21 @@ const confirmHint = computed(() =>
   confirmTarget.value.ok ? confirmTarget.value.path : t("picker.noSelection"),
 );
 
+/**
+ * 错误文案：把后端内部的错误前缀翻译成人话。
+ *
+ * `PathNotAuthorized: <path>` 是授权 chokepoint 的内部约定，直接甩到
+ * 界面上对用户毫无意义（“PathNotAuthorized: C:/”）。真正的越权场景已经
+ * 由浏览通道解决；这里只做兜底的可读性处理。
+ */
+function pickerErrorText(error: unknown): string {
+  const message = normalizeErrorMessage(error);
+  if (message.startsWith("PathNotAuthorized")) {
+    return t("picker.errorNotAuthorized");
+  }
+  return message;
+}
+
 async function navigate(rawPath: string): Promise<void> {
   const path = normalizeWorkspacePath(rawPath);
   if (!path) return;
@@ -166,7 +184,10 @@ async function navigate(rawPath: string): Promise<void> {
   loadError.value = null;
   createError.value = null;
   try {
-    const list = await wsNative.fsReadDir(path, showHidden.value);
+    // 浏览通道（browseDir）而不是 fsReadDir：选工作区根发生在**授权之前**，
+    // fsReadDir 的授权判定（路径必须在已授权根之下）会把 picker 锁死在
+    // 「已经打开过的工作区」里。见 fs::browse 模块的说明。
+    const list = await wsNative.browseDir(path, showHidden.value);
     if (seq !== requestSeq) return;
     currentPath.value = path;
     selectedName.value = null;
@@ -190,7 +211,7 @@ async function navigate(rawPath: string): Promise<void> {
   } catch (error) {
     if (seq !== requestSeq) return;
     entries.value = [];
-    loadError.value = normalizeErrorMessage(error);
+    loadError.value = pickerErrorText(error);
   } finally {
     if (seq === requestSeq) {
       loading.value = false;
@@ -268,7 +289,7 @@ async function createFolder(): Promise<void> {
   if (!name || !currentPath.value) return;
   createError.value = null;
   try {
-    await wsNative.fsCreateDir(joinPickerPath(currentPath.value, name));
+    await wsNative.browseCreateDir(joinPickerPath(currentPath.value, name));
     const parent = currentPath.value;
     creatingFolder.value = false;
     newFolderName.value = "";
@@ -322,15 +343,22 @@ onMounted(async () => {
       driveRoots.value = [];
     }
     try {
-      const launch = await native.getLaunchDir();
-      if (launch) homePath.value = launch;
+      // 主目录是真正的用户主目录（`C:/Users/<name>`），不是 CLI 传入的
+      // 启动目录 —— 后者是一次性读取的，拿不准。
+      homePath.value = await native.localHomeDir();
     } catch {
       homePath.value = null;
+    }
+    try {
+      launchPath.value = await native.getLaunchDir();
+    } catch {
+      launchPath.value = null;
     }
   }
   const initial =
     props.options.initialPath ??
     homePath.value ??
+    launchPath.value ??
     (env.kind === "wsl" ? "/" : driveRoots.value[0] ?? "");
   if (initial) {
     await navigate(initial);
@@ -338,6 +366,7 @@ onMounted(async () => {
     if (loadError.value) {
       const fallback =
         homePath.value ??
+        launchPath.value ??
         (env.kind === "wsl" ? "/" : driveRoots.value[0] ?? "");
       if (fallback && normalizeWorkspacePath(fallback) !== normalizeWorkspacePath(initial)) {
         await navigate(fallback);

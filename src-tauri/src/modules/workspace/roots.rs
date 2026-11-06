@@ -29,6 +29,15 @@ pub fn list_roots() -> Vec<String> {
     }
 }
 
+/// 本机用户主目录（`C:/Users/<name>`），picker 的「主目录」快捷入口与
+/// 初始目录兜底。
+///
+/// 只提供**路径字符串**，不代表授权：安全模型里「启动时不把整个 `$HOME`
+/// 放进授权根」的约束不受影响 —— 浏览通道另有凭据目录护栏。
+pub fn home_dir() -> Option<String> {
+    dirs::home_dir().map(crate::modules::fs::to_canon)
+}
+
 /// 把 `GetLogicalDriveStringsW` 的 `C:\0D:\0\0` 形态解析为 `["C:/", "D:/"]`。
 #[cfg(windows)]
 fn parse_drive_strings(raw: &str) -> Vec<String> {

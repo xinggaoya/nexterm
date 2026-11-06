@@ -145,7 +145,12 @@ pub async fn fs_create_dir(
     Ok(())
 }
 
-fn create_dir_blocking(
+/// 创建目录的实际动作（不含授权判定）。
+///
+/// 授权判定在命令入口（`fs_create_dir` 走 `authorize_access_path_lenient`）；
+/// picker 的浏览通道（`fs::browse`）有自己的判定，所以这里把动作本身
+/// 拆出来复用。
+pub(crate) fn create_dir_blocking(
     path: &str,
     workspace: WorkspaceEnv,
 ) -> Result<Option<FsNotifyIntent>, String> {

@@ -247,6 +247,7 @@ const enUS = {
     confirmFile: "Select",
     editPath: "Edit path",
     emptyDir: "This folder is empty",
+    errorNotAuthorized: "This folder is outside the authorized scope",
     envLocal: "Local",
     envWsl: "WSL · {distro}",
     filterPlaceholder: "Filter current folder",

@@ -8,6 +8,7 @@
 |--------|------|------|
 | Webview XSS | 攻击者在 terminal / markdown / preview 中注入恶意代码 | Rust 是唯一 IPC 出口（`nativeBoundary` + `tauriSurfaceBoundary` 两条测试守住整个 `@tauri-apps` 能力面）；markdown 渲染器的 `data:` 图片走**整体正则白名单**而非 `startsWith`（`markdownRenderer.test.ts` 有针对属性注入的回归用例） |
 | 路径遍历 | 攻击者通过 `fs_read_file` 越权访问 | 每个碰本地文件系统的命令入口都调 `workspace::authorize_access_path`：canonicalize（消掉 `..` 与符号链接）→ 必须落在已授权根之下。**唯一出口**，不是每个模块各写一份 |
+| 目录浏览越界 | 攻击者用「列目录」枚举授权根之外的目录树 | 浏览通道（`fs_browse_dir` / `fs_browse_create_dir`）是**经审阅的例外**：只返回条目元数据（不返回内容）、不写授权注册表、凭据目录硬拒。见 §3.5 |
 | 进程逃逸 | shell 子进程脱离 Tauri 控制继续运行 | Windows `Job Object` 强制随父进程终止 |
 | PTY 资源耗尽 | 大量终端会话占用内存 | 标签页关闭时显式 `pty_close`；transcript 上限；pending buffer 上限 |
 | 深链自授权 | 恶意 `nexterm://open?workspacePath=~/.ssh` 把凭据目录变成工作区 | URL 在 Rust 端解析为 `DeepLinkOpenRequest`；前端**必须先弹确认**（`lib/confirmDeepLink.ts`）才调 `workspace_authorize`。`WorkspaceRegistry::authorize` 另外硬性拒绝 `~/.ssh`、`~/.aws`、`~/.gnupg` 等目录 |
@@ -75,6 +76,44 @@ registry.canonicalize_cached(path) -> io::Result<PathBuf>
 它。路径还原由 `wsl::wsl_client_path()` 完成。
 
 SSH 工作区同理：宿主注册表不参与，路径原样交给远端鉴权。
+
+### 3.5 浏览能力 ≠ 访问能力（经审阅的例外）
+
+目录选择器（picker 模块）的职责是**在授权之前**浏览文件系统、挑一个新根出来。
+它与 `authorize_access_path` chokepoint 的语义天然冲突：chokepoint 要求路径
+落在**已授权工作区根**之下，而「还没被授权的目录」正是 picker 要找的东西。
+不处理这件事的实际后果是：picker 只能浏览已经打开过的工作区 ——
+「从 WSL 工作区里挑一个本机目录」永远挑不出来（报 `PathNotAuthorized: C:/`），
+WSL picker 也无法从当前工作区走到父目录。
+
+因此存在一条**专用**的浏览通道（`src-tauri/src/modules/fs/browse.rs`）：
+
+| 命令 | 能力 | 边界 |
+|------|------|------|
+| `fs_browse_dir` | 枚举目录子项 | 只返回 name / kind / size / mtime，**不返回文件内容** |
+| `fs_browse_create_dir` | 在浏览目录里新建**空**子目录 | 名字必须是纯文件名；父目录不得是凭据目录 |
+
+它的护栏：
+
+- **不进授权注册表**：浏览过的目录不会被授权（`MAX_AUTHORIZED_ROOTS` 不受影响），
+  读文件 / 写文件仍然只在已授权根之内；
+- **凭据目录硬拒**：宿主侧沿用 `registry::is_sensitive_dir`（`~/.ssh`、`~/.aws`、
+  `~/.gnupg`、`~/.config/gcloud`）；WSL 侧按同样的语义覆盖 `/home/<user>` 与
+  `/root` 下的同名目录；
+- **SSH 不支持浏览**（走连接对话框）。
+
+**放宽的边界**：webview 因此可以枚举**任意目录的条目名**（拿不到内容）。
+这是一次明确的、经审阅的放宽 —— 它是「选一个工作区根」这件事的必要前置步骤，
+且不放宽任何读写通道。若将来要进一步收紧，方向是给浏览通道加会话级的
+作用域（例如只允许浏览用户显式点过的目录树），而不是退回「picker 只能在
+已授权根内浏览」。
+
+### 3.6 本机主目录不是授权根
+
+`local_home_dir` 命令只返回**路径字符串**（给 picker 当「主目录」快捷位置），
+它**不进入**授权注册表，也不会让 `fs_read_file` 之类命令能读家目录下的内容 ——
+那些命令仍然受 `authorize_access_path` 约束。这与 §3.3 里「启动时不把整个
+`$HOME` 放进授权根」是同一条约束。
 
 ## 4. Windows Job Object
 
@@ -178,6 +217,7 @@ pub struct DeepLinkOpenRequest { path, env, wsl_distro? }
 | 约束 | 位置 | 守护 |
 |------|------|------|
 | 路径访问统一 chokepoint | `workspace::authorize_access_path` | `registry.rs::auth_tests` |
+| 浏览能力 ≠ 访问能力 | `fs::browse`（`fs_browse_dir` / `fs_browse_create_dir`） | `browse.rs::tests`（凭据目录、路径形态）+ §3.5 |
 | 凭据目录永不被授权 | `registry.rs::is_sensitive_dir` | `authorize_refuses_sensitive_home_subdirectories` |
 | 启动时**不**授权整个 `$HOME` | `bootstrap_registry_with_launch_dir` + `resolve_launch_dir`（后者不再兜底到家目录） | `bootstrap_stays_empty_when_there_is_no_real_launch_dir` |
 | 授权根数量有上限 | `MAX_AUTHORIZED_ROOTS = 64` | `authorized_roots_are_capped` |
