@@ -255,20 +255,21 @@ describe("visual system contract", () => {
     expect(host).not.toContain("prefs.panelLayout =");
   });
 
-  it("renders the session strip as rounded pills with a solid active state", () => {
+  it("renders the session strip as rounded-rectangle tabs with a calm active state", () => {
     const strip = readSource("../app/shell/SessionStrip.vue");
 
-    // 圆润胶囊：标签是完全圆角的药丸，不再是直角/顶部切角。
+    // 圆角要克制：胶囊（rounded-full）太圆，顶端切角太锐。
+    // 用全局基准档的 rounded-md（8px），与按钮/输入框一致。
     const shape = strip.match(/TAB_SHAPE_CLASS\s*=\s*\n?\s*"([^"]+)"/)?.[1] ?? "";
-    expect(shape).toContain("rounded-full");
+    expect(shape).toContain("rounded-md");
+    expect(shape).not.toContain("rounded-full");
     expect(shape).not.toContain("rounded-t-sm");
 
-    // 激活项 = 主色实心填充（主色本身就是指示，不需要额外的顶部条）。
+    // 激活态用中性底色 + 顶部主色条 —— 实心主色块太刺眼。
     const active = strip.match(/TAB_ACTIVE_CLASS\s*=\s*\n?\s*"([^"]+)"/)?.[1] ?? "";
-    expect(active).toContain("bg-primary");
-    expect(active).toContain("text-primary-foreground");
-    expect(strip).not.toContain("data-tab-active-indicator");
-    expect(strip).not.toContain("bg-shell-bg");
+    expect(active).toContain("bg-accent");
+    expect(active).not.toContain("bg-primary");
+    expect(strip).toContain("data-tab-active-indicator");
   });
 
   it("moves the new-tab and split actions into the tab strip, keeping the title bar draggable", () => {
@@ -294,8 +295,9 @@ describe("visual system contract", () => {
     expect(strip).toContain("TAB_SHAPE_CLASS");
     expect(strip).not.toContain("bg-accent/50");
 
-    // 激活项 = 主色实心填充，主色本身就是指示，不需要额外的顶部条。
-    expect(strip).not.toContain("data-tab-active-indicator");
+    // 两处激活指示都要在（chip 也是激活态）。
+    const indicators = strip.match(/data-tab-active-indicator/g) ?? [];
+    expect(indicators.length).toBe(2);
   });
 
   it("keeps tab close reachable without hover and exposes an overflow menu", () => {

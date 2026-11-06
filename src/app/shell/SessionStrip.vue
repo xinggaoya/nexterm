@@ -109,14 +109,15 @@ function tabWidthClass(): string {
  * 之前两者各写各的：chip 是一枚填充底色的圆角胶囊，标签是另一套形状与配色。
  * 单终端 ↔ 多标签切换时整行会跳变。
  *
- * 形状是**完全圆角的药丸**（rounded-full）—— 项目走的是“整体圆润”的路线，
- * 标签也不例外。激活项用主色实心填充，主色本身就是指示，不需要额外的顶部条。
+ * 圆角取全局基准档的 rounded-md（8px）：胶囊太圆（看起来像一颗药丸），
+ * 顶部切角太锐。用主色实心填充更糟 —— 高饱和的色块在深色主题下刺眼。
+ * 激活用**中性底色 + 顶部一条主色条**，主色只做点缀。
  */
 const TAB_SHAPE_CLASS =
-  "group relative flex h-7 min-w-[6rem] items-center justify-between gap-1.5 rounded-full px-3 text-left text-[12px] transition-[background-color,color,opacity] duration-[var(--dur-fast)]";
-const TAB_ACTIVE_CLASS = "bg-primary text-primary-foreground";
+  "group relative flex h-7 min-w-[6rem] items-center justify-between gap-1.5 rounded-md px-3 text-left text-[12px] transition-[background-color,color,opacity] duration-[var(--dur-fast)]";
+const TAB_ACTIVE_CLASS = "bg-accent text-foreground";
 const TAB_IDLE_CLASS =
-  "bg-surface-hover text-muted-foreground hover:bg-accent hover:text-foreground";
+  "text-muted-foreground hover:bg-surface-hover hover:text-foreground";
 
 // ── 标签行动作区：新建终端 / 分屏 ───────────────────────────────────────
 // 这两个都是「针对当前标签」的操作，放在顶栏右端既占地方又离上下文远，
@@ -323,12 +324,18 @@ onBeforeUnmount(() => {
       @click="emit('selectTab', minimalTab.id)"
       @contextmenu.prevent="handleTabContextMenu($event, minimalTab)"
     >
-      <NIcon :component="TerminalOutline" :size="13" class="shrink-0 text-primary-foreground" />
+      <!-- 激活指示：顶部一条主色条（主色只做点缀，不填色块） -->
+      <span
+        data-tab-active-indicator
+        aria-hidden="true"
+        class="absolute inset-x-1 top-0 h-0.5 rounded-full bg-primary"
+      />
+      <NIcon :component="TerminalOutline" :size="13" class="shrink-0 text-primary" />
       <span class="flex min-w-0 flex-1 items-center gap-1.5">
         <span class="min-w-0 truncate">{{ tabLabel(minimalTab) }}</span>
         <span
           v-if="minimalTab.terminalTitle"
-          class="min-w-0 truncate text-[11px] text-primary-foreground/70"
+          class="min-w-0 truncate text-[11px] text-muted-foreground"
         >{{ minimalTab.cwd }}</span>
       </span>
     </button>
@@ -371,6 +378,13 @@ onBeforeUnmount(() => {
               @contextmenu.prevent="handleTabContextMenu($event, tab)"
               @pointerdown="handleTabPointerDown($event, tab)"
             >
+              <!-- 激活指示：顶部一条主色条（主色只做点缀，不填色块） -->
+              <span
+                v-if="tab.id === activeId"
+                data-tab-active-indicator
+                aria-hidden="true"
+                class="absolute inset-x-1 top-0 h-0.5 rounded-full bg-primary"
+              />
               <span class="flex min-w-0 flex-1 items-center gap-1.5">
                 <img
                   v-if="tab.kind === 'editor' || tab.kind === 'markdown'"
@@ -391,7 +405,7 @@ onBeforeUnmount(() => {
                   :component="TerminalOutline"
                   :size="12"
                   class="shrink-0"
-                  :class="tab.id === activeId ? 'text-primary-foreground' : ''"
+                  :class="tab.id === activeId ? 'text-primary' : ''"
                 />
                 <span
                   class="min-w-0 truncate"
@@ -404,8 +418,7 @@ onBeforeUnmount(() => {
                 </span>
                 <span
                   v-if="tab.kind === 'editor' && tab.dirty"
-                  class="size-1.5 shrink-0 rounded-full"
-                  :class="tab.id === activeId ? 'bg-primary-foreground' : 'bg-primary'"
+                  class="size-1.5 shrink-0 rounded-full bg-primary"
                 />
               </span>
               <!--
@@ -416,11 +429,11 @@ onBeforeUnmount(() => {
               <span
                 role="button"
                 tabindex="-1"
-                class="grid size-4 shrink-0 place-items-center rounded-full transition-all duration-[var(--dur-fast)] hover:bg-destructive/15 hover:text-destructive"
+                class="grid size-4 shrink-0 place-items-center rounded-full text-muted-foreground transition-all duration-[var(--dur-fast)] hover:bg-destructive/15 hover:text-destructive"
                 :class="
                   tab.id === activeId
-                    ? 'text-primary-foreground/80 opacity-70 group-hover:opacity-100'
-                    : 'text-muted-foreground opacity-0 group-hover:opacity-60 group-focus-within:opacity-100 [@media(hover:none)]:opacity-60'
+                    ? 'opacity-70 group-hover:opacity-100'
+                    : 'opacity-0 group-hover:opacity-60 group-focus-within:opacity-100 [@media(hover:none)]:opacity-60'
                 "
                 @click.stop="emit('closeTab', tab.id)"
                 @pointerdown.stop
@@ -495,7 +508,7 @@ onBeforeUnmount(() => {
     <!-- Drag ghost -->
     <div
       v-if="tabGhost"
-      class="v2-glass-float will-change-transform pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-full px-3 text-[12px] opacity-95"
+      class="v2-glass-float will-change-transform pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] opacity-95"
       :style="{
         width: `${tabGhost.width}px`,
         transform: `translate3d(${tabGhost.x}px, ${tabGhost.y}px, 0) translate(-50%, -50%)`,
