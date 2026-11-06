@@ -26,6 +26,39 @@ describe("visual system contract", () => {
     expect(darkTheme).toContain("--warning:");
   });
 
+  it("declares corner radii on the shared two-tier scale", () => {
+    // 圆角定义必须落在普通 @theme 块（变量真实输出到 :root），
+    // 而不能留在 @theme inline 里 —— inline 会把值烘焙成字面量，
+    // Tailwind 工具类 / 手写 CSS / Naive themeOverrides 就无法共用同一份数值。
+    const inlineStart = globalsCss.indexOf("@theme inline {");
+    expect(inlineStart).toBeGreaterThan(-1);
+    const inlineBlock = globalsCss.slice(
+      inlineStart,
+      globalsCss.indexOf("\n}", inlineStart),
+    );
+    expect(inlineBlock).not.toMatch(/--radius-/);
+
+    // 普通 @theme 块承载 8 个档位。
+    // 控件档 xs/sm/md 数值紧凑，容器档 lg 起明显放大。
+    const themeStart = globalsCss.indexOf("@theme {");
+    expect(themeStart).toBeGreaterThan(-1);
+    const themeBlock = globalsCss.slice(
+      themeStart,
+      globalsCss.indexOf("\n}", themeStart),
+    );
+    expect(themeBlock).toContain("--radius-xs: 2px;");
+    expect(themeBlock).toContain("--radius-sm: 4px;");
+    expect(themeBlock).toContain("--radius-md: 6px;");
+    expect(themeBlock).toContain("--radius-lg: 12px;");
+    expect(themeBlock).toContain("--radius-xl: 16px;");
+    expect(themeBlock).toContain("--radius-2xl: 20px;");
+    expect(themeBlock).toContain("--radius-3xl: 24px;");
+    expect(themeBlock).toContain("--radius-4xl: 28px;");
+
+    // 裸 rounded 的兜底值保留在 unlayered :root，优先级高于 @layer theme。
+    expect(globalsCss).toContain("--radius: 10px;");
+  });
+
   it("provides shared surface, toolbar, row, icon button and overlay rules", () => {
     expect(globalsCss).toContain(".nexterm-surface");
     expect(globalsCss).toContain(".nexterm-toolbar");
