@@ -107,18 +107,19 @@ describe("visual system contract", () => {
     );
 
     // 唯一的手工值：全局圆角基准。
-    expect(themeBlock).toContain("--radius-base: 6px;");
+    expect(themeBlock).toContain("--radius-base: 8px;");
 
     // 其余 8 个档位全部由基准派生。
+    // 倍率组在 base=8px 时全部落成整数像素（2/4/8/12/16/20/24/28）。
     const derived = [
-      "--radius-xs: calc(var(--radius-base) / 3);",
-      "--radius-sm: calc(var(--radius-base) * 2 / 3);",
+      "--radius-xs: calc(var(--radius-base) * 0.25);",
+      "--radius-sm: calc(var(--radius-base) * 0.5);",
       "--radius-md: var(--radius-base);",
-      "--radius-lg: calc(var(--radius-base) * 2);",
-      "--radius-xl: calc(var(--radius-base) * 8 / 3);",
-      "--radius-2xl: calc(var(--radius-base) * 10 / 3);",
-      "--radius-3xl: calc(var(--radius-base) * 4);",
-      "--radius-4xl: calc(var(--radius-base) * 14 / 3);",
+      "--radius-lg: calc(var(--radius-base) * 1.5);",
+      "--radius-xl: calc(var(--radius-base) * 2);",
+      "--radius-2xl: calc(var(--radius-base) * 2.5);",
+      "--radius-3xl: calc(var(--radius-base) * 3);",
+      "--radius-4xl: calc(var(--radius-base) * 3.5);",
     ];
     const flat = themeBlock.replace(/\s+/g, " ");
     for (const line of derived) {
@@ -132,7 +133,7 @@ describe("visual system contract", () => {
     expect(radiusDecls.length).toBe(9);
     for (const value of radiusDecls) {
       expect(
-        value === "6px" ||
+        value === "8px" ||
           value === "var(--radius-base)" ||
           value.startsWith("calc(var(--radius-base)"),
       ).toBe(true);
@@ -222,7 +223,7 @@ describe("visual system contract", () => {
     expect(cluster).not.toContain("data-panel-tab=");
     expect(topBar).not.toContain("update:panel-layout");
 
-    expect(readSource("../app/shell/SessionStrip.vue")).toContain("h-7");
+    expect(readSource("../app/shell/SessionStrip.vue")).toContain("h-9");
     expect(readSource("../app/shell/StatusDock.vue")).toContain("h-6");
 
     // 单终端极简模式:会话条退化为面包屑芯片。
@@ -243,6 +244,19 @@ describe("visual system contract", () => {
     expect(topBar).not.toContain("updatePanelLayout");
     expect(host).not.toContain("updatePanelLayout");
     expect(host).not.toContain("prefs.panelLayout =");
+  });
+
+  it("renders the session strip as rounded-rectangle tabs on the shared scale", () => {
+    const strip = readSource("../app/shell/SessionStrip.vue");
+
+    // 标签按钮必须是共享档位的圆角矩形，不能再是胶囊。
+    const tabClass = strip.match(/'group relative flex[^']*'/)?.[0] ?? "";
+    expect(tabClass).toContain("rounded-md");
+    expect(tabClass).not.toContain("rounded-full");
+
+    // 激活态用主色竖条指示（与文件树行同一套语言），不再用内描边。
+    expect(strip).toContain("data-tab-active-indicator");
+    expect(tabClass).not.toContain("inset_0_0_0_1px");
   });
 
   it("docks the session strip as its own row under the top bar", () => {

@@ -248,7 +248,7 @@ onBeforeUnmount(() => {
       type="button"
       data-session-minimal
       :title="minimalTab.cwd ?? tabLabel(minimalTab)"
-      class="flex h-7 max-w-64 items-center gap-1.5 rounded-full bg-accent/50 px-3 text-[12px] text-foreground transition-colors duration-[var(--dur-fast)] hover:bg-accent"
+      class="flex h-8 max-w-64 items-center gap-1.5 rounded-md bg-accent/50 px-3 text-[12px] text-foreground transition-colors duration-[var(--dur-fast)] hover:bg-accent"
       @click="emit('selectTab', minimalTab.id)"
       @contextmenu.prevent="handleTabContextMenu($event, minimalTab)"
     >
@@ -292,7 +292,7 @@ onBeforeUnmount(() => {
               :title="`${tabKindLabel(tab)}: ${tabLabel(tab)}`"
               :style="tabWidthStyle()"
               :class="[
-                'group relative flex h-7 min-w-[5rem] items-center justify-between gap-1.5 rounded-full px-3 text-left text-[12px] transition-[background-color,color,opacity,box-shadow] duration-[var(--dur-fast)]',
+                'group relative flex h-8 min-w-[6rem] items-center justify-between gap-1.5 rounded-md px-3 text-left text-[12px] transition-[background-color,color,opacity,box-shadow] duration-[var(--dur-fast)]',
                 tabWidthClass(),
                 draggingTabId === tab.id ? 'opacity-60' : '',
                 dropTarget?.id === tab.id && dropTarget.placement === 'before'
@@ -302,7 +302,7 @@ onBeforeUnmount(() => {
                   ? 'after:absolute after:inset-y-1.5 after:right-0 after:w-0.5 after:rounded-full after:bg-primary'
                   : '',
                 tab.id === activeId
-                  ? 'bg-accent text-foreground shadow-[inset_0_0_0_1px_var(--border)]'
+                  ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
               ]"
               @click="handleTabClick(tab)"
@@ -310,6 +310,13 @@ onBeforeUnmount(() => {
               @contextmenu.prevent="handleTabContextMenu($event, tab)"
               @pointerdown="handleTabPointerDown($event, tab)"
             >
+              <!-- 激活指示：主色竖条（与文件树行的 active 指示同一套语言） -->
+              <span
+                v-if="tab.id === activeId"
+                data-tab-active-indicator
+                aria-hidden="true"
+                class="absolute inset-y-2 left-0 w-0.5 rounded-full bg-primary"
+              />
               <span class="flex min-w-0 flex-1 items-center gap-1.5">
                 <img
                   v-if="tab.kind === 'editor' || tab.kind === 'markdown'"
@@ -379,7 +386,7 @@ onBeforeUnmount(() => {
     <!-- Drag ghost -->
     <div
       v-if="tabGhost"
-      class="v2-glass-float will-change-transform pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-full px-3 text-[12px] opacity-95"
+      class="v2-glass-float will-change-transform pointer-events-none fixed z-50 flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] opacity-95"
       :style="{
         width: `${tabGhost.width}px`,
         transform: `translate3d(${tabGhost.x}px, ${tabGhost.y}px, 0) translate(-50%, -50%)`,
