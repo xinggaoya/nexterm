@@ -87,7 +87,7 @@ describe("visual system contract", () => {
     expect(darkTheme).toContain("--warning:");
   });
 
-  it("declares corner radii on the shared two-tier scale", () => {
+  it("derives every corner radius from one global base", () => {
     // 圆角定义必须落在普通 @theme 块（变量真实输出到 :root），
     // 而不能留在 @theme inline 里 —— inline 会把值烘焙成字面量，
     // Tailwind 工具类 / 手写 CSS / Naive themeOverrides 就无法共用同一份数值。
@@ -99,25 +99,47 @@ describe("visual system contract", () => {
     );
     expect(inlineBlock).not.toMatch(/--radius-/);
 
-    // 普通 @theme 块承载 8 个档位。
-    // 控件档 xs/sm/md 数值紧凑，容器档 lg 起明显放大。
     const themeStart = globalsCss.indexOf("@theme {");
     expect(themeStart).toBeGreaterThan(-1);
     const themeBlock = globalsCss.slice(
       themeStart,
       globalsCss.indexOf("\n}", themeStart),
     );
-    expect(themeBlock).toContain("--radius-xs: 2px;");
-    expect(themeBlock).toContain("--radius-sm: 4px;");
-    expect(themeBlock).toContain("--radius-md: 6px;");
-    expect(themeBlock).toContain("--radius-lg: 12px;");
-    expect(themeBlock).toContain("--radius-xl: 16px;");
-    expect(themeBlock).toContain("--radius-2xl: 20px;");
-    expect(themeBlock).toContain("--radius-3xl: 24px;");
-    expect(themeBlock).toContain("--radius-4xl: 28px;");
 
-    // 裸 rounded 的兜底值保留在 unlayered :root，优先级高于 @layer theme。
-    expect(globalsCss).toContain("--radius: 10px;");
+    // 唯一的手工值：全局圆角基准。
+    expect(themeBlock).toContain("--radius-base: 6px;");
+
+    // 其余 8 个档位全部由基准派生。
+    const derived = [
+      "--radius-xs: calc(var(--radius-base) / 3);",
+      "--radius-sm: calc(var(--radius-base) * 2 / 3);",
+      "--radius-md: var(--radius-base);",
+      "--radius-lg: calc(var(--radius-base) * 2);",
+      "--radius-xl: calc(var(--radius-base) * 8 / 3);",
+      "--radius-2xl: calc(var(--radius-base) * 10 / 3);",
+      "--radius-3xl: calc(var(--radius-base) * 4);",
+      "--radius-4xl: calc(var(--radius-base) * 14 / 3);",
+    ];
+    const flat = themeBlock.replace(/\s+/g, " ");
+    for (const line of derived) {
+      expect(flat).toContain(line.replace(/\s+/g, " "));
+    }
+
+    // 基准之外不允许再有第二个手工 px 圆角值。
+    const radiusDecls = [
+      ...themeBlock.matchAll(/--radius-[a-z0-9-]+:\s*([^;]+);/g),
+    ].map((m) => m[1].trim());
+    expect(radiusDecls.length).toBe(9);
+    for (const value of radiusDecls) {
+      expect(
+        value === "6px" ||
+          value === "var(--radius-base)" ||
+          value.startsWith("calc(var(--radius-base)"),
+      ).toBe(true);
+    }
+
+    // 裸 rounded 的兜底值也由基准派生，不再是魔法数。
+    expect(globalsCss).toContain("--radius: var(--radius-md);");
   });
 
   it("keeps hand-written radii on the shared radius scale", () => {
