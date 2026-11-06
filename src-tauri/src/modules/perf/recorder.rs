@@ -89,9 +89,7 @@ impl CommandEntry {
             return 0.0;
         }
         let mut sorted = self.samples.clone();
-        sorted.sort_by(|left, right| {
-            left.partial_cmp(right).unwrap_or(Ordering::Equal)
-        });
+        sorted.sort_by(|left, right| left.partial_cmp(right).unwrap_or(Ordering::Equal));
         let index = ((sorted.len() as f64 * fraction).floor() as usize).min(sorted.len() - 1);
         sorted[index]
     }

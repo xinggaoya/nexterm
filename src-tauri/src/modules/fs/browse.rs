@@ -20,7 +20,9 @@
 //! 必需的前置步骤，不是一次授权。
 
 use crate::modules::fs::mutate;
-use crate::modules::fs::tree::{entry_kind_from_wsl, filter_and_sort_entries, read_host_dir, DirEntry};
+use crate::modules::fs::tree::{
+    entry_kind_from_wsl, filter_and_sort_entries, read_host_dir, DirEntry,
+};
 use crate::modules::fs::wsl_ops;
 use crate::modules::workspace::{reject_credential_dir, resolve_path, WorkspaceEnv};
 
@@ -45,7 +47,9 @@ pub async fn fs_browse_dir(
     let workspace = WorkspaceEnv::from_option(workspace);
     crate::modules::perf::recorder::timed_async(
         "fs_browse_dir",
-        tauri::async_runtime::spawn_blocking(move || browse_dir_blocking(path, show_hidden, workspace)),
+        tauri::async_runtime::spawn_blocking(move || {
+            browse_dir_blocking(path, show_hidden, workspace)
+        }),
     )
     .await
     .map_err(|error| format!("fs_browse_dir background task failed: {error}"))?

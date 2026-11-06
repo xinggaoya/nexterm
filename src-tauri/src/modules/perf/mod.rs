@@ -34,10 +34,8 @@ pub const PERF_DIR_ENV: &str = "NEXTERM_PERF_DIR";
 pub const PERF_DIR_ARG: &str = "--perf-dir=";
 
 /// 报告类型 → 文件名白名单。
-const REPORT_FILE_NAMES: [(&str, &str); 2] = [
-    ("frontend", "frontend.json"),
-    ("backend", "backend.json"),
-];
+const REPORT_FILE_NAMES: [(&str, &str); 2] =
+    [("frontend", "frontend.json"), ("backend", "backend.json")];
 
 /// 单份报告的最大字节数（16MB）。
 const MAX_REPORT_BYTES: usize = 16 * 1024 * 1024;
@@ -105,9 +103,10 @@ impl PerfSession {
 
 fn resolve_output_dir() -> Option<PathBuf> {
     let raw = std::env::var(PERF_DIR_ENV).ok().or_else(|| {
-        std::env::args()
-            .skip(1)
-            .find_map(|arg| arg.strip_prefix(PERF_DIR_ARG).map(|value| value.to_string()))
+        std::env::args().skip(1).find_map(|arg| {
+            arg.strip_prefix(PERF_DIR_ARG)
+                .map(|value| value.to_string())
+        })
     })?;
     let raw = raw.trim();
     if raw.is_empty() {
@@ -140,11 +139,7 @@ pub fn perf_write_report(
 }
 
 /// 落盘核心逻辑（与 IPC 解耦，便于单测）。
-fn write_report_into(
-    session: &PerfSession,
-    kind: &str,
-    content: &str,
-) -> Result<String, String> {
+fn write_report_into(session: &PerfSession, kind: &str, content: &str) -> Result<String, String> {
     let Some(dir) = session.output_dir.as_ref() else {
         return Err("perf session is not enabled".to_string());
     };
@@ -248,8 +243,8 @@ mod tests {
             output_dir: Some(dir.clone()),
             started_at_ms: 0,
         };
-        let file = write_report_into(&session, "frontend", "{\"ok\":true}")
-            .expect("write should succeed");
+        let file =
+            write_report_into(&session, "frontend", "{\"ok\":true}").expect("write should succeed");
         assert_eq!(file, "frontend.json");
         let written = std::fs::read_to_string(dir.join("frontend.json")).expect("report file");
         assert_eq!(written, "{\"ok\":true}");
