@@ -43,11 +43,22 @@ function createWsNative(): SourceControlTestNative {
     workspaceAuthorize: vi.fn(async () => "/repo"),
     gitPanelSnapshot: vi.fn(async () => readySnapshot),
     gitStatus: vi.fn(async () => readyStatus),
+    gitDiffNumstat: vi.fn(async () => [
+      { path: "src/app.ts", insertions: 12, deletions: 3 },
+    ]),
   } as unknown as SourceControlTestNative;
 }
 
 async function flush() {
   await Promise.resolve();
+  await nextTick();
+}
+
+/** 多层 await 链（快照 → 行数）需要多跑几轮微任务。 */
+async function flushDeep() {
+  for (let i = 0; i < 8; i += 1) {
+    await Promise.resolve();
+  }
   await nextTick();
 }
 
@@ -75,6 +86,63 @@ describe("useSourceControlState", () => {
     expect(state.panelState.value).toBe("ready");
     expect(state.repoRoot.value).toBe("/repo");
     expect(state.branchLabel.value).toBe("main");
+  });
+
+  it("merges per-file line counts into the source control entries", async () => {
+    const rootPath = ref<string | null>("/repo");
+    const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
+    const wsNative = createWsNative();
+    wsNative.gitPanelSnapshot.mockImplementation(async () => ({
+      repo: readySnapshot.repo,
+      status: {
+        ...readyStatus,
+        changedFiles: [
+          {
+            path: "src/app.ts",
+            originalPath: null,
+            indexStatus: " ",
+            worktreeStatus: "M",
+            staged: false,
+            unstaged: true,
+            untracked: false,
+            statusLabel: "modified",
+          },
+        ],
+      },
+    }));
+
+    const state = useSourceControlState({
+      rootPath,
+      repoRoot: ref<string | null>(null),
+      fsEvent,
+      wsNative,
+      t: (key) => key,
+    });
+    await flushDeep();
+
+    expect(wsNative.gitDiffNumstat).toHaveBeenCalledWith("/repo");
+    const entry = state.entries.value.find((e) => e.path === "src/app.ts");
+    expect(entry?.insertions).toBe(12);
+    expect(entry?.deletions).toBe(3);
+  });
+
+  it("skips the line count query while the panel is hidden", async () => {
+    const rootPath = ref<string | null>("/repo");
+    const fsEvent = ref<WorkspaceFsChangedEvent | null>(null);
+    const wsNative = createWsNative();
+
+    const state = useSourceControlState({
+      rootPath,
+      repoRoot: ref<string | null>(null),
+      fsEvent,
+      wsNative,
+      t: (key) => key,
+      visible: () => false,
+    });
+    await flushDeep();
+
+    expect(wsNative.gitDiffNumstat).not.toHaveBeenCalled();
+    expect(state.entries.value.every((e) => e.insertions === 0)).toBe(true);
   });
 
   it("debounces file-system events and waits for busy actions", async () => {

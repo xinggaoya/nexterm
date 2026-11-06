@@ -3,10 +3,10 @@ use tauri::{AppHandle, Manager};
 use crate::modules::git::operations;
 use crate::modules::git::types::{
     DiscardEntry, GitBranchInfo, GitBranchResult, GitCommitFileChange, GitCommitResult,
-    GitDiffContentResult, GitFetchResult, GitLogOptions, GitLogPage, GitPanelSnapshot,
-    GitPullResult, GitPushResult, GitRemoteInfo, GitRemoteInput, GitRemoteUrlUpdate, GitRepoInfo,
-    GitRepositoryDiscovery, GitStashEntry, GitStashPushOptions, GitStashResult, GitStatusSnapshot,
-    GitTagCreateOptions, GitTagInfo, GitTagResult,
+    GitDiffContentResult, GitFetchResult, GitFileLineCounts, GitLogOptions, GitLogPage,
+    GitPanelSnapshot, GitPullResult, GitPushResult, GitRemoteInfo, GitRemoteInput,
+    GitRemoteUrlUpdate, GitRepoInfo, GitRepositoryDiscovery, GitStashEntry, GitStashPushOptions,
+    GitStashResult, GitStatusSnapshot, GitTagCreateOptions, GitTagInfo, GitTagResult,
 };
 use crate::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
 
@@ -92,6 +92,9 @@ git_command!(git_panel_snapshot, panel_snapshot, GitPanelSnapshot :
 git_command!(git_status, status, GitStatusSnapshot :
     repo_root: String => &repo_root,
     untracked_files: Option<String> => untracked_files.as_deref());
+
+git_command!(git_diff_numstat, diff_numstat, Vec<GitFileLineCounts> :
+    repo_root: String => &repo_root);
 
 git_command!(git_diff_content, diff_content, GitDiffContentResult :
     repo_root: String => &repo_root,

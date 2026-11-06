@@ -838,34 +838,36 @@ defineExpose({
 
       <div class="relative flex min-h-0 flex-1">
         <!-- 左侧停靠面板（文件树 / 更改） -->
-        <WorkspacePanel
-          v-show="leftPanelVisible"
-          ref="leftPanelRef"
-          side="left"
-          :view="panelLayout.left"
-          :width="panelWidths.left"
-          :overlay="panelOverlay"
-          :workspace-id="workspace.id"
-          :workspace-root="workspaceRoot"
-          :workspace-scope="workspaceScope"
-          :active-repo-root="activeRepoRoot"
-          :git-decorations="gitDecorations"
-          :show-branches-modal="showBranchesModalProp"
-          :fs-event="normalizedFsEvent"
-          @resize-width="(width) => persistPanelWidth('left', width)"
-          @open-file="openFileTab"
-          @open-file-preview="openFilePreview"
-          @open-markdown-preview="openMarkdownPreview"
-          @open-in-terminal="openTerminalInDir"
-          @open-search-result="openSearchResult"
-          @path-renamed="onPathRenamed"
-          @path-deleted="onPathDeleted"
-          @open-source-diff="openSourceDiff"
-          @open-source-history="openSourceHistory"
-          @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
-          @branch-change="(branch) => gitBranch = branch"
-          @decorations-change="onDecorationChange"
-        />
+        <Transition name="v2-slide-left">
+          <WorkspacePanel
+            v-show="leftPanelVisible"
+            ref="leftPanelRef"
+            side="left"
+            :view="panelLayout.left"
+            :width="panelWidths.left"
+            :overlay="panelOverlay"
+            :workspace-id="workspace.id"
+            :workspace-root="workspaceRoot"
+            :workspace-scope="workspaceScope"
+            :active-repo-root="activeRepoRoot"
+            :git-decorations="gitDecorations"
+            :show-branches-modal="showBranchesModalProp"
+            :fs-event="normalizedFsEvent"
+            @resize-width="(width) => persistPanelWidth('left', width)"
+            @open-file="openFileTab"
+            @open-file-preview="openFilePreview"
+            @open-markdown-preview="openMarkdownPreview"
+            @open-in-terminal="openTerminalInDir"
+            @open-search-result="openSearchResult"
+            @path-renamed="onPathRenamed"
+            @path-deleted="onPathDeleted"
+            @open-source-diff="openSourceDiff"
+            @open-source-history="openSourceHistory"
+            @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
+            @branch-change="(branch) => gitBranch = branch"
+            @decorations-change="onDecorationChange"
+          />
+        </Transition>
 
         <!--
           中列：标签行 + 画布。标签行只覆盖中间内容面板，
@@ -918,34 +920,36 @@ defineExpose({
         </div>
 
         <!-- 右侧停靠面板（文件树 / 更改） -->
-        <WorkspacePanel
-          v-show="rightPanelVisible"
-          ref="panel"
-          side="right"
-          :view="panelLayout.right"
-          :width="panelWidths.right"
-          :overlay="panelOverlay"
-          :workspace-id="workspace.id"
-          :workspace-root="workspaceRoot"
-          :workspace-scope="workspaceScope"
-          :active-repo-root="activeRepoRoot"
-          :git-decorations="gitDecorations"
-          :show-branches-modal="showBranchesModalProp"
-          :fs-event="normalizedFsEvent"
-          @resize-width="(width) => persistPanelWidth('right', width)"
-          @open-file="openFileTab"
-          @open-file-preview="openFilePreview"
-          @open-markdown-preview="openMarkdownPreview"
-          @open-in-terminal="openTerminalInDir"
-          @open-search-result="openSearchResult"
-          @path-renamed="onPathRenamed"
-          @path-deleted="onPathDeleted"
-          @open-source-diff="openSourceDiff"
-          @open-source-history="openSourceHistory"
-          @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
-          @branch-change="(branch) => gitBranch = branch"
-          @decorations-change="onDecorationChange"
-        />
+        <Transition name="v2-slide-right">
+          <WorkspacePanel
+            v-show="rightPanelVisible"
+            ref="panel"
+            side="right"
+            :view="panelLayout.right"
+            :width="panelWidths.right"
+            :overlay="panelOverlay"
+            :workspace-id="workspace.id"
+            :workspace-root="workspaceRoot"
+            :workspace-scope="workspaceScope"
+            :active-repo-root="activeRepoRoot"
+            :git-decorations="gitDecorations"
+            :show-branches-modal="showBranchesModalProp"
+            :fs-event="normalizedFsEvent"
+            @resize-width="(width) => persistPanelWidth('right', width)"
+            @open-file="openFileTab"
+            @open-file-preview="openFilePreview"
+            @open-markdown-preview="openMarkdownPreview"
+            @open-in-terminal="openTerminalInDir"
+            @open-search-result="openSearchResult"
+            @path-renamed="onPathRenamed"
+            @path-deleted="onPathDeleted"
+            @open-source-diff="openSourceDiff"
+            @open-source-history="openSourceHistory"
+            @repo-selected="(repoRoot) => activeRepoRoot = repoRoot"
+            @branch-change="(branch) => gitBranch = branch"
+            @decorations-change="onDecorationChange"
+          />
+        </Transition>
       </div>
 
       <StatusDock

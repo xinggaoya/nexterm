@@ -121,12 +121,20 @@ export function useSourceControlState(options: SourceControlStateOptions) {
   let statusRefreshInFlight: Promise<void> | null = null;
   let pendingStatusRefresh = false;
   let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 每个变更文件的新增 / 删除行数（+N -M）。 */
+  const lineCounts = ref(
+    new Map<string, { insertions: number; deletions: number }>(),
+  );
+  let lineCountsRequestId = 0;
 
   const effectiveRoot = computed(
     () => options.repoRoot.value ?? options.rootPath.value,
   );
   const entries = computed(() =>
-    buildSourceControlEntries(status.value?.changedFiles ?? []),
+    buildSourceControlEntries(
+      status.value?.changedFiles ?? [],
+      lineCounts.value,
+    ),
   );
   const repoRoot = computed(() => status.value?.repoRoot ?? repo.value?.repoRoot ?? null);
   const gitDecorations = shallowRef<GitDecorationMap>(new Map());
@@ -223,6 +231,7 @@ export function useSourceControlState(options: SourceControlStateOptions) {
       if (!requestMatchesRoot(currentId, rootPath)) return;
       repo.value = snapshot.repo;
       status.value = snapshot.status;
+      void refreshLineCounts();
       gitDecorations.value = buildGitDecorationMap(
         snapshot.status?.repoRoot ?? null,
         snapshot.status?.changedFiles ?? [],
@@ -235,6 +244,35 @@ export function useSourceControlState(options: SourceControlStateOptions) {
       gitDecorations.value = new Map();
       errorMessage.value = normalizeError(error, options.t);
       panelState.value = "error";
+    }
+  }
+
+  /**
+   * 拉取每个变更文件的新增 / 删除行数。
+   *
+   * 单独一条命令而不是塞进 status 快照：status 跟着文件事件高频刷新，
+   * 每次多跑两次 `git diff` 会拖慢大仓库。面板看不见的时候干脆不拉。
+   */
+  async function refreshLineCounts() {
+    const root = repoRoot.value;
+    if (!root || (options.visible && !options.visible())) {
+      lineCounts.value = new Map();
+      return;
+    }
+    const id = ++lineCountsRequestId;
+    try {
+      const counts = await options.wsNative.gitDiffNumstat(root);
+      if (id !== lineCountsRequestId) return;
+      lineCounts.value = new Map(
+        counts.map((item) => [
+          item.path,
+          { insertions: item.insertions, deletions: item.deletions },
+        ]),
+      );
+    } catch {
+      // 行数只是装饰性信息：拉不到就保持 0，不影响面板主流程。
+      if (id !== lineCountsRequestId) return;
+      lineCounts.value = new Map();
     }
   }
 
@@ -280,6 +318,7 @@ export function useSourceControlState(options: SourceControlStateOptions) {
           );
 
         status.value = next;
+        void refreshLineCounts();
         repo.value = {
           repoRoot: next.repoRoot,
           branch: next.branch,

@@ -125,6 +125,21 @@ defineOptions({
       >
         {{ stageLabel(entry, tLoose) }}
       </span>
+      <!-- 增删行数（VS Code 源控面板的位置：文件名右侧） -->
+      <span
+        data-source-line-counts
+        class="w-12 shrink-0 text-right text-[10px] tabular-nums"
+      >
+        <span
+          v-if="entry.insertions > 0"
+          class="text-emerald-600 dark:text-emerald-300"
+          >+{{ entry.insertions }}</span
+        ><span
+          v-if="entry.deletions > 0"
+          class="text-red-600 dark:text-red-300"
+          >-{{ entry.deletions }}</span
+        >
+      </span>
     </button>
     <TooltipTitle
       v-if="entry.group === 'changes' && entry.unstaged"

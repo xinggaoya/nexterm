@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::modules::git::types::{
     GitBranchInfo, GitChangedFile, GitFetchResult, GitPullResult, GitStashEntry, GitTagInfo,
 };
@@ -124,6 +126,47 @@ fn make_file(
         untracked: index_status == '?' && worktree_status == '?',
         status_label: status_label(index_status, worktree_status),
     }
+}
+
+/// 解析 `git diff --numstat -z` 的输出：路径 → (新增行, 删除行)。
+///
+/// `-z` 时路径不再加引号，直接用 NUL 分隔：
+///   `新增\t删除\t路径\0`
+/// 重命名时路径字段为空，紧跟 `旧路径\0新路径\0`（取新路径）。
+/// 二进制文件的行数是 `-`，按 0 计。
+pub fn parse_numstat_z(stdout: &[u8]) -> HashMap<String, (u32, u32)> {
+    let mut out = HashMap::new();
+    let text = String::from_utf8_lossy(stdout);
+    let mut records = text.split('\0');
+    while let Some(record) = records.next() {
+        if record.is_empty() {
+            continue;
+        }
+        let fields: Vec<&str> = record.split('\t').collect();
+        let (added, deleted, path) = match fields.as_slice() {
+            [added, deleted, path] => (*added, *deleted, Some(*path)),
+            [added, deleted] => (*added, *deleted, None),
+            _ => continue,
+        };
+        let path = match path {
+            Some(path) if !path.is_empty() => path.to_string(),
+            Some(_) => {
+                // 重命名：路径字段为空，下一条是旧路径，再下一条是新路径。
+                records.next();
+                match records.next() {
+                    Some(new_path) => new_path.to_string(),
+                    None => continue,
+                }
+            }
+            None => continue,
+        };
+        out.insert(path, (parse_count(added), parse_count(deleted)));
+    }
+    out
+}
+
+fn parse_count(field: &str) -> u32 {
+    field.parse::<u32>().unwrap_or(0)
 }
 
 fn is_staged(index_status: char, worktree_status: char) -> bool {
@@ -480,9 +523,33 @@ fn classify_unqualified_ref(
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_branch_lines, parse_fetch_summary, parse_log_refs, parse_porcelain_v2,
-        parse_pull_summary, parse_stash_lines, parse_tag_lines,
+        parse_branch_lines, parse_fetch_summary, parse_log_refs, parse_numstat_z,
+        parse_porcelain_v2, parse_pull_summary, parse_stash_lines, parse_tag_lines,
     };
+
+    #[test]
+    fn numstat_z_parses_paths_and_counts() {
+        let stdout = concat!("12\t3\tsrc/a.rs\0", "0\t7\tsrc/b.rs\0");
+        let counts = parse_numstat_z(stdout.as_bytes());
+        assert_eq!(counts.get("src/a.rs"), Some(&(12, 3)));
+        assert_eq!(counts.get("src/b.rs"), Some(&(0, 7)));
+    }
+
+    #[test]
+    fn numstat_z_uses_new_path_for_renames() {
+        // 重命名时路径字段为空，后面跟 `旧路径\0新路径\0`
+        let stdout = concat!("4\t2\t\0", "src/old.rs\0", "src/new.rs\0");
+        let counts = parse_numstat_z(stdout.as_bytes());
+        assert_eq!(counts.get("src/new.rs"), Some(&(4, 2)));
+        assert!(!counts.contains_key("src/old.rs"));
+    }
+
+    #[test]
+    fn numstat_z_treats_binary_files_as_zero() {
+        let stdout = "-\t-\tassets/logo.png\0";
+        let counts = parse_numstat_z(stdout.as_bytes());
+        assert_eq!(counts.get("assets/logo.png"), Some(&(0, 0)));
+    }
 
     #[test]
     fn porcelain_v2_parses_branch_and_files() {

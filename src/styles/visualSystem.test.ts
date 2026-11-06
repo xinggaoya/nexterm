@@ -219,6 +219,34 @@ describe("visual system contract", () => {
     expect(globalsCss).toContain("var(--ease-out)");
   });
 
+  it("offers a neutral accent preset alongside the coloured ones", () => {
+    // VS Code Dark Modern 式的无色相中性灰。
+    expect(ACCENT_PRESETS).toContain("neutral");
+    expect(globalsCss).toContain('html[data-accent="neutral"]');
+    expect(globalsCss).toContain('.dark[data-accent="neutral"]');
+  });
+
+  it("wires the motion primitives to the surfaces that actually switch", () => {
+    // 动效原语之前是「建好未接线」：v2-fade / v2-anim-* 的使用数为 0。
+    // 下面把它们接到真正会切换的表面上。
+    //
+    // 1. 画布内容层（终端 / 编辑器 / 预览 / Markdown）——用 CSS 淡入淡出，
+    //    不动 v-show / .invisible 机制，避免动到 xterm 与 CodeMirror 的常驻实例。
+    expect(globalsCss).toContain("[data-tab-layer]");
+    expect(globalsCss).toMatch(/\[data-tab-layer\][\s\S]*?opacity:/);
+
+    // 2. 侧边停靠面板开合 —— <Transition> + v-show，面板不会重建。
+    expect(globalsCss).toContain(".v2-slide-left-enter-from");
+    expect(globalsCss).toContain(".v2-slide-right-enter-from");
+    const host = readSource("../app/shell/WorkspaceHost.vue");
+    expect(host).toContain('name="v2-slide-left"');
+    expect(host).toContain('name="v2-slide-right"');
+
+    // 3. 设置面板分类切换。
+    const settings = readSource("../settings/SettingsPanel.vue");
+    expect(settings).toContain('name="v2-fade"');
+  });
+
   it("opens settings in a centered modal instead of a drawer", () => {
     const mainApp = readSource("../app/MainApp.vue");
     // 弹窗：抽屉从右侧滑入会占满半个屏幕并把画布推到左边。

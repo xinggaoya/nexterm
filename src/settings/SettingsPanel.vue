@@ -145,9 +145,16 @@ function renderMenuLabel(option: MenuOption) {
       </aside>
 
       <main class="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pt-5 pb-6">
-        <div class="mx-auto w-full max-w-180" :data-settings-section="selectedTab">
-          <component :is="activeSection" />
-        </div>
+        <!-- 切换分类时淡入淡出：out-in 串行，避免两块内容重叠造成跳版。 -->
+        <Transition name="v2-fade" mode="out-in">
+          <div
+            :key="selectedTab"
+            class="mx-auto w-full max-w-180"
+            :data-settings-section="selectedTab"
+          >
+            <component :is="activeSection" />
+          </div>
+        </Transition>
       </main>
     </div>
   </section>

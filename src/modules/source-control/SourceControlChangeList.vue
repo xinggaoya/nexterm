@@ -189,7 +189,7 @@ const sectionTitle = (statusKind: SourceControlStatusKind): string => {
               @update:checked="(checked) => emit('setGroupSelected', item.group.id, checked === true)"
             />
             <div class="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-normal text-muted-foreground">
-              {{ groupTitle(item.group) }} · {{ item.group.entries.length }}
+              {{ groupTitle(item.group) }} ({{ item.group.entries.length }})
             </div>
           </div>
           <div

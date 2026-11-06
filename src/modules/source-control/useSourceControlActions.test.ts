@@ -27,6 +27,8 @@ function entry(overrides: Partial<SourceControlFileEntry>): SourceControlFileEnt
     staged: false,
     unstaged: true,
     untracked: false,
+    insertions: 0,
+    deletions: 0,
     ...overrides,
   };
 }

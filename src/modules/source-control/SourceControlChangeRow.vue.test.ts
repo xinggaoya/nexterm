@@ -26,6 +26,8 @@ function entry(
     staged: true,
     unstaged: false,
     untracked: false,
+    insertions: 0,
+    deletions: 0,
     ...overrides,
   };
 }
@@ -65,6 +67,23 @@ describe("SourceControlChangeRow", () => {
 
     expect(label.get("span[data-source-file-name]").text()).toBe("package.json");
     expect(label.find("span[data-source-file-dir]").exists()).toBe(false);
+  });
+
+  it("shows the added and deleted line counts", () => {
+    const wrapper = mountRow(
+      entry({ insertions: 12, deletions: 3, group: "changes" }),
+    );
+    const counts = wrapper.get("[data-source-line-counts]");
+
+    expect(counts.text()).toContain("+12");
+    expect(counts.text()).toContain("-3");
+  });
+
+  it("omits the line counts when the file has none", () => {
+    const wrapper = mountRow(entry({ insertions: 0, deletions: 0 }));
+    const counts = wrapper.get("[data-source-line-counts]");
+
+    expect(counts.text()).toBe("");
   });
 
   it("keeps the git status code and the stage label", () => {

@@ -24,6 +24,9 @@ export type SourceControlFileEntry = {
   staged: boolean;
   unstaged: boolean;
   untracked: boolean;
+  /** 本次改动的新增 / 删除行数（+N -M）。拿不到时为 0。 */
+  insertions: number;
+  deletions: number;
 };
 
 export type SourceControlEntrySection = {
@@ -97,7 +100,11 @@ function checkStateForFile(file: GitChangedFile): CheckState {
   return "unchecked";
 }
 
-function entryForMode(file: GitChangedFile, group: SourceControlGroupId) {
+function entryForMode(
+  file: GitChangedFile,
+  group: SourceControlGroupId,
+  counts: Map<string, { insertions: number; deletions: number }>,
+) {
   const diffMode: DiffMode = group === "staged" ? "+" : "-";
   const statusCode = statusCodeForMode(diffMode, file);
   return {
@@ -118,17 +125,22 @@ function entryForMode(file: GitChangedFile, group: SourceControlGroupId) {
     staged: group === "staged" || file.staged,
     unstaged: group === "changes" || file.unstaged,
     untracked: file.untracked,
+    insertions: counts.get(file.path)?.insertions ?? 0,
+    deletions: counts.get(file.path)?.deletions ?? 0,
   };
 }
 
 export function buildSourceControlEntries(
   files: GitChangedFile[],
+  lineCounts?: Map<string, { insertions: number; deletions: number }>,
 ): SourceControlFileEntry[] {
   const entries: SourceControlFileEntry[] = [];
+  const counts = lineCounts ?? new Map();
 
   for (const file of files) {
-    if (file.staged) entries.push(entryForMode(file, "staged"));
-    if (file.unstaged || file.untracked) entries.push(entryForMode(file, "changes"));
+    if (file.staged) entries.push(entryForMode(file, "staged", counts));
+    if (file.unstaged || file.untracked)
+      entries.push(entryForMode(file, "changes", counts));
   }
 
   return entries;

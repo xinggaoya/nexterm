@@ -723,6 +723,18 @@ html *::-webkit-scrollbar {
 .v2-anim-slide-right { animation: v2-slide-in-right var(--dur-slow) var(--ease-spring) both; }
 .v2-anim-slide-left { animation: v2-slide-in-left var(--dur-slow) var(--ease-spring) both; }
 .v2-anim-breathe { animation: v2-breathe 3.2s var(--ease-out) infinite; }
+/* 标签激活指示条：从中间向两侧展开，而不是突然出现 */
+@keyframes v2-underline-in {
+  from {
+    transform: scaleX(0.3);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+.v2-anim-underline { animation: v2-underline-in var(--dur-base) var(--ease-spring) both; }
 
 /* 骨架屏：shimmer 闪烁，复用 token 被 reduced-motion 覆盖 */
 .v2-skeleton {
@@ -761,6 +773,25 @@ html *::-webkit-scrollbar {
 }
 .v2-fade-enter-from,
 .v2-fade-leave-to {
+  opacity: 0;
+}
+/* 侧边停靠面板滑入 / 滑出（左侧自左、右侧自右）
+ * 配合 <Transition> + v-show 使用：面板始终挂载，开合只切换显隐，
+ * 不会重建文件树或终端。 */
+.v2-slide-left-enter-active,
+.v2-slide-left-leave-active,
+.v2-slide-right-enter-active,
+.v2-slide-right-leave-active {
+  transition: transform var(--dur-base) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+}
+.v2-slide-left-enter-from,
+.v2-slide-left-leave-to {
+  transform: translateX(-16px);
+  opacity: 0;
+}
+.v2-slide-right-enter-from,
+.v2-slide-right-leave-to {
+  transform: translateX(16px);
   opacity: 0;
 }
 /* 列表项水平 slide（标签栏），transform + opacity */
@@ -822,6 +853,38 @@ html[data-accent="cyan"] {
   --term-selection: oklch(0.82 0.13 220 / 0.26);
   --term-cyan: oklch(0.82 0.13 220);
   --term-bright-cyan: oklch(0.88 0.13 220);
+}
+
+/* Neutral — VS Code Dark Modern 式的无色相中性灰。
+ * chroma 压到 0.015 / 0.02：几乎看不出色相，但保留一点点冷调，
+ * 否则强调色会和表面灰糊成一片，选中态就分不出来了。 */
+html[data-accent="neutral"] {
+  --primary: oklch(0.55 0.02 255);
+  --primary-foreground: oklch(0.99 0 0);
+  --ring: oklch(0.55 0.02 255);
+  --terminal-focus: oklch(0.55 0.02 255);
+  --pane-handle-active: oklch(0.55 0.02 255);
+  --chart-1: oklch(0.55 0.02 255);
+  --term-cursor: oklch(0.55 0.02 255);
+  --term-cursor-accent: oklch(0.99 0 0);
+  --term-link: oklch(0.55 0.02 255);
+  --term-selection: oklch(0.55 0.02 255 / 0.2);
+  --term-cyan: oklch(0.55 0.02 255);
+  --term-bright-cyan: oklch(0.68 0.02 255);
+}
+.dark[data-accent="neutral"] {
+  --primary: oklch(0.78 0.015 255);
+  --primary-foreground: oklch(0.16 0 0);
+  --ring: oklch(0.78 0.015 255);
+  --terminal-focus: oklch(0.78 0.015 255);
+  --pane-handle-active: oklch(0.78 0.015 255);
+  --chart-1: oklch(0.78 0.015 255);
+  --term-cursor: oklch(0.78 0.015 255);
+  --term-cursor-accent: oklch(0.16 0 0);
+  --term-link: oklch(0.78 0.015 255);
+  --term-selection: oklch(0.78 0.015 255 / 0.26);
+  --term-cyan: oklch(0.78 0.015 255);
+  --term-bright-cyan: oklch(0.86 0.015 255);
 }
 
 /* Violet — Tokyo Night style purple. */
@@ -984,6 +1047,28 @@ html[data-accent="blue"] {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11.5px;
   line-height: 1.5;
+}
+
+/* ══ 画布内容层切换 ═══════════════════════════════════════════════
+ * Canvas 的各内容层（终端 / 编辑器 / 预览 / Markdown）都是常驻挂载，
+ * 靠 .invisible 切换显隐 —— 这样 xterm 与 CodeMirror 的实例与尺寸
+ * 测量都不会被 display:none 打断。
+ *
+ * 这里只叠加一层淡入淡出：visibility 的切换用延迟对齐到淡出结束，
+ * 激活时则立即可见（0s）。不动 v-show / .invisible 机制本身。
+ */
+[data-tab-layer] {
+  opacity: 0;
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    visibility 0s linear var(--dur-base);
+}
+
+[data-tab-layer]:not(.invisible) {
+  opacity: 1;
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    visibility 0s linear 0s;
 }
 
 /* ══ 全局按压反馈（散装原生按钮）════════════════════════════════════

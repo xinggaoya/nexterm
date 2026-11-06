@@ -91,11 +91,12 @@ function envLabelOf(record: WorkspaceSelection): string {
         </p>
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <button
-            v-for="record in recentWorkspaces"
+            v-for="(record, index) in recentWorkspaces"
             :key="`${record.path}:${record.env.kind}`"
             type="button"
             data-dashboard-recent
-            class="v2-glass group flex items-center gap-3 rounded-xl border border-border/70 p-3 text-left transition-all duration-[var(--dur-fast)] hover:border-primary/40 hover:shadow-[var(--glass-shadow)]"
+            class="v2-glass v2-anim-slide-up group flex items-center gap-3 rounded-xl border border-border/70 p-3 text-left transition-all duration-[var(--dur-fast)] hover:border-primary/40 hover:shadow-[var(--glass-shadow)]"
+            :style="{ animationDelay: `${Math.min(index, 6) * 45}ms` }"
             :title="record.path"
             @click="emit('openRecent', record)"
           >

@@ -8870,3 +8870,7 @@ dependencies = [
  "syn 2.0.117",
  "winnow 0.7.15",
 ]
+
+[[patch.unused]]
+name = "msvc_spectre_libs"
+version = "0.1.3"

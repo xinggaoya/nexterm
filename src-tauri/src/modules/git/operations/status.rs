@@ -1,14 +1,15 @@
+use std::collections::HashMap;
 use std::ffi::OsString;
 
 use crate::modules::git::errors::{GitError, Result};
-use crate::modules::git::parser::parse_porcelain_v2;
+use crate::modules::git::parser::{parse_numstat_z, parse_porcelain_v2};
 use crate::modules::git::process::{
     ensure_git_available, ensure_success, git_show_text, git_stdout_line_opt, read_text_file,
     run_git,
 };
 use crate::modules::git::types::{
-    GitChangedFile, GitDiffContentResult, GitDiffResult, GitPanelSnapshot, GitRepoInfo,
-    GitStatusSnapshot, TextSource, DEFAULT_TIMEOUT_SECS, MAX_CHANGED_FILES,
+    GitChangedFile, GitDiffContentResult, GitDiffResult, GitFileLineCounts, GitPanelSnapshot,
+    GitRepoInfo, GitStatusSnapshot, TextSource, DEFAULT_TIMEOUT_SECS, MAX_CHANGED_FILES,
 };
 use crate::modules::git::utils::{canonical_dir, resolve_within_repo, ResolvedGitDirectory};
 use crate::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
@@ -122,6 +123,66 @@ fn status_inner(
         truncated,
         changed_files,
     })
+}
+
+/// 统计变更文件的新增 / 删除行数（源控面板显示 `+N -M`）。
+///
+/// `git status --porcelain=v2` 不带行数，所以要另外跑 `git diff --numstat`。
+///
+/// 单独做成命令而不是塞进 status 快照：status 跟着文件事件高频刷新，
+/// 每次多跑两次 `git diff` 会明显拖慢大仓库。面板可见时才需要这些数字。
+pub fn diff_numstat(
+    registry: &WorkspaceRegistry,
+    repo_root: &str,
+    workspace: &WorkspaceEnv,
+) -> Result<Vec<GitFileLineCounts>> {
+    with_repo(registry, repo_root, workspace, |repo_root| {
+        let mut counts: HashMap<String, (u32, u32)> = HashMap::new();
+        // 工作区相对暂存区的改动
+        collect_numstat(repo_root, &["diff", "--numstat", "-z"], &mut counts);
+        // 暂存区相对 HEAD 的改动。仓库还没有任何提交时这个命令会失败，
+        // 那时工作区的那一份已经够用。
+        collect_numstat(
+            repo_root,
+            &["diff", "--numstat", "--cached", "-z"],
+            &mut counts,
+        );
+        Ok(counts
+            .into_iter()
+            .map(|(path, (insertions, deletions))| GitFileLineCounts {
+                path,
+                insertions,
+                deletions,
+            })
+            .collect())
+    })
+}
+
+/// 跑一次 `git diff --numstat` 并把行数累加进 `counts`。
+///
+/// 命令失败时直接忽略 —— 行数只是源控面板里的装饰性信息，
+/// 拿不到也不该让整个面板报错。
+fn collect_numstat(
+    repo_root: &ResolvedGitDirectory,
+    args: &[&str],
+    counts: &mut HashMap<String, (u32, u32)>,
+) {
+    let Ok(output) = run_git(
+        &repo_root.workspace,
+        Some(&repo_root.git_path),
+        args.iter().copied(),
+        DEFAULT_TIMEOUT_SECS,
+    ) else {
+        return;
+    };
+    if ensure_success(&output, "git diff --numstat failed").is_err() {
+        return;
+    }
+    for (path, (insertions, deletions)) in parse_numstat_z(&output.stdout) {
+        let slot = counts.entry(path).or_insert((0, 0));
+        slot.0 += insertions;
+        slot.1 += deletions;
+    }
 }
 
 /// Bound the number of changed files surfaced to the UI. Returns the

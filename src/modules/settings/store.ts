@@ -17,6 +17,7 @@ export type TabWidthMode = "auto" | "fixed";
 // 中以 `[data-accent="<id>"]` / `.dark[data-accent="<id>"]` 形式覆盖。
 export const ACCENT_PRESETS = [
   "cyan", // 默认 - 现行青蓝
+  "neutral", // 中性灰 - VS Code Dark Modern 式无色相
   "violet", // Tokyo Night 紫
   "rose", // Rose Pine 粉
   "emerald", // Catppuccin 绿
@@ -28,6 +29,7 @@ export type AccentPref = (typeof ACCENT_PRESETS)[number];
 
 export const ACCENT_PRESET_LABELS: Record<AccentPref, string> = {
   cyan: "Cyan",
+  neutral: "Neutral",
   violet: "Violet",
   rose: "Rose",
   emerald: "Emerald",
@@ -42,6 +44,7 @@ export const ACCENT_PRESET_SWATCHES: Record<
   { light: string; dark: string }
 > = {
   cyan: { light: "rgb(64, 154, 184)", dark: "rgb(124, 215, 232)" },
+  neutral: { light: "rgb(133, 137, 143)", dark: "rgb(196, 199, 206)" },
   violet: { light: "rgb(108, 99, 198)", dark: "rgb(170, 140, 224)" },
   rose: { light: "rgb(196, 92, 130)", dark: "rgb(232, 142, 178)" },
   emerald: { light: "rgb(54, 152, 104)", dark: "rgb(122, 207, 160)" },

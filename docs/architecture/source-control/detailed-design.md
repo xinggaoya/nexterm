@@ -64,6 +64,8 @@ interface SourceControlFileEntry {
   staged: boolean;
   unstaged: boolean;
   untracked: boolean;
+  insertions: number;          // 本次改动的新增行数（+N）
+  deletions: number;          // 本次改动的删除行数（-M）
 }
 ```
 

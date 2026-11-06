@@ -70,6 +70,13 @@ export type GitChangedFile = {
   statusLabel: string;
 };
 
+/** 单个文件的新增 / 删除行数（源控面板的 +N -M）。 */
+export type GitFileLineCounts = {
+  path: string;
+  insertions: number;
+  deletions: number;
+};
+
 export type GitStatusSnapshot = {
   repoRoot: string;
   branch: string;
@@ -558,6 +565,8 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
         untrackedFiles: untrackedFiles ?? null,
         workspace,
       }),
+    gitDiffNumstat: (repoRoot: string) =>
+      invoke<GitFileLineCounts[]>("git_diff_numstat", { repoRoot, workspace }),
     gitDiffContent: (
       repoRoot: string,
       path: string,

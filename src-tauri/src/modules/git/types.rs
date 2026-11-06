@@ -40,6 +40,18 @@ pub struct GitChangedFile {
     pub status_label: String,
 }
 
+/// 单个文件的新增 / 删除行数。
+///
+/// `git status --porcelain=v2` 不带行数，源控面板要显示 `+N -M`
+/// 就得另外跑 `git diff --numstat`。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitFileLineCounts {
+    pub path: String,
+    pub insertions: u32,
+    pub deletions: u32,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitStatusSnapshot {

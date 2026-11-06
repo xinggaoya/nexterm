@@ -126,6 +126,7 @@ type GitRepositoryDiscovery = {
 | `git_resolve_repo` | 解析给定 cwd 下的仓库根，返回 `GitRepoInfo`（branch / upstream / isDetached） |
 | `git_panel_snapshot` | 单次拉取 `repo + status`，避免 IPC 双调用 |
 | `git_status` | 刷新仓库状态（含 changedFiles） |
+| `git_diff_numstat` | 每个变更文件的新增 / 删除行数（`+N -M`）。**独立于 `git_status`**：status 跟着文件事件高频刷新，每次多跑两次 `git diff` 会拖慢大仓库；面板不可见时不拉 |
 | `git_diff_content` | 单文件 diff 内容（含 isBinary / truncated） |
 | `git_stage` / `git_unstage` | 按 pathspec 暂存 / 取消暂存 |
 | `git_discard` | 按 `GitDiscardEntry[]` 丢弃工作区修改（含 untracked） |

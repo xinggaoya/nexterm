@@ -328,7 +328,7 @@ onBeforeUnmount(() => {
       <span
         data-tab-active-indicator
         aria-hidden="true"
-        class="absolute inset-x-1 top-0 h-0.5 rounded-full bg-primary"
+        class="v2-anim-underline absolute inset-x-1 top-0 h-0.5 rounded-full bg-primary"
       />
       <NIcon :component="TerminalOutline" :size="13" class="shrink-0 text-primary" />
       <span class="flex min-w-0 flex-1 items-center gap-1.5">
@@ -383,7 +383,7 @@ onBeforeUnmount(() => {
                 v-if="tab.id === activeId"
                 data-tab-active-indicator
                 aria-hidden="true"
-                class="absolute inset-x-1 top-0 h-0.5 rounded-full bg-primary"
+                class="v2-anim-underline absolute inset-x-1 top-0 h-0.5 rounded-full bg-primary"
               />
               <span class="flex min-w-0 flex-1 items-center gap-1.5">
                 <img
