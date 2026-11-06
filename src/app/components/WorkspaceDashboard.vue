@@ -73,7 +73,7 @@ function envLabelOf(record: WorkspaceSelection): string {
         <button
           type="button"
           data-dashboard-open
-          class="flex h-11 items-center gap-2 rounded-xl bg-primary px-6 text-[14px] font-medium text-primary-foreground transition-all duration-[var(--dur-fast)] hover:brightness-110 active:scale-[0.98]"
+          class="flex h-11 items-center gap-2 rounded-lg bg-primary px-6 text-[14px] font-medium text-primary-foreground transition-all duration-[var(--dur-fast)] hover:brightness-110 active:scale-[0.98]"
           @click="emit('chooseWorkspace', workspaceEnv.pendingEnv)"
         >
           <NIcon :component="TerminalOutline" :size="16" />
@@ -100,7 +100,7 @@ function envLabelOf(record: WorkspaceSelection): string {
             @click="emit('openRecent', record)"
           >
             <span
-              class="relative grid size-9 shrink-0 place-items-center rounded-lg bg-surface-hover text-[13px] font-semibold text-foreground"
+              class="relative grid size-9 shrink-0 place-items-center rounded-md bg-surface-hover text-[13px] font-semibold text-foreground"
             >
               {{ monogramOf(record.path) }}
               <span

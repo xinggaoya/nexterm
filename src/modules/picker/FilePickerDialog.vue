@@ -394,7 +394,7 @@ onMounted(async () => {
           <template v-for="(crumb, index) in crumbs" :key="crumb.path">
             <span v-if="index > 0" class="text-muted-foreground">/</span>
             <button
-              class="max-w-40 shrink-0 truncate rounded px-1.5 py-0.5 text-[12px] hover:bg-accent/60"
+              class="max-w-40 shrink-0 truncate rounded-sm px-1.5 py-0.5 text-[12px] hover:bg-accent/60"
               :class="index === crumbs.length - 1 ? 'font-medium text-foreground' : 'text-muted-foreground'"
               :title="crumb.path"
               @click="navigate(crumb.path)"
@@ -490,7 +490,7 @@ onMounted(async () => {
       <div v-if="createError" class="text-xs text-red-500">{{ createError }}</div>
 
       <div
-        class="h-72 rounded-md border border-border/70 bg-muted/30"
+        class="h-72 rounded-lg border border-border/70 bg-muted/30"
         role="listbox"
         :aria-label="dialogTitle"
         tabindex="0"

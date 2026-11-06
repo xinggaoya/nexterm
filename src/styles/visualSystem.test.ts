@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ACCENT_PRESETS } from "@/modules/settings/store";
 
@@ -7,8 +9,67 @@ const globalsCss = readFileSync(
   "utf8",
 );
 
+const SRC_ROOT = fileURLToPath(new URL("../", import.meta.url));
+
+/**
+ * 自绘 window chrome 的窗口外框圆角是「操作系统窗口的形状」，
+ * 不属于 UI 圆角档位体系（它要跟着操作系统走，不跟主题走），
+ * 因此从圆角契约里排除。
+ */
+const cssWithoutWindowChrome = globalsCss.replace(
+  /html\[data-chrome="borderless"\]\s*#root\s*\{[^}]*\}/,
+  "",
+);
+
 function readSource(path: string): string {
   return readFileSync(new URL(path, import.meta.url), "utf8");
+}
+
+/** 收集 src/ 下参与圆角契约的源码文件（跳过测试文件自身）。 */
+function collectSourceFiles(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collectSourceFiles(full, out);
+      continue;
+    }
+    if (!/\.(vue|ts)$/.test(entry.name)) continue;
+    if (/\.(test|spec)\.(ts|tsx)$/.test(entry.name)) continue;
+    out.push(full);
+  }
+  return out;
+}
+
+/**
+ * 抽取模板里的 class token。
+ *
+ * 只看 <template> 段 —— <script> 里同名的普通变量不算。
+ * 静态 class 直接按空白切词；动态 class 取其中的字符串字面量
+ * （`:class="['rounded', { 'rounded-lg': ok }]"` 这种）。
+ */
+function collectClassTokens(vueSource: string): string[] {
+  const open = /<template[^>]*>/.exec(vueSource);
+  if (!open) return [];
+  const start = open.index;
+  const end = vueSource.lastIndexOf("</template>");
+  if (end <= start) return [];
+  const template = vueSource.slice(start, end);
+
+  const tokens: string[] = [];
+  const attrRe = /(?::|v-bind:)?class\s*=\s*"([^"]*)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = attrRe.exec(template)) !== null) {
+    const value = match[1];
+    for (const token of value.split(/\s+/)) {
+      if (token) tokens.push(token);
+    }
+    for (const literal of value.matchAll(/['"`]([^'"`]*)['"`]/g)) {
+      for (const token of literal[1].split(/\s+/)) {
+        if (token) tokens.push(token);
+      }
+    }
+  }
+  return tokens;
 }
 
 describe("visual system contract", () => {
@@ -24,6 +85,87 @@ describe("visual system contract", () => {
     expect(darkTheme).toContain("--shell-bg:");
     expect(darkTheme).toContain("--success:");
     expect(darkTheme).toContain("--warning:");
+  });
+
+  it("declares corner radii on the shared two-tier scale", () => {
+    // 圆角定义必须落在普通 @theme 块（变量真实输出到 :root），
+    // 而不能留在 @theme inline 里 —— inline 会把值烘焙成字面量，
+    // Tailwind 工具类 / 手写 CSS / Naive themeOverrides 就无法共用同一份数值。
+    const inlineStart = globalsCss.indexOf("@theme inline {");
+    expect(inlineStart).toBeGreaterThan(-1);
+    const inlineBlock = globalsCss.slice(
+      inlineStart,
+      globalsCss.indexOf("\n}", inlineStart),
+    );
+    expect(inlineBlock).not.toMatch(/--radius-/);
+
+    // 普通 @theme 块承载 8 个档位。
+    // 控件档 xs/sm/md 数值紧凑，容器档 lg 起明显放大。
+    const themeStart = globalsCss.indexOf("@theme {");
+    expect(themeStart).toBeGreaterThan(-1);
+    const themeBlock = globalsCss.slice(
+      themeStart,
+      globalsCss.indexOf("\n}", themeStart),
+    );
+    expect(themeBlock).toContain("--radius-xs: 2px;");
+    expect(themeBlock).toContain("--radius-sm: 4px;");
+    expect(themeBlock).toContain("--radius-md: 6px;");
+    expect(themeBlock).toContain("--radius-lg: 12px;");
+    expect(themeBlock).toContain("--radius-xl: 16px;");
+    expect(themeBlock).toContain("--radius-2xl: 20px;");
+    expect(themeBlock).toContain("--radius-3xl: 24px;");
+    expect(themeBlock).toContain("--radius-4xl: 28px;");
+
+    // 裸 rounded 的兜底值保留在 unlayered :root，优先级高于 @layer theme。
+    expect(globalsCss).toContain("--radius: 10px;");
+  });
+
+  it("keeps hand-written radii on the shared radius scale", () => {
+    // 手写 CSS 里的圆角必须引用 token，不再出现字面量 px。
+    // 0（去框）、999px（胶囊）、50%（椭圆）是刻意的例外。
+    const cssRadius = [
+      ...cssWithoutWindowChrome.matchAll(/border-radius:\s*([^;]+);/g),
+    ].map((m) => m[1].trim().replace(/\s*!important$/, ""));
+    expect(cssRadius.length).toBeGreaterThan(0);
+    for (const value of cssRadius) {
+      expect(value).toMatch(/^(0|999px|50%|var\(--radius-[a-z0-9-]+\))$/);
+    }
+  });
+
+  it("keeps style-block radii on the shared radius scale", () => {
+    // 组件 <style> 块里的字面量 px 圆角必须换成 token。
+    // 999px（圆形）是刻意的例外。
+    const offenders: string[] = [];
+    for (const file of collectSourceFiles(SRC_ROOT)) {
+      const source = readFileSync(file, "utf8");
+      source.split("\n").forEach((line, index) => {
+        const hit = line.match(/border-radius:\s*(\d+)px/);
+        if (hit && hit[1] !== "999") {
+          offenders.push(`${file}:${index + 1} 字面量圆角 ${hit[1]}px`);
+        }
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps class-level radii on the shared radius scale", () => {
+    const offenders: string[] = [];
+    for (const file of collectSourceFiles(SRC_ROOT)) {
+      if (!file.endsWith(".vue")) continue;
+      const source = readFileSync(file, "utf8");
+      for (const token of collectClassTokens(source)) {
+        // 任意值圆角（如 rounded-[6px]）必须换成档位工具类。
+        if (/^rounded-\[.+\]$/.test(token)) {
+          offenders.push(`${file} 任意值圆角 ${token}`);
+        }
+        // 裸 rounded 等于 var(--radius) = 10px，夹在控件档(6)与容器档(12)之间，
+        // 语义模糊，必须显式选档。
+        if (token === "rounded") {
+          offenders.push(`${file} 裸 rounded 未选档`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 
   it("provides shared surface, toolbar, row, icon button and overlay rules", () => {

@@ -180,7 +180,7 @@ const closeLabel = computed(() =>
   place-items: center;
   width: 18px;
   height: 18px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--muted-foreground);
   transition: background-color 120ms, color 120ms;
 }

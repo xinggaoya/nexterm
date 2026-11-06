@@ -141,7 +141,7 @@ function handleSplitSelect(key: string | number) {
       状态坞里始终有一份。
     -->
     <div
-      class="flex min-w-0 shrink items-center gap-1.5 rounded-lg px-1.5 py-1"
+      class="flex min-w-0 shrink items-center gap-1.5 rounded-md px-1.5 py-1"
       data-workspace-identity
       :title="workspacePath"
     >

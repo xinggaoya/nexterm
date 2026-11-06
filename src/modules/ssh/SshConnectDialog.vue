@@ -248,7 +248,7 @@ onMounted(() => {
 
             <div
               v-if="creating"
-              class="flex flex-col gap-2 rounded-[6px] border border-border/60 p-2.5"
+              class="flex flex-col gap-2 rounded-lg border border-border/60 p-2.5"
             >
               <NInput
                 v-model:value="formName"
@@ -316,7 +316,7 @@ onMounted(() => {
 
           <div
             v-if="error"
-            class="break-words rounded-[6px] border border-destructive/25 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive"
+            class="break-words rounded-md border border-destructive/25 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive"
           >
             {{ error }}
           </div>
@@ -342,7 +342,7 @@ onMounted(() => {
             <li
               v-for="entry in knownHosts"
               :key="`${entry.host}:${entry.keyType}`"
-              class="flex items-center gap-2 rounded-[6px] border border-border/60 px-2 py-1.5"
+              class="flex items-center gap-2 rounded-md border border-border/60 px-2 py-1.5"
               :data-known-host="entry.host"
             >
               <span class="min-w-0 flex-1">

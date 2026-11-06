@@ -201,7 +201,7 @@ async function clearAllCustom() {
         {{ t("commands.noShortcutsMatch") }}
       </p>
 
-      <div v-else class="divide-y divide-border/60 overflow-hidden rounded-md border border-border/70">
+      <div v-else class="divide-y divide-border/60 overflow-hidden rounded-lg border border-border/70">
         <div
           v-for="command in filtered"
           :key="command.id"
@@ -246,7 +246,7 @@ async function clearAllCustom() {
             <p
               v-if="rejected?.id === command.id"
               :data-keybinding-rejected="command.id"
-              class="absolute right-0 top-full z-10 mt-1 w-64 rounded-md border border-destructive/30 bg-popover px-2 py-1.5 text-[10px] leading-4 text-destructive shadow-md"
+              class="absolute right-0 top-full z-10 mt-1 w-64 rounded-lg border border-destructive/30 bg-popover px-2 py-1.5 text-[10px] leading-4 text-destructive shadow-md"
             >
               {{
                 rejected.reason === "conflict"

@@ -172,7 +172,7 @@ defineExpose({ focus });
       <span class="min-w-0 flex-1 truncate">{{ notice }}</span>
       <button
         type="button"
-        class="rounded px-1 text-[10px] opacity-80 hover:bg-accent hover:opacity-100"
+        class="rounded-sm px-1 text-[10px] opacity-80 hover:bg-accent hover:opacity-100"
         @click="notice = null"
       >
         {{ t("preview.dismiss") }}

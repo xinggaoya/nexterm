@@ -266,7 +266,7 @@ onBeforeUnmount(clearSearchTimer);
           @keydown="handleKeydown"
         />
         <kbd
-          class="rounded border border-border/70 bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+          class="rounded-sm border border-border/70 bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
         >
           Esc
         </kbd>
@@ -335,7 +335,7 @@ onBeforeUnmount(clearSearchTimer);
             </span>
             <kbd
               v-if="formatKeybinding(keybindings[result.command.id], IS_MAC)"
-              class="shrink-0 rounded border border-border/70 bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+              class="shrink-0 rounded-sm border border-border/70 bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
             >
               {{ formatKeybinding(keybindings[result.command.id], IS_MAC) }}
             </kbd>

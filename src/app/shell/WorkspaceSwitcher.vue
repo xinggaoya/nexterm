@@ -231,12 +231,12 @@ function handleRowPointerDown(event: PointerEvent, workspace: WorkspaceInstance)
           : t('app.titleBar.switchWorkspace')
       "
       :title="activeWorkspace ? activeWorkspace.rootPath : undefined"
-      class="flex h-7 max-w-[13rem] min-w-0 items-center gap-1.5 rounded-lg px-1.5 text-[12px] transition-colors duration-[var(--dur-fast)] hover:bg-surface-hover"
+      class="flex h-7 max-w-[13rem] min-w-0 items-center gap-1.5 rounded-md px-1.5 text-[12px] transition-colors duration-[var(--dur-fast)] hover:bg-surface-hover"
       @click="toggleOpen"
     >
       <span
         v-if="activeWorkspace"
-        class="grid size-[18px] shrink-0 place-items-center rounded-[5px] text-[10px] font-semibold"
+        class="grid size-[18px] shrink-0 place-items-center rounded-sm text-[10px] font-semibold"
         :style="monogramStyle(activeWorkspace.id)"
       >
         {{ monogramOf(activeWorkspace) }}
@@ -274,7 +274,7 @@ function handleRowPointerDown(event: PointerEvent, workspace: WorkspaceInstance)
           :key="workspace.id"
           :data-workspace-row="workspace.id"
           :data-workspace-active="workspace.id === activeWorkspaceId"
-          class="relative rounded-lg"
+          class="relative rounded-md"
           :class="[
             dropIndicatorClass(workspace.id),
             draggingWorkspaceId === workspace.id ? 'opacity-60' : '',
@@ -282,7 +282,7 @@ function handleRowPointerDown(event: PointerEvent, workspace: WorkspaceInstance)
           @pointerdown="handleRowPointerDown($event, workspace)"
         >
           <div
-            class="flex items-center gap-0.5 rounded-lg transition-colors duration-[var(--dur-fast)]"
+            class="flex items-center gap-0.5 rounded-md transition-colors duration-[var(--dur-fast)]"
             :class="
               workspace.id === activeWorkspaceId
                 ? 'bg-primary/10'
@@ -297,7 +297,7 @@ function handleRowPointerDown(event: PointerEvent, workspace: WorkspaceInstance)
               @click="handleSelect(workspace)"
             >
               <span
-                class="grid size-[18px] shrink-0 place-items-center rounded-[5px] text-[10px] font-semibold"
+                class="grid size-[18px] shrink-0 place-items-center rounded-sm text-[10px] font-semibold"
                 :style="monogramStyle(workspace.id)"
               >
                 {{ monogramOf(workspace) }}
@@ -388,7 +388,7 @@ function handleRowPointerDown(event: PointerEvent, workspace: WorkspaceInstance)
     <!-- 拖拽 ghost：固定在视口层，不受浮层裁剪影响 -->
     <div
       v-if="dragGhostItem"
-      class="v2-glass-float pointer-events-none fixed z-[60] flex h-8 items-center gap-2 rounded-lg px-1.5 text-[12.5px] opacity-95 will-change-transform"
+      class="v2-glass-float pointer-events-none fixed z-[60] flex h-8 items-center gap-2 rounded-xl px-1.5 text-[12.5px] opacity-95 will-change-transform"
       :style="{
         transform: `translate3d(${dragGhostItem.x}px, ${dragGhostItem.y}px, 0) translate(-50%, -50%)`,
       }"

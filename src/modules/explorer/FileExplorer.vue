@@ -635,7 +635,7 @@ defineExpose({
           <span class="min-w-0 flex-1 break-words">{{ rootState.message }}</span>
           <button
             type="button"
-            class="shrink-0 rounded border border-destructive/40 px-1.5 py-px text-[10px] text-destructive transition-colors duration-[var(--dur-fast)] hover:bg-destructive/10"
+            class="shrink-0 rounded-sm border border-destructive/40 px-1.5 py-px text-[10px] text-destructive transition-colors duration-[var(--dur-fast)] hover:bg-destructive/10"
             data-explorer-retry
             @click="retryRoot"
           >
@@ -723,7 +723,7 @@ defineExpose({
       class="pointer-events-none fixed bottom-3 left-1/2 z-50 w-[320px] max-w-[92vw] -translate-x-1/2"
     >
       <div
-        class="pointer-events-auto v2-glass-float flex flex-col gap-1.5 rounded-lg px-2.5 py-2 shadow-lg"
+        class="pointer-events-auto v2-glass-float flex flex-col gap-1.5 rounded-xl px-2.5 py-2 shadow-lg"
       >
         <div class="flex items-center justify-between gap-2 text-[11.5px]">
           <span class="min-w-0 flex-1 truncate">
@@ -759,7 +759,7 @@ defineExpose({
     <div
       v-if="dragGhost"
       data-explorer-drag-ghost
-      class="v2-glass-float pointer-events-none fixed z-50 flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] opacity-95"
+      class="v2-glass-float pointer-events-none fixed z-50 flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] opacity-95"
       :class="dropAllowed ? '' : 'text-destructive'"
       :style="{
         transform: `translate3d(${dragGhost.x}px, ${dragGhost.y}px, 0) translate(-50%, -140%)`,

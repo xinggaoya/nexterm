@@ -55,13 +55,28 @@
     --color-pane-handle: var(--pane-handle);
     --color-pane-handle-active: var(--pane-handle-active);
     --color-panel-bg: var(--panel-bg);
+}
+
+/* ── 圆角：唯一事实源 ──────────────────────────────────────────────────
+ * 必须是普通 @theme（不是 @theme inline）：普通 @theme 会把变量真实输出
+ * 到 :root，Tailwind 工具类 / 手写 CSS / Naive themeOverrides 才能共用
+ * 同一份数值。@theme inline 会把值烘焙成字面量（工具类直接写成 6px），
+ * 变量根本不会落到 :root，另外两条路径就无从引用。
+ *
+ * 两档划分：
+ *   控件档 xs/sm/md —— 密集小控件（图标按钮、文件树行、chip、输入框）。
+ *                     数值紧凑，保证信息密度与像素对齐。
+ *   容器档 lg 起   —— 卡片、浮层、弹窗等有边界的大块。明显放大。
+ */
+@theme {
+    --radius-xs: 2px;
     --radius-sm: 4px;
     --radius-md: 6px;
-    --radius-lg: 10px;
-    --radius-xl: 12px;
-    --radius-2xl: 16px;
-    --radius-3xl: 18px;
-    --radius-4xl: 22px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-2xl: 20px;
+    --radius-3xl: 24px;
+    --radius-4xl: 28px;
 }
 
 :root {
@@ -310,7 +325,7 @@
     min-height: 32px;
   }
   .nexterm-row {
-    @apply rounded-md transition-colors;
+    @apply rounded-sm transition-colors;
     transition-duration: 120ms;
   }
   .nexterm-row:hover,
@@ -327,7 +342,7 @@
     width: 28px;
     height: 28px;
     flex: 0 0 auto;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     transition-duration: 120ms;
   }
   .nexterm-icon-button:hover {
@@ -338,7 +353,7 @@
   }
   .nexterm-overlay {
     @apply bg-popover text-popover-foreground border border-border;
-    border-radius: 8px;
+    border-radius: var(--radius-xl);
     box-shadow: var(--overlay-shadow);
   }
   /* 文件 / 目录类型图标的统一钩子。
@@ -365,7 +380,7 @@
   .nexterm-card {
     background-color: var(--card);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
   }
   .nexterm-card-header {
     min-height: 32px;
@@ -381,7 +396,7 @@
   .nexterm-card-elevated {
     background-color: var(--popover);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     box-shadow: var(--overlay-shadow);
   }
   .nexterm-canvas {
@@ -679,7 +694,7 @@ html *::-webkit-scrollbar {
   );
   background-size: 200% 100%;
   animation: v2-skeleton-shimmer 1.6s var(--ease-out) infinite;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 @keyframes v2-skeleton-shimmer {
   0% { background-position: 200% 0; }
