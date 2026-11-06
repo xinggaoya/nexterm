@@ -818,7 +818,6 @@ defineExpose({
         :env="workspace.env"
         :git-branch="gitBranch"
         :show-window-controls="USE_CUSTOM_WINDOW_CONTROLS"
-        :can-split="canSplitActiveTab"
         :compact="responsive.narrow.value"
         :dense="responsive.compact.value"
         :workspaces="workspaces.workspaces"
@@ -826,8 +825,6 @@ defineExpose({
         :panel-layout="panelLayout"
         :left-panel-open="leftPanelVisible"
         :right-panel-open="rightPanelVisible"
-        @new-terminal="newTerminalTab"
-        @split-pane="splitActivePane"
         @open-command-palette="() => emit('request-command-palette', 'commands')"
         @open-settings="() => emit('request-settings')"
         @select-workspace="(id) => workspaces.setActive(id)"
@@ -883,6 +880,7 @@ defineExpose({
             :fixed-width="prefs.tabFixedWidth"
             :env-kind="workspace.env.kind"
             :shell-id="prefs.terminalShellId"
+            :can-split="canSplitActiveTab"
             @select-tab="(id) => tabs.setActiveId(id, workspace.id)"
             @close-tab="(id) => requestCloseTab(id)"
             @close-others="(id) => requestCloseOthers(id)"
@@ -893,6 +891,8 @@ defineExpose({
             @request-rename="requestTabRename"
             @pin-tab="(id) => tabs.pinTab(id, workspace.id)"
             @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement, workspace.id)"
+            @new-terminal="newTerminalTab"
+            @split-pane="splitActivePane"
           />
 
           <Canvas

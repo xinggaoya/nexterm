@@ -72,6 +72,7 @@ function mountStrip(
       activeId,
       widthMode: "auto",
       fixedWidth: 160,
+      canSplit: true,
       ...extra,
     },
   });

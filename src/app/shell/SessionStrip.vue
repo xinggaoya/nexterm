@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import {
+  AddOutline,
   CloseOutline,
   DuplicateOutline,
   EllipsisHorizontalOutline,
+  ReorderTwoOutline,
   TerminalOutline,
 } from "@vicons/ionicons5";
-import { NDropdown, NIcon } from "naive-ui";
+import { NDropdown, NIcon, type DropdownOption } from "naive-ui";
 import { computed, h, nextTick, onBeforeUnmount, ref, watch, type VNode } from "vue";
 import { fileIconUrl, shellIconUrl } from "@/modules/icons";
 import { tabLabel } from "@/modules/tabs/tabLabel";
@@ -15,8 +17,11 @@ import {
   usePointerDragReorder,
   type DragPlacement,
 } from "@/lib/usePointerDragReorder";
+import NextermIconButton from "@/components/NextermIconButton.vue";
+import TooltipTitle from "@/components/TooltipTitle.vue";
 import type { Tab, TerminalTab } from "@/modules/tabs/tabsTypes";
 import type { TabWidthMode } from "@/modules/settings/store";
+import type { SplitDir } from "@/modules/terminal/lib/layout";
 import TabContextMenu, {
   type TabContextMenuTarget,
 } from "./TabContextMenu.vue";
@@ -31,6 +36,8 @@ const props = defineProps<{
   envKind?: "local" | "wsl" | "ssh";
   /** 本地终端的 shell profile id（"auto" 表示后端默认顺序）。 */
   shellId?: string;
+  /** 当前标签能否分屏（只对终端 tab 成立）。 */
+  canSplit: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -44,6 +51,8 @@ const emit = defineEmits<{
   duplicateTerminal: [tabId: number];
   renameTab: [tabId: number, title: string];
   requestRename: [tabId: number];
+  newTerminal: [];
+  splitPane: [dir: SplitDir];
 }>();
 
 // ── Minimal mode ────────────────────────────────────────────────────────
@@ -92,6 +101,38 @@ function tabWidthClass(): string {
   // 自适应模式不再拉伸填满整行（flex-[1_1_8rem] 会把标签拉得又宽又空），
   // 改成「按内容 + 封顶」：短标签短、长标签到上限就截断。
   return props.widthMode === "fixed" ? "flex-none" : "max-w-56";
+}
+
+/**
+ * 标签的形状 —— 极简模式的 cwd chip 与完整模式的标签**共用同一套**。
+ *
+ * 之前两者各写各的：chip 是一枚填充底色的圆角胶囊，标签是另一套形状与配色。
+ * 单终端 ↔ 多标签切换时整行会跳变。
+ *
+ * 形状是**完全圆角的药丸**（rounded-full）—— 项目走的是“整体圆润”的路线，
+ * 标签也不例外。激活项用主色实心填充，主色本身就是指示，不需要额外的顶部条。
+ */
+const TAB_SHAPE_CLASS =
+  "group relative flex h-7 min-w-[6rem] items-center justify-between gap-1.5 rounded-full px-3 text-left text-[12px] transition-[background-color,color,opacity] duration-[var(--dur-fast)]";
+const TAB_ACTIVE_CLASS = "bg-primary text-primary-foreground";
+const TAB_IDLE_CLASS =
+  "bg-surface-hover text-muted-foreground hover:bg-accent hover:text-foreground";
+
+// ── 标签行动作区：新建终端 / 分屏 ───────────────────────────────────────
+// 这两个都是「针对当前标签」的操作，放在顶栏右端既占地方又离上下文远，
+// 挪到标签行末尾（JetBrains 的位置）。
+
+const splitOptions = computed<DropdownOption[]>(() => [
+  { key: "row", label: t("app.header.splitRight") },
+  { key: "col", label: t("app.header.splitDown") },
+]);
+
+function renderSplitIcon(option: DropdownOption): VNode {
+  return h(NIcon, { size: 14 }, { default: () => h(option.key === "col" ? ReorderTwoOutline : DuplicateOutline) });
+}
+
+function handleSplitSelect(key: string | number) {
+  emit("splitPane", key === "col" ? "col" : "row");
 }
 
 // ── Drag-to-reorder ────────────────────────────────────────────────────
@@ -272,22 +313,24 @@ onBeforeUnmount(() => {
     class="flex h-9 min-w-0 shrink-0 items-center border-b border-border bg-title-bar"
     data-session-strip
   >
-    <!-- 极简模式:单终端面包屑 -->
+    <!-- 极简模式:单终端面包屑（形状与配色与完整标签完全一致） -->
     <button
       v-if="minimalTab"
       type="button"
       data-session-minimal
       :title="minimalTab.cwd ?? tabLabel(minimalTab)"
-      class="flex h-8 max-w-64 items-center gap-1.5 rounded-md bg-accent/50 px-3 text-[12px] text-foreground transition-colors duration-[var(--dur-fast)] hover:bg-accent"
+      :class="[TAB_SHAPE_CLASS, 'max-w-64', TAB_ACTIVE_CLASS]"
       @click="emit('selectTab', minimalTab.id)"
       @contextmenu.prevent="handleTabContextMenu($event, minimalTab)"
     >
-      <NIcon :component="TerminalOutline" :size="13" class="shrink-0 text-primary" />
-      <span class="min-w-0 truncate">{{ tabLabel(minimalTab) }}</span>
-      <span
-        v-if="minimalTab.terminalTitle"
-        class="min-w-0 truncate text-[11px] text-muted-foreground"
-      >{{ minimalTab.cwd }}</span>
+      <NIcon :component="TerminalOutline" :size="13" class="shrink-0 text-primary-foreground" />
+      <span class="flex min-w-0 flex-1 items-center gap-1.5">
+        <span class="min-w-0 truncate">{{ tabLabel(minimalTab) }}</span>
+        <span
+          v-if="minimalTab.terminalTitle"
+          class="min-w-0 truncate text-[11px] text-primary-foreground/70"
+        >{{ minimalTab.cwd }}</span>
+      </span>
     </button>
 
     <!-- 完整会话条 -->
@@ -311,31 +354,23 @@ onBeforeUnmount(() => {
               :title="`${tabKindLabel(tab)}: ${tabLabel(tab)}`"
               :style="tabWidthStyle()"
               :class="[
-                'group relative flex h-8 min-w-[6rem] items-center justify-between gap-1.5 rounded-t-sm px-3 text-left text-[12px] transition-[background-color,color,opacity,box-shadow] duration-[var(--dur-fast)]',
+                TAB_SHAPE_CLASS,
                 tabWidthClass(),
                 draggingTabId === tab.id ? 'opacity-60' : '',
+                // 插入条落在胶囊**间隙**里（-left-1），不压在圆角弧线上。
                 dropTarget?.id === tab.id && dropTarget.placement === 'before'
-                  ? 'before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:rounded-full before:bg-primary'
+                  ? 'before:absolute before:inset-y-2 before:-left-1 before:w-[3px] before:rounded-full before:bg-primary'
                   : '',
                 dropTarget?.id === tab.id && dropTarget.placement === 'after'
-                  ? 'after:absolute after:inset-y-0 after:right-0 after:w-[3px] after:rounded-full after:bg-primary'
+                  ? 'after:absolute after:inset-y-2 after:-right-1 after:w-[3px] after:rounded-full after:bg-primary'
                   : '',
-                tab.id === activeId
-                  ? 'bg-shell-bg text-foreground'
-                  : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
+                tab.id === activeId ? TAB_ACTIVE_CLASS : TAB_IDLE_CLASS,
               ]"
               @click="handleTabClick(tab)"
               @dblclick="pinPreviewTab(tab)"
               @contextmenu.prevent="handleTabContextMenu($event, tab)"
               @pointerdown="handleTabPointerDown($event, tab)"
             >
-              <!-- 激活指示：顶部主色条（VS Code 的标签语言） -->
-              <span
-                v-if="tab.id === activeId"
-                data-tab-active-indicator
-                aria-hidden="true"
-                class="absolute inset-x-1 top-0 h-0.5 rounded-full bg-primary"
-              />
               <span class="flex min-w-0 flex-1 items-center gap-1.5">
                 <img
                   v-if="tab.kind === 'editor' || tab.kind === 'markdown'"
@@ -356,17 +391,21 @@ onBeforeUnmount(() => {
                   :component="TerminalOutline"
                   :size="12"
                   class="shrink-0"
-                  :class="tab.id === activeId ? 'text-primary' : ''"
+                  :class="tab.id === activeId ? 'text-primary-foreground' : ''"
                 />
                 <span
                   class="min-w-0 truncate"
-                  :class="tab.kind === 'editor' && tab.preview ? 'italic text-muted-foreground' : ''"
+                  :class="[
+                    tab.kind === 'editor' && tab.preview ? 'italic' : '',
+                    tab.id === activeId ? '' : 'text-muted-foreground',
+                  ]"
                 >
                   {{ tabLabel(tab) }}
                 </span>
                 <span
                   v-if="tab.kind === 'editor' && tab.dirty"
-                  class="size-1.5 shrink-0 rounded-full bg-primary"
+                  class="size-1.5 shrink-0 rounded-full"
+                  :class="tab.id === activeId ? 'bg-primary-foreground' : 'bg-primary'"
                 />
               </span>
               <!--
@@ -377,11 +416,11 @@ onBeforeUnmount(() => {
               <span
                 role="button"
                 tabindex="-1"
-                class="grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground transition-all duration-[var(--dur-fast)] hover:bg-destructive/15 hover:text-destructive"
+                class="grid size-4 shrink-0 place-items-center rounded-full transition-all duration-[var(--dur-fast)] hover:bg-destructive/15 hover:text-destructive"
                 :class="
                   tab.id === activeId
-                    ? 'opacity-60 group-hover:opacity-100'
-                    : 'opacity-0 group-hover:opacity-60 group-focus-within:opacity-100 [@media(hover:none)]:opacity-60'
+                    ? 'text-primary-foreground/80 opacity-70 group-hover:opacity-100'
+                    : 'text-muted-foreground opacity-0 group-hover:opacity-60 group-focus-within:opacity-100 [@media(hover:none)]:opacity-60'
                 "
                 @click.stop="emit('closeTab', tab.id)"
                 @pointerdown.stop
@@ -418,10 +457,45 @@ onBeforeUnmount(() => {
       @pointerdown="startWindowDrag"
     />
 
+    <!--
+      标签行动作区：新建终端 / 分屏。
+      两者都针对「当前标签」，放在标签行末尾比挤在顶栏右端更贴上下文，
+      顶栏也因此腾出空间。
+    -->
+    <div class="ml-1 flex shrink-0 items-center gap-0.5">
+      <TooltipTitle :label="t('app.header.newTerminal')">
+        <NextermIconButton
+          data-new-terminal
+          :aria-label="t('app.header.newTerminal')"
+          @click="emit('newTerminal')"
+        >
+          <NIcon :component="AddOutline" :size="14" />
+        </NextermIconButton>
+      </TooltipTitle>
+      <TooltipTitle :label="t('app.header.splitActions')">
+        <NDropdown
+          trigger="click"
+          placement="bottom-end"
+          :options="splitOptions"
+          :disabled="!canSplit"
+          :render-icon="renderSplitIcon"
+          @select="handleSplitSelect"
+        >
+          <NextermIconButton
+            data-split-terminal
+            :disabled="!canSplit"
+            :aria-label="t('app.header.splitActions')"
+          >
+            <NIcon :component="DuplicateOutline" :size="14" />
+          </NextermIconButton>
+        </NDropdown>
+      </TooltipTitle>
+    </div>
+
     <!-- Drag ghost -->
     <div
       v-if="tabGhost"
-      class="v2-glass-float will-change-transform pointer-events-none fixed z-50 flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] opacity-95"
+      class="v2-glass-float will-change-transform pointer-events-none fixed z-50 flex h-7 items-center gap-1.5 rounded-full px-3 text-[12px] opacity-95"
       :style="{
         width: `${tabGhost.width}px`,
         transform: `translate3d(${tabGhost.x}px, ${tabGhost.y}px, 0) translate(-50%, -50%)`,

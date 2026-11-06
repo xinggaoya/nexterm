@@ -14,26 +14,23 @@
  * 全在这里，面板与画布紧贴其下。
  */
 import {
-  AddOutline,
-  DuplicateOutline,
   GitBranchOutline,
-  ReorderTwoOutline,
   SearchOutline,
   SettingsOutline,
 } from "@vicons/ionicons5";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { NDropdown, NIcon, type DropdownOption } from "naive-ui";
-import { computed, h, type VNode } from "vue";
+import { NIcon } from "naive-ui";
+import { computed } from "vue";
 import NextermIconButton from "@/components/NextermIconButton.vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import WindowControls from "@/components/WindowControls.vue";
 import { IS_MAC } from "@/lib/platform";
 import { t } from "@/modules/i18n/translate";
 import type { WorkspaceEnv, WorkspaceInstance } from "@/modules/workspace";
-import type { SplitDir } from "@/modules/terminal/lib/layout";
 import type { DragPlacement } from "@/lib/usePointerDragReorder";
 import WorkspaceSwitcher from "./WorkspaceSwitcher.vue";
 import PanelControlCluster from "./PanelControlCluster.vue";
+import { startWindowDrag } from "./useWindowDrag";
 import type { PanelLayoutPref } from "@/modules/settings/store";
 
 const props = defineProps<{
@@ -42,7 +39,6 @@ const props = defineProps<{
   env: WorkspaceEnv;
   gitBranch: string | null;
   showWindowControls: boolean;
-  canSplit: boolean;
   /** 宽度偏窄：隐藏环境徽章，把空间让给会话条与动作区。 */
   compact?: boolean;
   /** 宽度很窄：连分支名也不再显示。 */
@@ -59,8 +55,6 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "new-terminal": [];
-  "split-pane": [dir: SplitDir];
   "open-command-palette": [];
   "open-settings": [];
   "select-workspace": [id: string];
@@ -96,18 +90,8 @@ const envLabel = computed(() => {
 });
 
 // ── 分屏下拉 ────────────────────────────────────────────────────────────
-const splitOptions = computed<DropdownOption[]>(() => [
-  { key: "row", label: t("app.header.splitRight") },
-  { key: "col", label: t("app.header.splitDown") },
-]);
-
-function renderSplitIcon(option: DropdownOption): VNode {
-  return h(NIcon, { size: 14 }, { default: () => h(option.key === "col" ? ReorderTwoOutline : DuplicateOutline) });
-}
-
-function handleSplitSelect(key: string | number) {
-  emit("split-pane", key === "col" ? "col" : "row");
-}
+// 「新建终端」与「分屏」都已经搬到标签行末尾（JetBrains 的标签行动作区）——
+// 它们都是「针对当前标签」的操作，放在顶栏右端既占地方又离上下文远。
 </script>
 
 <template>
@@ -162,38 +146,19 @@ function handleSplitSelect(key: string | number) {
       </span>
     </div>
 
-    <!-- 中:弹性占位。会话条已拆成独立一行，顶栏中间留白让两侧内容分居两端。 -->
-    <div class="flex h-full min-w-0 flex-1 items-center" />
+    <!--
+      中:弹性占位 + 窗口拖拽区。
+      会话条拆成独立一行后，这里只剩空白 —— 但它仍然是顶栏里最大的一块可拖区域，
+      必须保住拖拽能力（否则标题栏按不动）。
+    -->
+    <div
+      data-window-drag-region
+      class="flex h-full min-w-0 flex-1 items-center"
+      @pointerdown="startWindowDrag"
+    />
 
     <!-- 右:动作区 -->
     <div class="flex shrink-0 items-center gap-0.5">
-      <TooltipTitle :label="t('app.header.newTerminal')">
-        <NextermIconButton
-          data-new-terminal
-          :aria-label="t('app.header.newTerminal')"
-          @click="emit('new-terminal')"
-        >
-          <NIcon :component="AddOutline" :size="14" />
-        </NextermIconButton>
-      </TooltipTitle>
-      <TooltipTitle :label="t('app.header.splitActions')">
-        <NDropdown
-          trigger="click"
-          placement="bottom-end"
-          :options="splitOptions"
-          :disabled="!canSplit"
-          :render-icon="renderSplitIcon"
-          @select="handleSplitSelect"
-        >
-          <NextermIconButton
-            data-split-terminal
-            :disabled="!canSplit"
-            :aria-label="t('app.header.splitActions')"
-          >
-            <NIcon :component="DuplicateOutline" :size="14" />
-          </NextermIconButton>
-        </NDropdown>
-      </TooltipTitle>
       <TooltipTitle :label="t('app.header.openCommandCenter')">
         <NextermIconButton
           data-open-command-palette

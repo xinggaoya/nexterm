@@ -255,18 +255,47 @@ describe("visual system contract", () => {
     expect(host).not.toContain("prefs.panelLayout =");
   });
 
-  it("renders the session strip as VS Code-style tabs on the shared scale", () => {
+  it("renders the session strip as rounded pills with a solid active state", () => {
     const strip = readSource("../app/shell/SessionStrip.vue");
 
-    // 标签不再是胶囊；顶部小圆角 + 底部直角，激活项才能与画布无缝融合。
-    const tabClass = strip.match(/'group relative flex[^']*'/)?.[0] ?? "";
-    expect(tabClass).toContain("rounded-t-sm");
-    expect(tabClass).not.toContain("rounded-full");
+    // 圆润胶囊：标签是完全圆角的药丸，不再是直角/顶部切角。
+    const shape = strip.match(/TAB_SHAPE_CLASS\s*=\s*\n?\s*"([^"]+)"/)?.[1] ?? "";
+    expect(shape).toContain("rounded-full");
+    expect(shape).not.toContain("rounded-t-sm");
 
-    // 激活态：与画布同色 + 顶部主色条（VS Code 的标签语言），不用内描边。
-    expect(strip).toContain("data-tab-active-indicator");
-    expect(strip).toContain("bg-shell-bg");
-    expect(tabClass).not.toContain("inset_0_0_0_1px");
+    // 激活项 = 主色实心填充（主色本身就是指示，不需要额外的顶部条）。
+    const active = strip.match(/TAB_ACTIVE_CLASS\s*=\s*\n?\s*"([^"]+)"/)?.[1] ?? "";
+    expect(active).toContain("bg-primary");
+    expect(active).toContain("text-primary-foreground");
+    expect(strip).not.toContain("data-tab-active-indicator");
+    expect(strip).not.toContain("bg-shell-bg");
+  });
+
+  it("moves the new-tab and split actions into the tab strip, keeping the title bar draggable", () => {
+    const topBar = readSource("../app/shell/TopBar.vue");
+    const strip = readSource("../app/shell/SessionStrip.vue");
+
+    // 顶栏中段必须是窗口拖拽区 —— 会话条拆出去后不能把拖拽能力一起弄丢。
+    expect(topBar).toContain("data-window-drag-region");
+    expect(topBar).toContain("startWindowDrag");
+
+    // 新建终端 / 分屏归到标签行末尾（JetBrains 的标签行动作区）。
+    expect(strip).toContain("data-new-terminal");
+    expect(strip).toContain("data-split-terminal");
+    expect(topBar).not.toContain("data-new-terminal");
+    expect(topBar).not.toContain("data-split-terminal");
+  });
+
+  it("keeps the minimal cwd chip and the tab rows on one visual language", () => {
+    const strip = readSource("../app/shell/SessionStrip.vue");
+
+    // 单终端的 cwd chip 与多标签必须共用同一套形状与配色 ——
+    // 否则单终端 ↔ 多标签切换时整行会跳变。
+    expect(strip).toContain("TAB_SHAPE_CLASS");
+    expect(strip).not.toContain("bg-accent/50");
+
+    // 激活项 = 主色实心填充，主色本身就是指示，不需要额外的顶部条。
+    expect(strip).not.toContain("data-tab-active-indicator");
   });
 
   it("keeps tab close reachable without hover and exposes an overflow menu", () => {
