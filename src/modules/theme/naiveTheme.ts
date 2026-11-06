@@ -64,9 +64,11 @@ export function buildNaiveThemeOverrides(
       inputColor: t.background,
       closeIconColor: t["muted-foreground"],
       closeIconColorHover: t.foreground,
-      // common 是所有组件的兜底，必须留在控件档 —— Switch / Checkbox /
-      // Slider / Tabs 都继承它，跟不上容器一起放大就毁了信息密度。
-      borderRadius: "var(--radius-sm)",
+      // common = 全局基准（--radius-md）。所有组件都继承它 —— 输入类
+      // （NInput / NSelect 触发器 / NInputNumber）因此天然统一，无需逐个覆盖。
+      // NSelect 触发器的圆角硬链在 common（naive 的 InternalSelectMenu peer
+      // 直接从 common 解构，themeOverrides.Select 无此槽位），改这里才能对齐。
+      borderRadius: "var(--radius-md)",
       borderRadiusSmall: "var(--radius-xs)",
       fontFamily:
         "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif",
@@ -95,9 +97,6 @@ export function buildNaiveThemeOverrides(
     },
     Menu: {
       borderRadius: "var(--radius-lg)",
-    },
-    Input: {
-      borderRadius: "var(--radius-sm)",
     },
     Tag: {
       borderRadius: "var(--radius-xs)",

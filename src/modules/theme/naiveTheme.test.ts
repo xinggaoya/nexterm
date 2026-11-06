@@ -57,25 +57,26 @@ describe("naive theme bridge", () => {
     expect(overrides.common?.borderColor).toBe("rgb(64, 64, 64)");
   });
 
-  it("derives Naive radii from the shared radius scale", () => {
+  it("drives Naive radii from the global base", () => {
     const overrides = buildNaiveThemeOverrides(mockTokens);
 
-    // common 保持控件档：密集控件（Switch / Checkbox / Slider / Tabs）
-    // 继承 common.borderRadius，不能跟着容器一起变大。
-    expect(overrides.common?.borderRadius).toBe("var(--radius-sm)");
+    // common = 全局基准。所有组件继承它，输入类因此天然统一。
+    expect(overrides.common?.borderRadius).toBe("var(--radius-md)");
     expect(overrides.common?.borderRadiusSmall).toBe("var(--radius-xs)");
 
-    // 容器档组件显式上调。
+    // 容器档用派生档位。
     expect(overrides.Card?.borderRadius).toBe("var(--radius-lg)");
-    expect(overrides.Dialog?.borderRadius).toBe("var(--radius-2xl)");
-    expect(overrides.Dropdown?.borderRadius).toBe("var(--radius-xl)");
-    expect(overrides.Popover?.borderRadius).toBe("var(--radius-xl)");
     expect(overrides.Menu?.borderRadius).toBe("var(--radius-lg)");
     expect(overrides.Notification?.borderRadius).toBe("var(--radius-lg)");
     expect(overrides.Message?.borderRadius).toBe("var(--radius-lg)");
+    expect(overrides.Dropdown?.borderRadius).toBe("var(--radius-xl)");
+    expect(overrides.Popover?.borderRadius).toBe("var(--radius-xl)");
+    expect(overrides.Dialog?.borderRadius).toBe("var(--radius-2xl)");
+
+    // Input 不再单独覆盖 —— 继承 common 即可。
+    expect(overrides.Input).toBeUndefined();
 
     // 控件档组件维持紧凑。
-    expect(overrides.Input?.borderRadius).toBe("var(--radius-sm)");
     expect(overrides.Tag?.borderRadius).toBe("var(--radius-xs)");
     expect(overrides.Button?.borderRadiusTiny).toBe("var(--radius-xs)");
     expect(overrides.Button?.borderRadiusSmall).toBe("var(--radius-sm)");
