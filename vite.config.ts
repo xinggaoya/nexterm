@@ -7,6 +7,7 @@ import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { NaiveUiResolver } from "unplugin-vue-components/resolvers";
 import { defineConfig } from "vite";
+import { configDefaults } from "vitest/config";
 import { webDevBridgeVitePlugin } from "tauri-plugin-web-dev-bridge/vite";
 
 const host = process.env.TAURI_DEV_HOST;
@@ -44,6 +45,11 @@ export default defineConfig(async ({ mode }) => ({
   },
   test: {
     setupFiles: ["./tests/vitest.setup.ts"],
+
+    // `.worktrees/` 在项目根下（已被 .gitignore 忽略）。vitest 默认会把它
+    // 里的测试文件也扫进来 —— 那些文件经 `@/` 别名解析到**主** src/，
+    // 于是同一份模块被加载两次，产生大批假失败。显式排除。
+    exclude: [...configDefaults.exclude, "**/.worktrees/**"],
 
     // `tauri-plugin-web-dev-bridge` 的产物 `dist/index.js` 用的是**无扩展名**导入
     // （`./discovery`）。浏览器与 vite 打包器能解析，Node 原生 ESM 加载器不能 ——
