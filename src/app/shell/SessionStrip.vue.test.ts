@@ -2,6 +2,7 @@
 import { mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
+import { NDropdown } from "naive-ui";
 import type { Tab } from "@/modules/tabs/tabsTypes";
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -241,7 +242,7 @@ describe("SessionStrip.vue 溢出滚动", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it("溢出且两侧仍有内容时显示翻页按钮,点击向对应方向翻页", async () => {
+  it("溢出时显示「⋯」溢出菜单,不再用左右翻页箭头", async () => {
     const wrapper = mountStrip([terminalTab(1), terminalTab(2)], 1);
     const scroller = wrapper.find("[data-strip-scroller]").element as HTMLElement;
     mockScrollerLayout(scroller, { scrollWidth: 800, clientWidth: 400, scrollLeft: 100 });
@@ -249,15 +250,22 @@ describe("SessionStrip.vue 溢出滚动", () => {
     scroller.dispatchEvent(new Event("scroll"));
     await nextTick();
 
-    expect(wrapper.find("[data-strip-scroll-left]").exists()).toBe(true);
-    expect(wrapper.find("[data-strip-scroll-right]").exists()).toBe(true);
+    expect(wrapper.find("[data-strip-overflow]").exists()).toBe(true);
+    expect(wrapper.find("[data-strip-scroll-left]").exists()).toBe(false);
+    expect(wrapper.find("[data-strip-scroll-right]").exists()).toBe(false);
+  });
 
-    const scrollBy = vi.fn();
-    (scroller as unknown as { scrollBy: unknown }).scrollBy = scrollBy;
-    await wrapper.find("[data-strip-scroll-right]").trigger("click");
-    expect(scrollBy).toHaveBeenCalledWith({ left: 320, behavior: "smooth" });
-    await wrapper.find("[data-strip-scroll-left]").trigger("click");
-    expect(scrollBy).toHaveBeenLastCalledWith({ left: -320, behavior: "smooth" });
+  it("溢出菜单选中某个标签时发出 selectTab", async () => {
+    const wrapper = mountStrip([terminalTab(1), terminalTab(2)], 1);
+    const scroller = wrapper.find("[data-strip-scroller]").element as HTMLElement;
+    mockScrollerLayout(scroller, { scrollWidth: 800, clientWidth: 400, scrollLeft: 100 });
+
+    scroller.dispatchEvent(new Event("scroll"));
+    await nextTick();
+
+    wrapper.findComponent(NDropdown).vm.$emit("select", 2);
+    await nextTick();
+    expect(wrapper.emitted("selectTab")).toEqual([[2]]);
   });
 
   it("激活标签变化时把激活标签滚回可视区", async () => {
