@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ACCENT_PRESETS } from "@/modules/settings/store";
 
@@ -7,8 +9,35 @@ const globalsCss = readFileSync(
   "utf8",
 );
 
+const SRC_ROOT = fileURLToPath(new URL("../", import.meta.url));
+
+/**
+ * 自绘 window chrome 的窗口外框圆角是「操作系统窗口的形状」，
+ * 不属于 UI 圆角档位体系（它要跟着操作系统走，不跟主题走），
+ * 因此从圆角契约里排除。
+ */
+const cssWithoutWindowChrome = globalsCss.replace(
+  /html\[data-chrome="borderless"\]\s*#root\s*\{[^}]*\}/,
+  "",
+);
+
 function readSource(path: string): string {
   return readFileSync(new URL(path, import.meta.url), "utf8");
+}
+
+/** 收集 src/ 下参与圆角契约的源码文件（跳过测试文件自身）。 */
+function collectSourceFiles(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collectSourceFiles(full, out);
+      continue;
+    }
+    if (!/\.(vue|ts)$/.test(entry.name)) continue;
+    if (/\.(test|spec)\.(ts|tsx)$/.test(entry.name)) continue;
+    out.push(full);
+  }
+  return out;
 }
 
 describe("visual system contract", () => {
@@ -57,6 +86,34 @@ describe("visual system contract", () => {
 
     // 裸 rounded 的兜底值保留在 unlayered :root，优先级高于 @layer theme。
     expect(globalsCss).toContain("--radius: 10px;");
+  });
+
+  it("keeps hand-written radii on the shared radius scale", () => {
+    // 手写 CSS 里的圆角必须引用 token，不再出现字面量 px。
+    // 0（去框）、999px（胶囊）、50%（椭圆）是刻意的例外。
+    const cssRadius = [
+      ...cssWithoutWindowChrome.matchAll(/border-radius:\s*([^;]+);/g),
+    ].map((m) => m[1].trim().replace(/\s*!important$/, ""));
+    expect(cssRadius.length).toBeGreaterThan(0);
+    for (const value of cssRadius) {
+      expect(value).toMatch(/^(0|999px|50%|var\(--radius-[a-z0-9-]+\))$/);
+    }
+  });
+
+  it("keeps style-block radii on the shared radius scale", () => {
+    // 组件 <style> 块里的字面量 px 圆角必须换成 token。
+    // 999px（圆形）是刻意的例外。
+    const offenders: string[] = [];
+    for (const file of collectSourceFiles(SRC_ROOT)) {
+      const source = readFileSync(file, "utf8");
+      source.split("\n").forEach((line, index) => {
+        const hit = line.match(/border-radius:\s*(\d+)px/);
+        if (hit && hit[1] !== "999") {
+          offenders.push(`${file}:${index + 1} 字面量圆角 ${hit[1]}px`);
+        }
+      });
+    }
+    expect(offenders).toEqual([]);
   });
 
   it("provides shared surface, toolbar, row, icon button and overlay rules", () => {

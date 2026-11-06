@@ -86,7 +86,7 @@ async function retry(): Promise<void> {
   box-sizing: border-box;
   padding: 2rem;
   border: 1px solid #e3e6ea;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: #ffffff;
   box-shadow: 0 1px 2px rgb(16 24 40 / 4%), 0 12px 32px rgb(16 24 40 / 6%);
 }
@@ -120,7 +120,7 @@ async function retry(): Promise<void> {
 .bridge-text code,
 .bridge-hint code {
   padding: 0.1rem 0.3rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: #f1f3f5;
   color: #374151;
   font-family: "JetBrains Mono", "Noto Sans Mono", ui-monospace, monospace;
@@ -132,7 +132,7 @@ async function retry(): Promise<void> {
   padding: 0.75rem 1rem;
   overflow-x: auto;
   border: 1px solid #e3e6ea;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: #f6f7f9;
   font-family: "JetBrains Mono", "Noto Sans Mono", ui-monospace, monospace;
   font-size: 0.8125rem;
@@ -158,7 +158,7 @@ async function retry(): Promise<void> {
 .bridge-button {
   padding: 0.5rem 1rem;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: #1c2024;
   color: #ffffff;
   font-family: inherit;

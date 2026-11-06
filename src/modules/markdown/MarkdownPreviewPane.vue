@@ -170,7 +170,7 @@ watch(() => props.path, () => void load(), { immediate: true });
 
 .markdown-preview :deep(code) {
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--muted);
   padding: 0.1rem 0.3rem;
   font-family: var(--font-mono, "JetBrains Mono", monospace);
@@ -180,7 +180,7 @@ watch(() => props.path, () => void load(), { immediate: true });
 .markdown-preview :deep(pre) {
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--muted);
   padding: 0.9rem 1rem;
 }
