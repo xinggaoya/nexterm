@@ -549,7 +549,7 @@ async function handleCheckoutBranch(branch: GitBranchInfo) {
         <button
           v-if="untrackedMode === 'normal'"
           type="button"
-          class="rounded px-1.5 py-0.5 text-primary hover:bg-primary/10"
+          class="rounded-sm px-1.5 py-0.5 text-primary hover:bg-primary/10"
           data-show-untracked-all
           @click="setUntrackedMode('all')"
         >
@@ -558,7 +558,7 @@ async function handleCheckoutBranch(branch: GitBranchInfo) {
         <button
           v-else
           type="button"
-          class="rounded px-1.5 py-0.5 text-primary hover:bg-primary/10"
+          class="rounded-sm px-1.5 py-0.5 text-primary hover:bg-primary/10"
           data-show-untracked-direct
           @click="setUntrackedMode('normal')"
         >

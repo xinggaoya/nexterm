@@ -269,7 +269,7 @@ onBeforeUnmount(() => {
           data-find-case
           :aria-pressed="caseInsensitive"
           :title="t('findInFiles.caseInsensitiveTitle')"
-          class="h-6 w-6 flex-none rounded border text-[11px] font-medium"
+          class="h-6 w-6 flex-none rounded-sm border text-[11px] font-medium"
           :class="
             caseInsensitive
               ? 'border-primary bg-accent text-foreground'
@@ -284,7 +284,7 @@ onBeforeUnmount(() => {
           data-find-regex
           :aria-pressed="regexMode"
           :title="t('findInFiles.regexTitle')"
-          class="h-6 w-6 flex-none rounded border font-mono text-[11px]"
+          class="h-6 w-6 flex-none rounded-sm border font-mono text-[11px]"
           :class="
             regexMode
               ? 'border-primary bg-accent text-foreground'
@@ -361,7 +361,7 @@ onBeforeUnmount(() => {
             data-find-hit
             :data-selected="isEntrySelected(group, hit) ? 'true' : 'false'"
             :aria-selected="isEntrySelected(group, hit)"
-            class="flex w-full items-baseline gap-2 rounded px-3 py-0.5 text-left text-[11px] hover:bg-accent/60"
+            class="flex w-full items-baseline gap-2 rounded-sm px-3 py-0.5 text-left text-[11px] hover:bg-accent/60"
             :class="isEntrySelected(group, hit) ? 'bg-accent' : ''"
             @mouseenter="selectEntry(group, hit)"
             @click="openResult(hit)"

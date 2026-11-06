@@ -77,7 +77,7 @@ watch(
     <!-- 分段条：三个搜索入口的唯一落点，视觉沿用面板头部的「文件树 / 更改」 -->
     <div class="nexterm-toolbar flex h-8 shrink-0 items-center gap-1.5 px-2">
       <div
-        class="flex min-w-0 flex-1 items-center gap-0.5 rounded-lg bg-surface-subtle p-0.5"
+        class="flex min-w-0 flex-1 items-center gap-0.5 rounded-md bg-surface-subtle p-0.5"
         role="tablist"
         data-explorer-search-segments
       >
@@ -104,7 +104,7 @@ watch(
         data-search-close
         :aria-label="t('explorer.closeSearchPanel')"
         :title="t('explorer.closeSearchPanel')"
-        class="grid size-5 shrink-0 place-items-center rounded text-muted-foreground transition-colors duration-[var(--dur-fast)] hover:bg-accent hover:text-foreground"
+        class="grid size-5 shrink-0 place-items-center rounded-sm text-muted-foreground transition-colors duration-[var(--dur-fast)] hover:bg-accent hover:text-foreground"
         @click="emit('requestClose')"
       >
         <NIcon :component="CloseOutline" :size="12" />
@@ -147,7 +147,7 @@ watch(
         type="button"
         data-clear-tree-filter
         :aria-label="t('explorer.clearSearch')"
-        class="absolute right-3.5 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+        class="absolute right-3.5 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
         @click="emit('update:filter', '')"
       >
         <NIcon :component="CloseOutline" :size="11" />

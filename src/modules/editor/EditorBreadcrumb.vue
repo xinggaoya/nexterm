@@ -66,7 +66,7 @@ function goToLayer(line: number | null): void {
     <button
       type="button"
       data-breadcrumb-file
-      class="shrink-0 rounded px-1 hover:bg-accent hover:text-foreground"
+      class="shrink-0 rounded-sm px-1 hover:bg-accent hover:text-foreground"
       :title="fileName"
       @click="goToLayer(1)"
     >
@@ -76,7 +76,7 @@ function goToLayer(line: number | null): void {
       <NIcon :component="ChevronForwardOutline" :size="10" class="shrink-0 opacity-60" />
       <button
         type="button"
-        class="shrink-0 rounded px-1 hover:bg-accent hover:text-foreground"
+        class="shrink-0 rounded-sm px-1 hover:bg-accent hover:text-foreground"
         :title="layer.name"
         :class="index === layers.length - 1 ? 'text-foreground' : ''"
         @click="goToLayer(layer.line)"

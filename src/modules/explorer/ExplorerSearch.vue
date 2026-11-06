@@ -164,7 +164,7 @@ onBeforeUnmount(clearTimer);
         v-if="query"
         type="button"
         :aria-label="t('explorer.clearSearch')"
-        class="absolute right-3.5 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+        class="absolute right-3.5 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
         @click="query = ''"
       >
         <NIcon :component="CloseOutline" :size="11" />
