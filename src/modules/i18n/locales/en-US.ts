@@ -127,6 +127,7 @@ const enUS = {
       rendererDom: "DOM",
       rendererHint: "Active terminal renderer",
       sizeHint: "Terminal size (columns × rows)",
+      cursorHint: "Cursor position (line, column)",
     },
     header: {
       closeTab: "Close tab",

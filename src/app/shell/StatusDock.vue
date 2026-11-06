@@ -27,6 +27,8 @@ const props = defineProps<{
   renderer?: RendererKind | null;
   /** 活动分屏的会话状态。 */
   sessionState?: SessionState | null;
+  /** 活动分屏的光标位置（1 基）。 */
+  cursor?: { line: number; column: number } | null;
 }>();
 
 const envLabel = computed(() => {
@@ -61,7 +63,8 @@ const hasRightContent = computed(
   () =>
     Boolean(props.terminalSize) ||
     Boolean(rendererLabel.value) ||
-    Boolean(sessionLabel.value),
+    Boolean(sessionLabel.value) ||
+    Boolean(props.cursor),
 );
 </script>
 
@@ -118,6 +121,15 @@ const hasRightContent = computed(
         data-dock-size
       >
         {{ terminalSize.cols }}×{{ terminalSize.rows }}
+      </span>
+      <!-- 光标位置：VS Code 状态栏的 “Ln x, Col y”。 -->
+      <span
+        v-if="cursor"
+        class="shrink-0 tabular-nums"
+        :title="t('app.dock.cursorHint')"
+        data-dock-cursor
+      >
+        Ln {{ cursor.line }}, Col {{ cursor.column }}
       </span>
     </div>
   </footer>

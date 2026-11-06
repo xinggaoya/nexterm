@@ -72,8 +72,6 @@ import { USE_CUSTOM_WINDOW_CONTROLS } from "@/lib/platform";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
 import type { SettingsTab } from "@/modules/settings/tabs";
 import type { PaneDirection } from "@/modules/commands/types";
-import type { RendererKind } from "@/modules/terminal/lib/rendererPipeline";
-import type { SessionState } from "@/modules/terminal/lib/sessions";
 
 const props = defineProps<{
   workspace: WorkspaceInstance;
@@ -641,7 +639,9 @@ function currentLeafTitle(leafId: number): string {
  * 隐藏但仍然挂载，上报不会停。所以必须跟着活动标签的种类一起判定，否则
  * 状态坞会在“没有活动终端”时还挂着一行陈旧的 `120×30`。
  */
-const paneStatus = ref<{ cols: number; rows: number; renderer: RendererKind; state: SessionState } | null>(null);
+// 用共享的 PaneStatus 类型而不是内联结构 —— 字段一多就会漂移
+// （之前就是因为这里写死了形状，光标位置加不上）。
+const paneStatus = ref<PaneStatus | null>(null);
 
 function onPaneStatus(status: PaneStatus | null): void {
   paneStatus.value =
@@ -955,6 +955,7 @@ defineExpose({
         :terminal-size="paneStatus"
         :renderer="paneStatus?.renderer ?? null"
         :session-state="paneStatus?.state ?? null"
+        :cursor="paneStatus?.cursor ?? null"
       />
     </div>
   </div>

@@ -21,4 +21,11 @@ export type PaneStatus = {
   rows: number;
   renderer: RendererKind;
   state: SessionState;
+  /**
+   * 光标位置（1 基）。
+   *
+   * 终端优先的 IDE 里，这比 `cols×rows` 更有用：它告诉用户“命令打在第几行”，
+   * 尤其在输出很长、光标停在中间的时候。不上报时（无活动终端）状态栏不显示。
+   */
+  cursor?: { line: number; column: number };
 };

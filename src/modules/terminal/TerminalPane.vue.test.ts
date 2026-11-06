@@ -55,6 +55,10 @@ const fakeTerm: Terminal = {
   onData: vi.fn(),
   onResize: vi.fn(),
   onScroll: vi.fn(() => ({ dispose: vi.fn() })),
+  onCursorMove: vi.fn(() => ({ dispose: vi.fn() })),
+  buffer: {
+    active: { cursorX: 0, cursorY: 0 },
+  },
   write: vi.fn(),
   refresh: vi.fn(),
   clearTextureAtlas: vi.fn(),

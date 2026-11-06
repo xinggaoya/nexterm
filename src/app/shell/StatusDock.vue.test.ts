@@ -61,4 +61,28 @@ describe("StatusDock.vue", () => {
     expect(wrapper.get("[data-dock-renderer]").text()).toBe("WebGL");
     expect(wrapper.find("[data-dock-session]").exists()).toBe(false);
   });
+
+  it("活动终端时显示光标位置（VS Code 的 Ln/Col）", () => {
+    // 终端优先的 IDE 里，光标位置比 cols×rows 更有用：它告诉用户
+    // 「命令打在第几行」，尤其在输出很长、光标停在中间的时候。
+    const wrapper = mount(StatusDock, {
+      props: {
+        ...baseProps,
+        terminalSize: { cols: 120, rows: 30 },
+        cursor: { line: 47, column: 1 },
+      },
+    });
+
+    const cursor = wrapper.find("[data-dock-cursor]");
+    expect(cursor.exists()).toBe(true);
+    expect(cursor.text()).toContain("Ln 47");
+    expect(cursor.text()).toContain("Col 1");
+  });
+
+  it("没有光标位置时不渲染光标占位", () => {
+    const wrapper = mount(StatusDock, {
+      props: { ...baseProps, terminalSize: { cols: 120, rows: 30 } },
+    });
+    expect(wrapper.find("[data-dock-cursor]").exists()).toBe(false);
+  });
 });

@@ -129,6 +129,7 @@ const zhCN = {
       rendererDom: "DOM",
       rendererHint: "当前终端渲染器",
       sizeHint: "终端尺寸（列 × 行）",
+      cursorHint: "光标位置（行，列）",
     },
     header: {
       closeTab: "关闭标签",

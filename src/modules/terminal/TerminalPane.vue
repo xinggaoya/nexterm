@@ -89,6 +89,7 @@ const bridgeMode = isBrowserBridgeMode();
 const linesFromBottom = ref(0);
 let detachScrollWatch: { dispose: () => void } | null = null;
 let detachSearchWatch: { dispose: () => void } | null = null;
+let detachCursorWatch: { dispose: () => void } | null = null;
 
 function updateLinesFromBottom(): void {
   const next = renderer?.linesFromBottom() ?? 0;
@@ -398,6 +399,21 @@ onMounted(async () => {
   detachScrollWatch = nextRenderer.term.onScroll(() => {
     updateLinesFromBottom();
   });
+  // 光标位置：状态栏的 “Ln x, Col y”。
+  //
+  // onCursorMove 在程序批量输出时会非常密集，所以用 rAF 合并到一帧一次，
+  // 并且只在行列真的变了才上报。xterm 的 onCursorMove 不带参数，
+  // 位置要从 buffer 里读。
+  detachCursorWatch = nextRenderer.term.onCursorMove(() => {
+    const buffer = nextRenderer.term.buffer.active;
+    const line = buffer.cursorY + 1;
+    const column = buffer.cursorX + 1;
+    if (cursorPosition.value?.line === line && cursorPosition.value.column === column) {
+      return;
+    }
+    cursorPosition.value = { line, column };
+    schedulePaneStatus();
+  });
   // 命中数由 addon 自己在搜索后派发（findNext 只返回布尔"是否找到"）。
   //
   // 注意这里必须写进**另一个**变量：早先它和 onScroll 共用
@@ -487,6 +503,8 @@ onBeforeUnmount(() => {
   detachClipboardShortcuts?.();
   detachScrollWatch?.dispose();
   detachScrollWatch = null;
+  detachCursorWatch?.dispose();
+  detachCursorWatch = null;
   detachSearchWatch?.dispose();
   detachSearchWatch = null;
   detachBell?.();
@@ -557,17 +575,37 @@ watch(
 
 /** 尺寸只在真的变了才上抛：fit 会在拖窗口时高频触发，状态坞不需要跟着抖。 */
 let lastStatusKey = "";
+const cursorPosition = ref<{ line: number; column: number } | null>(null);
+let statusFrame = 0;
+
+/** 光标移动很密集（程序输出时每秒可达百次），合并到一帧一次再上抛。 */
+function schedulePaneStatus(): void {
+  if (statusFrame) return;
+  const raf =
+    typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame
+      : (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 16);
+  statusFrame = raf(() => {
+    statusFrame = 0;
+    reportPaneStatus();
+  });
+}
+
 function reportPaneStatus(): void {
   const term = renderer?.term;
   if (!term) return;
   const key = `${term.cols}x${term.rows}:${renderer?.activeRenderer()}:${state.value}`;
-  if (key === lastStatusKey) return;
-  lastStatusKey = key;
+  const cursor = cursorPosition.value;
+  const cursorKey = cursor ? `:${cursor.line},${cursor.column}` : "";
+  const fullKey = key + cursorKey;
+  if (fullKey === lastStatusKey) return;
+  lastStatusKey = fullKey;
   emit("pane-status", {
     cols: term.cols,
     rows: term.rows,
     renderer: renderer?.activeRenderer() ?? "dom",
     state: state.value,
+    cursor: cursor ?? undefined,
   });
 }
 
