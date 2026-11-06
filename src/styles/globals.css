@@ -320,6 +320,19 @@
        html[data-chrome="borderless"] below (where #root holds the solid bg). */
     background-color: var(--background, #0a0a0a);
     }
+
+  /* ── 全局焦点环 ────────────────────────────────────────────────
+   * 键盘导航必须看得见焦点落在哪。此前只有 .nexterm-row 与
+   * .nexterm-icon-button 有焦点环，其余 38 个原生按钮、全部输入框
+   * 在键盘操作下都是「焦点消失了」。
+   *
+   * 用 :where() 把优先级压到 0 —— 组件自带的 focus 样式（Naive 的
+   * .n-button:focus-visible、.nexterm-row:focus-visible）仍然优先，
+   * 这里只是给那些没自己焦点的元素兜底。 */
+  :where(button, a, input, textarea, select, [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -1px;
+    }
 }
 
 @layer components {
@@ -331,12 +344,18 @@
     min-height: 32px;
   }
   .nexterm-row {
-    @apply rounded-sm transition-colors;
-    transition-duration: 120ms;
+    @apply rounded-sm;
+    transition-property: color, background-color, opacity, transform;
+    transition-duration: var(--dur-fast);
+    transition-timing-function: var(--ease-out);
   }
   .nexterm-row:hover,
   .nexterm-row[data-active="true"] {
     background-color: var(--surface-hover);
+  }
+  /* 按压反馈：点下去轻微缩小。行内没有 fixed 定位的后代，缩放不会改布局。 */
+  .nexterm-row:active {
+    transform: scale(0.985);
   }
   .nexterm-row:focus-visible,
   .nexterm-icon-button:focus-visible {
@@ -344,12 +363,27 @@
     outline-offset: -1px;
   }
   .nexterm-icon-button {
-    @apply inline-grid place-items-center text-muted-foreground transition-colors;
+    @apply inline-grid place-items-center text-muted-foreground;
     width: 28px;
     height: 28px;
     flex: 0 0 auto;
     border-radius: var(--radius-sm);
-    transition-duration: 120ms;
+    transition-property: color, background-color, opacity, transform;
+    transition-duration: var(--dur-fast);
+    transition-timing-function: var(--ease-out);
+  }
+  .nexterm-icon-button:active:not(:disabled) {
+    transform: scale(0.94);
+  }
+  /* Naive 按钮：补按压缩放。Naive 自带 pressed 底色，但没有缩放；
+     而且它的 transition 不含 transform，直接加 scale 会瞬跳 —— 一并补上。
+     颜色过渡沿用 Naive 自己的 .3s 节奏，只有 transform 用项目 token。 */
+  .n-button {
+    transition-property: color, background-color, opacity, border-color, transform;
+    transition-duration: 0.3s, 0.3s, 0.3s, 0.3s, var(--dur-fast);
+  }
+  .n-button:not(.n-button--disabled):active {
+    transform: scale(0.97);
   }
   .nexterm-icon-button:hover {
     @apply bg-surface-hover text-foreground;
@@ -950,4 +984,27 @@ html[data-accent="blue"] {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11.5px;
   line-height: 1.5;
+}
+
+/* ══ 全局按压反馈（散装原生按钮）════════════════════════════════════
+ * 38 个原生 <button> 里只有 1 个写了 active 反馈 —— 点下去毫无反应。
+ *
+ * 这些按钮大多只写了 transition-colors（只过渡颜色），直接加缩放会瞬跳，
+ * 所以这里统一把 transform 加进 transition-property。
+ *
+ * 写法要点：
+ *   - :where() 把优先级压到 0，不盖掉组件自己的其它样式；
+ *   - 不分层（unlayered）→ 胜过 Tailwind 的 utilities 层，所以能改写
+ *     transition-colors / transition-all 这类工具类；
+ *   - 属性列表是白名单而不是 all：避免布局属性（width/height）也参与过渡。
+ */
+:where(button:not([data-tab-id]):not(.n-button)) {
+  transition-property: color, background-color, border-color, outline-color,
+    text-decoration-color, fill, stroke, box-shadow, opacity, filter, transform;
+  transition-duration: var(--dur-fast);
+  transition-timing-function: var(--ease-out);
+}
+
+:where(button:not([data-tab-id]):not(.n-button)):active:not(:disabled) {
+  transform: scale(0.97);
 }

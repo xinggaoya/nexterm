@@ -200,6 +200,36 @@ describe("visual system contract", () => {
     expect(row).toContain("statusClass(entry.statusKind)");
   });
 
+  it("provides a global interaction feedback layer", () => {
+    // 1. 键盘焦点必须处处可见 —— 之前只有 .nexterm-row 与
+    //    .nexterm-icon-button 有焦点环，其余原生按钮与输入框全都「焦点消失」。
+    expect(globalsCss).toMatch(/:focus-visible\s*\{[^}]*outline:/);
+    expect(globalsCss).toContain(
+      "[tabindex]:not([tabindex=\"-1\"])",
+    );
+
+    // 2. 按压反馈：点下去要有「被按下」的感觉。
+    expect(globalsCss).toContain(".nexterm-icon-button:active");
+    expect(globalsCss).toContain(".nexterm-row:active");
+    expect(globalsCss).toContain(".n-button:not(.n-button--disabled):active");
+
+    // 3. 过渡全部走 token —— prefers-reduced-motion 才能压平。
+    expect(globalsCss).toContain("transition-property:");
+    expect(globalsCss).toContain("var(--dur-fast)");
+    expect(globalsCss).toContain("var(--ease-out)");
+  });
+
+  it("opens settings in a centered modal instead of a drawer", () => {
+    const mainApp = readSource("../app/MainApp.vue");
+    // 弹窗：抽屉从右侧滑入会占满半个屏幕并把画布推到左边。
+    expect(mainApp).toContain("<NModal");
+    expect(mainApp).not.toContain("<NDrawer");
+    // Naive 自带的标题栏要去掉，否则与设置面板自己的标题栏叠成两层。
+    expect(mainApp).toContain(':closable="false"');
+    // 内容多时不能顶出窗口：弹窗与面板都要有高度上限。
+    expect(mainApp).toContain("SETTINGS_MODAL_MAX_HEIGHT");
+  });
+
   it("provides shared surface, toolbar, row, icon button and overlay rules", () => {
     expect(globalsCss).toContain(".nexterm-surface");
     expect(globalsCss).toContain(".nexterm-toolbar");

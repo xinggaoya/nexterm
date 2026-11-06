@@ -2,9 +2,8 @@
 import {
   NConfigProvider,
   NDialogProvider,
-  NDrawer,
-  NDrawerContent,
   NMessageProvider,
+  NModal,
   NNotificationProvider,
 } from "naive-ui";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
@@ -59,7 +58,9 @@ const workspaceEnv = useWorkspaceEnvPiniaStore();
 
 const settingsOpen = ref(false);
 const activeSettingsTab = ref<SettingsTab>(SETTINGS_DEFAULT_TAB);
-const SETTINGS_DRAWER_WIDTH = "min(720px, calc(100vw - 32px))";
+const SETTINGS_MODAL_WIDTH = "min(720px, calc(100vw - 32px))";
+/** 弹窗最大高度：留 32px 上下边距，内容超出时由设置面板内部滚动。 */
+const SETTINGS_MODAL_MAX_HEIGHT = "calc(100vh - 64px)";
 
 // 关闭守卫必须看到**所有**工作区的标签。
 //
@@ -372,23 +373,33 @@ watch(
               />
             </div>
 
-            <NDrawer
+            <!--
+              设置页：弹窗而不是抽屉。
+              抽屉从右侧滑入时会占满半个屏幕并把画布推到左边，而设置本身
+              是「看一眼、改一项、关掉」—— 居中弹窗不打断工作区的空间感。
+              NModal 自带遮罩与 scale+fade 进场动画。
+
+              closable=false 让 Naive 的 card 不渲染自带标题栏（否则会与
+              设置面板自己的标题栏叠成两层）；ESC 与遮罩关闭是独立 prop，
+              不受影响。
+            -->
+            <NModal
               v-model:show="settingsOpen"
-              placement="right"
-              :width="SETTINGS_DRAWER_WIDTH"
+              preset="card"
+              :closable="false"
+              :bordered="false"
+              :mask-closable="true"
               :auto-focus="false"
+              :style="{ width: SETTINGS_MODAL_WIDTH, maxHeight: SETTINGS_MODAL_MAX_HEIGHT }"
+              content-style="padding: 0;"
             >
-              <NDrawerContent
-                body-content-style="height: 100%; padding: 0;"
-                :native-scrollbar="false"
-              >
-                <SettingsPanel
-                  v-model:active-tab="activeSettingsTab"
-                  show-close
-                  @close="settingsOpen = false"
-                />
-              </NDrawerContent>
-            </NDrawer>
+              <SettingsPanel
+                v-model:active-tab="activeSettingsTab"
+                show-close
+                :class="`max-h-[${SETTINGS_MODAL_MAX_HEIGHT}]`"
+                @close="settingsOpen = false"
+              />
+            </NModal>
 
             <RenameTerminalDialog
               :show="renameDialogState !== null"
