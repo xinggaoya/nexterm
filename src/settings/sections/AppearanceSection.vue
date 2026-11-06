@@ -89,7 +89,7 @@ const accentOptions = computed<
           type="button"
           :data-testid="`accent-${opt.value}`"
           :aria-pressed="prefs.accent === opt.value"
-          class="flex flex-col items-center gap-1.5 rounded-md border border-border bg-card p-2 transition hover:border-primary"
+          class="flex flex-col items-center gap-1.5 rounded-lg border border-border bg-card p-2 transition hover:border-primary"
           :class="prefs.accent === opt.value && 'border-primary ring-2 ring-primary'"
           @click="prefs.updateAccent(opt.value)"
         >

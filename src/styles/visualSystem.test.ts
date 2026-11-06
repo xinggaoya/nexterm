@@ -40,6 +40,38 @@ function collectSourceFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/**
+ * 抽取模板里的 class token。
+ *
+ * 只看 <template> 段 —— <script> 里同名的普通变量不算。
+ * 静态 class 直接按空白切词；动态 class 取其中的字符串字面量
+ * （`:class="['rounded', { 'rounded-lg': ok }]"` 这种）。
+ */
+function collectClassTokens(vueSource: string): string[] {
+  const open = /<template[^>]*>/.exec(vueSource);
+  if (!open) return [];
+  const start = open.index;
+  const end = vueSource.lastIndexOf("</template>");
+  if (end <= start) return [];
+  const template = vueSource.slice(start, end);
+
+  const tokens: string[] = [];
+  const attrRe = /(?::|v-bind:)?class\s*=\s*"([^"]*)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = attrRe.exec(template)) !== null) {
+    const value = match[1];
+    for (const token of value.split(/\s+/)) {
+      if (token) tokens.push(token);
+    }
+    for (const literal of value.matchAll(/['"`]([^'"`]*)['"`]/g)) {
+      for (const token of literal[1].split(/\s+/)) {
+        if (token) tokens.push(token);
+      }
+    }
+  }
+  return tokens;
+}
+
 describe("visual system contract", () => {
   it("declares semantic workbench and status tokens for both themes", () => {
     expect(globalsCss).toContain("--shell-bg:");
@@ -112,6 +144,26 @@ describe("visual system contract", () => {
           offenders.push(`${file}:${index + 1} 字面量圆角 ${hit[1]}px`);
         }
       });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps class-level radii on the shared radius scale", () => {
+    const offenders: string[] = [];
+    for (const file of collectSourceFiles(SRC_ROOT)) {
+      if (!file.endsWith(".vue")) continue;
+      const source = readFileSync(file, "utf8");
+      for (const token of collectClassTokens(source)) {
+        // 任意值圆角（如 rounded-[6px]）必须换成档位工具类。
+        if (/^rounded-\[.+\]$/.test(token)) {
+          offenders.push(`${file} 任意值圆角 ${token}`);
+        }
+        // 裸 rounded 等于 var(--radius) = 10px，夹在控件档(6)与容器档(12)之间，
+        // 语义模糊，必须显式选档。
+        if (token === "rounded") {
+          offenders.push(`${file} 裸 rounded 未选档`);
+        }
+      }
     }
     expect(offenders).toEqual([]);
   });

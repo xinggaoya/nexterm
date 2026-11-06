@@ -88,7 +88,7 @@ const collapseIcon = computed(() =>
   <div
     data-panel-cluster
     :data-panel-cluster-side="side"
-    class="flex items-center gap-0.5 rounded-lg bg-surface-subtle p-0.5"
+    class="flex items-center gap-0.5 rounded-md bg-surface-subtle p-0.5"
   >
     <!--
       只读指示：这一侧放的是哪个视图。
