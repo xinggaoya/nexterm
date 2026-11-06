@@ -64,10 +64,14 @@ export function buildNaiveThemeOverrides(
       inputColor: t.background,
       closeIconColor: t["muted-foreground"],
       closeIconColorHover: t.foreground,
-      // common = 全局基准（--radius-md）。所有组件都继承它 —— 输入类
-      // （NInput / NSelect 触发器 / NInputNumber）因此天然统一，无需逐个覆盖。
-      // NSelect 触发器的圆角硬链在 common（naive 的 InternalSelectMenu peer
-      // 直接从 common 解构，themeOverrides.Select 无此槽位），改这里才能对齐。
+      // common = 全局圆角配置 —— **全应用只有这一个圆角槽位**。
+      // 不给任何组件单独配圆角：naive 的 Button / Tag / Card / Dialog /
+      // Dropdown / Popover / Menu / Notification / Message 都从 common 继承
+      // borderRadius（Button 的 tiny/small/medium/large 四档刻度在 naive
+      // 主题里本身就等于 common.borderRadius），因此配一次即全局生效。
+      //
+      // NSelect 触发器的圆角也硬链在 common（naive 的 InternalSelectMenu
+      // peer 直接从 common 解构，themeOverrides.Select 无此槽位）。
       borderRadius: "var(--radius-md)",
       borderRadiusSmall: "var(--radius-xs)",
       fontFamily:
@@ -76,33 +80,7 @@ export function buildNaiveThemeOverrides(
         "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
     },
     Button: {
-      // 按钮自带四档刻度（tiny/small/medium/large），不跟 common 走 ——
-      // 不逐档对齐到基准的话，小按钮会比输入框更锐利，"全局基准"就不成立。
-      // 四档全部从基准派生：tiny 收一点（密集元素档），其余落在基准上。
-      borderRadiusTiny: "var(--radius-sm)",
-      borderRadiusSmall: "var(--radius-md)",
-      borderRadiusMedium: "var(--radius-md)",
-      borderRadiusLarge: "var(--radius-md)",
       textColorPrimary: t["primary-foreground"],
-    },
-    Card: {
-      borderRadius: "var(--radius-lg)",
-    },
-    Dialog: {
-      borderRadius: "var(--radius-2xl)",
-    },
-    // 下拉 / 气泡浮层：NSelect、NDropdown、NPopconfirm 都走这两张 peer 主题。
-    Dropdown: {
-      borderRadius: "var(--radius-xl)",
-    },
-    Popover: {
-      borderRadius: "var(--radius-xl)",
-    },
-    Menu: {
-      borderRadius: "var(--radius-lg)",
-    },
-    Tag: {
-      borderRadius: "var(--radius-xs)",
     },
     Tabs: {
       tabHeightMedium: "36px",
@@ -117,10 +95,6 @@ export function buildNaiveThemeOverrides(
       descriptionFontSize: "12px",
       closeSize: "18px",
       closeIconSize: "14px",
-      borderRadius: "var(--radius-lg)",
-    },
-    Message: {
-      borderRadius: "var(--radius-lg)",
     },
   };
 }

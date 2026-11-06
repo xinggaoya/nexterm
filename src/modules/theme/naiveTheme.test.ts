@@ -57,40 +57,25 @@ describe("naive theme bridge", () => {
     expect(overrides.common?.borderColor).toBe("rgb(64, 64, 64)");
   });
 
-  it("drives Naive radii from the global base", () => {
+  it("drives every Naive radius from common alone", () => {
     const overrides = buildNaiveThemeOverrides(mockTokens);
 
     // common = 全局基准。所有组件继承它，输入类因此天然统一。
     expect(overrides.common?.borderRadius).toBe("var(--radius-md)");
     expect(overrides.common?.borderRadiusSmall).toBe("var(--radius-xs)");
 
-    // 容器档用派生档位。
-    expect(overrides.Card?.borderRadius).toBe("var(--radius-lg)");
-    expect(overrides.Menu?.borderRadius).toBe("var(--radius-lg)");
-    expect(overrides.Notification?.borderRadius).toBe("var(--radius-lg)");
-    expect(overrides.Message?.borderRadius).toBe("var(--radius-lg)");
-    expect(overrides.Dropdown?.borderRadius).toBe("var(--radius-xl)");
-    expect(overrides.Popover?.borderRadius).toBe("var(--radius-xl)");
-    expect(overrides.Dialog?.borderRadius).toBe("var(--radius-2xl)");
+    // 不允许任何逐组件的圆角覆盖 —— 全部走 common。
+    // （naive 的 Button 主题里 borderRadiusTiny/Small/Medium/Large
+    //   本身就等于 common.borderRadius，删掉覆盖后按钮四档自然统一。）
+    const radiusSlots = [
+      ...JSON.stringify(overrides).matchAll(/"(borderRadius[A-Za-z]*)":/g),
+    ].map((m) => m[1]);
+    expect(radiusSlots.sort()).toEqual(["borderRadius", "borderRadiusSmall"]);
 
-    // Input 不再单独覆盖 —— 继承 common 即可。
-    expect(overrides.Input).toBeUndefined();
-
-    // 控件档组件维持紧凑。
-    expect(overrides.Tag?.borderRadius).toBe("var(--radius-xs)");
-
-    // 按钮四档全部从基准派生，且 small 及以上都落在基准上 ——
-    // 否则「全局基准」在按钮上不成立：小按钮会比输入框更锐利。
-    expect(overrides.Button?.borderRadiusTiny).toBe("var(--radius-sm)");
-    expect(overrides.Button?.borderRadiusSmall).toBe("var(--radius-md)");
-    expect(overrides.Button?.borderRadiusMedium).toBe("var(--radius-md)");
-    expect(overrides.Button?.borderRadiusLarge).toBe("var(--radius-md)");
-
-    // 圆角槽位里不允许再出现字面量 px —— 三条路径必须共用同一份 token。
-    const radiusSlots =
-      JSON.stringify(overrides).match(/"borderRadius[A-Za-z]*":"[^"]*"/g) ?? [];
-    expect(radiusSlots.length).toBeGreaterThan(0);
-    for (const slot of radiusSlots) {
+    // 圆角槽位里不允许出现字面量 px —— 三条路径必须共用同一份 token。
+    for (const slot of JSON.stringify(overrides).match(
+      /"borderRadius[A-Za-z]*":"[^"]*"/g,
+    ) ?? []) {
       expect(slot).not.toMatch(/:\s*"\d+px"/);
     }
   });
