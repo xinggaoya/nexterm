@@ -138,6 +138,7 @@ const enUS = {
       openCommandCenter: "Open command center",
       openFolder: "Open Folder",
       preview: "Preview",
+      allTabs: "All tabs",
       scrollTabsLeft: "Scroll tabs left",
       scrollTabsRight: "Scroll tabs right",
       sourceControl: "Source Control",

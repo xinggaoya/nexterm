@@ -246,17 +246,31 @@ describe("visual system contract", () => {
     expect(host).not.toContain("prefs.panelLayout =");
   });
 
-  it("renders the session strip as rounded-rectangle tabs on the shared scale", () => {
+  it("renders the session strip as VS Code-style tabs on the shared scale", () => {
     const strip = readSource("../app/shell/SessionStrip.vue");
 
-    // 标签按钮必须是共享档位的圆角矩形，不能再是胶囊。
+    // 标签不再是胶囊；顶部小圆角 + 底部直角，激活项才能与画布无缝融合。
     const tabClass = strip.match(/'group relative flex[^']*'/)?.[0] ?? "";
-    expect(tabClass).toContain("rounded-md");
+    expect(tabClass).toContain("rounded-t-sm");
     expect(tabClass).not.toContain("rounded-full");
 
-    // 激活态用主色竖条指示（与文件树行同一套语言），不再用内描边。
+    // 激活态：与画布同色 + 顶部主色条（VS Code 的标签语言），不用内描边。
     expect(strip).toContain("data-tab-active-indicator");
+    expect(strip).toContain("bg-shell-bg");
     expect(tabClass).not.toContain("inset_0_0_0_1px");
+  });
+
+  it("keeps tab close reachable without hover and exposes an overflow menu", () => {
+    const strip = readSource("../app/shell/SessionStrip.vue");
+
+    // 关闭按钮不能只靠 hover 出现：键盘聚焦与触屏都要拿得到。
+    expect(strip).toContain("group-focus-within:opacity-100");
+    expect(strip).toContain("[@media(hover:none)]:opacity-60");
+
+    // 溢出用下拉菜单，不再用左右翻页箭头。
+    expect(strip).not.toContain("data-strip-scroll-left");
+    expect(strip).not.toContain("data-strip-scroll-right");
+    expect(strip).toContain("data-strip-overflow");
   });
 
   it("docks the session strip as its own row under the top bar", () => {

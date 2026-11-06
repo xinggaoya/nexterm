@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import {
-  ChevronBackOutline,
-  ChevronForwardOutline,
   CloseOutline,
   DuplicateOutline,
+  EllipsisHorizontalOutline,
   TerminalOutline,
 } from "@vicons/ionicons5";
-import { NIcon } from "naive-ui";
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { NDropdown, NIcon } from "naive-ui";
+import { computed, h, nextTick, onBeforeUnmount, ref, watch, type VNode } from "vue";
 import { fileIconUrl, shellIconUrl } from "@/modules/icons";
 import { tabLabel } from "@/modules/tabs/tabLabel";
 import { t } from "@/modules/i18n/translate";
@@ -90,9 +89,9 @@ function tabWidthStyle(): Record<string, string> | undefined {
 }
 
 function tabWidthClass(): string {
-  return props.widthMode === "fixed"
-    ? "flex-none"
-    : "max-w-48 flex-[1_1_8rem]";
+  // 自适应模式不再拉伸填满整行（flex-[1_1_8rem] 会把标签拉得又宽又空），
+  // 改成「按内容 + 封顶」：短标签短、长标签到上限就截断。
+  return props.widthMode === "fixed" ? "flex-none" : "max-w-56";
 }
 
 // ── Drag-to-reorder ────────────────────────────────────────────────────
@@ -191,10 +190,41 @@ function handleStripWheel(e: WheelEvent) {
   el.scrollLeft += delta;
 }
 
-function scrollStripBy(direction: -1 | 1) {
-  const el = stripScroller.value;
-  if (!el || typeof el.scrollBy !== "function") return;
-  el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: "smooth" });
+// ── 溢出菜单 ────────────────────────────────────────────────────────────
+// 标签溢出时不再用左右翻页箭头（占地方、且在窄行里互相挤压），
+// 改成行尾一个「⋯」下拉：直接列出全部标签，点一下就跳过去。
+
+/** 溢出菜单里的标签图标：文件类用真实文件图标，其余用类型图标。 */
+function tabIconVNode(tab: Tab): VNode {
+  if (tab.kind === "editor" || tab.kind === "markdown") {
+    return h("img", {
+      src: fileIconUrl(tab.title),
+      alt: "",
+      class: "size-3.5 nexterm-file-icon",
+    });
+  }
+  if (tab.kind === "terminal" && terminalShellIcon.value) {
+    return h("img", {
+      src: terminalShellIcon.value,
+      alt: "",
+      class: "size-3.5 nexterm-file-icon",
+    });
+  }
+  return h(NIcon, { component: TerminalOutline, size: 12 });
+}
+
+const overflowOptions = computed(() =>
+  props.tabs.map((tab) => ({
+    key: tab.id,
+    label: tabLabel(tab),
+    icon: () => tabIconVNode(tab),
+  })),
+);
+
+function handleOverflowSelect(key: string | number) {
+  const id = Number(key);
+  if (!Number.isFinite(id)) return;
+  emit("selectTab", id);
 }
 
 // 切换/新建/重排标签后把激活标签滚回可视区。
@@ -262,17 +292,6 @@ onBeforeUnmount(() => {
 
     <!-- 完整会话条 -->
     <template v-else>
-      <button
-        v-if="scrollEdges.left"
-        type="button"
-        data-strip-scroll-left
-        :aria-label="t('app.header.scrollTabsLeft')"
-        :title="t('app.header.scrollTabsLeft')"
-        class="flex h-7 w-5 flex-none items-center justify-center rounded-full text-muted-foreground transition-colors duration-[var(--dur-fast)] hover:bg-surface-hover hover:text-foreground"
-        @click="scrollStripBy(-1)"
-      >
-        <NIcon :component="ChevronBackOutline" :size="13" />
-      </button>
       <div
         ref="stripScroller"
         data-strip-scroller
@@ -292,17 +311,17 @@ onBeforeUnmount(() => {
               :title="`${tabKindLabel(tab)}: ${tabLabel(tab)}`"
               :style="tabWidthStyle()"
               :class="[
-                'group relative flex h-8 min-w-[6rem] items-center justify-between gap-1.5 rounded-md px-3 text-left text-[12px] transition-[background-color,color,opacity,box-shadow] duration-[var(--dur-fast)]',
+                'group relative flex h-8 min-w-[6rem] items-center justify-between gap-1.5 rounded-t-sm px-3 text-left text-[12px] transition-[background-color,color,opacity,box-shadow] duration-[var(--dur-fast)]',
                 tabWidthClass(),
                 draggingTabId === tab.id ? 'opacity-60' : '',
                 dropTarget?.id === tab.id && dropTarget.placement === 'before'
-                  ? 'before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-primary'
+                  ? 'before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:rounded-full before:bg-primary'
                   : '',
                 dropTarget?.id === tab.id && dropTarget.placement === 'after'
-                  ? 'after:absolute after:inset-y-1.5 after:right-0 after:w-0.5 after:rounded-full after:bg-primary'
+                  ? 'after:absolute after:inset-y-0 after:right-0 after:w-[3px] after:rounded-full after:bg-primary'
                   : '',
                 tab.id === activeId
-                  ? 'bg-accent text-foreground'
+                  ? 'bg-shell-bg text-foreground'
                   : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',
               ]"
               @click="handleTabClick(tab)"
@@ -310,12 +329,12 @@ onBeforeUnmount(() => {
               @contextmenu.prevent="handleTabContextMenu($event, tab)"
               @pointerdown="handleTabPointerDown($event, tab)"
             >
-              <!-- 激活指示：主色竖条（与文件树行的 active 指示同一套语言） -->
+              <!-- 激活指示：顶部主色条（VS Code 的标签语言） -->
               <span
                 v-if="tab.id === activeId"
                 data-tab-active-indicator
                 aria-hidden="true"
-                class="absolute inset-y-2 left-0 w-0.5 rounded-full bg-primary"
+                class="absolute inset-x-1 top-0 h-0.5 rounded-full bg-primary"
               />
               <span class="flex min-w-0 flex-1 items-center gap-1.5">
                 <img
@@ -350,10 +369,20 @@ onBeforeUnmount(() => {
                   class="size-1.5 shrink-0 rounded-full bg-primary"
                 />
               </span>
+              <!--
+                关闭按钮不能只靠 hover 出现：
+                激活标签常显（淡一点），非激活标签 hover / 键盘聚焦时显现，
+                触屏（无 hover 能力的指针）直接常显。
+              -->
               <span
                 role="button"
                 tabindex="-1"
-                class="grid size-4 shrink-0 place-items-center rounded-full text-muted-foreground opacity-0 transition-all duration-[var(--dur-fast)] hover:bg-destructive/15 hover:text-destructive group-hover:opacity-60 group-hover:hover:opacity-100"
+                class="grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground transition-all duration-[var(--dur-fast)] hover:bg-destructive/15 hover:text-destructive"
+                :class="
+                  tab.id === activeId
+                    ? 'opacity-60 group-hover:opacity-100'
+                    : 'opacity-0 group-hover:opacity-60 group-focus-within:opacity-100 [@media(hover:none)]:opacity-60'
+                "
                 @click.stop="emit('closeTab', tab.id)"
                 @pointerdown.stop
               >
@@ -363,17 +392,23 @@ onBeforeUnmount(() => {
           </TransitionGroup>
         </div>
       </div>
-      <button
+      <!-- 溢出菜单：标签超出时在行尾给出入口 -->
+      <NDropdown
         v-if="scrollEdges.right"
-        type="button"
-        data-strip-scroll-right
-        :aria-label="t('app.header.scrollTabsRight')"
-        :title="t('app.header.scrollTabsRight')"
-        class="flex h-7 w-5 flex-none items-center justify-center rounded-full text-muted-foreground transition-colors duration-[var(--dur-fast)] hover:bg-surface-hover hover:text-foreground"
-        @click="scrollStripBy(1)"
+        trigger="click"
+        :options="overflowOptions"
+        @select="handleOverflowSelect"
       >
-        <NIcon :component="ChevronForwardOutline" :size="13" />
-      </button>
+        <button
+          type="button"
+          data-strip-overflow
+          :aria-label="t('app.header.allTabs')"
+          :title="t('app.header.allTabs')"
+          class="flex h-8 w-8 flex-none items-center justify-center rounded-md text-muted-foreground transition-colors duration-[var(--dur-fast)] hover:bg-surface-hover hover:text-foreground"
+        >
+          <NIcon :component="EllipsisHorizontalOutline" :size="14" />
+        </button>
+      </NDropdown>
     </template>
 
     <!-- 拖拽区:会话条之后的空白带 -->

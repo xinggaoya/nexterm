@@ -140,6 +140,7 @@ const zhCN = {
       openCommandCenter: "打开命令中心",
       openFolder: "打开文件夹",
       preview: "预览",
+      allTabs: "全部标签",
       scrollTabsLeft: "向左滚动标签",
       scrollTabsRight: "向右滚动标签",
       sourceControl: "源代码管理",

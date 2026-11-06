@@ -119,7 +119,9 @@
     --sidebar: oklch(0.97 0.004 240);
     --sidebar-foreground: var(--foreground);
     --activity-bar: oklch(0.965 0.004 240);
-    --title-bar: var(--shell-bg);
+    /* 标题栏 / 标签行比画布暗一档：VS Code 的语言 —— 激活标签用画布色，
+       于是它像是从暗色条里“长”出来接上内容区。 */
+    --title-bar: oklch(0.945 0.004 240);
     --terminal-focus: var(--primary);
     --pane-handle: oklch(0.9 0.006 240);
     --pane-handle-active: var(--primary);
@@ -233,8 +235,8 @@
     --sidebar-accent-foreground: var(--accent-foreground);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
-    --activity-bar: oklch(0.16 0.008 255);
-    --title-bar: oklch(0.16 0.008 255);
+    --activity-bar: oklch(0.13 0.008 255);
+    --title-bar: oklch(0.125 0.008 255);
     --terminal-focus: var(--primary);
     --pane-handle: oklch(0.26 0.008 255);
     --pane-handle-active: var(--primary);
