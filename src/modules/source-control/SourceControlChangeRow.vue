@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { AddOutline, RemoveOutline, TrashOutline } from "@vicons/ionicons5";
-import { NButton, NCheckbox, NIcon, NTag } from "naive-ui";
+import { NButton, NCheckbox, NIcon } from "naive-ui";
 import { computed, inject, type Ref } from "vue";
 import TooltipTitle from "@/components/TooltipTitle.vue";
 import { t, tLoose } from "@/modules/i18n/translate";
@@ -9,7 +9,7 @@ import { splitPathLabel } from "@/lib/path";
 import {
   stageLabel,
   statusClass,
-  statusTone,
+  statusKindLabel,
 } from "@/modules/source-control/sourceControlFormat";
 import type { SourceControlFileEntry } from "@/modules/source-control/sourceControlModel";
 import type { BusyAction } from "@/modules/source-control/useSourceControlState";
@@ -87,6 +87,14 @@ defineOptions({
       :data-source-file="entry.path"
       @click="emit('openDiff', entry)"
     >
+      <span
+        data-source-status-code
+        class="w-3 shrink-0 text-[11px] font-semibold leading-none"
+        :class="statusClass(entry.statusKind)"
+        :title="statusKindLabel(entry.statusKind, tLoose)"
+      >
+        {{ entry.statusCode }}
+      </span>
       <img
         :src="iconUrl"
         alt=""
@@ -111,13 +119,6 @@ defineOptions({
           {{ label.dir }}
         </span>
       </span>
-      <NTag
-        size="small"
-        :type="statusTone(entry.statusCode)"
-        data-source-status-code
-      >
-        {{ entry.statusCode }}
-      </NTag>
       <span
         data-source-stage-label
         class="w-14 shrink-0 text-right text-[10px] text-muted-foreground"

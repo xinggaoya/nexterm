@@ -839,29 +839,6 @@ defineExpose({
         @toggle:right-panel="togglePanelOpen('right')"
       />
 
-      <!--
-        会话条独立成一行（不再挤在顶栏中间）。
-        标签再多也不会把顶栏的身份区与右侧动作按钮推出屏幕。
-      -->
-      <SessionStrip
-        :tabs="tabs.workspaceTabs(workspace.id)"
-        :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
-        :width-mode="prefs.tabWidthMode"
-        :fixed-width="prefs.tabFixedWidth"
-        :env-kind="workspace.env.kind"
-        :shell-id="prefs.terminalShellId"
-        @select-tab="(id) => tabs.setActiveId(id, workspace.id)"
-        @close-tab="(id) => requestCloseTab(id)"
-        @close-others="(id) => requestCloseOthers(id)"
-        @close-to-right="(id) => requestCloseToRight(id)"
-        @close-all="requestCloseAll()"
-        @duplicate-terminal="duplicateTerminalTab"
-        @rename-tab="renameTabTitle"
-        @request-rename="requestTabRename"
-        @pin-tab="(id) => tabs.pinTab(id, workspace.id)"
-        @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement, workspace.id)"
-      />
-
       <div class="relative flex min-h-0 flex-1">
         <!-- 左侧停靠面板（文件树 / 更改） -->
         <WorkspacePanel
@@ -893,26 +870,52 @@ defineExpose({
           @decorations-change="onDecorationChange"
         />
 
-        <Canvas
-          ref="canvas"
-          :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
-          :active-tab="activeTab"
-          :tabs="tabs.workspaceTabs(workspace.id)"
-          :tabs-store="{
-            focusPane: (tabId, leafId) => tabs.focusPane(tabId, leafId, workspace.id),
-            openCommitFileDiffTab: (input) => tabs.openCommitFileDiffTab(input, workspace.id),
-            setLeafCwd: (leafId, cwd) => tabs.setLeafCwd(leafId, cwd, workspace.id),
-            setLeafTitle: (leafId, titleVal) => tabs.setLeafTitle(leafId, titleVal, workspace.id),
-            updateTab: (id, patch) => tabs.updateTab(id, patch, workspace.id),
-          }"
-          :workspace-fs-event="normalizedFsEvent"
-          @history-ref-change="onHistoryRefChange"
-          @go-to-definition="onGoToDefinition"
-          @request-rename="onRequestRename"
-          @show-references="onShowReferences"
-          @rename-pane="onRenamePane"
-          @pane-status="onPaneStatus"
-        />
+        <!--
+          中列：标签行 + 画布。标签行只覆盖中间内容面板，
+          两侧停靠面板与它同高（VS Code 的布局）——
+          标签再多也不会把顶栏的身份区与右侧动作按钮挤出屏幕。
+        -->
+        <div class="flex min-w-0 flex-1 flex-col">
+          <SessionStrip
+            :tabs="tabs.workspaceTabs(workspace.id)"
+            :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
+            :width-mode="prefs.tabWidthMode"
+            :fixed-width="prefs.tabFixedWidth"
+            :env-kind="workspace.env.kind"
+            :shell-id="prefs.terminalShellId"
+            @select-tab="(id) => tabs.setActiveId(id, workspace.id)"
+            @close-tab="(id) => requestCloseTab(id)"
+            @close-others="(id) => requestCloseOthers(id)"
+            @close-to-right="(id) => requestCloseToRight(id)"
+            @close-all="requestCloseAll()"
+            @duplicate-terminal="duplicateTerminalTab"
+            @rename-tab="renameTabTitle"
+            @request-rename="requestTabRename"
+            @pin-tab="(id) => tabs.pinTab(id, workspace.id)"
+            @reorder-tab="(sourceId, targetId, placement) => tabs.moveTab(sourceId, targetId, placement, workspace.id)"
+          />
+
+          <Canvas
+            ref="canvas"
+            :active-id="tabs.activeIdByWorkspace[workspace.id] ?? 0"
+            :active-tab="activeTab"
+            :tabs="tabs.workspaceTabs(workspace.id)"
+            :tabs-store="{
+              focusPane: (tabId, leafId) => tabs.focusPane(tabId, leafId, workspace.id),
+              openCommitFileDiffTab: (input) => tabs.openCommitFileDiffTab(input, workspace.id),
+              setLeafCwd: (leafId, cwd) => tabs.setLeafCwd(leafId, cwd, workspace.id),
+              setLeafTitle: (leafId, titleVal) => tabs.setLeafTitle(leafId, titleVal, workspace.id),
+              updateTab: (id, patch) => tabs.updateTab(id, patch, workspace.id),
+            }"
+            :workspace-fs-event="normalizedFsEvent"
+            @history-ref-change="onHistoryRefChange"
+            @go-to-definition="onGoToDefinition"
+            @request-rename="onRequestRename"
+            @show-references="onShowReferences"
+            @rename-pane="onRenamePane"
+            @pane-status="onPaneStatus"
+          />
+        </div>
 
         <!-- 右侧停靠面板（文件树 / 更改） -->
         <WorkspacePanel

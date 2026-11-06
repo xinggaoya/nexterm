@@ -191,6 +191,15 @@ describe("visual system contract", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("renders source-control rows with a VS Code style status letter", () => {
+    const row = readSource("../modules/source-control/SourceControlChangeRow.vue");
+    // 状态用纯文字字母（M / A / D / U）而不是 NTag 胶囊 ——
+    // 胶囊在这种行密度下太重，与 VS Code 的 SCM 列表差一个量级。
+    expect(row).not.toMatch(/<NTag/);
+    expect(row).toContain("data-source-status-code");
+    expect(row).toContain("statusClass(entry.statusKind)");
+  });
+
   it("provides shared surface, toolbar, row, icon button and overlay rules", () => {
     expect(globalsCss).toContain(".nexterm-surface");
     expect(globalsCss).toContain(".nexterm-toolbar");
@@ -273,9 +282,9 @@ describe("visual system contract", () => {
     expect(strip).toContain("data-strip-overflow");
   });
 
-  it("docks the session strip as its own row under the top bar", () => {
-    // 标签条不再是顶栏的 center slot —— 标签再多也不会把顶栏的身份区
-    // 与右侧动作按钮挤出屏幕。
+  it("docks the session strip inside the center column, not across the side panels", () => {
+    // 标签行只覆盖中间内容面板 —— 两侧停靠面板与它同高（VS Code 的布局）。
+    // 标签再多也不会把顶栏的身份区与右侧动作按钮挤出屏幕。
     const host = readSource("../app/shell/WorkspaceHost.vue");
     const topBar = readSource("../app/shell/TopBar.vue");
 
@@ -285,8 +294,12 @@ describe("visual system contract", () => {
     expect(host).not.toContain("</TopBar>");
     const topBarIdx = host.indexOf("<TopBar");
     const stripIdx = host.indexOf("<SessionStrip");
+    const leftIdx = host.indexOf('side="left"');
+    const rightIdx = host.indexOf('side="right"');
     expect(topBarIdx).toBeGreaterThan(-1);
-    expect(stripIdx).toBeGreaterThan(topBarIdx);
+    // 标签条夹在左右面板之间：它在中间列里，不横跨整个窗口。
+    expect(stripIdx).toBeGreaterThan(leftIdx);
+    expect(stripIdx).toBeLessThan(rightIdx);
   });
 
   it("docks the workspace panel on the right of the canvas without its own header", () => {
