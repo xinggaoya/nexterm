@@ -30,6 +30,8 @@ src/modules/source-control/
   sourceControlModel.ts             # 数据模型 + 分组
   sourceControlFormat.ts            # 状态码 -> 标签/样式
   gitDecorations.ts                 # 装饰映射（status -> color/letter/tooltip）
+  gitStatusCoordinator.ts           # git status 跨实例 single-flight 协调器
+  gitDiscoverCoordinator.ts         # 仓库发现跨实例 single-flight + TTL 缓存协调器
   useSourceControlState.ts          # 状态 composable（panel + entries + 装饰）
   useSourceControlActions.ts        # 动作 composable（stage/unstage/discard/commit/branch/stash/remote）
   useSourceControlGitMetadata.ts    # 分支 + Stash + 远程列表 composable
@@ -141,7 +143,7 @@ type GitRepositoryDiscovery = {
 | `git_remote_add` | 新增远程，`input: { name, url }` 返回新建的 `GitRemoteInfo` |
 | `git_remote_remove` | 删除远程（按 `name`） |
 | `git_remote_set_url` | 编辑远程 URL，`input: { name, newUrl }` 返回更新后的 `GitRemoteInfo` |
-| `git_discover_repositories` | 工作区下嵌套仓库发现（`maxDepth=4`、`maxRepos=32`），按 workspace 区分 local / WSL 收集策略 |
+| `git_discover_repositories` | 工作区下嵌套仓库发现（`maxDepth=4`、`maxRepos=32`），按 workspace 区分 local / WSL 收集策略。可选 `fresh=true` 表示「要最新结果」（工作区刚有文件变化时用），此时后端不复用旧的结果缓存 |
 
 ### 4.3 事件
 
@@ -152,12 +154,18 @@ type GitRepositoryDiscovery = {
 
 无独立 store。状态由 `useSourceControlState` / `useSourceControlActions` / `useSourceControlGitMetadata` / `useGitRepositoryRegistry` 四个 composable 维护（组件作用域 ref），跨组件通过 props 传递或在 `MainApp` / `Workbench` 中提升。
 
-`activeRepoRoot` 由 `MainApp` 通过 `repo-selected` 事件回写到 `useWorkbenchCommands` 的共享状态，使命令面板的 Git 命令与 Source Control 当前选中的仓库保持一致。
+`activeRepoRoot` 由 `WorkspaceHost` 通过 `repo-selected` 事件回写到 `useWorkbenchCommands` 的共享状态，使命令面板的 Git 命令与 Source Control 当前选中的仓库保持一致。**它只用于命令面板，不再作为 prop 回灌给面板** —— 面板的选仓状态自治（见 §6）。
 
 ## 6. 关键算法
 
 - `useSourceControlState` 拉 `git_panel_snapshot` 拿到全部数据后，按 `SourceControlGroupId` 拆成 `staged` / `changes` 两组；每组再按 `statusKind`（conflict → modified → added → untracked → deleted → renamed）排序。同一文件在 staged 与 changes 中各出现一次（diffMode 分别为 `+` / `-`）。
 - `useGitRepositoryRegistry` 用 `ownershipKey = workspaceScope \0 normalizePath(rootPath)` 标记当前请求归属，避免旧工作区的过期响应覆盖新工作区。FS watcher 事件触发 250ms 防抖刷新。
+- **仓库发现请求的合并**（`gitDiscoverCoordinator` + 后端两道闸）：发现很贵（遍历目录树 + 每个候选仓库 fork git 进程，单次 0.7~1.5s），而调用方是多份的（每个工作区的左右两个面板各一份 registry）。三层防线：
+  1. 前端 **single-flight**：同一 (scope, root, maxDepth, maxRepos) 的并发请求共享一条后端调用；
+  2. 前端 **TTL 缓存**（1.5s）：吸收短时间内的重复请求；
+  3. 后端 **串行门 + 结果缓存**（2s）：同一时刻只算一个发现任务，其余排队；排队者拿到锁后重查缓存，于是同一批并发请求实际只算一次。串行门保证 blocking pool 不会被占满（否则表现为「什么都没干但 CPU 占用 900%」）。
+  - `fresh=true` 绕过前端的 TTL 与后端的旧缓存，用于「工作区刚有文件变化」—— 否则新建出来的仓库在缓存窗口内看不到，且没有后续 FS 事件时就永远看不到。但 `fresh` 请求**不与更早的非 fresh 在途请求合并**（那份快照可能是变化之前的），只与同批 fresh 请求合并。
+- **选仓状态是面板自治的**：左右两个停靠面板各有一份 `panelRepoRoot`（`WorkspacePanel` 内部状态），不再共用宿主级的 `activeRepoRoot`。此前两者共享，一个面板在仓库发现未完成时清空选择会把另一个面板的选择也带走、再由那个面板打回来，形成 ping-pong —— 每次往返都重新触发一次 git status / 仓库发现。宿主级的 `activeRepoRoot` 只保留给命令面板判断「当前仓库」，**不再回灌给面板**。
 - 自动刷新延迟：Git 事件 80ms，非 Git 事件 500ms（防抖）。
 - 装饰（`gitDecorations`）根据 status code 映射到 `{statusKind, staged, unstaged, hasDescendantChanges, count}`，对每个文件路径向上合并到所有祖先目录。
 - Stash Apply（保留 stash）/ Pop（应用并移除）/ Drop 三种动作走独立的 IPC 命令与独立通知文案，避免单条 `git_stash_pop` 串味。
@@ -177,6 +185,8 @@ type GitRepositoryDiscovery = {
 - `gitDecorations.test.ts` / `sourceControlFormat.test.ts` / `sourceControlModel.test.ts`
 - `useSourceControlState.test.ts` / `useSourceControlActions.test.ts`（含 addRemote / updateRemote / removeRemote / listRemotes 4 个用例）
 - `useGitRepositoryRegistry.test.ts`
+- `gitDiscoverCoordinator.test.ts`（single-flight / TTL / fresh 语义 / 缓存副本隔离）
+- `gitStatusCoordinator.test.ts`
 - `SourceControlPanel.vue.test.ts`
 - `SourceControlChangeRow.vue.test.ts`（变更行：文件类型图标 + 文件名 / 目录两段式展示）
 - `SourceControlGitWorkflows.vue.test.ts`

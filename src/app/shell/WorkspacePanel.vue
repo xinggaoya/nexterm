@@ -37,7 +37,6 @@ const props = defineProps<{
   workspaceId: string;
   workspaceRoot: string | null;
   workspaceScope: string;
-  activeRepoRoot: string | null;
   gitDecorations: GitDecorationMap;
   showBranchesModal: Ref<boolean>;
   fsEvent: WorkspaceFsChangedEvent | null;
@@ -75,6 +74,25 @@ const emit = defineEmits<{
 }>();
 
 const fileExplorerRef = ref<InstanceType<typeof FileExplorer> | null>(null);
+
+/**
+ * 面板级的「当前仓库」选择。
+ *
+ * 刻意**不**与宿主共享：左右两个停靠面板此前共用宿主级的
+ * `activeRepoRoot`，于是任一面板的仓库发现结果变化都会把另一面板的
+ * 选择覆盖成 null 再打回去，形成 ping-pong —— 每次往返都会重新触发
+ * 一次 `git_discover_repositories` / `git_status`，实测能把发现请求
+ * 打到每秒 4 次以上。
+ *
+ * 现在每个面板自治：选择只在本面板内流转；面板仍然把选择向上冒泡，
+ * 但宿主只拿它做命令面板的「当前仓库」，不再回灌给面板。
+ */
+const panelRepoRoot = ref<string | null>(null);
+
+function onRepoSelected(repoRoot: string | null): void {
+  panelRepoRoot.value = repoRoot;
+  emit("repo-selected", repoRoot);
+}
 
 const isLeft = () => props.side === "left";
 
@@ -182,14 +200,14 @@ defineExpose({
         <SourceControlPanel
           :root-path="workspaceRoot"
           :workspace-scope="workspaceScope"
-          :active-repo-root="activeRepoRoot"
+          :active-repo-root="panelRepoRoot"
           :fs-event="fsEvent"
           :show-branches-modal="showBranchesModal"
           :workspace-id="workspaceId"
           :visible="view === 'changes'"
           @open-diff="(input) => emit('open-source-diff', input)"
           @open-history="(input) => emit('open-source-history', input)"
-          @repo-selected="(repoRoot) => emit('repo-selected', repoRoot)"
+          @repo-selected="onRepoSelected"
           @decorations-change="(d) => emit('decorations-change', d)"
           @branch-change="(branch) => emit('branch-change', branch)"
           @committed="(result) => emit('committed', result)"

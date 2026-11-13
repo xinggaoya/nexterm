@@ -717,12 +717,13 @@ export function createNativeForEnv(workspace: WorkspaceEnv) {
       }),
     gitDiscoverRepositories: (
       rootPath: string,
-      options?: { maxDepth?: number; maxRepos?: number },
+      options?: { maxDepth?: number; maxRepos?: number; fresh?: boolean },
     ) =>
       invoke<GitRepositoryDiscovery>("git_discover_repositories", {
         rootPath,
         maxDepth: options?.maxDepth ?? 4,
         maxRepos: options?.maxRepos ?? 32,
+        fresh: options?.fresh ?? false,
         workspace,
       }),
     shellBgSpawn: (command: string, cwd?: string | null) =>

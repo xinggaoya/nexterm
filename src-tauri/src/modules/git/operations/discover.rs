@@ -1,12 +1,84 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use crate::modules::git::errors::{GitError, Result};
+use crate::modules::git::process::workspace_cache_key;
 use crate::modules::git::types::{GitRepositoryDiscovery, GitWorkspaceRepo};
 use crate::modules::git::utils::{authorized_repo_root, ResolvedGitDirectory};
 use crate::modules::workspace::{WorkspaceEnv, WorkspaceRegistry};
 
 use super::{resolve_repo_in_authorized, with_repo};
+
+/// 发现结果的缓存窗口。
+///
+/// 仓库列表只会在「新建 / 删除 `.git`」时变化，而那种变化本身会触发
+/// 工作区的 FS 事件 → 前端重新拉取。所以窗口内的重复请求直接复用上一次
+/// 的结果即可。
+const DISCOVER_CACHE_TTL: Duration = Duration::from_secs(2);
+
+static DISCOVER_CACHE: OnceLock<Mutex<HashMap<String, (Instant, GitRepositoryDiscovery)>>> =
+    OnceLock::new();
+
+/// 发现任务的串行门。
+///
+/// 仓库发现很贵（遍历目录树 + 每个候选仓库 fork git 进程，单次
+/// 0.7~1.5s）。多工作区场景下前端会并发问好几个工作区，如果放任并发，
+/// 这些任务会把 tokio blocking pool 占满 —— 实测 35 个 worker 满载、
+/// 95% 内核态，进程 CPU 占用飙到 900%。
+///
+/// 这里把发现任务全局串行化：同一时刻只有一个在跑，其余排队。排队者
+/// 拿到锁后重查一次缓存（见 `discover_repositories`），于是同一批并发
+/// 请求实际只会真正计算一次。
+static DISCOVER_GATE: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn discover_cache() -> &'static Mutex<HashMap<String, (Instant, GitRepositoryDiscovery)>> {
+    DISCOVER_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn discover_gate() -> &'static Mutex<()> {
+    DISCOVER_GATE.get_or_init(|| Mutex::new(()))
+}
+
+fn discover_cache_key(
+    root_path: &str,
+    max_depth: u32,
+    max_repos: u32,
+    workspace: &WorkspaceEnv,
+) -> String {
+    format!(
+        "{}|{}|{}|{}",
+        workspace_cache_key(workspace),
+        root_path,
+        max_depth,
+        max_repos
+    )
+}
+
+/// 读缓存，同时返回写入时刻。
+///
+/// 返回 `None` 表示没有可用缓存（不存在或已过期）。写入时刻用于区分
+/// 「早就存在的旧缓存」与「等待串行锁期间刚算出来的缓存」。
+fn read_discover_cache(key: &str) -> Option<(Instant, GitRepositoryDiscovery)> {
+    let mut guard = match discover_cache().lock() {
+        Ok(guard) => guard,
+        // 缓存被 poison 说明之前有线程 panic —— 当作缓存未命中，
+        // 重新算一次即可，不该让整个 IPC 失败。
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    guard.retain(|_, (at, _)| at.elapsed() < DISCOVER_CACHE_TTL);
+    guard.get(key).cloned()
+}
+
+fn write_discover_cache(key: &str, result: &GitRepositoryDiscovery) {
+    let mut guard = match discover_cache().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    guard.retain(|_, (at, _)| at.elapsed() < DISCOVER_CACHE_TTL);
+    guard.insert(key.to_string(), (Instant::now(), result.clone()));
+}
 
 // --- Bounded nested-repository discovery ----------------------------------
 
@@ -61,6 +133,63 @@ fn wsl_blacklist_prune_clause() -> String {
 }
 
 pub fn discover_repositories(
+    registry: &WorkspaceRegistry,
+    root_path: &str,
+    max_depth: u32,
+    max_repos: u32,
+    fresh: bool,
+    workspace: &WorkspaceEnv,
+) -> Result<GitRepositoryDiscovery> {
+    // 仓库发现很重（遍历目录树 + 每个候选仓库 fork git 进程，单次
+    // 0.7~1.5s）。多工作区场景下前端会并发问好几个工作区，放任并发会把
+    // tokio blocking pool 占满，表现为「什么都没干但 CPU 占用 900%」。
+    //
+    // 这里用两道闸：
+    // 1. **串行门**：同一时刻只算一个，其余排队 —— blocking pool 不会被
+    //    打满，CPU 只吃满一核。
+    // 2. **结果缓存**：排队者拿到锁后重查缓存，于是同一批并发请求实际
+    //    只真正计算一次。
+    //
+    // `fresh` 表示调用方明确要最新结果（工作区刚有文件变化，前端要看到
+    // 新建出来的仓库）。这时不直接复用**旧**缓存，但如果在等待串行锁的
+    // 期间别人刚好算过同一个工作区，那份结果就是最新的，照用不误 ——
+    // 既是正确的，也避免了一串 fresh 请求排队算同一份数据。
+    let cache_key = discover_cache_key(root_path, max_depth, max_repos, workspace);
+    let stamp_before = read_discover_cache(&cache_key).map(|(at, _)| at);
+    if !fresh {
+        if let Some((_, cached)) = read_discover_cache(&cache_key) {
+            return Ok(cached);
+        }
+    }
+
+    let _serial = match discover_gate().lock() {
+        Ok(guard) => guard,
+        // 之前的发现任务 panic 过 —— 锁已 poison，但数据本身没问题，
+        // 恢复后继续用（否则一次 panic 会让所有后续发现请求永久失败）。
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    let stamp_after = read_discover_cache(&cache_key).map(|(at, _)| at);
+    let cache_usable = match (stamp_before, stamp_after) {
+        // 等待期间别人算过 —— 那份结果就是最新的。
+        (None, Some(_)) => true,
+        // 早就有缓存：只有非 fresh 的调用才复用。
+        (Some(_), Some(_)) => !fresh,
+        _ => false,
+    };
+    if cache_usable {
+        if let Some((_, cached)) = read_discover_cache(&cache_key) {
+            return Ok(cached);
+        }
+    }
+
+    let result =
+        discover_repositories_uncached(registry, root_path, max_depth, max_repos, workspace)?;
+    write_discover_cache(&cache_key, &result);
+    Ok(result)
+}
+
+fn discover_repositories_uncached(
     registry: &WorkspaceRegistry,
     root_path: &str,
     max_depth: u32,
@@ -420,9 +549,15 @@ mod tests {
         init_git_repo(&root.path, "main");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let result =
-            super::discover_repositories(&root.registry, &path_str, 4, 64, &WorkspaceEnv::Local)
-                .expect("discovery succeeds");
+        let result = super::discover_repositories(
+            &root.registry,
+            &path_str,
+            4,
+            64,
+            false,
+            &WorkspaceEnv::Local,
+        )
+        .expect("discovery succeeds");
 
         assert!(!result.truncated);
         assert_eq!(result.repositories.len(), 1);
@@ -443,9 +578,15 @@ mod tests {
         init_git_repo(&nested, "feature/nested");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let result =
-            super::discover_repositories(&root.registry, &path_str, 4, 64, &WorkspaceEnv::Local)
-                .expect("discovery succeeds");
+        let result = super::discover_repositories(
+            &root.registry,
+            &path_str,
+            4,
+            64,
+            false,
+            &WorkspaceEnv::Local,
+        )
+        .expect("discovery succeeds");
 
         let mut paths: Vec<_> = result
             .repositories
@@ -489,9 +630,15 @@ mod tests {
         init_git_repo(&repo_b, "develop");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let result =
-            super::discover_repositories(&root.registry, &path_str, 4, 64, &WorkspaceEnv::Local)
-                .expect("discovery succeeds");
+        let result = super::discover_repositories(
+            &root.registry,
+            &path_str,
+            4,
+            64,
+            false,
+            &WorkspaceEnv::Local,
+        )
+        .expect("discovery succeeds");
 
         let mut paths: Vec<_> = result
             .repositories
@@ -549,9 +696,15 @@ mod tests {
         assert!(status.success(), "git worktree add failed");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let result =
-            super::discover_repositories(&root.registry, &path_str, 4, 64, &WorkspaceEnv::Local)
-                .expect("discovery succeeds");
+        let result = super::discover_repositories(
+            &root.registry,
+            &path_str,
+            4,
+            64,
+            false,
+            &WorkspaceEnv::Local,
+        )
+        .expect("discovery succeeds");
 
         let worktree = result
             .repositories
@@ -569,9 +722,15 @@ mod tests {
         let root = make_root("empty");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let result =
-            super::discover_repositories(&root.registry, &path_str, 4, 64, &WorkspaceEnv::Local)
-                .expect("discovery succeeds");
+        let result = super::discover_repositories(
+            &root.registry,
+            &path_str,
+            4,
+            64,
+            false,
+            &WorkspaceEnv::Local,
+        )
+        .expect("discovery succeeds");
 
         assert!(result.repositories.is_empty());
         assert!(!result.truncated);
@@ -591,9 +750,15 @@ mod tests {
         init_git_repo(&repo_c, "main");
         let path_str = root.path.to_string_lossy().into_owned();
 
-        let result =
-            super::discover_repositories(&root.registry, &path_str, 4, 2, &WorkspaceEnv::Local)
-                .expect("discovery succeeds");
+        let result = super::discover_repositories(
+            &root.registry,
+            &path_str,
+            4,
+            2,
+            false,
+            &WorkspaceEnv::Local,
+        )
+        .expect("discovery succeeds");
 
         assert_eq!(result.repositories.len(), 2);
         assert!(result.truncated);
@@ -609,9 +774,15 @@ mod tests {
 
         // max_depth=2 means we look at root (depth 0) + one child level. The
         // deeply nested repo sits at depth 4 so it should be truncated.
-        let result =
-            super::discover_repositories(&root.registry, &path_str, 2, 64, &WorkspaceEnv::Local)
-                .expect("discovery succeeds");
+        let result = super::discover_repositories(
+            &root.registry,
+            &path_str,
+            2,
+            64,
+            false,
+            &WorkspaceEnv::Local,
+        )
+        .expect("discovery succeeds");
 
         assert!(result.repositories.is_empty());
         assert!(result.truncated);
@@ -632,6 +803,7 @@ mod tests {
             &path_str,
             4,
             64,
+            false,
             &WorkspaceEnv::Local,
         )
         .expect("discovery succeeds");
@@ -641,5 +813,121 @@ mod tests {
             "symlinked escape must be ignored"
         );
         assert!(!result.truncated);
+    }
+
+    // --- 结果缓存与 fresh 语义 ---------------------------------------------
+
+    /// 非 fresh 的调用在 TTL 窗口内复用上一次的结果。
+    ///
+    /// 用「两次调用之间新建一个仓库」来观察：第二次调用应当看不到它。
+    #[test]
+    fn discover_repositories_reuses_cached_result() {
+        let root = make_root("cached-result");
+        init_git_repo(&root.path, "main");
+        let path_str = root.path.to_string_lossy().into_owned();
+
+        let first = super::discover_repositories(
+            &root.registry,
+            &path_str,
+            4,
+            64,
+            false,
+            &WorkspaceEnv::Local,
+        )
+        .expect("discovery succeeds");
+        assert_eq!(first.repositories.len(), 1);
+
+        // TTL 窗口内新建一个嵌套仓库 —— 缓存命中时看不到它。
+        let nested = root.path.join("nested");
+        std::fs::create_dir_all(&nested).expect("nested dir");
+        init_git_repo(&nested, "feature/nested");
+
+        let second = super::discover_repositories(
+            &root.registry,
+            &path_str,
+            4,
+            64,
+            false,
+            &WorkspaceEnv::Local,
+        )
+        .expect("discovery succeeds");
+        assert_eq!(
+            second.repositories.len(),
+            1,
+            "cached discovery must not observe the new repository"
+        );
+    }
+
+    /// fresh 的调用绕开旧缓存，能看到 TTL 窗口内新建的仓库。
+    #[test]
+    fn discover_repositories_fresh_bypasses_cache() {
+        let root = make_root("fresh-result");
+        init_git_repo(&root.path, "main");
+        let path_str = root.path.to_string_lossy().into_owned();
+
+        super::discover_repositories(
+            &root.registry,
+            &path_str,
+            4,
+            64,
+            false,
+            &WorkspaceEnv::Local,
+        )
+        .expect("discovery succeeds");
+
+        let nested = root.path.join("nested");
+        std::fs::create_dir_all(&nested).expect("nested dir");
+        init_git_repo(&nested, "feature/nested");
+
+        let fresh = super::discover_repositories(
+            &root.registry,
+            &path_str,
+            4,
+            64,
+            true,
+            &WorkspaceEnv::Local,
+        )
+        .expect("discovery succeeds");
+        assert_eq!(
+            fresh.repositories.len(),
+            2,
+            "fresh discovery must observe the new repository"
+        );
+    }
+
+    /// 不同工作区环境是两份完全不同的仓库，缓存不能串。
+    #[test]
+    fn discover_repositories_cache_is_scoped_per_workspace_env() {
+        let root = make_root("cache-scope");
+        init_git_repo(&root.path, "main");
+        let path_str = root.path.to_string_lossy().into_owned();
+
+        super::discover_repositories(
+            &root.registry,
+            &path_str,
+            4,
+            64,
+            false,
+            &WorkspaceEnv::Local,
+        )
+        .expect("local discovery succeeds");
+
+        // WSL 环境的同名路径是另一份仓库，不该命中 local 的缓存。
+        // 这里只验证「缓存键不串」：WSL 发现失败（这台机器没有对应发行版），
+        // 但绝不会返回 local 的那份结果。
+        let wsl = super::discover_repositories(
+            &root.registry,
+            &path_str,
+            4,
+            64,
+            false,
+            &WorkspaceEnv::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        );
+        assert!(
+            wsl.is_err() || wsl.expect("wsl discovery").repositories.len() != 1,
+            "wsl discovery must not reuse the local cached result"
+        );
     }
 }

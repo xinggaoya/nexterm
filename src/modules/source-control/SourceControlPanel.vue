@@ -284,6 +284,16 @@ watch(
     selectedRepoRoot,
   ],
   ([repositories, loading, selected]) => {
+    // registry 还没拿到当前 workspace 的列表 → 工作区切换了，旧选择要清掉。
+    //
+    // 这里曾经是 ping-pong 的源头：左右两个面板共享同一个「当前仓库」，
+    // 于是一个面板加载未完成时的清空会把另一个面板的选择也带走，再由
+    // 那个面板打回来，来回往复 —— 每次往返都重新触发一次 git status /
+    // 仓库发现，实测能把 `git_discover_repositories` 打到每秒 4 次以上。
+    //
+    // 现在选仓库是**面板自治**的（每个面板一份 `panelRepoRoot`），清空
+    // 只影响本面板，不会再牵动另一个面板，所以这里可以安全地保留
+    // 「工作区切换就清空选择」的行为。
     if (!repositoryRegistry.isCurrentWorkspaceList()) {
       if (!loading && selected !== null) emit("repo-selected", null);
       return;

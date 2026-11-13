@@ -45,7 +45,9 @@ fn prune_expired_availability_entries(cache: &mut HashMap<String, AvailabilityCa
     cache.retain(|_, entry| entry.checked_at.elapsed() < AVAILABILITY_TTL);
 }
 
-fn workspace_cache_key(workspace: &WorkspaceEnv) -> String {
+/// 工作区环境的稳定标识：同一个路径在 local / WSL / SSH 下是三份完全
+/// 不同的仓库，任何按环境分桶的缓存都必须带上它。
+pub(crate) fn workspace_cache_key(workspace: &WorkspaceEnv) -> String {
     match workspace {
         WorkspaceEnv::Local => "local".into(),
         WorkspaceEnv::Wsl { distro } => format!("wsl:{distro}"),
@@ -184,6 +186,35 @@ where
     } else {
         Ok(Some(line.to_string()))
     }
+}
+
+/// Run git, returning multiple stdout lines **even when the command failed**.
+///
+/// 与 `git_stdout_lines` 的区别：后者要求退出码为 0，否则把 stdout 当成
+/// 空结果丢弃。而 `git rev-parse` 在**最后一个参数无法解析**时（例如
+/// `@{u}` —— 当前分支没有 upstream）会以非零码退出，但**前面已经解析
+/// 成功的参数结果早已写进 stdout**。一次调用同时问 root / HEAD / upstream
+/// 时就依赖这个行为：少一次进程创建，就少一次 fork/exec 的内核态开销。
+///
+/// 超时仍然按错误处理（拿不到可信输出）。
+pub fn git_stdout_lines_lenient<I, S>(
+    workspace: &WorkspaceEnv,
+    cwd: &str,
+    args: I,
+) -> Result<Vec<String>>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let output = run_git(workspace, Some(cwd), args, DEFAULT_TIMEOUT_SECS)?;
+    if output.timed_out {
+        return Err(GitError::TimedOut("git command"));
+    }
+    let stdout = std::str::from_utf8(&output.stdout).unwrap_or("");
+    Ok(stdout
+        .lines()
+        .map(|line| line.trim_end_matches('\r').trim().to_string())
+        .collect())
 }
 
 /// Run git, returning multiple stdout lines (UTF-8). Empty trailing lines stripped.

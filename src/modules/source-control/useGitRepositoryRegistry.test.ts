@@ -26,7 +26,16 @@ function repository(
 }
 
 async function flush() {
-  await Promise.resolve();
+  // 发现请求现在经过全局协调器（single-flight + TTL），promise 链比
+  // 之前多了一层 `.then` / `.finally`，多 flush 几轮 microtask 才能让
+  // 整条链落定。
+  for (let i = 0; i < 6; i += 1) {
+    await Promise.resolve();
+  }
+  await nextTick();
+  for (let i = 0; i < 6; i += 1) {
+    await Promise.resolve();
+  }
   await nextTick();
 }
 
@@ -62,6 +71,7 @@ describe("useGitRepositoryRegistry", () => {
     expect(wsNative.gitDiscoverRepositories).toHaveBeenCalledWith("/workspace", {
       maxDepth: 4,
       maxRepos: 32,
+      fresh: false,
     });
     expect(registry.repositories.value).toHaveLength(2);
     expect(activeRepoRoot).toBe("/workspace/apps/web");
@@ -206,7 +216,7 @@ describe("useGitRepositoryRegistry", () => {
 
     expect(wsNative.gitDiscoverRepositories).toHaveBeenLastCalledWith(
       "/workspace-b",
-      { maxDepth: 4, maxRepos: 32 },
+      { maxDepth: 4, maxRepos: 32, fresh: false },
     );
     expect(registry.repositories.value).toEqual([]);
     expect(registry.error.value).toBe("workspace B discovery failed");

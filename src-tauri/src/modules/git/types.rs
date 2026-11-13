@@ -260,7 +260,7 @@ pub struct GitStashResult {
     pub message: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitWorkspaceRepo {
     pub repo_root: String,
@@ -272,7 +272,7 @@ pub struct GitWorkspaceRepo {
     pub is_worktree: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitRepositoryDiscovery {
     pub repositories: Vec<GitWorkspaceRepo>,

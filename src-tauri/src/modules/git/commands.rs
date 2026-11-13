@@ -220,12 +220,17 @@ const DEFAULT_DISCOVERY_DEPTH: u32 = 4;
 const DEFAULT_DISCOVERY_MAX_REPOS: u32 = 32;
 
 // 发现深度 / 数量上限缺省回填后才进入 blocking 闭包。
+//
+// `fresh` 由前端在「工作区刚有文件变化」时置 true：这时要拿到最新结果
+// （比如新建出来的仓库），后端不复用旧缓存。
 git_command!(git_discover_repositories, discover_repositories,
     prelude {
         let depth = max_depth.unwrap_or(DEFAULT_DISCOVERY_DEPTH);
         let limit = max_repos.unwrap_or(DEFAULT_DISCOVERY_MAX_REPOS);
+        let want_fresh = fresh.unwrap_or(false);
     },
     GitRepositoryDiscovery :
     root_path: String => &root_path,
     max_depth: Option<u32> => depth,
-    max_repos: Option<u32> => limit);
+    max_repos: Option<u32> => limit,
+    fresh: Option<bool> => want_fresh);

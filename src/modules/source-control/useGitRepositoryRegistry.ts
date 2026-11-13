@@ -11,6 +11,7 @@ import type {
   WorkspaceNative,
 } from "@/lib/native";
 import { normalizeErrorMessage } from "@/lib/error";
+import { gitDiscoverCoordinator } from "./gitDiscoverCoordinator";
 import { isSameRoot, normalizePath } from "./sourceControlFormat";
 
 type GitRepositoryRegistryOptions = {
@@ -69,7 +70,16 @@ export function useGitRepositoryRegistry(
     );
   }
 
-  async function refresh() {
+  /**
+   * 拉一次仓库列表。
+   *
+   * @param fresh 是否要求最新结果，默认 `true`（显式刷新就该拿到最新
+   *   数据）。工作区里刚 `git init` 出来的仓库必须立刻可见，不能被缓存
+   *   窗口挡住（否则没有后续 FS 事件时它就永远不出现）。
+   *   只有「初始化」路径用 `false` —— 那时多个面板实例会同时问同一个
+   *   工作区，复用同一份结果即可。
+   */
+  async function refresh(fresh = true) {
     const root = options.rootPath.value;
     const triggerOwner = ownershipKey(options.workspaceScope.value, root);
     const currentId = ++requestId;
@@ -82,10 +92,18 @@ export function useGitRepositoryRegistry(
     loading.value = true;
     error.value = null;
     try {
-      const discovery = await options.wsNative.gitDiscoverRepositories(
-        root,
-        DISCOVERY_OPTIONS,
-      );
+      // 走全局协调器：同一 (scope, root) 的并发请求合并成一次后端调用，
+      // 短时间内重复的请求由 TTL 缓存挡下。发现本身很贵（遍历目录树 +
+      // 每个候选仓库 fork git 进程），不合并的话多面板场景会把它打到
+      // 每秒数次，把后端 blocking pool 占满。
+      const discovery = await gitDiscoverCoordinator.request({
+        scope: options.workspaceScope.value,
+        rootPath: root,
+        maxDepth: DISCOVERY_OPTIONS.maxDepth,
+        maxRepos: DISCOVERY_OPTIONS.maxRepos,
+        fresh,
+        wsNative: options.wsNative,
+      });
       if (!requestMatchesWorkspace(currentId, triggerOwner)) return;
       repositoriesOwner.value = triggerOwner;
       repositories.value = discovery.repositories;
@@ -100,11 +118,11 @@ export function useGitRepositoryRegistry(
     }
   }
 
-  function scheduleRefresh() {
+  function scheduleRefresh(fresh = true) {
     clearRefreshTimer();
     refreshTimer = setTimeout(() => {
       refreshTimer = null;
-      void refresh();
+      void refresh(fresh);
     }, FS_REFRESH_DEBOUNCE_MS);
   }
 
@@ -137,7 +155,9 @@ export function useGitRepositoryRegistry(
       clearRefreshTimer();
       requestId += 1;
       clearRegistry();
-      if (owner && !disposed) void refresh();
+      // 初始化路径：用缓存即可 —— 同一时刻多个面板实例会问同一个工作区，
+      // 复用同一份结果，避免重复打后端（发现很贵）。
+      if (owner && !disposed) void refresh(false);
     },
     { immediate: true, flush: "sync" },
   );

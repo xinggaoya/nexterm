@@ -117,6 +117,12 @@ const {
 const activeTab = computed<Tab | null>(
   () => tabs.workspaceTabs(props.workspace.id).find((tab) => tab.id === tabs.activeIdByWorkspace[props.workspace.id]) ?? null,
 );
+// 命令面板 / 快捷键用的「当前仓库」。
+//
+// 只消费面板上抛的选择，**不再回灌给面板** —— 左右两个停靠面板各自
+// 维护自己的选仓状态（见 WorkspacePanel.panelRepoRoot）。此前两边共用
+// 这一个值，会互相把对方的选择覆盖成 null 再打回来，形成 ping-pong，
+// 把 git discover / git status 放大成每秒数次（后端 CPU 一度飙到 900%）。
 const activeRepoRoot = ref<string | null>(null);
 // 源控面板上抛的 git 角标（path → 变更状态），透传给 WorkspacePanel →
 // FileExplorer 渲染文件树角标。面板 v-show 隐藏标签时仍保持挂载。
@@ -849,7 +855,6 @@ defineExpose({
             :workspace-id="workspace.id"
             :workspace-root="workspaceRoot"
             :workspace-scope="workspaceScope"
-            :active-repo-root="activeRepoRoot"
             :git-decorations="gitDecorations"
             :show-branches-modal="showBranchesModalProp"
             :fs-event="normalizedFsEvent"
@@ -931,7 +936,6 @@ defineExpose({
             :workspace-id="workspace.id"
             :workspace-root="workspaceRoot"
             :workspace-scope="workspaceScope"
-            :active-repo-root="activeRepoRoot"
             :git-decorations="gitDecorations"
             :show-branches-modal="showBranchesModalProp"
             :fs-event="normalizedFsEvent"

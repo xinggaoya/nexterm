@@ -328,6 +328,7 @@ describe("native git discovery wrapper", () => {
       rootPath: "/workspace",
       maxDepth: 4,
       maxRepos: 32,
+      fresh: false,
       workspace: { kind: "local" },
     });
   });
@@ -348,7 +349,26 @@ describe("native git discovery wrapper", () => {
       rootPath: "/workspace",
       maxDepth: 4,
       maxRepos: 32,
+      fresh: false,
       workspace: { kind: "wsl", distro: "Ubuntu" },
+    });
+  });
+
+  it("forwards the fresh flag so callers can bypass the result cache", async () => {
+    const wsNative = createNativeForEnv(LOCAL_WORKSPACE);
+    vi.mocked(invoke).mockResolvedValueOnce({
+      repositories: [],
+      truncated: false,
+    });
+
+    await wsNative.gitDiscoverRepositories("/workspace", { fresh: true });
+
+    expect(invoke).toHaveBeenCalledWith("git_discover_repositories", {
+      rootPath: "/workspace",
+      maxDepth: 4,
+      maxRepos: 32,
+      fresh: true,
+      workspace: { kind: "local" },
     });
   });
 });
