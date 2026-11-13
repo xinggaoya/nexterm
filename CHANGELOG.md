@@ -5,6 +5,12 @@ Nexterm 所有值得注意的变更都记录在本文件中。版本遵循 [语�
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [0.4.2] - 2026-11-13
+
+### 修复 🐛
+
+- **SSH 依赖安全升级** — `russh` 从 0.63.1 升到 0.65.1，修掉 CVE-2026-116794（RUSTSEC-2026-0495：SSH agent server 绕过 `Agent::confirm` 审批回调，未经用户批准即可用受保护私钥签名）。本项目只把 russh 当客户端用（生产代码零 `russh::server` 引用），该路径原本不可达，但依赖树里仍带着这条告警，CI 的供应链门禁会红。升级无代码改动，SSH 模块 40+ 用例全绿
+
 ## [0.4.1] - 2026-11-13
 
 ### 修复 🐛
