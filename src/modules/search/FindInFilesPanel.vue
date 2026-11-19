@@ -2,7 +2,8 @@
 import { normalizeErrorMessage } from "@/lib/error";
 import { ChevronForwardOutline } from "@vicons/ionicons5";
 import { NIcon, NSpin } from "naive-ui";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { useDebounceFn } from "@vueuse/core";
 import { fileIconUrl } from "@/modules/icons";
 import type { FsGrepHit } from "@/lib/native";
 import { t } from "@/modules/i18n/translate";
@@ -34,7 +35,6 @@ const filesScanned = ref(0);
 const errorMessage = ref<string | null>(null);
 const inputRef = ref<HTMLInputElement | null>(null);
 
-let debounceHandle: ReturnType<typeof setTimeout> | null = null;
 const DEBOUNCE_MS = 250;
 
 const globs = computed(() =>
@@ -94,19 +94,20 @@ async function run() {
   }
 }
 
-function scheduleRun() {
-  if (debounceHandle) clearTimeout(debounceHandle);
-  debounceHandle = setTimeout(run, DEBOUNCE_MS);
-}
+/** 搜索 debounce：每次按键都全量 grep 太贵，停手再搜。 */
+const scheduleRun = useDebounceFn(() => {
+  void run();
+}, DEBOUNCE_MS);
 
 /** Enter 立即执行:取消挂起的防抖,避免紧跟着再跑一次。 */
 function runNow() {
-  if (debounceHandle) clearTimeout(debounceHandle);
-  debounceHandle = null;
+  scheduleRun.cancel();
   void run();
 }
 
-watch([pattern, caseInsensitive, include, regexMode], scheduleRun);
+watch([pattern, caseInsensitive, include, regexMode], () => {
+  void scheduleRun();
+});
 watch(
   () => props.rootPath,
   () => {
@@ -240,10 +241,6 @@ function handlePanelKeydown(event: KeyboardEvent) {
 
 onMounted(() => {
   void nextTick(() => inputRef.value?.focus({ preventScroll: true }));
-});
-
-onBeforeUnmount(() => {
-  if (debounceHandle) clearTimeout(debounceHandle);
 });
 </script>
 

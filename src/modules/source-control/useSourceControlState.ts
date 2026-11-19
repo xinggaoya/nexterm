@@ -8,6 +8,7 @@ import {
   type ComputedRef,
   type Ref,
 } from "vue";
+import { useDebounceFn } from "@vueuse/core";
 import type {
   GitDiscardEntry,
   GitRepoInfo,
@@ -120,7 +121,11 @@ export function useSourceControlState(options: SourceControlStateOptions) {
   const pendingAutoRefresh = ref(false);
   let statusRefreshInFlight: Promise<void> | null = null;
   let pendingStatusRefresh = false;
-  let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 自动刷新的防抖窗口：git 相关变更等 80ms，普通变更等 500ms。 */
+  const autoRefreshDelay = ref(260);
+  const triggerAutoRefresh = useDebounceFn(() => {
+    void autoRefresh();
+  }, () => autoRefreshDelay.value);
   /** 每个变更文件的新增 / 删除行数（+N -M）。 */
   const lineCounts = ref(
     new Map<string, { insertions: number; deletions: number }>(),
@@ -191,8 +196,7 @@ export function useSourceControlState(options: SourceControlStateOptions) {
 
   function beginRootGeneration(rootPath: string | null): number {
     const currentId = ++requestId.value;
-    if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
-    autoRefreshTimer = null;
+    triggerAutoRefresh.cancel();
     statusRefreshInFlight = null;
     pendingStatusRefresh = false;
     pendingAutoRefresh.value = false;
@@ -373,17 +377,13 @@ export function useSourceControlState(options: SourceControlStateOptions) {
 
   function scheduleAutoRefresh(delay = 260) {
     if (!effectiveRoot.value) return;
-    if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
-    autoRefreshTimer = setTimeout(() => {
-      autoRefreshTimer = null;
-      void autoRefresh();
-    }, delay);
+    autoRefreshDelay.value = delay;
+    void triggerAutoRefresh();
   }
 
   function dispose() {
     requestId.value += 1;
-    if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
-    autoRefreshTimer = null;
+    triggerAutoRefresh.cancel();
     statusRefreshInFlight = null;
     pendingStatusRefresh = false;
     pendingAutoRefresh.value = false;

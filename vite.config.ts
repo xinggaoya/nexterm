@@ -59,6 +59,26 @@ export default defineConfig(async ({ mode }) => ({
       deps: {
         inline: ["tauri-plugin-web-dev-bridge"],
       },
+      // 这些包是纯 ESM 且从源码入口解析（culori 走 src/、highlight.js 走 es/、
+      // markdown-it 及其插件各自是独立模块）。默认它们会被**每个 worker 逐个
+      // 文件转换一遍**，测试集里 transform 时长能翻几倍。显式列进 SSR 依赖
+      // 优化器，打包成一份缓存，各 worker 复用。
+      optimizer: {
+        ssr: {
+          include: [
+            "culori",
+            "fuse.js",
+            "highlight.js",
+            "highlight.js/lib/core",
+            "highlight.js/lib/languages/*",
+            "markdown-it",
+            "markdown-it-anchor",
+            "markdown-it-footnote",
+            "markdown-it-github-alerts",
+            "markdown-it-task-lists",
+          ],
+        },
+      },
     },
 
     // worker 用 threads 而不是默认的 forks：CI runner 通常只有 2~4 核但
@@ -109,6 +129,15 @@ export default defineConfig(async ({ mode }) => ({
           if (!id.includes("node_modules")) return;
 
           if (id.includes("/xterm/") || id.includes("@xterm/")) return "xterm";
+          // Markdown 渲染栈（markdown-it + 插件 / highlight.js / dompurify）
+          // 单独成块：只在打开 Markdown 时才需要，不进主包。
+          if (
+            id.includes("/markdown-it") ||
+            id.includes("/highlight.js/") ||
+            id.includes("/dompurify/")
+          ) {
+            return "markdown-vendor";
+          }
           if (
             id.includes("/@codemirror/") ||
             id.includes("/@lezer/") ||

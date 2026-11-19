@@ -10,6 +10,7 @@ import {
   RefreshOutline,
 } from "@vicons/ionicons5";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { useDebounceFn } from "@vueuse/core";
 import {
   NButton,
   NDrawer,
@@ -144,12 +145,11 @@ const graphRows = computed(() => {
 
 // 搜索输入 debounce：避免每次按键都全量重过滤大提交列表。
 const debouncedSearch = ref("");
-let searchDebounceHandle: ReturnType<typeof setTimeout> | null = null;
+const commitSearch = useDebounceFn((value: string) => {
+  debouncedSearch.value = value;
+}, 120);
 watch(search, (value) => {
-  if (searchDebounceHandle) clearTimeout(searchDebounceHandle);
-  searchDebounceHandle = setTimeout(() => {
-    debouncedSearch.value = value;
-  }, 120);
+  commitSearch(value);
 });
 
 const activeSearch = computed(() => debouncedSearch.value.trim().toLowerCase());

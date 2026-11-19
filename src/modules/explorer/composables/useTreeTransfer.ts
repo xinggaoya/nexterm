@@ -1,4 +1,5 @@
 import { basename, dirname } from "@/lib/path";
+import { useDebounceFn } from "@vueuse/core";
 import { useEventListener } from "@/lib/useEventListener";
 import { usePointerDragReorder } from "@/lib/usePointerDragReorder";
 import { hasTauriInternals } from "@/lib/tauriRuntime";
@@ -540,13 +541,15 @@ export function useTreeTransfer(options: TreeTransferOptions) {
   });
 
   // ── 悬停自动展开 ──────────────────────────────────────────────────
-  let hoverExpandTimer: ReturnType<typeof setTimeout> | null = null;
-  let hoverExpandTarget: string | null = null;
+  /** 悬停防抖：指针在目录间移动时只在停下来后展开目标目录。 */
+  const triggerHoverExpand = useDebounceFn((dir: string) => {
+    options.expanded.add(dir);
+    options.rebuildSnapshot();
+    void options.loadChildren(dir);
+  }, HOVER_EXPAND_DELAY_MS);
 
   function cancelHoverExpand() {
-    if (hoverExpandTimer) clearTimeout(hoverExpandTimer);
-    hoverExpandTimer = null;
-    hoverExpandTarget = null;
+    triggerHoverExpand.cancel();
   }
 
   function scheduleHoverExpand(target: string | null) {  // eslint-disable-line
@@ -556,16 +559,7 @@ export function useTreeTransfer(options: TreeTransferOptions) {
     if (options.expanded.has(target)) return;
     // 源自身与其子目录不展开：展开后用户只会看到自己正在拖走的东西。
     if (dragSources.value.some((source) => isInsideDir(target, source))) return;
-    hoverExpandTarget = target;
-    hoverExpandTimer = setTimeout(() => {
-      hoverExpandTimer = null;
-      const dir = hoverExpandTarget;
-      hoverExpandTarget = null;
-      if (!dir) return;
-      options.expanded.add(dir);
-      options.rebuildSnapshot();
-      void options.loadChildren(dir);
-    }, HOVER_EXPAND_DELAY_MS);
+    void triggerHoverExpand(target);
   }
 
   // ── 边缘自动滚动 ──────────────────────────────────────────────────

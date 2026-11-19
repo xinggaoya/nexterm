@@ -24,6 +24,7 @@
  */
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { NInput, useDialog } from "naive-ui";
+import { useDebounceFn } from "@vueuse/core";
 import { basename } from "@/lib/path";
 import { createNativeForEnv, type WorkspaceFsChangedEvent } from "@/lib/native";
 import {
@@ -208,26 +209,24 @@ watch(
   },
 );
 // 拖拽过程中频繁 emit,持久化做 400ms 防抖;数值本身即时生效。
-const widthSaveTimers: Partial<Record<PanelSide, ReturnType<typeof setTimeout>>> =
-  {};
+// 两侧各自一个防抖实例 —— 拖左边不该把右边的待写入取消掉。
+const persistLeftWidth = useDebounceFn((width: number) => {
+  if (!hasTauriInternals()) return;
+  void prefs.updateLeftPanelWidth(width);
+}, 400);
+const persistRightWidth = useDebounceFn((width: number) => {
+  if (!hasTauriInternals()) return;
+  void prefs.updateRightPanelWidth(width);
+}, 400);
 function persistPanelWidth(side: PanelSide, width: number): void {
-  if (side === "left") leftPanelWidth.value = width;
-  else rightPanelWidth.value = width;
-  const timer = widthSaveTimers[side];
-  if (timer) clearTimeout(timer);
-  widthSaveTimers[side] = setTimeout(() => {
-    delete widthSaveTimers[side];
-    if (!hasTauriInternals()) return;
-    if (side === "left") void prefs.updateLeftPanelWidth(width);
-    else void prefs.updateRightPanelWidth(width);
-  }, 400);
-}
-onBeforeUnmount(() => {
-  for (const side of ["left", "right"] as PanelSide[]) {
-    const timer = widthSaveTimers[side];
-    if (timer) clearTimeout(timer);
+  if (side === "left") {
+    leftPanelWidth.value = width;
+    void persistLeftWidth(width);
+  } else {
+    rightPanelWidth.value = width;
+    void persistRightWidth(width);
   }
-});
+}
 
 // 命令系统的面板语义:按**视图**（而不是某一侧）寻址面板。
 // 每个视图恰好挂在一侧，操作的就是那一侧。

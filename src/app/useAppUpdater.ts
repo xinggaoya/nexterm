@@ -1,4 +1,5 @@
 import { normalizeErrorMessage } from "@/lib/error";
+import { useIntervalFn, useTimeoutFn } from "@vueuse/core";
 import { readonly, ref, type Ref } from "vue";
 import {
   checkForAppUpdate,
@@ -74,8 +75,14 @@ export function createAppUpdaterController(): AppUpdaterController {
   const errorMessage = ref<string | null>(null);
 
   let started = false;
-  let checkTimer: ReturnType<typeof setTimeout> | null = null;
-  let intervalTimer: ReturnType<typeof setInterval> | null = null;
+  /** 自动检查是否启用（由设置项决定），在启动定时器时注入。 */
+  let isUpdateCheckEnabled: () => boolean = () => false;
+  const { start: startFirstCheck, stop: stopFirstCheck } = useTimeoutFn(() => {
+    if (isUpdateCheckEnabled()) void checkForUpdates({ silent: true });
+  }, FIRST_CHECK_DELAY_MS, { immediate: false });
+  const { resume: resumeRecheck, pause: pauseRecheck } = useIntervalFn(() => {
+    if (isUpdateCheckEnabled()) void checkForUpdates({ silent: true });
+  }, RECHECK_INTERVAL_MS, { immediate: false });
   // 进行中的"检查+下载" promise；并发调用合并到它上面。
   let inflight: Promise<AppUpdate | null> | null = null;
 
@@ -159,18 +166,14 @@ export function createAppUpdaterController(): AppUpdaterController {
   function startAutoUpdateChecks(isEnabled: () => boolean): void {
     if (started || !hasTauriInternals()) return;
     started = true;
-    const tick = () => {
-      if (isEnabled()) void checkForUpdates({ silent: true });
-    };
-    checkTimer = setTimeout(tick, FIRST_CHECK_DELAY_MS);
-    intervalTimer = setInterval(tick, RECHECK_INTERVAL_MS);
+    isUpdateCheckEnabled = isEnabled;
+    startFirstCheck();
+    resumeRecheck();
   }
 
   function dispose(): void {
-    if (checkTimer !== null) clearTimeout(checkTimer);
-    if (intervalTimer !== null) clearInterval(intervalTimer);
-    checkTimer = null;
-    intervalTimer = null;
+    stopFirstCheck();
+    pauseRecheck();
     started = false;
   }
 

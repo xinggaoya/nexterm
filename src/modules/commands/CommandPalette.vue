@@ -6,7 +6,8 @@ import {
   SearchOutline,
 } from "@vicons/ionicons5";
 import { NIcon, NSpin } from "naive-ui";
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { useDebounceFn } from "@vueuse/core";
+import { computed, nextTick, ref, watch } from "vue";
 import { IS_MAC } from "@/lib/platform";
 import { createNativeForEnv } from "@/lib/native";
 import { fileIconUrl, folderIconUrl } from "@/modules/icons";
@@ -60,8 +61,18 @@ const fileResults = ref<SearchHit[]>([]);
 const searchingFiles = ref(false);
 const fileSearchError = ref<string | null>(null);
 const fileResultsTruncated = ref(false);
-let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let searchRequestId = 0;
+
+/**
+ * 文件搜索 debounce：每次按键都全量扫工作区太贵，停手再搜。
+ * 用 VueUse 的 useDebounceFn —— 组件卸载时自动取消，不用手写 onBeforeUnmount。
+ */
+const scheduleFileSearch = useDebounceFn(
+  (requestId: number, trimmed: string) => {
+    void runFileSearch(requestId, trimmed);
+  },
+  () => props.searchDelayMs,
+);
 
 const title = computed(() =>
   props.mode === "files"
@@ -95,15 +106,8 @@ const showEmptyState = computed(
     (props.mode === "commands" || query.value.trim().length > 0),
 );
 
-function clearSearchTimer() {
-  if (searchTimer) {
-    clearTimeout(searchTimer);
-    searchTimer = null;
-  }
-}
-
 function resetState() {
-  clearSearchTimer();
+  scheduleFileSearch.cancel();
   query.value = "";
   selectedIndex.value = 0;
   fileResults.value = [];
@@ -209,7 +213,7 @@ watch(
   [query, () => props.workspaceRoot, () => props.showHidden, () => props.mode],
   ([nextQuery]) => {
     if (!props.show || props.mode !== "files") return;
-    clearSearchTimer();
+    scheduleFileSearch.cancel();
     fileSearchError.value = null;
     const trimmed = nextQuery.trim();
     if (!trimmed) {
@@ -221,21 +225,13 @@ watch(
     }
     const currentId = ++searchRequestId;
     searchingFiles.value = true;
-    if (props.searchDelayMs <= 0) {
-      void runFileSearch(currentId, trimmed);
-      return;
-    }
-    searchTimer = setTimeout(() => {
-      void runFileSearch(currentId, trimmed);
-    }, props.searchDelayMs);
+    void scheduleFileSearch(currentId, trimmed);
   },
 );
 
 watch(results, () => {
   if (selectedIndex.value >= results.value.length) selectedIndex.value = 0;
 });
-
-onBeforeUnmount(clearSearchTimer);
 </script>
 
 <template>

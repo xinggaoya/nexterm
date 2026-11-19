@@ -36,6 +36,7 @@ import {
   rectangularSelection,
 } from "@codemirror/view";
 import { NSpin, useDialog } from "naive-ui";
+import { useDebounceFn } from "@vueuse/core";
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
 import { languageIconUrlForPath } from "@/modules/icons";
@@ -269,7 +270,7 @@ function editorBaseExtensions(): Extension[] {
         // 手里的文档会停留在上次保存的内容，补全/悬浮全在旧文本上算。
         // 逐击键都发一次太吵（一次击键 = 一次全量文本 + 一次重新分析），
         // 因此防抖到用户停手。
-        scheduleLspSync(next);
+        void scheduleLspSync(next);
       }
       if (update.docChanged || update.selectionSet) {
         updateCursorInfo(update.state);
@@ -667,20 +668,14 @@ watch(
  * 请求的开销仍在），而完全不发则 server 看到的是过期文档。
  */
 const LSP_SYNC_DEBOUNCE_MS = 300;
-let lspSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
-function scheduleLspSync(text: string): void {
-  if (lspSyncTimer) clearTimeout(lspSyncTimer);
-  lspSyncTimer = setTimeout(() => {
-    lspSyncTimer = null;
-    if (view.value) notifyLspDocumentChanged(view.value, text);
-  }, LSP_SYNC_DEBOUNCE_MS);
-}
+const scheduleLspSync = useDebounceFn((text: string) => {
+  if (view.value) notifyLspDocumentChanged(view.value, text);
+}, LSP_SYNC_DEBOUNCE_MS);
 
 function flushLspSync(): void {
-  if (!lspSyncTimer) return;
-  clearTimeout(lspSyncTimer);
-  lspSyncTimer = null;
+  if (!scheduleLspSync.isPending.value) return;
+  scheduleLspSync.cancel();
   if (view.value) notifyLspDocumentChanged(view.value, buffer.value);
 }
 
@@ -715,10 +710,6 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  if (lspSyncTimer) {
-    clearTimeout(lspSyncTimer);
-    lspSyncTimer = null;
-  }
   // destroyEditor 已经同步 detach 了 LSP，这里不需要再走一遍。
   destroyEditor();
 });

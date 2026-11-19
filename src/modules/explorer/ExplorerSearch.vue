@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { CloseOutline, SearchOutline } from "@vicons/ionicons5";
 import { NIcon, NSpin } from "naive-ui";
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { useDebounceFn } from "@vueuse/core";
+import { computed, nextTick, ref, watch } from "vue";
 import { t } from "@/modules/i18n/translate";
 import { useWorkspaceContext } from "@/app/workspaceContext";
 import { usePreferencesPiniaStore } from "@/modules/settings/preferencesPinia";
@@ -34,20 +35,35 @@ const results = ref<SearchHit[]>([]);
 const selectedIndex = ref(0);
 const searching = ref(false);
 const truncated = ref(false);
-let timer: number | null = null;
 let requestId = 0;
 
 const active = computed(() => query.value.trim().length > 0);
 
-function clearTimer() {
-  if (timer !== null) {
-    window.clearTimeout(timer);
-    timer = null;
+/** 搜索 debounce：每次按键都全量扫工作区太贵，停手再搜。 */
+const scheduleSearch = useDebounceFn(async (currentId: number, trimmed: string) => {
+  try {
+    const result = await searchFileTree(
+      wsCtx.wsNative,
+      props.rootPath,
+      trimmed,
+      prefs.showHidden,
+    );
+    if (currentId !== requestId) return;
+    results.value = result.hits;
+    truncated.value = result.truncated;
+    selectedIndex.value = 0;
+  } catch {
+    if (currentId !== requestId) return;
+    results.value = [];
+    truncated.value = false;
+    selectedIndex.value = 0;
+  } finally {
+    if (currentId === requestId) searching.value = false;
   }
-}
+}, DEBOUNCE_MS);
 
 function resetSearch() {
-  clearTimer();
+  scheduleSearch.cancel();
   query.value = "";
   results.value = [];
   selectedIndex.value = 0;
@@ -105,7 +121,7 @@ watch(
 watch(
   [query, () => props.rootPath, () => prefs.showHidden],
   ([nextQuery]) => {
-    clearTimer();
+    scheduleSearch.cancel();
     const trimmed = nextQuery.trim();
     if (trimmed.length < MIN_QUERY_LEN) {
       results.value = [];
@@ -117,31 +133,9 @@ watch(
 
     const currentId = ++requestId;
     searching.value = true;
-    timer = window.setTimeout(async () => {
-      try {
-        const result = await searchFileTree(
-          wsCtx.wsNative,
-          props.rootPath,
-          trimmed,
-          prefs.showHidden,
-        );
-        if (currentId !== requestId) return;
-        results.value = result.hits;
-        truncated.value = result.truncated;
-        selectedIndex.value = 0;
-      } catch {
-        if (currentId !== requestId) return;
-        results.value = [];
-        truncated.value = false;
-        selectedIndex.value = 0;
-      } finally {
-        if (currentId === requestId) searching.value = false;
-      }
-    }, DEBOUNCE_MS);
+    void scheduleSearch(currentId, trimmed);
   },
 );
-
-onBeforeUnmount(clearTimer);
 </script>
 
 <template>

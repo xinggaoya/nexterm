@@ -5,6 +5,7 @@ import type { WorkspaceNative, WorkspaceFsChangedEvent } from "@/lib/native";
 import type { GitDecorationMap } from "@/modules/source-control";
 import { isSameWorkspaceRoot, normalizeWorkspacePath } from "@/modules/workspace";
 import { computed, reactive, ref, shallowRef, watch, type Ref } from "vue";
+import { useDebounceFn } from "@vueuse/core";
 import {
   buildFileTreeRows,
   filterFileTreeRows,
@@ -70,9 +71,18 @@ export function useFileTreeData(options: FileTreeDataOptions) {
   /** 树过滤词（子串匹配，只作用在已加载的行上）。 */
   const treeFilter = ref("");
 
-  let fsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingFsEventPaths = new Set<string>();
   const inFlightLoads = new Map<string, InFlightLoad>();
+
+  /** FS 变更批量重读：事件密集时合并成一次刷新。 */
+  const scheduleFsRefresh = useDebounceFn(() => {
+    if (!rootPath.value) return;
+    const paths = Array.from(pendingFsEventPaths);
+    pendingFsEventPaths.clear();
+    for (const path of refreshTargetsForPaths(paths)) {
+      void loadChildren(path, { silent: true });
+    }
+  }, FS_REFRESH_DEBOUNCE_MS);
 
   const emptySnapshot: FileTreeSnapshot = {
     rows: [] as VisibleTreeRow[],
@@ -319,8 +329,7 @@ export function useFileTreeData(options: FileTreeDataOptions) {
   }
 
   function clearScheduledTreeRefresh() {
-    if (fsRefreshTimer) clearTimeout(fsRefreshTimer);
-    fsRefreshTimer = null;
+    scheduleFsRefresh.cancel();
     pendingFsEventPaths.clear();
   }
 
@@ -332,10 +341,13 @@ export function useFileTreeData(options: FileTreeDataOptions) {
    * 旧的，几百毫秒后才更新"。
    */
   function flushPendingTreeRefresh(): void {
-    if (fsRefreshTimer === null && pendingFsEventPaths.size === 0) return;
+    if (!scheduleFsRefresh.isPending.value && pendingFsEventPaths.size === 0) {
+      return;
+    }
+    // 先取路径再清理：清理会连同 pendingFsEventPaths 一起清空。
+    const paths = Array.from(pendingFsEventPaths);
     clearScheduledTreeRefresh();
     if (!rootPath.value) return;
-    const paths = Array.from(pendingFsEventPaths);
     if (paths.length === 0) return;
     for (const path of refreshTargetsForPaths(paths)) {
       void loadChildren(path, { silent: true });
@@ -364,16 +376,7 @@ export function useFileTreeData(options: FileTreeDataOptions) {
     for (const path of event.paths.length > 0 ? event.paths : [rootPath.value]) {
       pendingFsEventPaths.add(path);
     }
-    if (fsRefreshTimer) clearTimeout(fsRefreshTimer);
-    fsRefreshTimer = setTimeout(() => {
-      fsRefreshTimer = null;
-      if (!rootPath.value) return;
-      const paths = Array.from(pendingFsEventPaths);
-      pendingFsEventPaths.clear();
-      for (const path of refreshTargetsForPaths(paths)) {
-        void loadChildren(path, { silent: true });
-      }
-    }, FS_REFRESH_DEBOUNCE_MS);
+    void scheduleFsRefresh();
   }
 
   // ── 展开态 ────────────────────────────────────────────────────────

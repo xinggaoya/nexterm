@@ -18,7 +18,8 @@ import {
   NTag,
   NVirtualList,
 } from "naive-ui";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { useDebounceFn } from "@vueuse/core";
 import { createNativeForEnv, native, type FsDirEntry } from "@/lib/native";
 import { t } from "@/modules/i18n/translate";
 import { fileIconUrl, folderIconUrl } from "@/modules/icons";
@@ -69,7 +70,10 @@ const loadError = ref<string | null>(null);
 const selectedName = ref<string | null>(null);
 const filterQuery = ref("");
 const filterText = ref("");
-let filterTimer: ReturnType<typeof setTimeout> | null = null;
+/** 过滤词 debounce：大目录列表每次按键全量过滤太贵。 */
+const commitFilter = useDebounceFn((value: string) => {
+  filterText.value = value;
+}, FILTER_DEBOUNCE_MS);
 const showHidden = ref(false);
 const editingPath = ref(false);
 const editPathValue = ref("");
@@ -268,15 +272,7 @@ function onListKeydown(event: KeyboardEvent): void {
 }
 
 watch(filterQuery, (value) => {
-  if (filterTimer !== null) clearTimeout(filterTimer);
-  filterTimer = setTimeout(() => {
-    filterTimer = null;
-    filterText.value = value;
-  }, FILTER_DEBOUNCE_MS);
-});
-
-onBeforeUnmount(() => {
-  if (filterTimer !== null) clearTimeout(filterTimer);
+  void commitFilter(value);
 });
 
 function confirm(): void {

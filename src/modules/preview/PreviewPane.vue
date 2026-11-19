@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { AlertCircleOutline, GlobeOutline } from "@vicons/ionicons5";
 import { NButton, NIcon } from "naive-ui";
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
+import { useTimeoutFn } from "@vueuse/core";
 import { t } from "@/modules/i18n/translate";
 import PreviewAddressBar from "./PreviewAddressBar.vue";
 import { isLocalPreviewUrl } from "./previewUrl";
@@ -24,7 +25,11 @@ const SUSPEND_AFTER_MS = 30_000;
 const nonce = ref(0);
 const loaded = ref(props.visible);
 const addressBar = ref<PreviewAddressBarExpose | null>(null);
-let suspendTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 预览隐藏 30s 后卸载 iframe（省内存）；重新可见时取消。 */
+const { start: startSuspendTimer, stop: stopSuspendTimer } = useTimeoutFn(() => {
+  loaded.value = false;
+}, SUSPEND_AFTER_MS, { immediate: false });
 
 const showXfoHint = computed(() =>
   props.url ? !isLocalPreviewUrl(props.url) : false,
@@ -44,12 +49,6 @@ const sandboxAttrs = computed(() => {
   return "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox";
 });
 
-function clearSuspendTimer() {
-  if (suspendTimer === null) return;
-  clearTimeout(suspendTimer);
-  suspendTimer = null;
-}
-
 function reload() {
   loaded.value = true;
   nonce.value += 1;
@@ -66,20 +65,15 @@ function getUrl() {
 watch(
   () => props.visible,
   (visible) => {
-    clearSuspendTimer();
+    stopSuspendTimer();
     if (visible) {
       loaded.value = true;
       return;
     }
-    suspendTimer = setTimeout(() => {
-      loaded.value = false;
-      suspendTimer = null;
-    }, SUSPEND_AFTER_MS);
+    startSuspendTimer();
   },
   { immediate: true },
 );
-
-onBeforeUnmount(clearSuspendTimer);
 
 defineExpose<PreviewPaneHandle>({
   reload,

@@ -5,6 +5,7 @@ import {
   watch,
   type Ref,
 } from "vue";
+import { useDebounceFn } from "@vueuse/core";
 import type {
   GitWorkspaceRepo,
   WorkspaceFsChangedEvent,
@@ -42,12 +43,15 @@ export function useGitRepositoryRegistry(
   const loading = ref(false);
   const error = ref<string | null>(null);
   let requestId = 0;
-  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
 
+  /** 仓库列表刷新防抖：工作区 FS 事件密集时合并成一次刷新。 */
+  const triggerRefresh = useDebounceFn((fresh: boolean) => {
+    void refresh(fresh);
+  }, FS_REFRESH_DEBOUNCE_MS);
+
   function clearRefreshTimer() {
-    if (refreshTimer) clearTimeout(refreshTimer);
-    refreshTimer = null;
+    triggerRefresh.cancel();
   }
 
   function clearRegistry() {
@@ -120,10 +124,7 @@ export function useGitRepositoryRegistry(
 
   function scheduleRefresh(fresh = true) {
     clearRefreshTimer();
-    refreshTimer = setTimeout(() => {
-      refreshTimer = null;
-      void refresh(fresh);
-    }, FS_REFRESH_DEBOUNCE_MS);
+    void triggerRefresh(fresh);
   }
 
   function isCurrentWorkspaceList(): boolean {
