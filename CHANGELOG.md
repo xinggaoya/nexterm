@@ -5,6 +5,28 @@ Nexterm 所有值得注意的变更都记录在本文件中。版本遵循 [语�
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 规范。
 
+## [0.5.0] - 2026-11-19
+
+### 新增 ✨
+
+- **Markdown 预览对齐 GitHub 渲染水准** — 此前原始 HTML 全被转义成文本，README 顶部的居中徽章（`<p align="center">` + shields.io badge）变成一坨源码。现在按白名单渲染原始 HTML，徽章、居中块、`<details>` 都正常显示
+- **代码块语法高亮** — 接入 highlight.js（GitHub 自己用的也是它），按 29 种常用语言分色；代码块右上角悬停浮出语言标签与复制按钮
+- **GFM 语法补齐** — 表格（表头底色 + 斑马纹 + 内容宽度而非拉满）、任务列表（只读复选框）、脚注、引用块告警（`> [!NOTE]` 等五种类型，标题随界面语言切换）、标题锚点（悬停出现 `#`，锚点 slug 与 GitHub 一致，保留中文）
+- **外链交给系统浏览器** — 预览里的链接不再让 webview 自己导航（那会把整个应用导航走），点击后用系统默认浏览器打开
+
+### 重构 ♻️
+
+- **渲染引擎换成 markdown-it 生态** — 解析用 `markdown-it`（CommonMark 合规，GFM 语义最接近 GitHub 的 cmark-gfm），脚注 / 任务列表 / 标题锚点 / 告警四个能力全部来自成熟插件，不自研。原先的 `marked` 移除
+- **安全模型从「全量转义」升级为「白名单渲染 + 净化」** — 净化交给 DOMPurify（标签集 / 属性集 / URI 正则三层过滤），协议白名单（http/https/mailto/ftp/ftps/tel + base64 图片）下沉为第二道防线，净化器不可用时**失败关闭**退回整段转义。预览正文跑在持有全部 IPC 能力的 webview 主 origin 上，三层防线任意一层失效都还有下一层兜底
+- **两处预览合并成一个组件** — 独立 Markdown 标签页与编辑器拆分预览此前各自维护一份约 90 行、几乎逐字重复的样式表，现在共用 `MarkdownContent.vue`，渲染管线与排版只有一份实现
+- **色彩换算交给 culori** — `src/styles/tokens.ts` 手写了 115 行 OKLab 矩阵 / sRGB gamma / oklch 语法解析，其中超色域色彩是逐通道硬截断（会让色相偏移）。改用 culori 的按色域收敛彩度，与浏览器渲染 oklch() 的行为一致；顺带把兜底令牌按当前暗色主题重新生成（此前那份还停留在旧主题）
+- **模糊匹配统一用 fuse.js** — 命令面板此前是子序列位置衰减打分，文件选择器是子串包含判断，两者语义割裂。收口到 `src/lib/fuzzyMatch.ts` 一套实现，支持拼写容错与去空格前缀
+- **13 处防抖收敛到 @vueuse/core** — 命令面板 / 文件搜索 / Git 历史 / 编辑器 LSP 同步 / 源码管理 / 文件树刷新 / 拖拽悬停展开 / 面板宽度持久化等各写各的 `setTimeout`，现在统一用 `useDebounceFn` / `useTimeoutFn` / `useIntervalFn`，随组件作用域自动清理
+
+### 修复 🐛
+
+- **文件树切回时是旧的** — `flushPendingTreeRefresh` 先调用了会清空待处理路径的清理函数，再去读路径，结果永远读到空集、flush 变成空操作。改为先取路径再清理
+
 ## [0.4.2] - 2026-11-13
 
 ### 修复 🐛
