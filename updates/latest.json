@@ -1,59 +1,59 @@
 {
-  "version": "0.4.2",
+  "version": "0.5.0",
   "notes": "",
-  "pub_date": "2026-11-13T09:31:26.426Z",
+  "pub_date": "2026-11-19T10:15:26.691Z",
   "platforms": {
-    "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb092Y1RmbjBIWU9zZnhoVWd4a1lLdUNLTEYrVVpwck9xdGRJSVAzamowUTBQVUxJL3RQeE5FWFh4a24vSDR5WHRyNUNncXRLTWtPZEdrSzBua21IU0FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYxOTk1CWZpbGU6TmV4dGVybS5hcHAudGFyLmd6CXZlcnNpb246MC40LjIKRkcvcG5BUFRad3Q4K3ZRZU00SWpJQVV4djBLM0J2L1pwZjAvUzJnYVBrN2J1alhURmEvL25PbUJOeXpRSnBQZ001NklmRzk4SldmdVRlb2NzSW5oQ0E9PQo=",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743054852"
-    },
-    "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb092Y1RmbjBIWU9zZnhoVWd4a1lLdUNLTEYrVVpwck9xdGRJSVAzamowUTBQVUxJL3RQeE5FWFh4a24vSDR5WHRyNUNncXRLTWtPZEdrSzBua21IU0FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYxOTk1CWZpbGU6TmV4dGVybS5hcHAudGFyLmd6CXZlcnNpb246MC40LjIKRkcvcG5BUFRad3Q4K3ZRZU00SWpJQVV4djBLM0J2L1pwZjAvUzJnYVBrN2J1alhURmEvL25PbUJOeXpRSnBQZ001NklmRzk4SldmdVRlb2NzSW5oQ0E9PQo=",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743054852"
-    },
-    "darwin-universal": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb092Y1RmbjBIWU9zZnhoVWd4a1lLdUNLTEYrVVpwck9xdGRJSVAzamowUTBQVUxJL3RQeE5FWFh4a24vSDR5WHRyNUNncXRLTWtPZEdrSzBua21IU0FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYxOTk1CWZpbGU6TmV4dGVybS5hcHAudGFyLmd6CXZlcnNpb246MC40LjIKRkcvcG5BUFRad3Q4K3ZRZU00SWpJQVV4djBLM0J2L1pwZjAvUzJnYVBrN2J1alhURmEvL25PbUJOeXpRSnBQZ001NklmRzk4SldmdVRlb2NzSW5oQ0E9PQo=",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743054852"
-    },
-    "darwin-aarch64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb092Y1RmbjBIWU9zZnhoVWd4a1lLdUNLTEYrVVpwck9xdGRJSVAzamowUTBQVUxJL3RQeE5FWFh4a24vSDR5WHRyNUNncXRLTWtPZEdrSzBua21IU0FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYxOTk1CWZpbGU6TmV4dGVybS5hcHAudGFyLmd6CXZlcnNpb246MC40LjIKRkcvcG5BUFRad3Q4K3ZRZU00SWpJQVV4djBLM0J2L1pwZjAvUzJnYVBrN2J1alhURmEvL25PbUJOeXpRSnBQZ001NklmRzk4SldmdVRlb2NzSW5oQ0E9PQo=",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743054852"
-    },
-    "darwin-x86_64-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb092Y1RmbjBIWU9zZnhoVWd4a1lLdUNLTEYrVVpwck9xdGRJSVAzamowUTBQVUxJL3RQeE5FWFh4a24vSDR5WHRyNUNncXRLTWtPZEdrSzBua21IU0FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYxOTk1CWZpbGU6TmV4dGVybS5hcHAudGFyLmd6CXZlcnNpb246MC40LjIKRkcvcG5BUFRad3Q4K3ZRZU00SWpJQVV4djBLM0J2L1pwZjAvUzJnYVBrN2J1alhURmEvL25PbUJOeXpRSnBQZ001NklmRzk4SldmdVRlb2NzSW5oQ0E9PQo=",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743054852"
-    },
-    "darwin-universal-app": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb092Y1RmbjBIWU9zZnhoVWd4a1lLdUNLTEYrVVpwck9xdGRJSVAzamowUTBQVUxJL3RQeE5FWFh4a24vSDR5WHRyNUNncXRLTWtPZEdrSzBua21IU0FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYxOTk1CWZpbGU6TmV4dGVybS5hcHAudGFyLmd6CXZlcnNpb246MC40LjIKRkcvcG5BUFRad3Q4K3ZRZU00SWpJQVV4djBLM0J2L1pwZjAvUzJnYVBrN2J1alhURmEvL25PbUJOeXpRSnBQZ001NklmRzk4SldmdVRlb2NzSW5oQ0E9PQo=",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743054852"
-    },
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0N6MlV0ajd3UmZpOEYxL2JVZmRzNW1iSWgxYVNIa05WT3Vxd3EyVTJLM3luTnU2ZzVSVmtveTkzL0NXTVZCMUNaNFIyVXhCV2RocGRJYUZ1WTk1THdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYyMjI5CWZpbGU6TmV4dGVybV8wLjQuMl9hbWQ2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuNC4yCmpiR3BabWduYStQSnVWY0hmcFNnT3JEVmtpVGhyMXViN1pQZmlJc3Z6TkhZb012WHpMc1hkYUhnbjZDcnZxTlhIWDBVSm1mTnVlbGpocEJCZFRrdkNRPT0K",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743066325"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0MrM21KbTFSOFRRcWFGdUw4NVQwamdyVlBGKzhQMWRrSXVkZ1JRanJxak83NHU5bzJKRVIwL3BlWlByUTVlSHIwbXp3MEZKd2JCWmt6b2hmdHdqb0FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgyNzg0CWZpbGU6TmV4dGVybV8wLjUuMF9hbWQ2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuNS4wCkpWQ2p2MmlrMmV0SHVKSWFOWElKMk1uZWxrNUZrYWRzaitZNjhjell1T0I5Qk1oSGtVOC9LSXlvVms1Qko4RmRrb01mN25JQ0Z6TkIyNC80RUFMV0NnPT0K",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767168540"
     },
     "linux-x86_64-appimage": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0N6MlV0ajd3UmZpOEYxL2JVZmRzNW1iSWgxYVNIa05WT3Vxd3EyVTJLM3luTnU2ZzVSVmtveTkzL0NXTVZCMUNaNFIyVXhCV2RocGRJYUZ1WTk1THdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYyMjI5CWZpbGU6TmV4dGVybV8wLjQuMl9hbWQ2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuNC4yCmpiR3BabWduYStQSnVWY0hmcFNnT3JEVmtpVGhyMXViN1pQZmlJc3Z6TkhZb012WHpMc1hkYUhnbjZDcnZxTlhIWDBVSm1mTnVlbGpocEJCZFRrdkNRPT0K",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743066325"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0MrM21KbTFSOFRRcWFGdUw4NVQwamdyVlBGKzhQMWRrSXVkZ1JRanJxak83NHU5bzJKRVIwL3BlWlByUTVlSHIwbXp3MEZKd2JCWmt6b2hmdHdqb0FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgyNzg0CWZpbGU6TmV4dGVybV8wLjUuMF9hbWQ2NC5BcHBJbWFnZQl2ZXJzaW9uOjAuNS4wCkpWQ2p2MmlrMmV0SHVKSWFOWElKMk1uZWxrNUZrYWRzaitZNjhjell1T0I5Qk1oSGtVOC9LSXlvVms1Qko4RmRrb01mN25JQ0Z6TkIyNC80RUFMV0NnPT0K",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767168540"
     },
     "linux-x86_64-deb": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb043NWhnWXZicmwxMXdIU3NQTTBldTVaNWtwMG1GNnVIbGV3TXBYZ2dDRlpDSkRYK2hyRDAvOTMyQlc3UlhyN3YrMUxEMDMyTTFMandLNk5WNHlodlFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYyMjI5CWZpbGU6TmV4dGVybV8wLjQuMl9hbWQ2NC5kZWIJdmVyc2lvbjowLjQuMgpRQlRtMS9sak1MenJTeGNLVWNzRzdkclo0amIvblh0N0Y1YTh5cjNqUW5Xa2ZNbDdnaUdSbmwxd1c3NDdmZGZmMWl5clNOVW9DWUJrUnQ4VW5yRnNCZz09Cg==",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743066149"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0RMeFdCM3FNMXQvWmVJNzVRc1JuVHI4aE40U0lqL2xuV0l0RGdOWXRidFcrcjRqeFdoSUJTVFdXNTBEWFB4a3NIUEFtMVdtQXNFQW83M0NoVERGb2drPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgyNzg0CWZpbGU6TmV4dGVybV8wLjUuMF9hbWQ2NC5kZWIJdmVyc2lvbjowLjUuMApVb21qcmJMcFlpSy9YWk9KcFRXaXNoT0xRNzBJS2V1cUwxM0EzUThZenErR05xZlhMZ29NTWNYb2lWQnBGRkF2M29Jb0F2R3BoUzVTcFFDbFozVFhDUT09Cg==",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767168307"
     },
     "linux-x86_64-rpm": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb1A3ODNRZWNPbGtCenhZWHlvL0NuRXdsVjBtZ2thSU50VUhWU1pBMFpWVVRhbDZqMnMrTW1IWUs2V0RGcnliTWN3K0JWT2h2L0NMQ0prdkFxZDA5TWdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYyMjI5CWZpbGU6TmV4dGVybS0wLjQuMi0xLng4Nl82NC5ycG0JdmVyc2lvbjowLjQuMgp1OUlTZGcrbzJuUTVmRnY4d1p2SFVYWGNtbUhRVExlaE5pdHJTTEFMVng3UkIzcVI0MW9QbkdmclkrZEZpUHh1SGowMUN4RVRIVTlPOUw3UGlINWRDZz09Cg==",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743066245"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0pDNHRrVmtsQXlNL0hTR0EyU1U5NU1HVS9JSU5DK3U2MmVpRXFPdUh5SEs4WUFnZDMyNExHUTJiQjhZRGJCa3RlVDROQzZscEJycTg0NG5IN0FwR1E0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgyNzg0CWZpbGU6TmV4dGVybS0wLjUuMC0xLng4Nl82NC5ycG0JdmVyc2lvbjowLjUuMAo3TEE5dGhkdUxhd1pmSHBSdkNIZWZ2OTBhcjgreFFNWXVoRnFXekFMc3h5R3NiVGJzaElSbDJRVUp5alp6bXd1c0NpWmNNOTdqcCs2bnZKc2hObTNCZz09Cg==",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767168410"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0syd0Via1R2d2gycHBXVnJYa3lVcnY3UERtR2pnNHAzL29oYUxCSTMxWk1seC8zWGR5SlVqcU5VWWRoWW40Q0FjVVE1dnhRWkFJSGtvemZPWWdOREFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYyMjgxCWZpbGU6TmV4dGVybV8wLjQuMl94NjRfZW4tVVMubXNpCXZlcnNpb246MC40LjIKWTFXVlAxQ0lId1hZTGFxVjk1L054UENITStra29IeFRzMDd6UFE3WkRLV3pyMjExVHJvMFBpTVh2UGdIYVFsTjdhS2FmcGxrdWx5aTJyK2ovZVljQXc9PQo=",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743068873"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb00zRlRHRUZmV3ljU0JpTkZRZXBkSFRlL1kzSGp2MFJMT3dwZVNpMEJYbzU5ZWZTVHI0QmhwK0F1R1pQY2U0eURaNzJEU1kyTEFpWXQ1ek9vamVWeFFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgyOTIwCWZpbGU6TmV4dGVybV8wLjUuMF94NjRfZW4tVVMubXNpCXZlcnNpb246MC41LjAKTC9vUXlPVFF4eGNEK3hmWXdEM0ZTMmdPKzd5dGw5Snk0MURUZUN4aHFNUDVTYlNxRGxlUXZDQ2JETTZDZURBVHZkU0phZW9MZzgvYnZ4MCtoVGtaRHc9PQo=",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767175107"
     },
     "windows-x86_64-msi": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0syd0Via1R2d2gycHBXVnJYa3lVcnY3UERtR2pnNHAzL29oYUxCSTMxWk1seC8zWGR5SlVqcU5VWWRoWW40Q0FjVVE1dnhRWkFJSGtvemZPWWdOREFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYyMjgxCWZpbGU6TmV4dGVybV8wLjQuMl94NjRfZW4tVVMubXNpCXZlcnNpb246MC40LjIKWTFXVlAxQ0lId1hZTGFxVjk1L054UENITStra29IeFRzMDd6UFE3WkRLV3pyMjExVHJvMFBpTVh2UGdIYVFsTjdhS2FmcGxrdWx5aTJyK2ovZVljQXc9PQo=",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743068873"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb00zRlRHRUZmV3ljU0JpTkZRZXBkSFRlL1kzSGp2MFJMT3dwZVNpMEJYbzU5ZWZTVHI0QmhwK0F1R1pQY2U0eURaNzJEU1kyTEFpWXQ1ek9vamVWeFFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgyOTIwCWZpbGU6TmV4dGVybV8wLjUuMF94NjRfZW4tVVMubXNpCXZlcnNpb246MC41LjAKTC9vUXlPVFF4eGNEK3hmWXdEM0ZTMmdPKzd5dGw5Snk0MURUZUN4aHFNUDVTYlNxRGxlUXZDQ2JETTZDZURBVHZkU0phZW9MZzgvYnZ4MCtoVGtaRHc9PQo=",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767175107"
     },
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb09pV3JvQmhwSlplYncyemt6WnJBSWEzZVBDS0hCSEtjeDdndUh5Rm0yOFVrSWFxRktocWlhaHBZNldQMUc2eVcxYWlsOFhUUnh5NVQ5QVdHYldzTWdvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NTYyMjgxCWZpbGU6TmV4dGVybV8wLjQuMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MC40LjIKUllOaFp5elViVjNXZnBHUDN5SU1mV3FRT1QyMWZ4aHBYUUMzdTdkYnJhS3llck43YU9DbHVBa0kwTCt6SkFER2hETTBFNkZDdjVFMS8rRkFmaFM5QlE9PQo=",
-      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/743069009"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0xaaVBVTjlOd3lyVDR4VWMwd0dRSGRhNFRyNXFpUEticHNCL2hGYVRRZkwySWhqaE5NeitBSk5aOUY5SXc4eWszVHdiN1BVUXB4UWZzRUJTWmRJSkFBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgyOTIwCWZpbGU6TmV4dGVybV8wLjUuMF94NjQtc2V0dXAuZXhlCXZlcnNpb246MC41LjAKSTN4SWNyU1NRcmJ1SzdzT2orb3FFeVUvTnY0T214MDNNVjdlQmtITHZkb1pqNlVEckVUTnVoNEw2TUM2S0lOSklTZG9DZ2I3WjY0amdXWkhzZDcxQWc9PQo=",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767175174"
+    },
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0hmU0ltVmVzbnFVSDZJMytsWVM2N2NoOER6MkRpRi9YK1krcXNmTWl2YmV5QjBheEpXTitsSFlqWFlqYlhxNEx5Wmx6cENtOTNaWTJtbmZHaHB1ckFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgzMzIxCWZpbGU6TmV4dGVybS5hcHAudGFyLmd6CXZlcnNpb246MC41LjAKWlpDbGNZZ1pXN2g5OUd4ZXVhaG5YWEYwanhtazY2QTBRSVZZMnZZdytUcmFlL1BTYkw0a0crQjRKRlhKd0I3cTdUbll3bVQ2U2NHeUVsSEo1S0t4QkE9PQo=",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767197878"
+    },
+    "darwin-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0hmU0ltVmVzbnFVSDZJMytsWVM2N2NoOER6MkRpRi9YK1krcXNmTWl2YmV5QjBheEpXTitsSFlqWFlqYlhxNEx5Wmx6cENtOTNaWTJtbmZHaHB1ckFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgzMzIxCWZpbGU6TmV4dGVybS5hcHAudGFyLmd6CXZlcnNpb246MC41LjAKWlpDbGNZZ1pXN2g5OUd4ZXVhaG5YWEYwanhtazY2QTBRSVZZMnZZdytUcmFlL1BTYkw0a0crQjRKRlhKd0I3cTdUbll3bVQ2U2NHeUVsSEo1S0t4QkE9PQo=",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767197878"
+    },
+    "darwin-universal": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0hmU0ltVmVzbnFVSDZJMytsWVM2N2NoOER6MkRpRi9YK1krcXNmTWl2YmV5QjBheEpXTitsSFlqWFlqYlhxNEx5Wmx6cENtOTNaWTJtbmZHaHB1ckFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgzMzIxCWZpbGU6TmV4dGVybS5hcHAudGFyLmd6CXZlcnNpb246MC41LjAKWlpDbGNZZ1pXN2g5OUd4ZXVhaG5YWEYwanhtazY2QTBRSVZZMnZZdytUcmFlL1BTYkw0a0crQjRKRlhKd0I3cTdUbll3bVQ2U2NHeUVsSEo1S0t4QkE9PQo=",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767197878"
+    },
+    "darwin-aarch64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0hmU0ltVmVzbnFVSDZJMytsWVM2N2NoOER6MkRpRi9YK1krcXNmTWl2YmV5QjBheEpXTitsSFlqWFlqYlhxNEx5Wmx6cENtOTNaWTJtbmZHaHB1ckFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgzMzIxCWZpbGU6TmV4dGVybS5hcHAudGFyLmd6CXZlcnNpb246MC41LjAKWlpDbGNZZ1pXN2g5OUd4ZXVhaG5YWEYwanhtazY2QTBRSVZZMnZZdytUcmFlL1BTYkw0a0crQjRKRlhKd0I3cTdUbll3bVQ2U2NHeUVsSEo1S0t4QkE9PQo=",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767197878"
+    },
+    "darwin-x86_64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0hmU0ltVmVzbnFVSDZJMytsWVM2N2NoOER6MkRpRi9YK1krcXNmTWl2YmV5QjBheEpXTitsSFlqWFlqYlhxNEx5Wmx6cENtOTNaWTJtbmZHaHB1ckFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgzMzIxCWZpbGU6TmV4dGVybS5hcHAudGFyLmd6CXZlcnNpb246MC41LjAKWlpDbGNZZ1pXN2g5OUd4ZXVhaG5YWEYwanhtazY2QTBRSVZZMnZZdytUcmFlL1BTYkw0a0crQjRKRlhKd0I3cTdUbll3bVQ2U2NHeUVsSEo1S0t4QkE9PQo=",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767197878"
+    },
+    "darwin-universal-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTSEFGcjR5NUpvb0hmU0ltVmVzbnFVSDZJMytsWVM2N2NoOER6MkRpRi9YK1krcXNmTWl2YmV5QjBheEpXTitsSFlqWFlqYlhxNEx5Wmx6cENtOTNaWTJtbmZHaHB1ckFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk1MDgzMzIxCWZpbGU6TmV4dGVybS5hcHAudGFyLmd6CXZlcnNpb246MC41LjAKWlpDbGNZZ1pXN2g5OUd4ZXVhaG5YWEYwanhtazY2QTBRSVZZMnZZdytUcmFlL1BTYkw0a0crQjRKRlhKd0I3cTdUbll3bVQ2U2NHeUVsSEo1S0t4QkE9PQo=",
+      "url": "https://api.github.com/repos/xinggaoya/nexterm/releases/assets/767197878"
     }
   }
 }
