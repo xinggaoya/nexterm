@@ -55,6 +55,26 @@ describe("app token colors", () => {
 
     const tokens = readAppTokens();
 
-    expect(tokens.primary).toBe("rgb(124, 215, 232)");
+    expect(tokens.primary).toBe("rgb(72, 215, 254)");
+  });
+
+  it("maps out-of-gamut colors by reducing chroma instead of clipping channels", () => {
+    // oklch(0.7 0.3 30) 的 sRGB 分量超出 [0,255]：逐通道硬截断会让色相
+    // 偏移（偏橙），按色域收敛彩度则与浏览器渲染一致（偏红）。
+    mockComputedTokenColors({
+      primary: "oklch(0.7 0.3 30)",
+    });
+
+    const tokens = readAppTokens();
+
+    expect(tokens.primary).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
+    const [r, g, b] = tokens.primary
+      .replace(/^rgb\(|\)$/g, "")
+      .split(",")
+      .map((v) => Number(v.trim()));
+    // 收敛后仍在色域内，且绿色分量明显高于硬截断的结果（截断会把它压到 0）。
+    expect(r).toBeGreaterThan(0);
+    expect(g).toBeGreaterThan(50);
+    expect(b).toBeLessThan(150);
   });
 });

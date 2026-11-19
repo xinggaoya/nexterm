@@ -7,9 +7,15 @@
  * Recent Chromium builds can preserve oklch() in getComputedStyle(), while
  * Naive UI's color helpers still expect legacy color strings.
  *
+ * 色彩空间换算交给 culori：OKLab 矩阵、sRGB gamma、oklch 语法解析都是
+ * 社区验证过二十年的实现，自己维护一份只会慢慢偏（尤其是超色域色彩的
+ * 处理）。culori 默认会按 sRGB 色域收敛彩度，与浏览器渲染 oklch() 的
+ * 行为一致 —— 逐通道硬截断会让色相偏移。
+ *
  * Tokens are read once per call. Callers that need to react to theme changes
  * (light/dark toggle) should re-invoke and rebuild their theme object.
  */
+import { clampChroma, converter, formatRgb, inGamut, parse } from "culori";
 
 type TokenName =
   | "background"
@@ -67,31 +73,32 @@ const TOKENS: TokenName[] = [
 ];
 
 export const FALLBACK_APP_TOKENS: AppTokens = {
-  // v2 — dark canonical skin fallbacks (oklch ~0.14 charcoal, cyan accent).
-  background: "rgb(20, 22, 26)",
-  foreground: "rgb(223, 227, 233)",
-  card: "rgb(28, 30, 35)",
-  muted: "rgb(32, 34, 39)",
-  "muted-foreground": "rgb(140, 148, 160)",
-  accent: "rgb(40, 43, 49)",
-  "accent-foreground": "rgb(223, 227, 233)",
-  border: "rgb(45, 49, 56)",
-  primary: "rgb(124, 215, 232)",
-  "primary-foreground": "rgb(20, 22, 26)",
-  destructive: "rgb(224, 96, 111)",
-  success: "rgb(122, 207, 160)",
-  warning: "rgb(232, 197, 118)",
-  info: "rgb(170, 140, 224)",
-  ring: "rgb(124, 215, 232)",
-  "shell-bg": "rgb(20, 22, 26)",
-  "surface-subtle": "rgb(24, 26, 30)",
-  "surface-hover": "rgb(40, 43, 49)",
-  "activity-bar": "rgb(22, 24, 28)",
-  "title-bar": "rgb(22, 24, 28)",
-  "terminal-focus": "rgb(124, 215, 232)",
-  "pane-handle": "rgb(38, 41, 47)",
-  "pane-handle-active": "rgb(124, 215, 232)",
-  "panel-bg": "rgb(24, 26, 30)",
+  // 暗色主题的兜底值：由 globals.css 的 `.dark` 令牌经同一套换算生成
+  // （culori + sRGB 色域收敛），与浏览器实际渲染一致。主题改了要重新生成。
+  background: "rgb(8, 10, 13)",
+  foreground: "rgb(230, 232, 234)",
+  card: "rgb(16, 19, 22)",
+  muted: "rgb(22, 25, 28)",
+  "muted-foreground": "rgb(137, 141, 145)",
+  accent: "rgb(30, 34, 38)",
+  "accent-foreground": "rgb(230, 232, 234)",
+  border: "rgba(255, 255, 255, 0.07)",
+  primary: "rgb(72, 215, 254)",
+  "primary-foreground": "rgb(6, 9, 13)",
+  destructive: "rgb(255, 99, 103)",
+  success: "rgb(89, 212, 131)",
+  warning: "rgb(247, 184, 61)",
+  info: "rgb(154, 160, 255)",
+  ring: "rgb(72, 215, 254)",
+  "shell-bg": "rgb(8, 10, 13)",
+  "surface-subtle": "rgb(13, 16, 19)",
+  "surface-hover": "rgb(30, 34, 38)",
+  "activity-bar": "rgb(6, 7, 10)",
+  "title-bar": "rgb(5, 7, 9)",
+  "terminal-focus": "rgb(72, 215, 254)",
+  "pane-handle": "rgb(33, 36, 40)",
+  "pane-handle-active": "rgb(72, 215, 254)",
+  "panel-bg": "rgb(13, 16, 19)",
 };
 
 let probe: HTMLDivElement | null = null;
@@ -124,118 +131,24 @@ export function normalizeAppTokens(tokens: AppTokens): AppTokens {
   return out;
 }
 
+const toRgb = converter("rgb");
+const isInRgbGamut = inGamut("rgb");
+
 function normalizeCssColor(color: string, fallback: string): string {
   const trimmed = color.trim();
+  // rgb/rgba/hex 原样透传：消费方（Naive UI / xterm / CodeMirror）要的
+  // 就是这种字符串，重新格式化没有收益，还会改掉已有字面量的精度。
   if (isSeemlyCompatibleColor(trimmed)) return trimmed;
 
-  const oklch = parseOklch(trimmed);
-  if (oklch) return oklchToRgbString(oklch);
+  const parsed = parse(trimmed);
+  if (!parsed) return fallback;
 
-  return fallback;
+  // 超出色域的色彩先按 sRGB 收敛彩度（与浏览器渲染 oklch() 一致），
+  // 再转 rgb；直接截断分量会让色相偏移。
+  const mapped = isInRgbGamut(parsed) ? parsed : clampChroma(parsed, "oklch");
+  return formatRgb(toRgb(mapped));
 }
 
 function isSeemlyCompatibleColor(color: string): boolean {
   return /^rgba?\(\s*\d/.test(color) || /^#[0-9a-f]{3,8}$/i.test(color);
-}
-
-type OklchColor = {
-  lightness: number;
-  chroma: number;
-  hue: number;
-  alpha: number;
-};
-
-function parseOklch(color: string): OklchColor | null {
-  const match = /^oklch\(\s*(.*?)\s*\)$/i.exec(color);
-  if (!match) return null;
-
-  const slashIndex = match[1].indexOf("/");
-  const colorPart =
-    slashIndex === -1 ? match[1] : match[1].slice(0, slashIndex);
-  const alphaPart = slashIndex === -1 ? null : match[1].slice(slashIndex + 1);
-  const parts = colorPart.replace(/,/g, " ").trim().split(/\s+/);
-  if (parts.length < 3) return null;
-
-  const lightness = parseLightness(parts[0]);
-  const chroma = parseChroma(parts[1]);
-  const hue = parseHue(parts[2]);
-  const alpha = alphaPart ? parseAlpha(alphaPart.trim()) : 1;
-
-  if (![lightness, chroma, hue, alpha].every(Number.isFinite)) return null;
-
-  return {
-    lightness,
-    chroma,
-    hue,
-    alpha: clamp(alpha, 0, 1),
-  };
-}
-
-function parseLightness(value: string): number {
-  return value.endsWith("%") ? Number.parseFloat(value) / 100 : Number(value);
-}
-
-function parseChroma(value: string): number {
-  return value.endsWith("%")
-    ? (Number.parseFloat(value) / 100) * 0.4
-    : Number(value);
-}
-
-function parseHue(value: string): number {
-  if (value === "none") return 0;
-  if (value.endsWith("turn")) return Number.parseFloat(value) * 360;
-  if (value.endsWith("rad")) return Number.parseFloat(value) * (180 / Math.PI);
-  if (value.endsWith("grad")) return Number.parseFloat(value) * 0.9;
-  return Number.parseFloat(value);
-}
-
-function parseAlpha(value: string): number {
-  return value.endsWith("%") ? Number.parseFloat(value) / 100 : Number(value);
-}
-
-function oklchToRgbString(color: OklchColor): string {
-  const hueRad = (color.hue * Math.PI) / 180;
-  const a = color.chroma * Math.cos(hueRad);
-  const b = color.chroma * Math.sin(hueRad);
-
-  const l_ =
-    color.lightness + 0.3963377774 * a + 0.2158037573 * b;
-  const m_ =
-    color.lightness - 0.1055613458 * a - 0.0638541728 * b;
-  const s_ =
-    color.lightness - 0.0894841775 * a - 1.291485548 * b;
-
-  const l = l_ ** 3;
-  const m = m_ ** 3;
-  const s = s_ ** 3;
-
-  const r = encodeRgbChannel(
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-  );
-  const g = encodeRgbChannel(
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-  );
-  const blue = encodeRgbChannel(
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
-  );
-
-  if (color.alpha >= 1) return `rgb(${r}, ${g}, ${blue})`;
-  return `rgba(${r}, ${g}, ${blue}, ${formatAlpha(color.alpha)})`;
-}
-
-function encodeRgbChannel(linear: number): number {
-  const clamped = clamp(linear, 0, 1);
-  const encoded =
-    clamped <= 0.0031308
-      ? 12.92 * clamped
-      : 1.055 * clamped ** (1 / 2.4) - 0.055;
-  return Math.round(encoded * 255);
-}
-
-function formatAlpha(value: number): string {
-  return `${Math.round(value * 1000) / 1000}`;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }
