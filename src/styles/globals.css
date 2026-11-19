@@ -138,6 +138,12 @@
     --card-hover: var(--surface-hover);
     --pane-handle-hover: color-mix(in oklch, var(--primary) 35%, transparent);
 
+    /* Markdown 预览专用令牌：链接色、代码底色、表头底色。
+     * 单独成组而不复用 --primary：中性强调色预设下链接不能跟着变灰。 */
+    --markdown-link: oklch(0.55 0.13 235);
+    --markdown-code-bg: oklch(0.955 0.006 240);
+    --markdown-table-head-bg: oklch(0.945 0.006 240);
+
     /* v2 glass + motion tokens — light. */
     --glass-bg: color-mix(in oklch, var(--panel-bg) 72%, transparent);
     --glass-blur: 20px;
@@ -246,6 +252,11 @@
     --card-header-bg: var(--surface-subtle);
     --card-hover: var(--surface-hover);
     --pane-handle-hover: color-mix(in oklch, var(--primary) 45%, transparent);
+
+    /* Markdown 预览专用令牌 — dark. */
+    --markdown-link: oklch(0.74 0.12 232);
+    --markdown-code-bg: oklch(0.2 0.008 255);
+    --markdown-table-head-bg: oklch(0.235 0.008 255);
 
     /* v2 glass + motion tokens — dark. */
     --glass-bg: color-mix(in oklch, var(--panel-bg) 68%, transparent);

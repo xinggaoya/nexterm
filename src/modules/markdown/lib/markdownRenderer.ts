@@ -1,107 +1,171 @@
-import { Marked, type RendererObject, type Tokens } from "marked";
+import MarkdownIt, { type MarkdownIt as MarkdownItInstance } from "markdown-it";
+import anchor from "markdown-it-anchor";
+import footnote from "markdown-it-footnote";
+import githubAlerts from "markdown-it-github-alerts";
+import taskLists from "markdown-it-task-lists";
+import { highlightCode } from "./markdownHighlighter";
+import {
+  escapeHtml,
+  isSafeDataImageHref,
+  isSafeHref,
+  sanitizeMarkdownHtml,
+} from "./markdownSanitizer";
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+/** GFM alert 的五种类型。 */
+export type MarkdownAlertType =
+  | "note"
+  | "tip"
+  | "important"
+  | "warning"
+  | "caution";
+
+export interface MarkdownRenderOptions {
+  /** 代码块复制按钮的无障碍标签。 */
+  copyLabel?: string;
+  /** GFM alert 的标题文案（按类型）；缺省时插件回退到英文。 */
+  alertTitles?: Partial<Record<MarkdownAlertType, string>>;
 }
 
-// Schemes that are safe to render as href. The list is intentionally narrow;
-// unknown schemes fall through to "render as text" so `javascript:`,
-// `data:`, `vbscript:`, `file:` and friends never reach v-html.
-const SAFE_HREF_SCHEMES = new Set([
-  "http",
-  "https",
-  "mailto",
-  "ftp",
-  "ftps",
-  "tel",
-]);
+/** GitHub 的 octicon copy，用于代码块复制按钮。 */
+const COPY_ICON =
+  '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5Zm5 3.25a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-.75.75h-7.5a.75.75 0 0 1-.75-.75v-7.5ZM6 5.25a.25.25 0 0 1 .25-.25h7.5a.25.25 0 0 1 .25.25v.5a.75.75 0 0 1-1.5 0v-.5h-6v.5a.75.75 0 0 1-1.5 0v-.5Z"></path></svg>';
 
-const HREF_SCHEME_RE = /^([a-zA-Z][a-zA-Z0-9+.-]*):/;
-// Browsers historically stripped leading whitespace, C0 control bytes, and
-// even certain punctuation (e.g. `\` in some legacy parsers) before evaluating
-// a scheme, so `  \tjavascript:...` and `\\javascript:...` have both been
-// observed to resolve as `javascript:`. Reject any leading byte that's neither
-// a normal URL character nor a colon-bearing path/drive letter.
-const DANGEROUS_HREF_LEADING_RE =
-  /^[\s\x00-\x1f\\]*(?:javascript|vbscript|data):/i;
-
-function isSafeHref(href: string): boolean {
-  if (typeof href !== "string" || href.length === 0) return false;
-  if (DANGEROUS_HREF_LEADING_RE.test(href)) return false;
-  const match = HREF_SCHEME_RE.exec(href);
-  if (!match) {
-    // Relative path or anchor — no explicit scheme, safe.
-    return true;
-  }
-  return SAFE_HREF_SCHEMES.has(match[1].toLowerCase());
+/**
+ * 标题锚点的 slug 规则（对齐 GitHub）。
+ *
+ * 保留字母（含 CJK）与数字、空格转连字符、去掉标点；
+ * 不做 URL 编码 —— GitHub 的锚点里中文是原样的。
+ */
+function githubSlug(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s_-]/gu, "")
+    .replace(/\s+/g, "-");
 }
 
-// 内联 base64 图片（README 徽章、内嵌截图）是唯一允许的 `data:` 用途。
-// 必须整体匹配：只判断 `startsWith("data:image/")` 会让
-// `![x](data:image/png"onerror="alert(1))` 逃出属性 —— marked 的 image
-// tokenizer 不转义 href 里的 `"`，于是渲染出的 `<img src="...">` 会被
-// 提前闭合，攻击者注入的 onerror 在预览里直接执行（webview 主 origin，
-// 持有全部 IPC 能力）。
-const SAFE_DATA_IMAGE_RE =
-  /^data:image\/(?:png|jpe?g|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon)(?:;[\w-]+=[\w-]+)*;base64,[A-Za-z0-9+/]*={0,2}$/i;
+/** 解析器实例缓存：文案随语言切换，实例按文案签名复用。 */
+const parserCache = new Map<string, MarkdownItInstance>();
 
-function isSafeDataImageHref(href: string): boolean {
-  return SAFE_DATA_IMAGE_RE.test(href);
+const PARSER_CACHE_LIMIT = 8;
+
+function parserSignature(options: MarkdownRenderOptions): string {
+  return `${options.copyLabel ?? ""}|${JSON.stringify(options.alertTitles ?? {})}`;
 }
 
-const renderer: RendererObject = {
-  html({ text }: Tokens.HTML | Tokens.Tag) {
-    // Treat raw HTML blocks as text so user-controlled content can never
-    // inject <script>/<iframe> into the preview via v-html.
-    return escapeHtml(text);
-  },
-  link({ href, title, tokens }: Tokens.Link) {
-    // Render the link's inner tokens via the parser's default renderer so any
-    // nested formatting (em/strong/code) is preserved. The link wrapper itself
-    // is fully owned by this method, so we control whether href is emitted.
-    const inner = this.parser.parseInline(tokens, this.parser.renderer);
+function createParser(options: MarkdownRenderOptions): MarkdownItInstance {
+  const md = new MarkdownIt({
+    // 原始 HTML 交给净化层裁决（白名单），而不是整段转义成文本。
+    html: true,
+    // 裸 URL / 邮箱自动链接，和 GitHub 一致。
+    linkify: true,
+    // GitHub 不做智能引号转换。
+    typographer: false,
+    breaks: false,
+  });
+
+  md.use(footnote);
+  // GitHub 的任务列表复选框是只读的：enabled=false → 渲染成 disabled。
+  md.use(taskLists, { enabled: false, label: false });
+  md.use(anchor, {
+    slugify: githubSlug,
+    permalink: anchor.permalink.ariaHidden({
+      placement: "after",
+      symbol: "#",
+      class: "md-heading-anchor",
+      space: false,
+      renderAttrs: () => ({ tabindex: "-1" }),
+    }),
+  });
+  md.use(githubAlerts, { titles: options.alertTitles ?? {} });
+
+  /**
+   * 解析期不判协议。
+   *
+   * markdown-it 默认会在**内联解析**阶段就拒绝 javascript:/data: 链接，
+   * 整段语法退化成原始文本（`[click](javascript:...)` 原样显示）。GitHub
+   * 的做法相反：先按正常链接解析，再在净化阶段剥掉危险协议 —— 链接文字
+   * 保留，href 落空。预览对齐 GitHub，也让链接文字不至于突然变成源码。
+   *
+   * 协议白名单由 link_open / image 两条规则执行，DOMPurify 是最后一道闸。
+   */
+  md.validateLink = () => true;
+
+  md.renderer.rules.link_open = (tokens, idx, rendererOptions, _env, self) => {
+    const token = tokens[idx];
+    const href = String(token.attrGet("href") ?? "");
     if (!isSafeHref(href)) {
-      // Drop the href but keep the visible text — e.g. `[click](javascript:...)`
-      // renders as the word "click" without a link wrapper.
-      return inner;
+      // 保留链接文字、剥掉 href（不是置空 —— 空 href 会指向当前页）。
+      const hrefIndex = token.attrIndex("href");
+      if (hrefIndex >= 0) token.attrs?.splice(hrefIndex, 1);
+      return self.renderToken(tokens, idx, rendererOptions);
     }
-    const safeHref = escapeHtml(href);
-    const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
-    return `<a href="${safeHref}"${titleAttr} rel="noopener noreferrer" target="_blank">${inner}</a>`;
-  },
-  image({ href, title, text }: Tokens.Image) {
-    const alt = escapeHtml(text);
-    // 顺序很重要：data: 图片走白名单校验，其余走 scheme 校验；两条分支
-    // 都必须经过 escapeHtml —— 属性值里的 `"` 会提前闭合标签。
-    const isDataImage = href.startsWith("data:");
-    if (isDataImage) {
-      if (!isSafeDataImageHref(href)) {
-        return `<span class="md-blocked-image" title="blocked: unsafe image source">[image: ${alt}]</span>`;
-      }
-      const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
-      return `<img src="${escapeHtml(href)}" alt="${alt}"${titleAttr}>`;
+    // 站内 / 相对链接不加 target：点了应该留在应用里，不是新开一个 webview。
+    if (/^https?:\/\//i.test(href)) {
+      token.attrSet("target", "_blank");
+      token.attrSet("rel", "noopener noreferrer");
     }
-    if (!isSafeHref(href)) {
-      return `<span class="md-blocked-image" title="blocked: unsafe image source">[image: ${alt}]</span>`;
-    }
-    const safeHref = escapeHtml(href);
-    const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
-    return `<img src="${safeHref}" alt="${alt}"${titleAttr} loading="lazy">`;
-  },
-};
+    return self.renderToken(tokens, idx, rendererOptions);
+  };
 
-const parser = new Marked({
-  async: false,
-  gfm: true,
-  breaks: false,
-  renderer,
-});
+  md.renderer.rules.image = (tokens, idx, rendererOptions, env, self) => {
+    const token = tokens[idx];
+    const src = String(token.attrGet("src") ?? "");
+    // alt 要从子 token 渲染成纯文本 —— 覆盖默认 image 规则后不会自动填。
+    const alt = self.renderInlineAsText(token.children ?? [], rendererOptions, env);
+    const blocked =
+      src.toLowerCase().startsWith("data:")
+        ? !isSafeDataImageHref(src)
+        : !isSafeHref(src);
+    if (blocked) {
+      return `<span class="md-blocked-image" title="blocked: unsafe image source">[image: ${escapeHtml(alt)}]</span>`;
+    }
+    token.attrSet("alt", alt);
+    token.attrSet("loading", "lazy");
+    return self.renderToken(tokens, idx, rendererOptions);
+  };
 
-export function renderMarkdownToHtml(markdown: string): string {
-  return parser.parse(markdown, { async: false }) as string;
+  md.renderer.rules.fence = (tokens, idx) => {
+    const token = tokens[idx];
+    const language = token.info.trim().split(/\s+/)[0] ?? "";
+    const body = highlightCode(token.content, language) ?? escapeHtml(token.content);
+    const langAttr = language ? ` class="language-${escapeHtml(language)}"` : "";
+    const label = language
+      ? `<span class="md-code-lang">${escapeHtml(language)}</span>`
+      : "";
+    const copyLabel = escapeHtml(options.copyLabel ?? "Copy");
+    const copy = `<span class="md-code-copy" data-md-copy role="button" tabindex="0" aria-label="${copyLabel}" title="${copyLabel}">${COPY_ICON}</span>`;
+    return (
+      `<div class="md-code" data-md-code>` +
+      `<div class="md-code-bar">${label}${copy}</div>` +
+      `<pre><code${langAttr}>${body}</code></pre>` +
+      `</div>\n`
+    );
+  };
+
+  return md;
+}
+
+function getParser(options: MarkdownRenderOptions): MarkdownItInstance {
+  const key = parserSignature(options);
+  const cached = parserCache.get(key);
+  if (cached) return cached;
+  const parser = createParser(options);
+  if (parserCache.size >= PARSER_CACHE_LIMIT) parserCache.clear();
+  parserCache.set(key, parser);
+  return parser;
+}
+
+/**
+ * 把 Markdown 渲染成**已净化**的 HTML。
+ *
+ * 管线：markdown-it 解析（含 GFM 扩展）→ DOMPurify 白名单净化。
+ * 净化是最后一道闸，调用方拿到的 HTML 可以直接喂给 v-html。
+ */
+export function renderMarkdownToHtml(
+  markdown: string,
+  options: MarkdownRenderOptions = {},
+): string {
+  const parser = getParser(options);
+  return sanitizeMarkdownHtml(parser.render(markdown));
 }

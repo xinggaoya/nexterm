@@ -33,6 +33,7 @@ const TOLERATED: Record<string, true> = {
   "lib/osNotifications.ts": true,
   "modules/settings/store.ts": true,
   // 「在文件管理器里显示」/「用外部浏览器打开」属于 OS 集成而非业务能力。
+  "lib/openExternal.ts": true,
   "modules/explorer/lib/contextActions.ts": true,
   "modules/git-history/GitHistoryPane.vue": true,
   "modules/preview/PreviewAddressBar.vue": true,

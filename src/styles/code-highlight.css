@@ -1,4 +1,5 @@
-/* Token palette for Lezer `classHighlighter` output (chat code blocks).
+/* Token palette for Lezer `classHighlighter` output (chat code blocks) and
+ * for highlight.js output (Markdown 预览的代码块).
  * Class names follow @lezer/highlight defaults: tok-keyword, tok-string, etc.
  * Light/dark split through the existing `.dark` variant. */
 
@@ -176,4 +177,87 @@
 .tok-invalid {
   color: var(--tok-invalid);
   text-decoration: underline wavy;
+}
+
+/* ── highlight.js（Markdown 预览的代码块）────────────────────────────
+ * 不另立调色板：直接映射到上面那套 --tok-* 变量，代码块与编辑器里的
+ * 代码颜色保持一致，主题切换也不用维护两份色表。 */
+.hljs-keyword,
+.hljs-doctag,
+.hljs-operator {
+  color: var(--tok-keyword);
+}
+
+.hljs-string,
+.hljs-char,
+.hljs-meta .hljs-string,
+.hljs-regexp,
+.hljs-addition {
+  color: var(--tok-string);
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-selector-attr,
+.hljs-selector-pseudo,
+.hljs-link {
+  color: var(--tok-number);
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--tok-comment);
+  font-style: italic;
+}
+
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.function_,
+.hljs-section {
+  color: var(--tok-name);
+}
+
+.hljs-type,
+.hljs-built_in,
+.hljs-class .hljs-title {
+  color: var(--tok-type);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-property,
+.hljs-params {
+  color: var(--tok-attr);
+}
+
+.hljs-tag,
+.hljs-name,
+.hljs-selector-tag,
+.hljs-selector-class {
+  color: var(--tok-tag);
+}
+
+.hljs-meta,
+.hljs-meta-keyword,
+.hljs-symbol,
+.hljs-bullet {
+  color: var(--tok-meta);
+}
+
+.hljs-punctuation {
+  color: var(--tok-punctuation);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}
+
+.hljs-deletion {
+  color: var(--tok-invalid);
 }

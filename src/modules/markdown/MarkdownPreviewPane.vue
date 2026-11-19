@@ -8,7 +8,7 @@ import {
   readMarkdownDocument,
   type MarkdownDocumentState,
 } from "./lib/markdownDocumentService";
-import { renderMarkdownToHtml } from "./lib/markdownRenderer";
+import MarkdownContent from "./MarkdownContent.vue";
 
 const props = defineProps<{
   path: string;
@@ -25,10 +25,6 @@ const fileName = computed(() => {
 
 /** 头部展示的文件类型图标（Markdown Logo）。 */
 const fileIcon = computed(() => fileIconUrl(props.path));
-
-const renderedHtml = computed(() =>
-  doc.value.status === "ready" ? renderMarkdownToHtml(doc.value.content) : "",
-);
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -108,103 +104,7 @@ watch(() => props.path, () => void load(), { immediate: true });
       class="min-h-0 flex-1 cursor-text overflow-auto px-6 py-5 select-text"
       data-markdown-preview-scroll
     >
-      <article
-        data-markdown-preview
-        class="markdown-preview mx-auto max-w-4xl text-sm leading-7 text-foreground"
-        v-html="renderedHtml"
-      />
+      <MarkdownContent :content="doc.content" data-markdown-preview />
     </div>
   </div>
 </template>
-
-<style scoped>
-.markdown-preview :deep(*) {
-  overflow-wrap: anywhere;
-}
-
-.markdown-preview :deep(h1),
-.markdown-preview :deep(h2),
-.markdown-preview :deep(h3) {
-  margin: 1.2em 0 0.55em;
-  font-weight: 650;
-  line-height: 1.2;
-}
-
-.markdown-preview :deep(h1:first-child),
-.markdown-preview :deep(h2:first-child),
-.markdown-preview :deep(h3:first-child) {
-  margin-top: 0;
-}
-
-.markdown-preview :deep(h1) {
-  font-size: 1.45rem;
-}
-
-.markdown-preview :deep(h2) {
-  font-size: 1.15rem;
-}
-
-.markdown-preview :deep(h3) {
-  font-size: 1rem;
-}
-
-.markdown-preview :deep(p),
-.markdown-preview :deep(ul),
-.markdown-preview :deep(ol),
-.markdown-preview :deep(blockquote),
-.markdown-preview :deep(pre),
-.markdown-preview :deep(table) {
-  margin: 0.75em 0;
-}
-
-.markdown-preview :deep(ul),
-.markdown-preview :deep(ol) {
-  padding-left: 1.35rem;
-}
-
-.markdown-preview :deep(a) {
-  color: color-mix(in srgb, var(--foreground) 76%, #2563eb);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.markdown-preview :deep(code) {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--muted);
-  padding: 0.1rem 0.3rem;
-  font-family: var(--font-mono, "JetBrains Mono", monospace);
-  font-size: 0.86em;
-}
-
-.markdown-preview :deep(pre) {
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--muted);
-  padding: 0.9rem 1rem;
-}
-
-.markdown-preview :deep(pre code) {
-  border: 0;
-  background: transparent;
-  padding: 0;
-}
-
-.markdown-preview :deep(blockquote) {
-  border-left: 3px solid var(--border);
-  color: var(--muted-foreground);
-  padding-left: 0.9rem;
-}
-
-.markdown-preview :deep(table) {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.markdown-preview :deep(th),
-.markdown-preview :deep(td) {
-  border: 1px solid var(--border);
-  padding: 0.45rem 0.6rem;
-}
-</style>
