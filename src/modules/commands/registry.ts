@@ -1,25 +1,9 @@
+import { fuzzyFilter } from "@/lib/fuzzyMatch";
 import type {
   CommandContext,
   CommandDefinition,
   CommandId,
 } from "./types";
-
-function scoreCommand(command: CommandDefinition, query: string): number {
-  if (!query) return 0;
-  const haystack = `${command.title} ${command.category} ${command.id}`.toLowerCase();
-  const needle = query.toLowerCase().trim();
-  if (haystack.includes(needle)) return needle.length * 10;
-
-  let score = 0;
-  let cursor = 0;
-  for (const char of needle) {
-    const foundAt = haystack.indexOf(char, cursor);
-    if (foundAt === -1) return -1;
-    score += Math.max(1, 8 - (foundAt - cursor));
-    cursor = foundAt + 1;
-  }
-  return score;
-}
 
 function isAvailable(
   command: CommandDefinition,
@@ -33,16 +17,17 @@ export function filterCommands(
   query: string,
   context: CommandContext,
 ): CommandDefinition[] {
-  return commands
-    .filter((command) => isAvailable(command, context))
-    .map((command, index) => ({
-      command,
-      index,
-      score: scoreCommand(command, query),
-    }))
-    .filter((item) => item.score >= 0)
-    .sort((a, b) => b.score - a.score || a.index - b.index)
-    .map((item) => item.command);
+  const available = commands.filter((command) =>
+    isAvailable(command, context),
+  );
+  // 标题是用户认得的东西，权重最高；分类与命令 id 作为补充入口。
+  return fuzzyFilter(available, query, {
+    keys: [
+      { name: "title", weight: 3 },
+      { name: "category", weight: 2 },
+      { name: "id", weight: 1 },
+    ],
+  });
 }
 
 export function createCommandRegistry(definitions: CommandDefinition[]) {

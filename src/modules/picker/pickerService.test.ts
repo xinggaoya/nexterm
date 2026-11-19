@@ -101,6 +101,13 @@ describe("filterPickerEntries", () => {
     ).toEqual(["Readme.md"]);
     expect(filterPickerEntries(entries, "  ")).toHaveLength(2);
   });
+
+  it("matches fuzzy names", () => {
+    const entries = [entry("Readme.md"), entry("src", "dir")];
+    expect(
+      filterPickerEntries(entries, "rdm").map((item) => item.name),
+    ).toEqual(["Readme.md"]);
+  });
 });
 
 describe("pickerEntryNavigable", () => {

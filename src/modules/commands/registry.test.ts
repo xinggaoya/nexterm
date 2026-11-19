@@ -42,6 +42,22 @@ describe("command registry", () => {
     ).toEqual(["workbench.quickOpen.open", "terminal.new"]);
   });
 
+  it("matches commands with typo tolerance and space-insensitive prefixes", () => {
+    // 模糊匹配（fuse.js）：拼写错误 "termial" 命中 "New Terminal"，
+    // 去掉空格的 "quickopen" 命中 "Quick Open File"。
+    const context = { workspaceReady: true };
+    expect(
+      filterCommands(definitions, "termial", context).map(
+        (command) => command.id,
+      ),
+    ).toContain("terminal.new");
+    expect(
+      filterCommands(definitions, "quickopen", context).map(
+        (command) => command.id,
+      ),
+    ).toContain("workbench.quickOpen.open");
+  });
+
   it("executes registered commands with the current context", async () => {
     const quickOpen = vi.fn();
     const registry = createCommandRegistry([

@@ -1,3 +1,4 @@
+import { fuzzyFilter } from "@/lib/fuzzyMatch";
 import type { FsDirEntry } from "@/lib/native";
 import { basename, dirname, joinPath } from "@/lib/path";
 import type { WorkspaceEnv } from "@/modules/workspace/workspaceEnvSnapshot";
@@ -83,9 +84,7 @@ export function filterPickerEntries(
   entries: FsDirEntry[],
   query: string,
 ): FsDirEntry[] {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return entries;
-  return entries.filter((entry) => entry.name.toLowerCase().includes(needle));
+  return fuzzyFilter(entries, query, { keys: [{ name: "name", weight: 1 }] });
 }
 
 /**
