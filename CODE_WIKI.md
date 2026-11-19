@@ -18,7 +18,7 @@ Nexterm 是一个基于 **Tauri 2 + Rust 后端 + Vue 3 + TypeScript 前端** �
 - Rust crate：`nexterm`（lib：`nexterm_lib`），辅助二进制 `nexterm-wsl-watcher`
 - Tauri product name：`Nexterm`
 - Bundle id：`app.xinggaoya.nexterm`
-- 当前版本：与 `package.json` / `src-tauri/Cargo.toml` 同步（`0.4.2`）
+- 当前版本：与 `package.json` / `src-tauri/Cargo.toml` 同步（`0.5.0`）
 
 ## 2. 技术栈
 
@@ -309,9 +309,11 @@ vue v3 + typescript
 +-- vue-router / pinia / vue-i18n
 +-- @tauri-apps/api + 12 个 plugin
 +-- @vicons/ionicons5 / @iconify-json/catppuccin
-+-- @vueuse/core / @fontsource-variable/inter / @fontsource/jetbrains-mono
++-- @fontsource-variable/inter / @fontsource/jetbrains-mono
 +-- tailwindcss v4 + @tailwindcss/vite + tw-animate-css
-+-- shadcn (components.json) + marked
++-- shadcn (components.json)
++-- Markdown 渲染栈：markdown-it(+footnote/task-lists/anchor/github-alerts) / highlight.js / dompurify
++-- 通用能力库：@vueuse/core (debounce/timeout/interval) / fuse.js (模糊匹配) / culori (色彩空间换算)
 +-- 测试：vitest / @vue/test-utils / jsdom
 ```
 

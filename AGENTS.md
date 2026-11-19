@@ -4,7 +4,7 @@
 
 Nexterm is a terminal-centric development environment built as a Tauri 2 desktop app. It provides an integrated workspace with terminal multiplexing, file explorer, code editor, LSP, and Git integration -- all within a single native window. The Rust backend owns all system access; the Vue 3 webview is a pure presentation layer.
 
-Identifiers: npm package `nexterm`, Rust crate `nexterm` (lib `nexterm_lib`), helper binary `nexterm-agent` (musl) and `nexterm-wsl-watcher`, Tauri product `Nexterm`, bundle id `app.xinggaoya.nexterm`. Current version: `0.4.2` (kept in sync between `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`). Licensed under Apache-2.0.
+Identifiers: npm package `nexterm`, Rust crate `nexterm` (lib `nexterm_lib`), helper binary `nexterm-agent` (musl) and `nexterm-wsl-watcher`, Tauri product `Nexterm`, bundle id `app.xinggaoya.nexterm`. Current version: `0.5.0` (kept in sync between `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`). Licensed under Apache-2.0.
 
 ## Development Commands
 
@@ -61,11 +61,11 @@ cd src-tauri && cargo clippy --all-targets --locked -- -D warnings
 | `src/modules/notifications/` | Toast notification system |
 | `src/modules/workspace/` | Workspace root, authorization, WSL distro management |
 | `src/modules/preview/` | In-webview URL preview |
-| `src/modules/markdown/` | Markdown preview pane + service |
+| `src/modules/markdown/` | Markdown 预览：`MarkdownContent.vue`（共享渲染组件 + GitHub 风格排版）、`lib/`（渲染管线 / 净化 / 高亮）、独立预览面板 |
 | `src/modules/perf/` | 性能采集：IPC 计时 / 长任务 / 帧率 / 内存（默认关闭，录制态才工作） |
 | `src/modules/i18n/` | vue-i18n setup, `zh-CN` / `en-US` locales |
 | `src/modules/pinia/` | Pinia boundary tests (not a store library) |
-| `src/lib/` | Shared utilities: `native.ts` (Tauri invoke wrappers), `clipboard.ts`, `platform.ts`, `launchDir.ts`, `simpleStore.ts`, `fonts.ts`, `tauriRuntime.ts`, `appInfo.ts`, `path.ts`, `normalizeError.ts`, `refs.ts`, `useEventListener.ts`, `touchDevice.ts`, `gitStatus.ts` |
+| `src/lib/` | Shared utilities: `native.ts` (Tauri invoke wrappers), `clipboard.ts`, `openExternal.ts`, `fuzzyMatch.ts`, `platform.ts`, `launchDir.ts`, `simpleStore.ts`, `fonts.ts`, `tauriRuntime.ts`, `appInfo.ts`, `path.ts`, `error.ts`, `refs.ts`, `useEventListener.ts`, `touchDevice.ts`, `documentLoader.ts` |
 | `src/components/` | Shared UI: `WindowControls.vue`, `TooltipTitle.vue` (NOT globally auto-registered; import explicitly) |
 | `src/styles/` | `tokens.ts` (oklch to RGB token resolution), `terminalTheme.ts`, `globals.css`, `code-highlight.css`, `fonts.css` |
 | `src/settings/` | Settings drawer + 6 section components |
